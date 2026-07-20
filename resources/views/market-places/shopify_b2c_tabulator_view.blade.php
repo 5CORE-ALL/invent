@@ -153,7 +153,27 @@
         }
         .shopify-b2c-page .card { border-radius: 10px; }
         .shopify-b2c-page .card-body { padding: 12px 14px; }
-        .shopify-b2c-page #summary-stats { padding: 10px 12px !important; }
+        .shopify-b2c-page #summary-stats { padding: 6px 8px !important; overflow: hidden; }
+        /* One badge row, no scroll — JS scales the row to fit width */
+        .shopify-b2c-page #summary-stats .summary-badges-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 4px !important;
+            width: max-content;
+            max-width: none;
+            transform-origin: left center;
+        }
+        .shopify-b2c-page #summary-stats .summary-badges-row .badge {
+            flex-shrink: 0;
+            font-size: 0.78rem !important;
+            padding: 0.3rem 0.45rem !important;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .shopify-b2c-page #summary-stats .summary-search-row {
+            margin-top: 8px;
+        }
         .shopify-b2c-page #discount-input-container { padding: 8px 12px !important; }
 
         /* Parent summary rows (Amazon-style) */
@@ -340,6 +360,15 @@
                         <option value="gt100">100%+</option>
                     </select>
 
+                    {{-- Row type filter (All Rows / Parents / SKUs) – same as Amazon tabulator --}}
+                    <select id="parent-filter" class="form-select form-select-sm flex-shrink-0"
+                        style="width: 100px;" title="Filter by row type">
+                        <option value="all">All Rows</option>
+                        <option value="parents">Parents</option>
+                        {{-- Default: hide parent summary rows on initial load --}}
+                        <option value="skus" selected>SKUs</option>
+                    </select>
+
                     <!-- DIL Filter — Amazon slabs (Red <25 / Green 25-50 / Pink 50%+) -->
                     <div class="dropdown manual-dropdown-container flex-shrink-0">
                         <button class="btn btn-sm btn-light dropdown-toggle" type="button" id="dilFilterDropdown"
@@ -425,7 +454,7 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="d-flex summary-badges-row">
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;">PFT: $0</span>
                         {{-- Sales is the L30 net-sales total from the actual /shopify page
                              (shopify_raw_orders with marketplace exclusions). Server-rendered so it
@@ -445,24 +474,26 @@
                         <span class="badge fs-6 p-2" id="total-qty-badge"
                               style="background-color: #6f42c1; color: white; font-weight: bold;"
                               title="L30 units sold from shopify_raw_orders (matches /shopify and /all-marketplace-master Shopify row).">Qty: {{ number_format((int) ($shopifyDirectL30Qty ?? 0)) }}</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">L30: 0</span>
                         <span class="badge fs-6 p-2" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of L30 product page views (sessions)">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = L30 ÷ Views">CVR%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B L30: 0</span>
+                        <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = L30 ÷ Views">CVR: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt; 0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt;0 Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2 d-none" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI%: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI: 0%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Missing: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Miss: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Spend: $0.00</span>
-                        <span class="badge fs-6 p-2" id="avg-npft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">NPFT %: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Spend: $0</span>
+                        <span class="badge fs-6 p-2" id="avg-npft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">NPFT: 0%</span>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 summary-search-row">
                         <div class="input-group shopify-b2c-search-group" style="max-width: 200px;">
                             <span class="input-group-text"><i class="fas fa-search"></i></span>
                             <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU...">
@@ -2082,10 +2113,22 @@
                 table.addFilter("Missing", "=", "M");
             }
 
+            // Row type filter: All Rows / Parents / SKUs (same as Amazon)
+            const parentFilter = $('#parent-filter').val();
+            if (parentFilter === 'parents') {
+                table.addFilter(function(data) {
+                    return isShopifyB2cParentRow(data);
+                });
+            } else if (parentFilter === 'skus') {
+                table.addFilter(function(data) {
+                    return !isShopifyB2cParentRow(data);
+                });
+            }
+
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #sold-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #sold-filter, #parent-filter').on('change', function() {
             applyFilters();
         });
 
@@ -2187,21 +2230,21 @@
             $('#total-sales-amt-badge').text(`Sales: $${Math.round(SHOPIFY_DIRECT_L30_SALES).toLocaleString()}`);
             $('#total-orders-badge').text(`Orders: ${SHOPIFY_DIRECT_L30_ORDERS.toLocaleString()}`);
             $('#total-qty-badge').text(`Qty: ${SHOPIFY_DIRECT_L30_QTY.toLocaleString()}`);
-            $('#avg-gpft-badge').text(`GPFT %: ${SHOPIFY_DIRECT_GPFT_PCT.toFixed(1)}%`);
-            $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
+            $('#avg-gpft-badge').text(`GPFT: ${SHOPIFY_DIRECT_GPFT_PCT.toFixed(1)}%`);
+            $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
             $('#total-inv-badge').text(`INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
             const overallCvr = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
             $('#total-views-badge').text(`Views: ${totalViews.toLocaleString()}`);
-            $('#avg-cvr-badge').text(`CVR%: ${Math.round(overallCvr)}%`);
-            $('#total-b2b-l30-badge').text(`B2B L30: ${totalB2BL30.toLocaleString()}`);
+            $('#avg-cvr-badge').text(`CVR: ${Math.round(overallCvr)}%`);
+            $('#total-b2b-l30-badge').text(`B2B: ${totalB2BL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
-            $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
+            $('#more-sold-count-badge').text(`>0 Sold: ${moreSoldCount}`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
-            $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+            $('#roi-percent-badge').text(`ROI: ${avgRoi.toFixed(1)}%`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
-            $('#missing-count-badge').text(`Missing: ${missingCount}`);
+            $('#missing-count-badge').text(`Miss: ${missingCount}`);
             
             // Spend / TCOS / NPFT / NROI all read the page-level snapshot now.
             // Spend = Google + Meta rollup from /shopify-ads-master (same number
@@ -2209,10 +2252,30 @@
             // TCOS badge shows). NPFT = GPFT − TCOS. NROI = (Pft − Spend) / COGS.
             // All four agree with the Shopify row on /all-marketplace-master.
             $('#total-tcos-badge').text(`Ads: ${Math.round(SHOPIFY_DIRECT_TCOS_PCT)}%`);
-            $('#total-spend-badge').text(`Spend: $${SHOPIFY_DIRECT_TOTAL_SPEND.toFixed(2)}`);
-            $('#avg-npft-badge').text(`NPFT %: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`);
-            $('#nroi-percent-badge').text(`NROI%: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`);
+            $('#total-spend-badge').text(`Spend: $${Math.round(SHOPIFY_DIRECT_TOTAL_SPEND).toLocaleString()}`);
+            $('#avg-npft-badge').text(`NPFT: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`);
+            $('#nroi-percent-badge').text(`NROI: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`);
+
+            fitSummaryBadgesRow();
         }
+
+        /** Scale badge row to container width so everything stays on 1 line with no scroll. */
+        function fitSummaryBadgesRow() {
+            const row = document.querySelector('#summary-stats .summary-badges-row');
+            const box = document.getElementById('summary-stats');
+            if (!row || !box) return;
+            row.style.transform = 'none';
+            row.style.marginBottom = '0';
+            const available = box.clientWidth - 16;
+            const needed = row.scrollWidth;
+            if (available > 0 && needed > available) {
+                const scale = available / needed;
+                row.style.transform = 'scale(' + scale + ')';
+                // Collapse leftover layout height after scale
+                row.style.marginBottom = (-(1 - scale) * row.offsetHeight) + 'px';
+            }
+        }
+        $(window).on('resize', fitSummaryBadgesRow);
 
         /*
          * Column visibility persists in shared DB table channel_tabulator_column_settings
