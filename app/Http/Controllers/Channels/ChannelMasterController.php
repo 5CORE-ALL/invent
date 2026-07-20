@@ -1786,7 +1786,7 @@ class ChannelMasterController extends Controller
                 $row['L7 Sales'] = $l7Sales;
             }
 
-            // CVR + Total Views from /shopify-b2c-pricing CVR% badge (INV>0 OV L30 ÷ Views)
+            // CVR + Total Views from /shopify-b2c-pricing CVR% badge (Qty ÷ Views)
             $cvrSnap = $this->getShopifyB2CCvrFromPricingSkus();
             $row['Total Views'] = $cvrSnap['total_views'];
             $row['CVR'] = $cvrSnap['cvr_pct'];
@@ -1798,22 +1798,21 @@ class ChannelMasterController extends Controller
 
     /**
      * Shopify B2C CVR matching /shopify-b2c-pricing CVR% badge (default INV > 0 filter):
-     *   sum(quantity) ÷ sum(views) × 100 on shopify_skus where inv > 0.
-     * quantity = OV L30; views = L30 product page sessions.
+     *   Qty ÷ Views × 100
+     * Qty = /shopify L30 units (same Qty badge on /shopify-b2c-pricing);
+     * Views = Σ shopify_skus.views where inv > 0 (same Views badge under INV>0).
      *
      * @return array{total_views: int, cvr_pct: float}
      */
     private function getShopifyB2CCvrFromPricingSkus(): array
     {
         try {
-            $agg = ShopifySku::query()
+            $views = (float) ShopifySku::query()
                 ->where('inv', '>', 0)
-                ->selectRaw('COALESCE(SUM(views), 0) as total_views, COALESCE(SUM(quantity), 0) as total_l30')
-                ->first();
+                ->sum('views');
 
-            $views = (float) ($agg->total_views ?? 0);
-            $l30 = (float) ($agg->total_l30 ?? 0);
-            $cvr = $views > 0 ? round(($l30 / $views) * 100, 2) : 0.0;
+            $qty = (float) ($this->getShopifyDirectL30Snapshot()['qty'] ?? 0);
+            $cvr = $views > 0 ? round(($qty / $views) * 100, 2) : 0.0;
 
             return [
                 'total_views' => (int) round($views),
@@ -12795,7 +12794,7 @@ class ChannelMasterController extends Controller
         // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('shopify_b2c');
 
-        // CVR + Views from /shopify-b2c-pricing CVR% badge (INV > 0: OV L30 ÷ Views)
+        // CVR + Views from /shopify-b2c-pricing CVR% badge (Qty ÷ Views)
         $cvrSnap = $this->getShopifyB2CCvrFromPricingSkus();
 
         $result[] = [
@@ -14722,7 +14721,7 @@ class ChannelMasterController extends Controller
     /**
      * Listing CVR% from a daily snapshot.
      * Prefer persisted listing_cvr:
-     *   Shopify — INV>0 OV L30 ÷ Views (/shopify-b2c-pricing)
+     *   Shopify — Qty ÷ Views (/shopify-b2c-pricing badges)
      *   Temu / Temu 2 — sum(temu_l30) ÷ sum(product_clicks) (/temu-decrease)
      *   Reverb — Σ(RV L30) ÷ Σ(Views) (/reverb-pricing, Amazon-style)
      * Otherwise order-units ÷ views.

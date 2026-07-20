@@ -976,9 +976,9 @@ class Shopifyb2cController extends Controller
             $inv = $processedItem["INV"];
             $processedItem["DIL%"] = $inv > 0 ? ($ovL30 / $inv) * 100 : 0;
 
-            // Calculate CVR% = (OV L30 / Views) * 100 (overall conversion rate)
+            // Calculate CVR% = (B2C L30 / Views) * 100 (B2C conversion rate)
             $views = $processedItem["Views"];
-            $processedItem["CVR%"] = $views > 0 ? ($ovL30 / $views) * 100 : 0;
+            $processedItem["CVR%"] = $views > 0 ? ($b2cL30 / $views) * 100 : 0;
 
             // Add Google Ads Spend for this SKU
             $adSpend = (float) ($googleSpentBySku[$sku] ?? 0);
@@ -1005,6 +1005,7 @@ class Shopifyb2cController extends Controller
             $processedItem["SNPFT"] = 0;
             $processedItem["SROI"] = 0;
             $processedItem["SNROI"] = 0;
+            $processedItem["SPRICE_STATUS"] = null;
 
             if (isset($shopifyB2cViewData[$sku])) {
                 $viewData = $shopifyB2cViewData[$sku];
@@ -1016,6 +1017,8 @@ class Shopifyb2cController extends Controller
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SNPFT"] = isset($valuesArr["SNPFT"]) ? floatval($valuesArr["SNPFT"]) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval($valuesArr["SROI"]) : 0;
+                // Push status (same shopifyb2c_data_view field CVR /push-shopify-b2c-price updates)
+                $processedItem["SPRICE_STATUS"] = $valuesArr["SPRICE_STATUS"] ?? null;
 
                 // SNROI — same shape as Amazon net SROI / NROI badge:
                 //   (suggested gross $ − SPRICE × channel Ads%/100) / LP × 100
@@ -1099,7 +1102,7 @@ class Shopifyb2cController extends Controller
                 'Profit' => round($profit, 2),
                 'Sales L30' => round($sales, 2),
                 'DIL%' => $inv > 0 ? ($ovL30 / $inv) * 100 : 0,
-                'CVR%' => $views > 0 ? ($ovL30 / $views) * 100 : 0,
+                'CVR%' => $views > 0 ? ($b2cL30 / $views) * 100 : 0,
                 'googleSpent' => $adSpend,
                 'ADS%' => $sales > 0 ? ($adSpend / $sales) * 100 : 0,
                 'SPRICE' => 0,
@@ -1107,6 +1110,7 @@ class Shopifyb2cController extends Controller
                 'SNPFT' => 0,
                 'SROI' => 0,
                 'SNROI' => 0,
+                'SPRICE_STATUS' => null,
             ];
         }
 

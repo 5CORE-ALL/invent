@@ -340,7 +340,7 @@
                     </select>
 
                     <select id="cvr-filter" class="form-select form-select-sm"
-                        title="CVR matches controller: OV L30 ÷ Views">
+                        title="CVR = B2C L30 ÷ Views">
                         <option value="all">CVR%</option>
                         <option value="0-0">0%</option>
                         <option value="0-3">0-3%</option>
@@ -412,6 +412,12 @@
 
                     <button id="export-btn" class="btn btn-sm btn-dark" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
+                    </button>
+
+                    {{-- Push SPRICE to Shopify B2C for selected rows (same API as /amazon-tabulator-view) --}}
+                    <button type="button" id="push-shopify-prices-btn" class="btn btn-sm btn-success"
+                        title="Push SPRICE to Shopify for selected SKUs">
+                        <i class="fas fa-paper-plane"></i> Push
                     </button>
 
                     <div class="btn-group">
@@ -489,7 +495,7 @@
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">L30: 0</span>
                         <span class="badge fs-6 p-2" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of L30 product page views (sessions)">Views: 0</span>
-                        <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = L30 ÷ Views">CVR: 0%</span>
+                        <span class="badge fs-6 p-2" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Qty ÷ Views">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">B2B: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt;0 Sold: 0</span>
@@ -525,6 +531,10 @@
                         </button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
+                        <button type="button" id="push-selected-shopify-btn" class="btn btn-success btn-sm"
+                            title="Push SPRICE to Shopify for selected SKUs">
+                            <i class="fas fa-paper-plane"></i> Push
                         </button>
                     </div>
                 </div>
@@ -650,10 +660,7 @@
             decreaseModeActive = false;
             increaseModeActive = false;
             samePriceModeActive = false;
-            if (table) {
-                const col = table.getColumn('_select');
-                if (col) col.hide();
-            }
+            // Keep _select visible so Push can still use row checkboxes
             selectedSkus.clear();
             $('.sku-select-checkbox').prop('checked', false);
             if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
@@ -923,6 +930,147 @@
         // Clear SPRICE button
         $('#clear-sprice-btn').on('click', function() {
             clearSpriceForSelected();
+        });
+
+        /** Push one SKU SPRICE to Shopify B2C (same /push-shopify-b2c-price as Amazon tabulator). */
+        function pushShopifyB2cPrice(sku, price, $btn, row) {
+            if (!sku || !price || price <= 0 || isNaN(price)) {
+                showToast('Invalid SKU or S PRC — set S PRC first', 'error');
+                return;
+            }
+            if ($btn && $btn.length) {
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-clock fa-spin" style="color: black;"></i>');
+            }
+            if (row) {
+                row.update({ SPRICE_STATUS: 'processing' });
+            }
+
+            $.ajax({
+                url: @json(route('push.shopify.b2c.price')),
+                method: 'POST',
+                timeout: 120000,
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, price: price },
+                success: function(response) {
+                    const shopifyPush = response.shopify_push || {};
+                    let finalStatus = 'error';
+                    if (response.errors && response.errors.length > 0) {
+                        showToast('Shopify push failed: ' + (response.errors[0].message || 'Unknown error'), 'error');
+                    } else if (shopifyPush.ok) {
+                        finalStatus = 'pushed';
+                        showToast('Shopify: ' + (shopifyPush.message || 'Pushed successfully') + ' for SKU: ' + sku, 'success');
+                    } else {
+                        showToast('Shopify: ' + (shopifyPush.message || 'Push failed'), 'error');
+                    }
+
+                    if (row) {
+                        row.update({ SPRICE_STATUS: finalStatus });
+                        row.reformat();
+                    }
+                    if ($btn && $btn.length) {
+                        $btn.prop('disabled', false);
+                    }
+                },
+                error: function(xhr) {
+                    if (row) {
+                        row.update({ SPRICE_STATUS: 'error' });
+                        row.reformat();
+                    }
+                    if ($btn && $btn.length) {
+                        $btn.prop('disabled', false);
+                        $btn.html('<i class="fa-solid fa-x" style="color:#dc3545;"></i>');
+                    }
+                    const errorMsg = (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors[0])
+                        ? xhr.responseJSON.errors[0].message
+                        : 'Unknown error';
+                    showToast('Shopify push failed: ' + errorMsg, 'error');
+                }
+            });
+        }
+
+        /** Bulk-push SPRICE for all selected SKUs (sequential to avoid rate limits). */
+        function pushSelectedShopifyPrices() {
+            if (!table) return;
+            if (selectedSkus.size === 0) {
+                showToast('Please select at least one SKU first', 'error');
+                return;
+            }
+
+            const toPush = [];
+            table.getRows().forEach(function(row) {
+                const d = row.getData();
+                if (isShopifyB2cParentRow(d)) return;
+                const sku = d['(Child) sku'];
+                if (!selectedSkus.has(sku)) return;
+                const price = parseFloat(d.SPRICE) || 0;
+                if (price > 0) {
+                    toPush.push({ sku: sku, price: price, row: row });
+                }
+            });
+
+            if (toPush.length === 0) {
+                showToast('No selected SKUs have S PRC > 0', 'warning');
+                return;
+            }
+
+            if (!confirm('Push ' + toPush.length + ' price(s) to Shopify?')) return;
+
+            const $btns = $('#push-shopify-prices-btn, #push-selected-shopify-btn');
+            const originalHtml = $('#push-shopify-prices-btn').html();
+            $btns.prop('disabled', true);
+            $('#push-shopify-prices-btn').html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+
+            let idx = 0;
+            let okCount = 0;
+            let failCount = 0;
+
+            function next() {
+                if (idx >= toPush.length) {
+                    $btns.prop('disabled', false);
+                    $('#push-shopify-prices-btn').html(originalHtml);
+                    showToast('Push done: ' + okCount + ' ok, ' + failCount + ' failed', failCount ? 'warning' : 'success');
+                    return;
+                }
+                const item = toPush[idx++];
+                item.row.update({ SPRICE_STATUS: 'processing' });
+                item.row.reformat();
+
+                $.ajax({
+                    url: @json(route('push.shopify.b2c.price')),
+                    method: 'POST',
+                    timeout: 120000,
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: { sku: item.sku, price: item.price },
+                    success: function(response) {
+                        const shopifyPush = response.shopify_push || {};
+                        if (response.errors && response.errors.length > 0) {
+                            failCount++;
+                            item.row.update({ SPRICE_STATUS: 'error' });
+                        } else if (shopifyPush.ok) {
+                            okCount++;
+                            item.row.update({ SPRICE_STATUS: 'pushed' });
+                        } else {
+                            failCount++;
+                            item.row.update({ SPRICE_STATUS: 'error' });
+                        }
+                        item.row.reformat();
+                        setTimeout(next, 300);
+                    },
+                    error: function() {
+                        failCount++;
+                        item.row.update({ SPRICE_STATUS: 'error' });
+                        item.row.reformat();
+                        setTimeout(next, 300);
+                    }
+                });
+            }
+
+            next();
+        }
+
+        $('#push-shopify-prices-btn, #push-selected-shopify-btn').on('click', function() {
+            pushSelectedShopifyPrices();
         });
 
         // Badge clicks just toggle the #sold-filter dropdown so the dropdown stays the
@@ -1519,7 +1667,8 @@
                     width: 60,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const l30 = parseFloat(rowData['L30']) || 0;
+                        // CVR% = B2C L30 ÷ Views (not OV L30)
+                        const l30 = parseFloat(rowData['B2B L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
 
                         if (views === 0) return '<span style="color: #6c757d;">0%</span>';
@@ -1780,7 +1929,7 @@
                     hozAlign: "center",
                     headerSort: false,
                     width: 40,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -1820,6 +1969,50 @@
                         return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
                     },
                     width: 80
+                },
+                {
+                    title: "Push",
+                    field: "_push",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 50,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) return '';
+                        const sku = rowData['(Child) sku'] || '';
+                        const sprice = parseFloat(rowData.SPRICE) || 0;
+                        const status = rowData.SPRICE_STATUS || '';
+                        if (!sprice || sprice <= 0) {
+                            return '<span style="color:#999;" title="Set S PRC first">N/A</span>';
+                        }
+                        let icon = '<i class="fas fa-check"></i>';
+                        let color = '#0d6efd';
+                        let title = 'Push to Shopify';
+                        if (status === 'pushed' || status === 'applied') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            color = '#28a745';
+                            title = 'Price pushed to Shopify';
+                        } else if (status === 'error') {
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            color = '#dc3545';
+                            title = 'Error pushing to Shopify';
+                        } else if (status === 'processing') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            color = '#ffc107';
+                            title = 'Pushing to Shopify...';
+                        }
+                        return `<button type="button" class="btn btn-sm push-shopify-btn" data-sku="${sku.replace(/"/g, '&quot;')}" title="${title}" style="border:none;background:none;color:${color};padding:0;cursor:pointer;">${icon}</button>`;
+                    },
+                    cellClick: function(e, cell) {
+                        const $target = $(e.target);
+                        if (!$target.hasClass('push-shopify-btn') && !$target.closest('.push-shopify-btn').length) return;
+                        e.stopPropagation();
+                        const $btn = $target.hasClass('push-shopify-btn') ? $target : $target.closest('.push-shopify-btn');
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'];
+                        const price = parseFloat(rowData.SPRICE) || 0;
+                        pushShopifyB2cPrice(sku, price, $btn, cell.getRow());
+                    }
                 },
                 {
                     title: "S GPFT",
@@ -2049,11 +2242,11 @@
                 });
             }
 
-            // CVR filter — same slabs as Amazon
+            // CVR filter — B2C L30 ÷ Views
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const l30 = parseFloat(data['L30']) || 0;
+                    const l30 = parseFloat(data['B2B L30']) || 0;
                     const views = parseFloat(data['Views']) || 0;
                     const cvrPercent = views > 0 ? (l30 / views) * 100 : 0;
                     const cvrRounded = Math.round(cvrPercent * 100) / 100;
@@ -2234,7 +2427,8 @@
             $('#avg-price-badge').text(`Price: $${avgPrice.toFixed(2)}`);
             $('#total-inv-badge').text(`INV: ${totalInv.toLocaleString()}`);
             $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
-            const overallCvr = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
+            // CVR badge = Qty badge ÷ Views badge (page Qty from /shopify snapshot)
+            const overallCvr = totalViews > 0 ? (SHOPIFY_DIRECT_L30_QTY / totalViews) * 100 : 0;
             $('#total-views-badge').text(`Views: ${totalViews.toLocaleString()}`);
             $('#avg-cvr-badge').text(`CVR: ${Math.round(overallCvr)}%`);
             $('#total-b2b-l30-badge').text(`B2B: ${totalB2BL30.toLocaleString()}`);
