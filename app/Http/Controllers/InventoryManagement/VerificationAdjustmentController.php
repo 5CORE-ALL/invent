@@ -803,6 +803,12 @@ class VerificationAdjustmentController extends Controller
                 ? Carbon::parse($record->shopify_adjustment_succeeded_at)->timezone('America/New_York')->format('Y-m-d')
                 : null;
 
+            $verifiedByFirstName = null;
+            if (Auth::check() && Auth::user()?->name) {
+                $nameParts = explode(' ', trim(Auth::user()->name));
+                $verifiedByFirstName = $nameParts[0] ?? Auth::user()->name;
+            }
+
             // Determine message
             $message = 'Record saved successfully';
             if ($validated['is_approved']) {
@@ -845,6 +851,7 @@ class VerificationAdjustmentController extends Controller
                     'approved_at_ymd' => $record->approved_at
                         ? Carbon::parse($record->approved_at)->timezone('America/New_York')->format('Y-m-d')
                         : null,
+                    'verified_by_first_name' => $verifiedByFirstName,
                 ]
             ]);
 
@@ -1618,6 +1625,12 @@ class VerificationAdjustmentController extends Controller
 
             DB::commit();
 
+            $verifiedByFirstName = null;
+            if (Auth::check() && Auth::user()?->name) {
+                $nameParts = explode(' ', trim(Auth::user()->name));
+                $verifiedByFirstName = $nameParts[0] ?? Auth::user()->name;
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Remark saved successfully',
@@ -1625,6 +1638,7 @@ class VerificationAdjustmentController extends Controller
                     'sku' => $record->sku,
                     'remarks' => $record->remarks,
                     'updated_at' => $record->updated_at->format('Y-m-d H:i:s'),
+                    'verified_by_first_name' => $verifiedByFirstName,
                 ]
             ]);
 

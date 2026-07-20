@@ -54,24 +54,18 @@
                               title="Number of SKU rows currently passing the filters">Rows: 0</span>
                         <span class="badge text-center" id="total-sales-badge"
                               style="background:#198754;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Σ (TD L30 × TD Price) across visible rows — last-30-day TopDawg sales revenue">Sales: $0</span>
-                        <span class="badge bg-success text-center" id="total-td-l30-badge" style="color:#000;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="Sum of TD L30 on filtered rows">TD L30: 0</span>
+                              title="Exact Total Revenue from /topdawg/sales-dashboard (Σ amount on all topdawg_order_metrics rows)">Sales: ${{ number_format($topdawgSalesDashboardRevenue ?? 0, 2, '.', ',') }}</span>
+                        <span class="badge bg-success text-center" id="total-td-l30-badge" style="color:#000;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="Sum of TD L30 qty from topdawg_order_metrics (L30) on filtered rows">TD L30: 0</span>
                         <span class="badge bg-danger text-center" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
                         <span class="badge text-center" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
-                        {{-- GPFT / GROI — weighted profitability for filtered rows.
-                             Same shape as /purchasing-power-pricing GPFT badge:
-                               Profit (per row) = (TD Price × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) × TD L30
-                               Sales L30        = TD Price × TD L30
-                               COGS             = LP × TD L30
-                             Ship comes from CP Master (ProductMaster.Values.ship → Ship_productmaster).
-                             GPFT% = (Σ Profit ÷ Σ Sales L30) × 100   (weighted gross margin)
-                             GROI% = (Σ Profit ÷ Σ COGS) × 100        (weighted ROI) --}}
+                        {{-- GPFT / GROI pinned to /topdawg/sales-dashboard PFT% / ROI%
+                             (all order_metrics, margin from marketplace_percentages, no ship). --}}
                         <span class="badge text-center" id="gpft-pct-badge"
                               style="background:#6f42c1;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Weighted Gross Profit %: (Σ Profit ÷ Σ Sales L30) × 100. Profit includes Ship from CP Master.">GPFT: 0%</span>
+                              title="Exact PFT % from /topdawg/sales-dashboard: (Σ pft ÷ Σ amount) × 100. Margin from marketplace_percentages, no ship.">GPFT: {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }}%</span>
                         <span class="badge text-center" id="groi-pct-badge"
                               style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Weighted Gross ROI %: (Σ Profit ÷ Σ COGS) × 100. COGS = LP × TD L30; Profit includes Ship from CP Master.">GROI: 0%</span>
+                              title="Exact ROI % from /topdawg/sales-dashboard: (Σ pft ÷ Σ cogs) × 100. COGS = LP × qty, no ship.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
                         <span class="badge bg-danger text-center" id="nmap-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="|INV − TD Stock| &gt; 3">N Map: 0</span>
                     </div>
@@ -302,6 +296,10 @@
 <script>
     const TD_MAP_TOLERANCE = 3;
     const TD_PERCENTAGE    = {{ $topdawgPercentage ?? 95 }} / 100;
+    // Pinned to /topdawg/sales-dashboard Total Revenue / PFT% / ROI%.
+    const TD_SALES_DASHBOARD_REVENUE = {{ number_format((float) ($topdawgSalesDashboardRevenue ?? 0), 2, '.', '') }};
+    const TD_SALES_DASHBOARD_GPFT = {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }};
+    const TD_SALES_DASHBOARD_ROI = {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }};
     let table = null;
     // zeroSoldFilter / moreSoldFilter removed — Sold filter is now owned by the
     // #sold-filter dropdown (driven by badge clicks and the ?badge=zero_sold|more_sold URL).
@@ -592,12 +590,6 @@
         const data = getSummaryRows();
         let totalTdL30 = 0;
         let zeroSold = 0, moreSold = 0, missing = 0, nmapC = 0;
-        // Weighted GPFT / GROI accumulators — same shape as /purchasing-power-pricing
-        // (gpft-pct-badge / roi-percent-badge), but Profit *includes* Ship from CP
-        // Master (ProductMaster.Values.ship → Ship_productmaster). Single pass over
-        // visible rows so the badges always reflect the active filters.
-        let totalProfit = 0, totalSalesL30 = 0, totalCogs = 0;
-
         data.forEach(row => {
             const tdL30 = parseInt(row['TD L30'], 10) || 0;
             totalTdL30 += tdL30;
@@ -611,25 +603,16 @@
             if (nrReq === 'REQ' && inv > 0 && !isMissing) {
                 if (mapVal.includes('N Map|')) nmapC++;
             }
-
-            const price = parseFloat(row['TD Price'])           || 0;
-            const lp    = parseFloat(row.LP_productmaster)      || 0;
-            const ship  = parseFloat(row.Ship_productmaster)    || 0;
-            totalSalesL30 += price * tdL30;
-            totalCogs     += lp    * tdL30;
-            totalProfit   += (price * TD_PERCENTAGE - lp - ship) * tdL30;
         });
 
-        const gpftPct = totalSalesL30 > 0 ? (totalProfit / totalSalesL30) * 100 : 0;
-        const groiPct = totalCogs     > 0 ? (totalProfit / totalCogs)     * 100 : 0;
-
+        // Sales / GPFT / GROI pinned to /topdawg/sales-dashboard (not filter-dependent).
         $('#total-rows-badge').text('Rows: ' + data.length.toLocaleString());
         $('#total-td-l30-badge').text('TD L30: ' + totalTdL30.toLocaleString());
-        $('#total-sales-badge').text('Sales: $' + Math.round(totalSalesL30).toLocaleString());
+        $('#total-sales-badge').text('Sales: $' + Number(TD_SALES_DASHBOARD_REVENUE).toFixed(2));
         $('#zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
         $('#more-sold-badge').text('> 0 Sold: ' + moreSold.toLocaleString());
-        $('#gpft-pct-badge').text('GPFT: ' + Math.round(gpftPct) + '%');
-        $('#groi-pct-badge').text('GROI: ' + Math.round(groiPct) + '%');
+        $('#gpft-pct-badge').text('GPFT: ' + Math.round(Number(TD_SALES_DASHBOARD_GPFT)) + '%');
+        $('#groi-pct-badge').text('GROI: ' + Math.round(Number(TD_SALES_DASHBOARD_ROI)) + '%');
         $('#missing-badge').text('Missing L: ' + missing.toLocaleString());
         $('#nmap-badge').text('N Map: ' + nmapC.toLocaleString());
     }
@@ -840,18 +823,10 @@
                         return `$${v.toFixed(2)}`;
                     }},
                 {
-                    title: 'Sales', field: 'Sales', hozAlign: 'center', width: 80,
-                    sorter: function(a, b, aRow, bRow) {
-                        const av = (parseFloat(aRow.getData()['TD L30']) || 0) * (parseFloat(aRow.getData()['TD Price']) || 0);
-                        const bv = (parseFloat(bRow.getData()['TD L30']) || 0) * (parseFloat(bRow.getData()['TD Price']) || 0);
-                        return av - bv;
-                    },
-                    tooltip: 'TD L30 × TD Price (last-30-day TopDawg sales)',
+                    title: 'Sales', field: 'Sales', hozAlign: 'center', width: 80, sorter: 'number',
+                    tooltip: 'L30 order sales $ from topdawg_order_metrics (same source as sales-dashboard)',
                     formatter: c => {
-                        const d = c.getRow().getData();
-                        const l30 = parseFloat(d['TD L30']) || 0;
-                        const price = parseFloat(d['TD Price']) || 0;
-                        const sales = l30 * price;
+                        const sales = parseFloat(c.getValue()) || 0;
                         if (sales <= 0) return '<span class="text-muted">-</span>';
                         return `<strong style="color:#198754;">$${Math.round(sales).toLocaleString()}</strong>`;
                     }
@@ -901,11 +876,7 @@
                         if (v === null || v === undefined || v === '') {
                             return '<span class="text-muted" style="cursor:text;" title="Click to set SPRICE">-</span>';
                         }
-                        // SPRICE_STATUS comes from the push-to-TopDawg flow:
-                        //   pushing → in-flight (orange)
-                        //   pushed  → accepted into TopDawg's review queue (yellow)
-                        //   failed  → TopDawg rejected / errored (red)
-                        // Default (no status) shows the standard blue "custom price" chip.
+                        
                         const status = c.getRow().getData().SPRICE_STATUS || '';
                         let bg = '#e7f1ff';
                         let tip = '';

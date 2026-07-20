@@ -3392,6 +3392,79 @@
                 updateVerifiedCounts();
             }
 
+            function buildMergedLogHistoryHtml(historyFormatted) {
+                if (!historyFormatted) {
+                    return '—';
+                }
+                if (String(historyFormatted).includes(', ')) {
+                    const [datePart, timePart] = String(historyFormatted).split(', ');
+                    return `<div style="line-height:1.3">${escAttr(datePart)}<br><small>${escAttr(timePart)}</small></div>`;
+                }
+                return escAttr(historyFormatted);
+            }
+
+            /** Update LOG column (user + timestamp + eye) in DOM and in-memory data without full reload. */
+            function updateMergedLogCell($row, options) {
+                const opts = options || {};
+                const sku = String(opts.sku || $row.find('.sku-hidden').val() || '').trim();
+                const hasUser = Object.prototype.hasOwnProperty.call(opts, 'userName');
+                const userName = hasUser ? (opts.userName || '') : null;
+                const historyRaw = opts.historyRaw || null;
+                const historyFormatted = Object.prototype.hasOwnProperty.call(opts, 'historyFormatted')
+                    ? (opts.historyFormatted || '')
+                    : (historyRaw ? formatOhioTime(historyRaw) : null);
+
+                if (sku) {
+                    [tableData, filteredData].forEach(function(arr) {
+                        const j = arr.findIndex(function(it) {
+                            return String(it.SKU || '').trim() === sku;
+                        });
+                        if (j === -1) return;
+                        if (hasUser) {
+                            arr[j].VERIFIED_BY_FIRST_NAME = userName || null;
+                            arr[j].verified_by_first_name = userName || null;
+                        }
+                        if (historyRaw) {
+                            arr[j].LAST_VERIFIED_AT = historyRaw;
+                            arr[j].approved_at = historyRaw;
+                        }
+                        if (historyFormatted !== null) {
+                            arr[j].HISTORY = historyFormatted;
+                        }
+                    });
+                }
+
+                const $logCol = $row.find('td.va-merged-log-col');
+                if (!$logCol.length) return;
+
+                let $cell = $logCol.find('.va-merged-log-cell');
+                if (!$cell.length) {
+                    const eyeBtn = sku
+                        ? `<button type="button" class="btn btn-sm btn-link view-activity-logs-btn p-0 border-0" data-sku="${escAttr(sku)}" title="View activity log for this SKU"><i class="fas fa-eye" aria-hidden="true"></i></button>`
+                        : '';
+                    $logCol.html(`
+                        <div class="va-merged-log-cell">
+                            <div class="va-merged-log-user">—</div>
+                            <div class="va-merged-log-history">—</div>
+                            <div class="va-merged-log-action">${eyeBtn}</div>
+                        </div>
+                    `);
+                    $cell = $logCol.find('.va-merged-log-cell');
+                }
+
+                if (hasUser) {
+                    $cell.find('.va-merged-log-user').text(userName || '—');
+                }
+                if (historyFormatted !== null) {
+                    $cell.find('.va-merged-log-history').html(buildMergedLogHistoryHtml(historyFormatted));
+                }
+                if (sku && !$cell.find('.view-activity-logs-btn').length) {
+                    $cell.find('.va-merged-log-action').html(
+                        `<button type="button" class="btn btn-sm btn-link view-activity-logs-btn p-0 border-0" data-sku="${escAttr(sku)}" title="View activity log for this SKU"><i class="fas fa-eye" aria-hidden="true"></i></button>`
+                    );
+                }
+            }
+
             function syncVerifiedDotInRow($row, item) {
                 const $btn = $row.find('.verified-status-btn');
                 if (!$btn.length || !item) return;
@@ -3736,6 +3809,7 @@
                         if (response.success) {
                             const itemIndex = tableData.findIndex(item => item.SKU === sku);
                             const nowIso = new Date().toISOString();
+                            const verifiedByFirstName = response.verified_by_first_name || null;
                             if (itemIndex !== -1) {
                                 tableData[itemIndex].IS_VERIFIED = newVerified ? 1 : 0;
                                 tableData[itemIndex].is_verified = newVerified;
@@ -3764,6 +3838,12 @@
                             $btn.attr('data-verified', newVerified && isVerifiedDotGreen(itemRef) ? '1' : '0');
                             $btn.attr('title', newVerified ? getVerifiedDotTitle(itemRef) : 'Marked unverified');
                             updateVerifiedCounts();
+
+                            // Instantly refresh LOG user without page reload
+                            updateMergedLogCell($btn.closest('tr'), {
+                                sku: sku,
+                                userName: newVerified ? verifiedByFirstName : ''
+                            });
                         }
                     },
                     error: function(xhr, status, error) {
@@ -4030,9 +4110,6 @@
                                     if (isApproved && res.data?.verified_stock != null && res.data?.verified_stock !== '') {
                                         arr[j].LAST_VERIFIED_QTY = res.data.verified_stock;
                                     }
-                                    if (res.data?.approved_at) {
-                                        arr[j].HISTORY = formatOhioTime(res.data.approved_at);
-                                    }
                                     if (res.data) {
                                         arr[j].SHOPIFY_PUSH_STATUS = res.data.shopify_adjustment_status;
                                         arr[j].SHOPIFY_PUSH_ERROR = res.data.shopify_adjustment_error || null;
@@ -4045,6 +4122,16 @@
                             }
 
                             setRowVerifiedGreen($row, sku);
+
+                            // Instantly refresh LOG column (user + date) without page reload
+                            if (isApproved) {
+                                updateMergedLogCell($row, {
+                                    sku: sku,
+                                    userName: res.data?.verified_by_first_name || (approvedBy ? String(approvedBy).split(' ')[0] : ''),
+                                    historyRaw: res.data?.approved_at || null,
+                                    historyFormatted: res.data?.approved_at ? formatOhioTime(res.data.approved_at) : ''
+                                });
+                            }
 
                             $row.find('.va-last-qty-col').text(
                                 isApproved && res.data?.verified_stock != null && res.data?.verified_stock !== ''
@@ -4153,6 +4240,10 @@
                                 }
                             });
                             setRowVerifiedGreen($row, sku);
+                            updateMergedLogCell($row, {
+                                sku: skuVal,
+                                userName: res.data?.verified_by_first_name || ''
+                            });
                             showNotification('success', 'Remark saved successfully');
                         } else {
                             showNotification('danger', res.message || 'Failed to save remark');

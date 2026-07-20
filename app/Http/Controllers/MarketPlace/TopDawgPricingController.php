@@ -8,8 +8,10 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TopDawgDataView;
+use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
 use App\Services\TopDawgApiService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -22,10 +24,16 @@ class TopDawgPricingController extends Controller
 
     public function pricingView(Request $request): View
     {
+        $dashBadges = $this->fetchSalesDashboardBadgeTotals();
+
         return view('market-places.topdawg_tabulator_view', [
             'mode' => $request->query('mode'),
             'demo' => $request->query('demo'),
             'topdawgPercentage' => $this->marketplacePercentage(),
+            // Same Sales / PFT% / ROI% badges as /topdawg/sales-dashboard.
+            'topdawgSalesDashboardRevenue' => $dashBadges['sales'],
+            'topdawgSalesDashboardGpft' => $dashBadges['gpft'],
+            'topdawgSalesDashboardRoi' => $dashBadges['groi'],
         ]);
     }
 
@@ -98,6 +106,10 @@ class TopDawgPricingController extends Controller
             ? TopDawgProduct::buildLookupByNormalizedSku($skus)
             : [];
 
+        // Live L30 qty + sales $ from topdawg_order_metrics (same source as /topdawg/sales-dashboard).
+        $hasOrderMetrics = Schema::hasTable('topdawg_order_metrics');
+        $orderL30BySku = $hasOrderMetrics ? $this->fetchL30OrderAggregatesBySku() : [];
+
         $dataViews = Schema::hasTable('topdawg_data_views')
             ? TopDawgDataView::whereIn('sku', $skus)->get()->keyBy('sku')
             : collect();
@@ -121,8 +133,17 @@ class TopDawgPricingController extends Controller
             $td = $topdawgData[$skuNorm] ?? null;
             $tdPrice = $td ? (float) ($td->price ?? 0) : 0;
             $tdStock = $td ? (int) ($td->remaining_inventory ?? 0) : 0;
-            $tdL30 = $td ? (int) ($td->r_l30 ?? 0) : 0;
+            $storedL30 = $td ? (int) ($td->r_l30 ?? 0) : 0;
             $tdL60 = $td ? (int) ($td->r_l60 ?? 0) : 0;
+
+            if ($hasOrderMetrics) {
+                $orderAgg = $orderL30BySku[$skuNorm] ?? ['qty' => 0, 'sales' => 0.0];
+                $tdL30 = (int) $orderAgg['qty'];
+                $salesL30 = (float) $orderAgg['sales'];
+            } else {
+                $tdL30 = $storedL30;
+                $salesL30 = round($tdPrice * $storedL30, 2);
+            }
 
             $row = [
                 'Parent' => $productMaster->parent ?? null,
@@ -133,6 +154,7 @@ class TopDawgPricingController extends Controller
                 'TD Stock' => $tdStock,
                 'TD L30' => $tdL30,
                 'TD L60' => $tdL60,
+                'Sales' => round($salesL30, 2),
                 'TDID' => $td ? ($td->tdid ?? $td->topdawg_listing_id ?? null) : null,
                 'listing_state' => $td ? ($td->listing_state ?? null) : null,
                 'LP_productmaster' => $lp,
@@ -180,7 +202,10 @@ class TopDawgPricingController extends Controller
             }
 
             $row['PFT %'] = $row['GPFT%'];
+            // Unit profit at listing price (pricing tool). Badge profit uses order Sales × margin.
             $row['Profit'] = ($price * $percentageValue) - $lp - $ship;
+            // L30 profit from real order sales: (sales × margin) − (LP + Ship) × qty
+            $row['Profit L30'] = round(($salesL30 * $percentageValue) - (($lp + $ship) * $tdL30), 2);
 
             // SPRICE-based S* metrics (recomputed live in JS too — kept in sync here for fresh page loads).
             $sprice = (float) ($row['SPRICE'] ?? 0);
@@ -282,11 +307,17 @@ class TopDawgPricingController extends Controller
             $moreSold = 0;
 
             foreach ($filtered as $row) {
-                $totalPft += floatval($row['Profit'] ?? 0);
-                $totalSales += floatval($row['TD Price'] ?? 0) * floatval($row['TD L30'] ?? 0);
+                $tdL30 = floatval($row['TD L30'] ?? 0);
+                $sales = floatval($row['Sales'] ?? 0);
+                // Prefer order-based L30 profit; fall back to unit Profit × qty.
+                $pftL30 = array_key_exists('Profit L30', $row)
+                    ? floatval($row['Profit L30'])
+                    : floatval($row['Profit'] ?? 0) * $tdL30;
+
+                $totalPft += $pftL30;
+                $totalSales += $sales;
                 $totalGpft += floatval($row['GPFT%'] ?? 0);
                 $totalInv += floatval($row['INV'] ?? 0);
-                $tdL30 = floatval($row['TD L30'] ?? 0);
                 $totalTdL30 += $tdL30;
                 if ($tdL30 == 0) {
                     $zeroSold++;
@@ -315,11 +346,11 @@ class TopDawgPricingController extends Controller
                         'total_sales' => round($totalSales, 2),
                         'total_inv' => round($totalInv, 2),
                         'total_l30' => round($totalTdL30, 2),
-                        'avg_gpft' => $totalSkuCount > 0 ? round($totalGpft / $totalSkuCount, 2) : 0,
+                        'avg_gpft' => $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 2) : 0,
                         'total_views' => $counts['total_views'],
                         'calculated_at' => now()->toDateTimeString(),
                     ],
-                    'notes' => 'Auto-saved from topdawg-pricing (INV > 0, REQ only)',
+                    'notes' => 'Auto-saved from topdawg-pricing (INV > 0, REQ only; sales from order_metrics)',
                 ]
             );
         } catch (\Throwable $e) {
@@ -330,8 +361,150 @@ class TopDawgPricingController extends Controller
     private function marketplacePercentage(): float
     {
         $fromTable = MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');
+        $percentage = $fromTable !== null ? (float) $fromTable : 95.0;
 
-        return $fromTable !== null ? (float) $fromTable : 95.0;
+        return $percentage > 0 ? $percentage : 95.0;
+    }
+
+    /**
+     * Exact Sales / PFT% / ROI% badges from /topdawg/sales-dashboard.
+     * Same formulas as TopDawgSyncController::getSalesData + dashboard JS summary:
+     *   pft = (unitPrice × margin − lp) × qty  (no ship)
+     *   PFT% = Σ pft / Σ amount × 100
+     *   ROI% = Σ pft / Σ cogs × 100
+     *
+     * @return array{sales: float, gpft: float, groi: float}
+     */
+    private function fetchSalesDashboardBadgeTotals(): array
+    {
+        $empty = ['sales' => 0.0, 'gpft' => 0.0, 'groi' => 0.0];
+
+        if (! Schema::hasTable('topdawg_order_metrics')) {
+            return $empty;
+        }
+
+        try {
+            $margin = $this->marketplacePercentage() / 100.0;
+
+            // Match TopDawgSyncController::getSalesData SKU normalize for LP lookup.
+            $normalizeSku = static function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+                $sku = preg_replace('/\s+/', ' ', $sku);
+
+                return $sku;
+            };
+
+            $orders = TopDawgOrderMetric::query()->get(['sku', 'quantity', 'amount']);
+            if ($orders->isEmpty()) {
+                return $empty;
+            }
+
+            $skus = $orders->pluck('sku')->filter()->unique()->values()->all();
+            $productMasters = ProductMaster::whereIn('sku', $skus)->get();
+            $pmBySku = $productMasters->keyBy('sku');
+            $pmByNormalized = $productMasters->keyBy(static function ($pm) use ($normalizeSku) {
+                return $normalizeSku($pm->sku ?? '');
+            });
+
+            $totalRevenue = 0.0;
+            $totalPft = 0.0;
+            $totalCogs = 0.0;
+
+            foreach ($orders as $row) {
+                $sku = $row->sku ?? '';
+                $pm = $pmBySku[$sku] ?? $pmByNormalized[$normalizeSku($sku)] ?? null;
+                $lp = 0.0;
+                if ($pm) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = (float) $v;
+                                break;
+                            }
+                        }
+                    }
+                    if ($lp === 0.0 && isset($pm->lp)) {
+                        $lp = (float) $pm->lp;
+                    }
+                }
+
+                $amount = (float) ($row->amount ?? 0);
+                $quantity = (int) ($row->quantity ?? 1);
+                $quantity = $quantity >= 1 ? $quantity : 1;
+                $unitPrice = $quantity > 0 ? $amount / $quantity : 0.0;
+                $cogs = $lp * $quantity;
+                $pft = ($unitPrice * $margin - $lp) * $quantity;
+
+                $totalRevenue += $amount;
+                $totalPft += $pft;
+                $totalCogs += $cogs;
+            }
+
+            return [
+                'sales' => round($totalRevenue, 2),
+                'gpft' => $totalRevenue > 0 ? (float) round(($totalPft / $totalRevenue) * 100) : 0.0,
+                'groi' => $totalCogs > 0 ? (float) round(($totalPft / $totalCogs) * 100) : 0.0,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg fetchSalesDashboardBadgeTotals: ' . $e->getMessage());
+
+            return $empty;
+        }
+    }
+
+    /**
+     * L30 qty + sales $ per normalized SKU from topdawg_order_metrics.
+     * Same window / status exclusions as topdawg:fetch (America/Los_Angeles, last 30 days).
+     *
+     * @return array<string, array{qty: int, sales: float}>
+     */
+    private function fetchL30OrderAggregatesBySku(): array
+    {
+        if (! Schema::hasTable('topdawg_order_metrics')) {
+            return [];
+        }
+
+        try {
+            $today = Carbon::now('America/Los_Angeles')->startOfDay();
+            $l30Start = $today->copy()->subDays(30)->toDateString();
+            $l30End = $today->toDateString();
+
+            $excluded = ['returned', 'refunded', 'cancelled', 'declined', 'failed'];
+
+            $rows = TopDawgOrderMetric::query()
+                ->whereBetween('order_date', [$l30Start, $l30End])
+                ->whereNotIn('status', $excluded)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'quantity', 'amount']);
+
+            $out = [];
+            foreach ($rows as $row) {
+                $key = $this->normalizeSkuKey($row->sku ?? '');
+                if ($key === '') {
+                    continue;
+                }
+                $qty = (int) ($row->quantity ?? 1);
+                $qty = $qty >= 1 ? $qty : 1;
+                $amount = (float) ($row->amount ?? 0);
+
+                if (! isset($out[$key])) {
+                    $out[$key] = ['qty' => 0, 'sales' => 0.0];
+                }
+                $out[$key]['qty'] += $qty;
+                $out[$key]['sales'] += $amount;
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg fetchL30OrderAggregatesBySku: ' . $e->getMessage());
+
+            return [];
+        }
     }
 
     private function normalizeSkuKey(?string $sku): string

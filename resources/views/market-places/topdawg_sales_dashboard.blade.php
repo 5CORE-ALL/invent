@@ -23,7 +23,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'TopDawg Sales Dashboard',
-        'sub_title' => 'Orders from topdawg_order_metrics (margin 0.95, no ship)',
+        'sub_title' => 'Orders from topdawg_order_metrics (margin from marketplace_percentages, no ship)',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -70,7 +70,7 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     let table = null;
-    const MARGIN = 0.95;
+    const MARGIN = {{ ($topdawgPercentage ?? 95) }} / 100;
 
     function showToast(message, type) {
         const c = document.querySelector('.toast-container');

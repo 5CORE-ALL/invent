@@ -972,7 +972,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-      
+        /*
+        |--------------------------------------------------------------------------
+        | TOPDAWG
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('topdawg:fetch')
+            ->dailyAt('10:05')
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-fetch')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         // Shopify live inventory → marketplace.
         // Full crawl: every 4 hours (webhooks handle real-time qty).
         // Mismatch-only: every 15 minutes so drift is corrected without queue bulk.
@@ -1225,6 +1237,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('app:top-dawg-shop-sheet')
+            ->dailyAt('15:30')
+            ->timezone('Asia/Kolkata')
+            ->name('sync-topdawg-shop-sheet')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
             $ist($schedule->command('shopify-pls:sync')
             ->cron('55 8,17 * * *')

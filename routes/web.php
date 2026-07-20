@@ -58,6 +58,7 @@ use App\Http\Controllers\Campaigns\WalmartUtilisationController;
 use App\Http\Controllers\Catalouge\CatalougeManagerController;
 use App\Http\Controllers\Channels\AccountHealthMasterController;
 use App\Http\Controllers\Channels\ShippingHealthController;
+use App\Http\Controllers\Channels\EscalatedClaimsController;
 use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
 use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
@@ -673,6 +674,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/shipping-health/scope-link/save', 'saveScopeLink')->name('shipping.health.scope.link.save');
         Route::post('/shipping-health/audit/save', 'saveAudit')->name('shipping.health.audit.save');
         Route::get('/shipping-health/audit/history', 'auditHistory')->name('shipping.health.audit.history');
+    });
+
+    // Escalated Claims (Account Health Master)
+    Route::controller(EscalatedClaimsController::class)->group(function () {
+        Route::get('/account-health-master/escalated-claims', 'tabulator')->name('escalated.claims.tabulator');
+        Route::get('/account-health-master/escalated-claims-data', 'tabulatorChannelData')->name('escalated.claims.tabulator.data');
+        Route::get('/account-health-master/escalated-claims-summary', 'statusSummary')->name('escalated.claims.summary');
+        Route::get('/account-health-master/escalated-claims-history', 'statusHistory')->name('escalated.claims.history');
+        Route::post('/account-health-master/escalated-claims/link/save', 'saveLink')->name('escalated.claims.link.save');
     });
 
     // KPI

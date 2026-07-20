@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\TopDawgOrderMetric;
 use App\Models\TopDawgProduct;
@@ -138,23 +139,28 @@ class TopDawgSyncController extends Controller
     }
 
     /**
-     * Sales dashboard view (Tabulator + badges from topdawg_order_metrics, margin 0.95, no ship).
-     * Route: GET /topdawg/sales-dashboard (topdawg.sales.dashboard). Linked from All Marketplace Master sheet_link when set by migration.
+     * Sales dashboard view (Tabulator + badges from topdawg_order_metrics).
+     * Margin from marketplace_percentages (TopDawg), no ship.
+     * Route: GET /topdawg/sales-dashboard (topdawg.sales.dashboard).
      */
     public function salesDashboard(Request $request): View
     {
-        return view('market-places.topdawg_sales_dashboard');
+        return view('market-places.topdawg_sales_dashboard', [
+            'topdawgPercentage' => $this->topDawgMarketplacePercentage(),
+        ]);
     }
 
     /**
      * JSON data for TopDawg sales dashboard.
-     * PFT formula: (price * percentage - lp) * quantity; percentage = 0.95, no ship.
+     * PFT formula: (price * percentage - lp) * quantity; percentage from marketplace_percentages, no ship.
      */
     public function getSalesData(Request $request): JsonResponse
     {
         if (! Schema::hasTable('topdawg_order_metrics')) {
             return response()->json([]);
         }
+
+        $margin = $this->topDawgMarketplacePercentage() / 100.0;
 
         $normalizeSku = function ($sku) {
             $sku = strtoupper(trim((string) $sku));
@@ -202,7 +208,7 @@ class TopDawgSyncController extends Controller
             $quantity = $quantity >= 1 ? $quantity : 1;
             $unitPrice = $quantity > 0 ? $amount / $quantity : 0;
             $cogs = $lp * $quantity;
-            $pft = ($unitPrice * 0.95 - $lp) * $quantity;
+            $pft = ($unitPrice * $margin - $lp) * $quantity;
 
             $result[] = [
                 'id' => $row->id,
@@ -222,5 +228,16 @@ class TopDawgSyncController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * Take-home % from marketplace_percentages for TopDawg (default 95).
+     */
+    private function topDawgMarketplacePercentage(): float
+    {
+        $fromTable = MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');
+        $percentage = $fromTable !== null ? (float) $fromTable : 95.0;
+
+        return $percentage > 0 ? $percentage : 95.0;
     }
 }

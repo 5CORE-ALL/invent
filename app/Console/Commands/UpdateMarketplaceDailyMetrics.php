@@ -870,7 +870,8 @@ class UpdateMarketplaceDailyMetrics extends Command
     }
 
     /**
-     * TopDawg: from topdawg_order_metrics. PFT = (price * 0.95 - lp) * quantity, no ship. No ad spend.
+     * TopDawg: from topdawg_order_metrics.
+     * PFT = (price * margin - lp) * quantity; margin from marketplace_percentages, no ship. No ad spend.
      */
     private function calculateTopDawgMetrics($date)
     {
@@ -882,6 +883,13 @@ class UpdateMarketplaceDailyMetrics extends Command
         if ($data->isEmpty()) {
             return null;
         }
+
+        $pct = MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');
+        $percentage = $pct !== null ? (float) $pct : 95.0;
+        if ($percentage <= 0) {
+            $percentage = 95.0;
+        }
+        $margin = $percentage / 100.0;
 
         $productMastersBySku = $this->productMastersChunked()->keyBy('sku');
         $productMastersByNormalized = $this->productMastersChunked()->keyBy(function ($pm) {
@@ -944,7 +952,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             }
 
             $cogs = $lp * $quantity;
-            $pft = ($unitPrice * 0.95 - $lp) * $quantity;
+            $pft = ($unitPrice * $margin - $lp) * $quantity;
             $totalPft += $pft;
             $totalL30Sales += $amount;
             $totalCogs += $cogs;

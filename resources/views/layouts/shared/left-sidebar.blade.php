@@ -284,6 +284,9 @@
                                         <a href="{{ route('a_z.claims.rate') }}">A-Z Claims</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('escalated.claims.tabulator') }}">Escalated Claims</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('voilation.rate') }}">Voilation/Compliance</a>
                                     </li>
                                     <li>

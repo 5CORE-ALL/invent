@@ -72,6 +72,22 @@
         .custom-select-option:hover {
             background-color: #f1f1f1;
         }
+
+        .ec-dash-pie-wrap {
+            max-width: 260px;
+            margin: 0 auto;
+        }
+
+        .ec-dash-pie-wrap canvas {
+            cursor: pointer;
+        }
+
+        .ec-dash-legend-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
     </style>
 @endsection
 
@@ -272,8 +288,32 @@
             <span class="ms-2">Loading table, please wait...</span>
         </div>
 
-        <div class="mb-4">
-            <div id="channelSalesChart" style="width: 100%; height: 400px;"></div>
+        <div class="row mb-4 g-3">
+            <div class="col-12 col-lg-4 col-xl-3">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2 py-2">
+                        <span class="fw-semibold">Escalated Claims</span>
+                        <a href="{{ route('escalated.claims.tabulator') }}" class="small text-decoration-none">Open page</a>
+                    </div>
+                    <div class="card-body py-2">
+                        <div class="ec-dash-pie-wrap">
+                            <canvas id="ec-dashboard-status-pie" height="200"></canvas>
+                        </div>
+                        <div class="d-flex justify-content-center gap-3 flex-wrap small mt-2">
+                            <span><span class="ec-dash-legend-dot" style="background:#dc2626;"></span> Red <strong
+                                    id="ec-dash-count-red">0</strong></span>
+                            <span><span class="ec-dash-legend-dot" style="background:#eab308;"></span> Yellow <strong
+                                    id="ec-dash-count-yellow">0</strong></span>
+                            <span><span class="ec-dash-legend-dot" style="background:#16a34a;"></span> Green <strong
+                                    id="ec-dash-count-green">0</strong></span>
+                        </div>
+                        <p class="small text-muted text-center mb-0 mt-1">Click a slice to open filtered list</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-8 col-xl-9">
+                <div id="channelSalesChart" style="width: 100%; height: 400px;"></div>
+            </div>
         </div>
 
         <div class="table-container" id="channelTableWrapper" style="display: none;">
@@ -287,8 +327,90 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        (function() {
+            const summaryUrl = @json(route('escalated.claims.summary'));
+            const pageUrl = @json(route('escalated.claims.tabulator'));
+            const canvas = document.getElementById('ec-dashboard-status-pie');
+            if (!canvas || typeof Chart === 'undefined') {
+                return;
+            }
+
+            fetch(summaryUrl, {
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            }).then(function(r) {
+                return r.ok ? r.json() : Promise.reject(r);
+            }).then(function(payload) {
+                const counts = (payload && payload.counts) ? payload.counts : {
+                    red: 0,
+                    yellow: 0,
+                    green: 0
+                };
+                const redEl = document.getElementById('ec-dash-count-red');
+                const yellowEl = document.getElementById('ec-dash-count-yellow');
+                const greenEl = document.getElementById('ec-dash-count-green');
+                if (redEl) redEl.textContent = String(counts.red || 0);
+                if (yellowEl) yellowEl.textContent = String(counts.yellow || 0);
+                if (greenEl) greenEl.textContent = String(counts.green || 0);
+
+                const values = [counts.red || 0, counts.yellow || 0, counts.green || 0];
+                const tones = ['red', 'yellow', 'green'];
+                new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: {
+                        labels: ['Red', 'Yellow', 'Green'],
+                        datasets: [{
+                            data: values,
+                            backgroundColor: ['#dc2626', '#eab308', '#16a34a'],
+                            borderWidth: 1,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const total = values.reduce(function(a, b) {
+                                            return a + b;
+                                        }, 0);
+                                        const v = ctx.raw || 0;
+                                        const pct = total ? ((v / total) * 100).toFixed(1) : '0.0';
+                                        return ctx.label + ': ' + v + ' (' + pct + '%)';
+                                    }
+                                }
+                            }
+                        },
+                        onClick: function(evt, elements) {
+                            if (!elements || !elements.length) {
+                                return;
+                            }
+                            const tone = tones[elements[0].index];
+                            if (!tone) {
+                                return;
+                            }
+                            window.location.href = pageUrl + '?tone=' + encodeURIComponent(tone);
+                        }
+                    }
+                });
+            }).catch(function(err) {
+                console.error('Escalated Claims summary failed', err);
+            });
+        })();
+    </script>
 
     <script>
         var jq = jQuery.noConflict(true);
