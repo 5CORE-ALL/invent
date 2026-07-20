@@ -72,24 +72,39 @@
         }
 
         /* ========== DROPDOWN STYLING ========== */
+        /* Match /amazon-tabulator-view: wrap + auto-width selects so sidebar open doesn't clip labels.
+           Keep toolbar z-index BELOW .leftside-menu (1000) — high z-index was painting filters over the sidebar. */
         .shopify-b2c-toolbar {
             position: relative;
-            z-index: 1055;
+            z-index: auto;
             overflow: visible !important;
+            flex-wrap: wrap !important;
+            gap: 8px 10px !important;
+        }
+        .shopify-b2c-toolbar .form-select {
+            width: auto !important;
+            max-width: 130px;
+            padding-right: 1.35rem !important;
+            padding-left: 0.5rem !important;
+            background-position: right 0.35rem center !important;
         }
         .shopify-b2c-page .card,
         .shopify-b2c-page .card-body {
             overflow: visible;
         }
+        .shopify-b2c-page .card-body.shopify-b2c-controls {
+            display: flex;
+            flex-direction: column;
+        }
         .shopify-b2c-toolbar .dropdown,
         .shopify-b2c-toolbar .btn-group,
         .shopify-b2c-toolbar .manual-dropdown-container {
             position: relative;
-            z-index: 1056;
+            z-index: 2;
         }
         .shopify-b2c-toolbar .dropdown-menu,
         .manual-dropdown-container .dropdown-menu {
-            z-index: 2000 !important;
+            z-index: 20 !important;
         }
 
         .manual-dropdown-container {
@@ -101,7 +116,7 @@
             position: absolute;
             top: 100%;
             left: 0;
-            z-index: 2000;
+            z-index: 20;
             display: none;
             min-width: 200px;
             padding: 0.5rem 0;
@@ -153,26 +168,23 @@
         }
         .shopify-b2c-page .card { border-radius: 10px; }
         .shopify-b2c-page .card-body { padding: 12px 14px; }
-        .shopify-b2c-page #summary-stats { padding: 6px 8px !important; overflow: hidden; }
-        /* One badge row, no scroll — JS scales the row to fit width */
+        /* Badges above filters (Amazon order: -1) */
+        .shopify-b2c-page #summary-stats {
+            order: -1;
+            padding: 0.5rem 0.7rem !important;
+            margin-top: 0 !important;
+            margin-bottom: 0.5rem !important;
+        }
         .shopify-b2c-page #summary-stats .summary-badges-row {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             align-items: center;
-            gap: 4px !important;
-            width: max-content;
-            max-width: none;
-            transform-origin: left center;
+            gap: 8px !important;
         }
         .shopify-b2c-page #summary-stats .summary-badges-row .badge {
-            flex-shrink: 0;
-            font-size: 0.78rem !important;
-            padding: 0.3rem 0.45rem !important;
-            line-height: 1.2;
+            font-size: 0.85rem !important;
+            padding: 0.35rem 0.55rem !important;
             white-space: nowrap;
-        }
-        .shopify-b2c-page #summary-stats .summary-search-row {
-            margin-top: 8px;
         }
         .shopify-b2c-page #discount-input-container { padding: 8px 12px !important; }
 
@@ -298,24 +310,25 @@
     <div class="row">
         <div class="col-12">
         <div class="card shadow-sm">
-            <div class="card-body py-3">
-                <div class="d-flex align-items-center flex-nowrap gap-1 shopify-b2c-toolbar" style="white-space: nowrap;">
-                    <select id="inventory-filter" class="form-select form-select-sm flex-shrink-0"
-                        style="width: 110px;">
-                        <option value="all">All INV</option>
-                        <option value="zero">0 INV</option>
-                        <option value="more" selected>More than 0</option>
+            <div class="card-body py-2 shopify-b2c-controls">
+                {{-- Filter bar (Amazon-style flex-wrap + auto-width selects) --}}
+                <div class="d-flex align-items-center flex-wrap shopify-b2c-toolbar" id="shopify-b2c-filter-bar">
+                    <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px;">
+                    <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px;">
+
+                    <select id="inventory-filter" class="form-select form-select-sm" title="Inventory filter">
+                        <option value="all">INV</option>
+                        <option value="zero">Zero</option>
+                        <option value="more" selected>More</option>
                     </select>
 
-                    <select id="nrl-filter" class="form-select form-select-sm flex-shrink-0"
-                        style="width: 70px;">
-                        <option value="all">All</option>
+                    <select id="nrl-filter" class="form-select form-select-sm" title="REQ / NR filter">
+                        <option value="all">ALL</option>
                         <option value="REQ" selected>REQ</option>
                         <option value="NR">NR</option>
                     </select>
 
-                    <select id="gpft-filter" class="form-select form-select-sm flex-shrink-0" style="width: 90px;"
-                        title="GPFT% filter">
+                    <select id="gpft-filter" class="form-select form-select-sm" title="GPFT% filter">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative</option>
                         <option value="0-10">0-10%</option>
@@ -326,7 +339,7 @@
                         <option value="50plus">Above 50%</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm flex-shrink-0" style="width: 90px;"
+                    <select id="cvr-filter" class="form-select form-select-sm"
                         title="CVR matches controller: OV L30 ÷ Views">
                         <option value="all">CVR%</option>
                         <option value="0-0">0%</option>
@@ -343,15 +356,13 @@
                          Acts as the single source of truth — the #zero-sold-count-badge and
                          #more-sold-count-badge click handlers just write into this dropdown so
                          the badges and dropdown can never disagree. --}}
-                    <select id="sold-filter" class="form-select form-select-sm flex-shrink-0"
-                            style="width: 95px;" title="Filter by B2B L30 sold quantity">
+                    <select id="sold-filter" class="form-select form-select-sm" title="Filter by B2B L30 sold quantity">
                         <option value="all">Sold</option>
                         <option value="sold">Sold &gt; 0</option>
                         <option value="zero">0 Sold</option>
                     </select>
 
-                    <select id="roi-filter" class="form-select form-select-sm flex-shrink-0"
-                        style="width: 95px;">
+                    <select id="roi-filter" class="form-select form-select-sm">
                         <option value="all">GROI%</option>
                         <option value="lt40">&lt; 40%</option>
                         <option value="40-60">40–60%</option>
@@ -361,8 +372,7 @@
                     </select>
 
                     {{-- Row type filter (All Rows / Parents / SKUs) – same as Amazon tabulator --}}
-                    <select id="parent-filter" class="form-select form-select-sm flex-shrink-0"
-                        style="width: 100px;" title="Filter by row type">
+                    <select id="parent-filter" class="form-select form-select-sm" title="Filter by row type">
                         <option value="all">All Rows</option>
                         <option value="parents">Parents</option>
                         {{-- Default: hide parent summary rows on initial load --}}
@@ -370,7 +380,7 @@
                     </select>
 
                     <!-- DIL Filter — Amazon slabs (Red <25 / Green 25-50 / Pink 50%+) -->
-                    <div class="dropdown manual-dropdown-container flex-shrink-0">
+                    <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-sm btn-light dropdown-toggle" type="button" id="dilFilterDropdown"
                             title="DIL% = OV L30 / INV × 100">
                             <span class="status-circle default"></span> DIL%
@@ -388,7 +398,7 @@
                     </div>
 
                     <!-- Column Visibility Dropdown (icon-only; includes Show All) -->
-                    <div class="dropdown d-inline-block flex-shrink-0">
+                    <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown"
                             data-bs-display="static" aria-expanded="false"
@@ -400,11 +410,11 @@
                         </ul>
                     </div>
 
-                    <button id="export-btn" class="btn btn-sm btn-dark flex-shrink-0" title="Export CSV">
+                    <button id="export-btn" class="btn btn-sm btn-dark" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
 
-                    <div class="btn-group flex-shrink-0">
+                    <div class="btn-group">
                         <button type="button" id="price-mode-btn" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Price Mode">
                             <i class="fas fa-percent"></i> Prc M
                         </button>
@@ -419,16 +429,16 @@
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = 0.95 for Shopify B2C) --}}
-                    <div class="d-inline-flex align-items-center border rounded bg-light flex-shrink-0"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 on every selected row (accounts for Shopify B2C 95% take-home)">
-                        <label for="target-roi-input" class="form-label mb-0 fw-bold text-nowrap">
+                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1"
+                            placeholder="30" step="0.1" style="width: 90px;"
                             title="Target ROI% applied to all selected rows">
-                        <button id="apply-target-roi-btn" class="btn btn-primary" type="button"
+                        <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / 0.95 for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
@@ -436,25 +446,25 @@
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100 (else denominator ≤ 0). --}}
-                    <div class="d-inline-flex align-items-center border rounded bg-light flex-shrink-0"
+                    <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) on every selected row (back-solves so SGPFT column equals the target)">
-                        <label for="target-gpft-input" class="form-label mb-0 fw-bold text-nowrap">
+                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1"
+                            placeholder="30" step="0.1" style="width: 90px;"
                             title="Target GPFT% applied to all selected rows. Must be less than the Shopify B2C take-home margin (< 95%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-primary" type="button"
+                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-primary" type="button"
                             title="Compute & save S PRC = (LP + Ship) / (0.95 − Target GPFT%/100) for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
                 </div>
 
-                <!-- Summary Stats -->
+                <!-- Summary Stats (order:-1 → shown above filters, same as Amazon) -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <div class="d-flex summary-badges-row">
+                    <div class="d-flex flex-wrap gap-2 summary-badges-row">
                         <span class="badge bg-success fs-6 p-2 d-none" id="total-pft-amt-badge" style="color: black; font-weight: bold;">PFT: $0</span>
                         {{-- Sales is the L30 net-sales total from the actual /shopify page
                              (shopify_raw_orders with marketplace exclusions). Server-rendered so it
@@ -492,16 +502,6 @@
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Ads: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Spend: $0</span>
                         <span class="badge fs-6 p-2" id="avg-npft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">NPFT: 0%</span>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 summary-search-row">
-                        <div class="input-group shopify-b2c-search-group" style="max-width: 200px;">
-                            <span class="input-group-text"><i class="fas fa-search"></i></span>
-                            <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU...">
-                        </div>
-                        <div class="input-group shopify-b2c-search-group" style="max-width: 200px;">
-                            <span class="input-group-text"><i class="fas fa-sitemap"></i></span>
-                            <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent...">
-                        </div>
                     </div>
                 </div>
             </div>
@@ -2255,27 +2255,7 @@
             $('#total-spend-badge').text(`Spend: $${Math.round(SHOPIFY_DIRECT_TOTAL_SPEND).toLocaleString()}`);
             $('#avg-npft-badge').text(`NPFT: ${SHOPIFY_DIRECT_NPFT_PCT.toFixed(1)}%`);
             $('#nroi-percent-badge').text(`NROI: ${SHOPIFY_DIRECT_NROI_PCT.toFixed(1)}%`);
-
-            fitSummaryBadgesRow();
         }
-
-        /** Scale badge row to container width so everything stays on 1 line with no scroll. */
-        function fitSummaryBadgesRow() {
-            const row = document.querySelector('#summary-stats .summary-badges-row');
-            const box = document.getElementById('summary-stats');
-            if (!row || !box) return;
-            row.style.transform = 'none';
-            row.style.marginBottom = '0';
-            const available = box.clientWidth - 16;
-            const needed = row.scrollWidth;
-            if (available > 0 && needed > available) {
-                const scale = available / needed;
-                row.style.transform = 'scale(' + scale + ')';
-                // Collapse leftover layout height after scale
-                row.style.marginBottom = (-(1 - scale) * row.offsetHeight) + 'px';
-            }
-        }
-        $(window).on('resize', fitSummaryBadgesRow);
 
         /*
          * Column visibility persists in shared DB table channel_tabulator_column_settings

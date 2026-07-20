@@ -64,12 +64,12 @@
 
         /* Toolbar: compact controls, wrap to next row (matches /ebay2-tabulator-view).
            Do NOT use overflow-x — it clips Bootstrap dropdown menus (Columns).
-           z-index: table is a later sibling so it paints over the toolbar unless
-           the toolbar creates a higher stacking context (Columns / Sample menus). */
+           Keep toolbar z-index ABOVE the table (1) but BELOW .leftside-menu (1000)
+           so sidebar open does not paint Search / filters over the menu. */
         .shein-toolbar-row {
             row-gap: 4px;
             position: relative;
-            z-index: 1055;
+            z-index: 2;
         }
         .shein-toolbar-row > .form-select,
         .shein-toolbar-row .form-select.pricing-filter-item,
@@ -86,16 +86,17 @@
             padding-right: 24px;
             background-position: right 6px center;
             width: auto;
+            max-width: 130px;
             display: inline-block;
         }
         .shein-toolbar-row .dropdown,
         .shein-toolbar-row .btn-group {
             position: relative;
-            z-index: 1056;
+            z-index: 3;
         }
         .shein-toolbar-row .dropdown-menu {
             font-size: 0.8125rem;
-            z-index: 1060 !important;
+            z-index: 20 !important;
         }
         #shein-pricing-table {
             position: relative;
