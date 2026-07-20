@@ -852,36 +852,6 @@
                 <div class="collapse" id="sidebarPages2">
                     <ul class="side-nav-second-level">
 
-                        <!--- Start Nikhil Code -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#video-ads-master" aria-expanded="false"
-                                aria-controls="video-ads-master" class="side-nav-link">
-                                <span>Traffic To Webpages</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="video-ads-master">
-                                <ul class="side-nav-second-level">
-                                    <li>
-                                        <a href="{{ route('traffic.dropship') }}">Dropship</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('traffic.caraudio') }}">Car Audio</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('traffic.musicinst') }}">Music Instru Shop</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('traffic.repaire') }}">Repaire Shop</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('traffic.musicschool') }}">Music School</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-
-                        <!-- End Nikhil Code  -->
-
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarvideoSales" aria-expanded="false"
                                 aria-controls="sidebarvideoSales">
@@ -1081,143 +1051,14 @@
                                     <li>
                                         <a href="{{ route('meta.ads.manager.dashboard') }}">Dashboard</a>
                                     </li>
-                                    <li>
-                                        <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
-                                    </li>
                                     @if (Route::has('meta.ads.saved.raw'))
                                     <li>
                                         <a href="{{ route('meta.ads.saved.raw') }}">All Raw Meta Ads</a>
                                     </li>
                                     @endif
-                                    <li>
-                                        <a data-bs-toggle="collapse" href="#facebook-ads-submenu"
-                                            aria-expanded="false" aria-controls="facebook-ads-submenu">
-                                            FB Ads
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="facebook-ads-submenu">
-                                            <ul class="side-nav-third-level">
-                                                <li>
-                                                    <a href="{{ route('meta.ads.facebook.single.image') }}">FB Single
-                                                        Image</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.facebook.single.video') }}">FB Single
-                                                        Video</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.facebook.carousal') }}">FB GRP
-                                                        Carousal</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.facebook.carousal.new') }}">FB GRP
-                                                        CAROUSAL NEW</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.facebook.existing.post') }}">FB
-                                                        Existing Post</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.facebook.catalogue') }}">FB Catalogue
-                                                        Ad</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <a data-bs-toggle="collapse" href="#instagram-ads-submenu"
-                                            aria-expanded="false" aria-controls="instagram-ads-submenu">
-                                            Instagram Ads
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="instagram-ads-submenu">
-                                            <ul class="side-nav-third-level">
-                                                <li>
-                                                    <a href="{{ route('meta.ads.instagram.single.image') }}">Insta
-                                                        Single Image</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.instagram.single.video') }}">Insta
-                                                        Single Video</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.instagram.carousal') }}">Insta GRP
-                                                        Carousal</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.instagram.existing.post') }}">Insta
-                                                        Existing Post</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('meta.ads.instagram.catalogue') }}">Insta
-                                                        Catalogue Ad</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('facebook.ads.index') }}">Image Carousel Ad Running</a>
-                                    </li>
                                 </ul>
                             </div>
                         </li>
-
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#facebook-web-ads" aria-expanded="false"
-                                aria-controls="facebook-web-ads" class="side-nav-link">
-                                <span>Facebook Web Ads</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="facebook-web-ads">
-                                <ul class="side-nav-second-level">
-                                    <li>
-                                        <a href="{{ route('facebook.web.to.video') }}">FB Video to Web</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('fb.img.caraousal.to.web') }}">FB Img Caraousal to Web</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#instagram-web-ads" aria-expanded="false"
-                                aria-controls="instagram-web-ads" class="side-nav-link">
-                                <span>Instagram Web Ads</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="instagram-web-ads">
-                                <ul class="side-nav-second-level">
-                                    <li>
-                                        <a href="{{ route('instagram.web.to.video') }}">Insta Video to Web</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('insta.img.caraousal.to.web') }}">Insta Img Caraousal to
-                                            Web</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#youtube-web-ads" aria-expanded="false"
-                                aria-controls="youtube-web-ads" class="side-nav-link">
-                                <span>YouTube Web Ads</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="youtube-web-ads">
-                                <ul class="side-nav-second-level">
-                                    <li>
-                                        <a href="{{ route('youtube.web.to.video') }}">YouTube Video to Web</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('yt.img.caraousal.to.web') }}">YouTube Img Caraousal to
-                                            Web</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-
 
                         <li>
                             <a data-bs-toggle="collapse" href="#lqsSubmenu" aria-expanded="false"
@@ -1235,17 +1076,6 @@
                                     </li>
                                 </ul>
                             </div>
-                        </li>
-
-
-                        <li>
-                            <a href="#">Traffic And Session Masters</a>
-                        </li>
-                        <li>
-                            <a href="#">Conversion Content Masters</a>
-                        </li>
-                        <li>
-                            <a href="#">Conversion Other Masters</a>
                         </li>
                     </ul>
                 </div>
@@ -2605,95 +2435,10 @@
                                                                     </ul>
                                                                 </div>
                                                             </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct5"
-                                                                    aria-expanded="false" aria-controls="ppcProduct5"
-                                                                    class="collapsed">
-                                                                    <span>Shopping Advt</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct5">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.shopping.google') }}">Google
-                                                                                Shopping</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcProduct6"
-                                                                    aria-expanded="false" aria-controls="ppcProduct6"
-                                                                    class="collapsed">
-                                                                    <span>Demand Gen Parents</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcProduct6">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.gen.googleNetworks') }}">Google
-                                                                                Networks</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
                                                         </ul>
                                                     </div>
                                                 </li>
 
-                                                <!-- Budget Control Section -->
-                                                <li class="side-nav-item">
-                                                    <a data-bs-toggle="collapse" href="#budgetControlProduct"
-                                                        aria-expanded="false" aria-controls="budgetControlProduct"
-                                                        class="collapsed">
-                                                        <span>Budget Control</span>
-                                                        <span class="menu-arrow"></span>
-                                                    </a>
-                                                    <div class="collapse" id="budgetControlProduct">
-                                                        <ul class="side-nav-fourth-level">
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlProduct1"
-                                                                    aria-expanded="false"
-                                                                    aria-controls="budgetControlProduct1"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Images</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlProduct1">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.img.facebook') }}">FB</a>
-                                                                        </li>
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.img.instagram') }}">Insta</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-
-
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlProduct2"
-                                                                    aria-expanded="false"
-                                                                    aria-controls="budgetControlProduct2"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Video</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlProduct2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.video.facebook') }}">FB</a>
-                                                                        </li>
-                                                                        <li><a
-                                                                                href="{{ route('advertisment.demand.productWise.metaParent.video.instagram') }}">Insta</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </li>
                                             </ul>
                                         </div>
                                     </li>
@@ -2730,80 +2475,10 @@
                                                                     </ul>
                                                                 </div>
                                                             </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcGroup2"
-                                                                    aria-expanded="false" aria-controls="ppcGroup2"
-                                                                    class="collapsed">
-                                                                    <span>Youtube Advt Groups</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcGroup2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">Youtube</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse" href="#ppcGroup3"
-                                                                    aria-expanded="false" aria-controls="ppcGroup3"
-                                                                    class="collapsed">
-                                                                    <span>Demand Gen Groups</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="ppcGroup3">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">Google Networks</a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
                                                         </ul>
                                                     </div>
                                                 </li>
 
-                                                <!-- Budget Control Section -->
-                                                <li class="side-nav-item">
-                                                    <a data-bs-toggle="collapse" href="#budgetControlGroup"
-                                                        aria-expanded="false" aria-controls="budgetControlGroup"
-                                                        class="collapsed">
-                                                        <span>Budget Control</span>
-                                                        <span class="menu-arrow"></span>
-                                                    </a>
-                                                    <div class="collapse" id="budgetControlGroup">
-                                                        <ul class="side-nav-fourth-level">
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlGroup1" aria-expanded="false"
-                                                                    aria-controls="budgetControlGroup1"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Images</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlGroup1">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">FB</a></li>
-                                                                        <li><a href="#">Insta</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                            <li>
-                                                                <a data-bs-toggle="collapse"
-                                                                    href="#budgetControlGroup2" aria-expanded="false"
-                                                                    aria-controls="budgetControlGroup2"
-                                                                    class="collapsed">
-                                                                    <span>Meta Parent Advt Video</span>
-                                                                    <span class="menu-arrow"></span>
-                                                                </a>
-                                                                <div class="collapse" id="budgetControlGroup2">
-                                                                    <ul class="side-nav-fifth-level">
-                                                                        <li><a href="#">FB</a></li>
-                                                                        <li><a href="#">Insta</a></li>
-                                                                    </ul>
-                                                                </div>
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                </li>
                                             </ul>
                                         </div>
                                     </li>
@@ -3068,27 +2743,6 @@
                     <i class="ri-truck-line"></i>
                     <span>Shipping</span>
                 </a>
-            </li>
-
-            {{-- Shopify --}}
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPages" aria-expanded="false" aria-controls="sidebarPages"
-                    class="side-nav-link">
-                    <i class="ri-shopping-bag-line"></i>
-                    <span>Shopify</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarPages">
-                    <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ route('shopify', ['products', 'shopify-Products']) }}">Products</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('products.inventory') }}">Inventory</a>
-                        </li>
-                    </ul>
-                </div>
             </li>
 
             {{-- Team Management --}}

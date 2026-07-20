@@ -100,7 +100,7 @@ class CalculateChannelMasterData extends Command
                 $this->info('Cleared old calculated data.');
 
                 foreach (array_chunk($channels, $chunkSize) as $chunkIndex => $chunk) {
-                    DB::transaction(function () use ($chunk, $calculatedAt, $dataAsOf, $bar, $monitor) {
+                    DB::transaction(function () use ($chunk, $chunkIndex, $calculatedAt, $dataAsOf, $bar, $monitor) {
                         foreach ($chunk as $channelData) {
                             $channelName = $channelData['Channel '] ?? $channelData['Channel'] ?? 'Unknown';
 

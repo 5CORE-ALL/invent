@@ -1063,34 +1063,4 @@ class VideoAdsMasterController extends Controller
 
     //youtube ads end
 
-    // traffic start
-
-    public function getTrafficDropship(Request $request)
-    {
-        return view('marketing-masters.traffic_to_webpages.dropship');
-    }
-
-    public function getTrafficCaraudio(Request $request)
-    {
-        return view('marketing-masters.traffic_to_webpages.caraudio');
-    }
-
-    public function getTrafficMusicInst(Request $request)
-    {
-        return view('marketing-masters.traffic_to_webpages.musicinst');
-    }
-
-    public function getTrafficRepaire(Request $request)
-    {
-        return view('marketing-masters.traffic_to_webpages.repaire');
-    }
-
-    public function getTrafficMusicSchool(Request $request)
-    {
-        return view('marketing-masters.traffic_to_webpages.musicschool');
-    }
-
-
-    // traffic ends
-
 }

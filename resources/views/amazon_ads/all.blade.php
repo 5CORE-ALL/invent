@@ -685,8 +685,6 @@
             }
             function amzLinkColFormatter(mode) {
                 var linkCls = mode === 'neg' ? 'amz-neglink-btn' : 'amz-kwlink-btn';
-                var pushCls = mode === 'neg' ? 'amz-negpush-btn' : 'amz-kwpush-btn';
-                var cmpCls = mode === 'neg' ? 'amz-negcmp-btn' : 'amz-kwcmp-btn';
                 var linkColor = mode === 'neg' ? 'btn-outline-danger' : 'btn-outline-primary';
                 return function (cell) {
                     var c = amzLinkCampaignFromRow(cell);
@@ -694,8 +692,6 @@
                     var attr = String(c).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                     return '<div class="d-inline-flex gap-1">'
                         + '<button type="button" class="btn btn-sm ' + linkColor + ' ' + linkCls + '" data-campaign="' + attr + '" title="Link campaigns" style="padding:1px 7px;"><i class="fas fa-plus"></i></button>'
-                        + '<button type="button" class="btn btn-sm btn-outline-info ' + cmpCls + '" data-campaign="' + attr + '" title="Live compare vs linked campaign(s)" style="padding:1px 7px;"><i class="fas fa-scale-balanced"></i></button>'
-                        + '<button type="button" class="btn btn-sm btn-success ' + pushCls + '" data-campaign="' + attr + '" title="Push linked campaign keywords into this campaign" style="padding:1px 7px;"><i class="fas fa-cloud-download-alt"></i></button>'
                         + '</div>';
                 };
             }
@@ -707,10 +703,10 @@
                     headerSort: false, hozAlign: 'center', headerHozAlign: 'center', width: 40, minWidth: 40
                 }, {
                     title: 'KW Link', field: '__kwlink', headerSort: false, hozAlign: 'center', headerHozAlign: 'center',
-                    width: 128, minWidth: 120, formatter: amzLinkColFormatter('kw')
+                    width: 56, minWidth: 48, formatter: amzLinkColFormatter('kw')
                 }, {
                     title: 'Neg Link', field: '__neglink', headerSort: false, hozAlign: 'center', headerHozAlign: 'center',
-                    width: 128, minWidth: 120, formatter: amzLinkColFormatter('neg')
+                    width: 56, minWidth: 48, formatter: amzLinkColFormatter('neg')
                 }];
                 cols.forEach(function (c) {
                     var col = { field: c, title: c, hozAlign: 'center', headerHozAlign: 'center', minWidth: 56, widthGrow: 0 };
@@ -1722,22 +1718,14 @@
                     });
                 }
 
-                // Delegate link / push / compare clicks from the grid columns.
+                // Delegate link clicks from the KW Link / Neg Link columns.
                 var tableEl = document.getElementById('amz-ads-raw-table');
                 if (tableEl) {
                     tableEl.addEventListener('click', function (e) {
                         var kw = e.target.closest('.amz-kwlink-btn');
                         if (kw) { e.stopPropagation(); if (kw.dataset.campaign) window.amzOpenLinkModal('kw', kw.dataset.campaign); return; }
                         var neg = e.target.closest('.amz-neglink-btn');
-                        if (neg) { e.stopPropagation(); if (neg.dataset.campaign) window.amzOpenLinkModal('neg', neg.dataset.campaign); return; }
-                        var kwc = e.target.closest('.amz-kwcmp-btn');
-                        if (kwc) { e.stopPropagation(); if (kwc.dataset.campaign) amzOpenCompare('kw', kwc.dataset.campaign); return; }
-                        var negc = e.target.closest('.amz-negcmp-btn');
-                        if (negc) { e.stopPropagation(); if (negc.dataset.campaign) amzOpenCompare('neg', negc.dataset.campaign); return; }
-                        var kwp = e.target.closest('.amz-kwpush-btn');
-                        if (kwp) { e.stopPropagation(); if (kwp.dataset.campaign) amzRunRowPush(kwp, kwPushUrl, kwp.dataset.campaign); return; }
-                        var negp = e.target.closest('.amz-negpush-btn');
-                        if (negp) { e.stopPropagation(); if (negp.dataset.campaign) amzRunRowPush(negp, negPushUrl, negp.dataset.campaign); }
+                        if (neg) { e.stopPropagation(); if (neg.dataset.campaign) window.amzOpenLinkModal('neg', neg.dataset.campaign); }
                     });
                 }
 

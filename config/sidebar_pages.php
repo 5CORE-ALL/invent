@@ -35,13 +35,6 @@ return [
     ['value' => 'mm_video_posted', 'text' => 'Video Posted', 'group' => 'Marketing Masters'],
     ['value' => 'listing_LQS_masters', 'text' => 'LQS - Listing', 'group' => 'Marketing Masters'],
     ['value' => 'cvr_LQS_masters', 'text' => 'LQS - CVR', 'group' => 'Marketing Masters'],
-    ['value' => 'meta_all_ads', 'text' => 'Meta All Ads', 'group' => 'Marketing Masters'],
-    ['value' => 'meta_single_image', 'text' => 'Meta - Single Image', 'group' => 'Marketing Masters'],
-    ['value' => 'meta_single_video', 'text' => 'Meta - Single Video', 'group' => 'Marketing Masters'],
-    ['value' => 'meta_carousal', 'text' => 'Meta - Carousal', 'group' => 'Marketing Masters'],
-    ['value' => 'meta_existing_post', 'text' => 'Meta - Existing Post', 'group' => 'Marketing Masters'],
-    ['value' => 'meta_catalogue_ad', 'text' => 'Meta - Catalogue Ad', 'group' => 'Marketing Masters'],
-
     // Channel
     ['value' => 'channel_master', 'text' => 'Channel Master', 'group' => 'Channel'],
     ['value' => 'channel_promotion_master', 'text' => 'Promotion Master', 'group' => 'Channel'],
@@ -54,8 +47,6 @@ return [
     ['value' => 'c_care_analysis', 'text' => 'C Care Analysis', 'group' => 'Channel'],
 
     // Shopify
-    ['value' => 'shopify_products', 'text' => 'Shopify Products', 'group' => 'Shopify'],
-    ['value' => 'shopify_inventory', 'text' => 'Shopify Inventory', 'group' => 'Shopify'],
     ['value' => 'movement_analysis_y2y', 'text' => 'Movement Analysis Y2Y', 'group' => 'Shopify'],
     ['value' => 'movement_analysis_m2m', 'text' => 'Movement Analysis M2M', 'group' => 'Shopify'],
     ['value' => 'movement_analysis_s2s', 'text' => 'Movement Analysis S2S', 'group' => 'Shopify'],

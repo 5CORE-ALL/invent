@@ -74,6 +74,10 @@ class ShopifyController extends Controller
             abort(404, 'Route not found');
         }
 
+        if ($first === 'products' && in_array($second, ['shopify-Products', 'inventory'], true)) {
+            abort(404, 'Page not found');
+        }
+
         // Don't treat js/css as Blade view names (e.g. /js/app.js, /css/app.css would become view 'js.app.js' which doesn't exist)
         if ($first === 'js' || $first === 'css') {
             $subPath = $first . '/' . $second;

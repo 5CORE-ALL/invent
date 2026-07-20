@@ -2,15 +2,12 @@
 
 use App\Http\Controllers\AdsMaster\AdsMasterController;
 use App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController;
-use App\Http\Controllers\AdvertisementMaster\Demand_Gen_parent\GoogleNetworksController;
 use App\Http\Controllers\AdvertisementMaster\Headline_Advt\HeadlineAmazonController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwAmazonController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwEbayController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\WalmartController;
-use App\Http\Controllers\AdvertisementMaster\MetaParent\ProductWiseMetaParentController;
 use App\Http\Controllers\AdvertisementMaster\Prod_Target_Advt\ProdTargetAmazonController;
 use App\Http\Controllers\AdvertisementMaster\Promoted_Advt\PromotedEbayController;
-use App\Http\Controllers\AdvertisementMaster\Shopping_Advt\GoogleShoppingController;
 use App\Http\Controllers\AdvertisementMaster\VariationsAdsController;
 use App\Http\Controllers\AmazonAdsController;
 use App\Http\Controllers\AmazonAds\AmazonCampaignLinkController;
@@ -4154,20 +4151,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/headline-amazon', [HeadlineAmazonController::class, 'Amazon'])->name('advertisment.headline.Amazon');
     Route::post('/update-checkbox', [HeadlineAmazonController::class, 'update']);
     Route::get('/promoted-ebay', [PromotedEbayController::class, 'Ebay'])->name('advertisment.promoted.eBay');
-    Route::get('/google-shopping', [GoogleShoppingController::class, 'GoogleShopping'])->name('advertisment.shopping.google');
-    Route::get('/demand-gen-googleNetworks', [GoogleNetworksController::class, 'GoogleNetworks'])->name('advertisment.demand.gen.googleNetworks');
-    Route::get('/productwise-fb-img', [ProductWiseMetaParentController::class, 'FacebookImage'])->name('advertisment.demand.productWise.metaParent.img.facebook');
-    Route::get('/productwise-insta-img', [ProductWiseMetaParentController::class, 'InstagramImage'])->name('advertisment.demand.productWise.metaParent.img.instagram');
-    Route::get('/productwise-fb-video', [ProductWiseMetaParentController::class, 'FacebookVideo'])->name('advertisment.demand.productWise.metaParent.video.facebook');
-    Route::get('/productwise-insta-video', [ProductWiseMetaParentController::class, 'InstagramVideo'])->name('advertisment.demand.productWise.metaParent.video.instagram');
 
     // Ajax Advertisement Master view routes
     Route::get('/kw-ebay-get-data', [KwEbayController::class, 'getViewKwEbayData'])->name('kwEbay.getData');
     Route::post('/update-checkbox-flag', [KwEbayController::class, 'updateCheckboxes']);
     Route::get('/kw-walmart-get-data', [WalmartController::class, 'getViewKwWalmartData'])->name('kwWalmart.getData');
     Route::post('/update-checkbox-flag', [WalmartController::class, 'updateCheckboxes']);
-    Route::get('/google-shopping-get-data', [GoogleShoppingController::class, 'getViewGoogleShoppingData'])->name('googleShopping.getData');
-
     // channel master index view routes
     Route::get('/return-analysis', [ReturnController::class, 'return_master_index'])->name('return.master');
     Route::get('/expenses-analysis', [ExpensesController::class, 'expenses_master_index'])->name('expenses.master');
@@ -5153,12 +5142,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/youtube-shorts-ad', 'youtubeShortsAdView')->name('youtube.shorts.ads.master');
         Route::get('/youtube-shorts-ads', 'getYoutubeShortsAdsData');
         Route::post('/youtube-shorts-ads/save', 'saveYoutubeShortsAds')->name('youtube_shorts_ads.save');
-
-        Route::get('/traffic/dropship', 'getTrafficDropship')->name('traffic.dropship');
-        Route::get('/traffic/caraudio', 'getTrafficCaraudio')->name('traffic.caraudio');
-        Route::get('/traffic/musicinst', 'getTrafficMusicInst')->name('traffic.musicinst');
-        Route::get('/traffic/repaire', 'getTrafficRepaire')->name('traffic.repaire');
-        Route::get('/traffic/musicschool', 'getTrafficMusicSchool')->name('traffic.musicschool');
     });
 
     Route::controller(ShoppableVideoController::class)->group(function () {
@@ -5281,9 +5264,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // FaceBook Adds Manager
     Route::controller(FacebookAddsManagerController::class)->group(function () {
-        Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
-        Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
-        Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
+        Route::post('/meta-ads/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
 
         // Group management routes
         Route::get('/meta-ads/group/list', 'getMetaAdGroups')->name('meta.ads.group.list');
@@ -5294,36 +5275,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/meta-ads/import', 'importAds')->name('meta.ads.import');
         Route::post('/meta-ads/export', 'exportAds')->name('meta.ads.export');
 
-        // Facebook AD Type specific routes
-        Route::get('/meta-ads/facebook/single-image', 'metaFacebookSingleImage')->name('meta.ads.facebook.single.image');
-        Route::get('/meta-ads/facebook/single-image/data', 'metaFacebookSingleImageData')->name('meta.ads.facebook.single.image.data');
-        Route::get('/meta-ads/facebook/single-video', 'metaFacebookSingleVideo')->name('meta.ads.facebook.single.video');
-        Route::get('/meta-ads/facebook/single-video/data', 'metaFacebookSingleVideoData')->name('meta.ads.facebook.single.video.data');
-        Route::get('/meta-ads/facebook/carousal', 'metaFacebookCarousal')->name('meta.ads.facebook.carousal');
-        Route::get('/meta-ads/facebook/carousal/data', 'metaFacebookCarousalData')->name('meta.ads.facebook.carousal.data');
-        Route::get('/meta-ads/facebook/existing-post', 'metaFacebookExistingPost')->name('meta.ads.facebook.existing.post');
-        Route::get('/meta-ads/facebook/existing-post/data', 'metaFacebookExistingPostData')->name('meta.ads.facebook.existing.post.data');
-        Route::get('/meta-ads/facebook/catalogue-ad', 'metaFacebookCatalogueAd')->name('meta.ads.facebook.catalogue');
-        Route::get('/meta-ads/facebook/catalogue-ad/data', 'metaFacebookCatalogueAdData')->name('meta.ads.facebook.catalogue.data');
-
-        // Instagram AD Type specific routes
-        Route::get('/meta-ads/instagram/single-image', 'metaInstagramSingleImage')->name('meta.ads.instagram.single.image');
-        Route::get('/meta-ads/instagram/single-image/data', 'metaInstagramSingleImageData')->name('meta.ads.instagram.single.image.data');
-        Route::get('/meta-ads/instagram/single-video', 'metaInstagramSingleVideo')->name('meta.ads.instagram.single.video');
-        Route::get('/meta-ads/instagram/single-video/data', 'metaInstagramSingleVideoData')->name('meta.ads.instagram.single.video.data');
-        Route::get('/meta-ads/instagram/carousal', 'metaInstagramCarousal')->name('meta.ads.instagram.carousal');
-        Route::get('/meta-ads/instagram/carousal/data', 'metaInstagramCarousalData')->name('meta.ads.instagram.carousal.data');
-        Route::get('/meta-ads/instagram/existing-post', 'metaInstagramExistingPost')->name('meta.ads.instagram.existing.post');
-        Route::get('/meta-ads/instagram/existing-post/data', 'metaInstagramExistingPostData')->name('meta.ads.instagram.existing.post.data');
-        Route::get('/meta-ads/instagram/catalogue-ad', 'metaInstagramCatalogueAd')->name('meta.ads.instagram.catalogue');
-        Route::get('/meta-ads/instagram/catalogue-ad/data', 'metaInstagramCatalogueAdData')->name('meta.ads.instagram.catalogue.data');
-
-        // FB GRP CAROUSAL NEW routes
-        Route::get('/meta-ads/facebook/carousal/new', 'metaFacebookCarousalNew')->name('meta.ads.facebook.carousal.new');
-        Route::get('/meta-ads/facebook/carousal/new/data', 'metaFacebookCarousalNewData')->name('meta.ads.facebook.carousal.new.data');
-        Route::post('/meta-ads/facebook/carousal/new/store', 'storeFacebookCarousalNewCampaign')->name('meta.ads.facebook.carousal.new.store');
-        Route::post('/meta-ads/facebook/carousal/new/update-group', 'updateGroupForCampaigns')->name('meta.ads.facebook.carousal.new.update.group');
-
         // Raw Facebook Ads Data routes
         Route::get('/meta-ads/raw-data', 'showRawAdsData')->name('meta.ads.raw');
         Route::get('/meta-ads/raw-data/fetch', 'fetchRawAdsData')->name('meta.ads.raw.data');
@@ -5332,12 +5283,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads/saved-raw/sales-stats', 'getSavedRawAdsSalesStats')->name('meta.ads.saved.raw.sales.stats');
         Route::get('/meta-ads/saved-raw/export', 'exportSavedRawAds')->name('meta.ads.saved.raw.export');
         Route::get('/meta-ads/test-connection', 'testMetaApiConnection')->name('meta.ads.test.connection');
-
-        Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
-        Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
-        Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');
-        Route::get('/fb-img-caraousal-to-web', 'FbImgCaraousalToWeb')->name('fb.img.caraousal.to.web');
-        Route::get('/fb-img-caraousal-to-web-data', 'FbImgCaraousalToWebData')->name('fb.img.caraousal.to.web.data');
     });
 
     // Meta Ads Manager - Comprehensive Module
@@ -5397,18 +5342,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(InstagramAdsManagerController::class)->group(function () {
         Route::get('/instagram-ads-control/data', 'index')->name('instagram.ads.index');
-        Route::get('/instagram-web-to-video', 'instagramWebToVideo')->name('instagram.web.to.video');
-        Route::get('/instagram-web-to-video-data', 'instagramWebToVideoData')->name('instagram.web.to.video.data');
-        Route::get('/insta-img-caraousal-to-web', 'InstaImgCaraousalToWeb')->name('insta.img.caraousal.to.web');
-        Route::get('/insta-img-caraousal-to-web-data', 'InstaImgCaraousalToWebData')->name('insta.img.caraousal.to.web.data');
     });
 
     Route::controller(YoutubeAdsManagerController::class)->group(function () {
         Route::get('/youtube-ads-control/data', 'index')->name('youtube.ads.index');
-        Route::get('/youtube-web-to-video', 'youtubeWebToVideo')->name('youtube.web.to.video');
-        Route::get('/youtube-web-to-video-data', 'youtubeWebToVideoData')->name('youtube.web.to.video.data');
-        Route::get('/yt-img-caraousal-to-web', 'YtImgCaraousalToWeb')->name('yt.img.caraousal.to.web');
-        Route::get('/yt-img-caraousal-to-web-data', 'YtImgCaraousalToWebData')->name('yt.img.caraousal.to.web.data');
     });
 
     Route::controller(AmazonACOSController::class)->group(function () {
@@ -6577,20 +6514,7 @@ Route::get('/css/{path}', function (string $path) {
 })->where('path', '[^/]+');
 
 // =============================================================================
-// STEP 7: SHOPIFY SPECIFIC ROUTES
-// =============================================================================
-Route::get('/products/shopify-Products', [ShopifyController::class, 'shopifyView'])
-    ->defaults('first', 'products')
-    ->defaults('second', 'shopify-Products')
-    ->name('shopify');
-
-Route::get('/products/inventory', [ShopifyController::class, 'shopifyView'])
-    ->defaults('first', 'products')
-    ->defaults('second', 'inventory')
-    ->name('products.inventory');
-
-// =============================================================================
-// STEP 8: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
+// STEP 7: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
 Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
 
