@@ -77,8 +77,7 @@
             font-weight: 700;
         }
 
-        /* M link / H link cell — copied from /account-health-master/tabulator
-           so the icons + empty-state dot stay visually consistent. */
+        /* M link cell — arrow image (same as Escalated Claims) + empty-state dot. */
         .link-cell-wrap {
             display: inline-flex;
             align-items: center;
@@ -86,6 +85,14 @@
             gap: 4px;
             min-width: 32px;
             min-height: 24px;
+        }
+
+        .link-cell-wrap .ccmr-link-arrow {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            display: inline-block;
+            vertical-align: middle;
         }
 
         .link-empty-dot {
@@ -555,6 +562,7 @@
             // Endpoint shared with /account-health-master/tabulator. POSTs
             // { channel_id, field: 'm_link'|'h_link', value: <url> }.
             const urlScopeLinkSave = @json(route('account.health.master.scope.link.save'));
+            const linkArrowSrc = @json(asset('images/cute-blue-cursor.png'));
 
             // Per-channel CC Message & Returns checklist endpoints.
             const urlChecklistStore   = @json(route('customer.care.cc.messages.returns.checklist.store'));
@@ -795,10 +803,15 @@
                 a.href = link;
                 a.target = '_blank';
                 a.rel = 'noopener noreferrer';
-                a.className = iconColorClass + ' text-decoration-none';
+                a.className = 'text-decoration-none';
                 a.title = link + ' — double-click to edit';
                 a.setAttribute('aria-label', ariaLabel);
-                a.innerHTML = '<i class="fa-solid fa-link" aria-hidden="true"></i>';
+                const img = document.createElement('img');
+                img.src = linkArrowSrc;
+                img.alt = 'Link';
+                img.className = 'ccmr-link-arrow';
+                img.title = 'Link';
+                a.appendChild(img);
                 a.addEventListener('click', ev => ev.stopPropagation());
                 a.addEventListener('dblclick', ev => {
                     ev.stopPropagation();
