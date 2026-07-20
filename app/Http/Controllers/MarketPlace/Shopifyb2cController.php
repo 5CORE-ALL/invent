@@ -12,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ShopifyB2CListingStatus;
 use App\Models\AmazonDatasheet;
+use App\Models\GoogleSkuCompetitor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -830,6 +831,17 @@ class Shopifyb2cController extends Controller
             ->get()
             ->keyBy('sku');
 
+        // Google LMP from /repricer/google-search → google_sku_competitors
+        $googleLmpDetails = collect();
+        $googleLmpLowest = collect();
+        try {
+            $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
+            $googleLmpDetails = $googleLmpLookups['details'];
+            $googleLmpLowest = $googleLmpLookups['lowest'];
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C Google LMP lookup failed: ' . $e->getMessage());
+        }
+
         // Fetch Google Ads spend per SKU (L30 - last 30 days)
         $yesterday = \Carbon\Carbon::yesterday();
         $startDate = $yesterday->copy()->subDays(29);
@@ -1037,6 +1049,38 @@ class Shopifyb2cController extends Controller
                 }
             }
 
+            // Google LMP (same source as /repricer/google-search saved competitors)
+            $lmpKey = GoogleSkuCompetitor::normalizeSkuKey($sku);
+            $lowestLmp = $googleLmpLowest->get($lmpKey);
+            $lmpEntries = $googleLmpDetails->get($lmpKey);
+            $lmpEntriesArr = [];
+            if ($lmpEntries instanceof \Illuminate\Support\Collection) {
+                $lmpEntriesArr = $lmpEntries->map(static function ($comp) {
+                    return [
+                        'id' => $comp->id,
+                        'product_id' => $comp->product_id,
+                        'source' => $comp->source,
+                        'price' => isset($comp->price) ? round((float) $comp->price, 2) : null,
+                        'link' => $comp->product_link,
+                        'product_link' => $comp->product_link,
+                        'title' => $comp->product_title,
+                        'product_title' => $comp->product_title,
+                        'image' => $comp->image,
+                        'rating' => $comp->rating !== null ? (float) $comp->rating : null,
+                        'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
+                    ];
+                })->values()->all();
+            }
+
+            $processedItem['lmp_price'] = ($lowestLmp && is_numeric($lowestLmp->price))
+                ? round((float) $lowestLmp->price, 2)
+                : null;
+            $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
+            $processedItem['lmp_source'] = $lowestLmp->source ?? null;
+            $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
+            $processedItem['lmp_entries'] = $lmpEntriesArr;
+            $processedItem['lmp_entries_total'] = count($lmpEntriesArr);
+
             $processedItem['is_parent_summary'] = false;
             $processedItems[] = $processedItem;
         }
@@ -1111,6 +1155,12 @@ class Shopifyb2cController extends Controller
                 'SROI' => 0,
                 'SNROI' => 0,
                 'SPRICE_STATUS' => null,
+                'lmp_price' => null,
+                'lmp_link' => null,
+                'lmp_source' => null,
+                'lmp_title' => null,
+                'lmp_entries' => [],
+                'lmp_entries_total' => 0,
             ];
         }
 

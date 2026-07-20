@@ -306,6 +306,79 @@
         'sub_title' => '',
     ])
     <div class="toast-container"></div>
+
+    {{-- Google LMP Competitors Modal (data from /repricer/google-search → google_sku_competitors) --}}
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> Google LMP Competitors for SKU: <span id="lmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <a href="#" id="lmpOpenGoogleSearch" class="btn btn-sm btn-outline-success" target="_blank" rel="noopener">
+                            <i class="fa fa-search"></i> Open Google Search
+                        </a>
+                    </div>
+
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white">
+                            <strong><i class="fa fa-plus-circle"></i> Add Competitor Manually</strong>
+                        </div>
+                        <div class="card-body">
+                            <form id="addGoogleLmpForm" class="row g-3">
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control" id="addLmpSku" readonly>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Product ID</strong> <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="addLmpProductId" placeholder="Google product id" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Source</strong></label>
+                                    <input type="text" class="form-control" id="addLmpSource" placeholder="e.g. Walmart">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" id="addLmpPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Title</strong></label>
+                                    <input type="text" class="form-control" id="addLmpTitle" placeholder="Product title">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Link</strong></label>
+                                    <input type="url" class="form-control" id="addLmpLink" placeholder="https://...">
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="fa fa-plus"></i> Add Competitor
+                                    </button>
+                                    <button type="reset" class="btn btn-secondary">
+                                        <i class="fa fa-undo"></i> Clear
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="lmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="shopify-b2c-page">
     <div class="row">
         <div class="col-12">
@@ -1770,6 +1843,83 @@
                     width: 70
                 },
                 {
+                    title: "LMP",
+                    field: "lmp_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    width: 100,
+                    headerTooltip: "Google LMP from /repricer/google-search (manual add supported)",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) return '';
+
+                        const sku = String(rowData['(Child) sku'] || '');
+                        const skuEnc = encodeURIComponent(sku);
+                        const lmpPrice = parseFloat(cell.getValue());
+                        const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
+                        const ourPrice = parseFloat(rowData.Price) || 0;
+
+                        if ((!lmpPrice || lmpPrice <= 0) && totalCompetitors === 0) {
+                            const url = '/repricer/google-search' + (skuEnc ? '?sku=' + skuEnc : '');
+                            return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+                                '<a href="' + url + '" target="_blank" rel="noopener" title="No Google LMP — open Google Search">' +
+                                '<i class="fas fa-circle" style="color:#ff9c00;font-size:10px;"></i></a>' +
+                                '<a href="#" class="view-lmp-competitors" data-sku="' + sku.replace(/"/g, '&quot;') + '"' +
+                                ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
+                                '<i class="fa fa-plus"></i> Add</a></div>';
+                        }
+
+                        let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">';
+                        if (lmpPrice > 0) {
+                            const color = (ourPrice > 0 && lmpPrice < ourPrice) ? '#dc3545' : '#28a745';
+                            html += '<a href="#" class="view-lmp-competitors" data-sku="' + sku.replace(/"/g, '&quot;') + '"' +
+                                ' style="color:' + color + ';font-weight:600;text-decoration:none;cursor:pointer;">$' +
+                                lmpPrice.toFixed(2) + '</a>';
+                        }
+                        if (totalCompetitors > 0) {
+                            html += '<a href="#" class="view-lmp-competitors" data-sku="' + sku.replace(/"/g, '&quot;') + '"' +
+                                ' style="color:#007bff;text-decoration:none;cursor:pointer;font-size:11px;">' +
+                                '<i class="fa fa-eye"></i> View ' + totalCompetitors + '</a>';
+                        } else {
+                            html += '<a href="#" class="view-lmp-competitors" data-sku="' + sku.replace(/"/g, '&quot;') + '"' +
+                                ' style="color:#6c757d;text-decoration:none;cursor:pointer;font-size:11px;" title="Add competitor manually">' +
+                                '<i class="fa fa-plus"></i> Add</a>';
+                        }
+                        html += '</div>';
+                        return html;
+                    }
+                },
+                {
+                    title: "Diff",
+                    field: "lmp_diff_pct",
+                    hozAlign: "center",
+                    width: 70,
+                    headerTooltip: "(Google LMP − Shopify Price) / LMP × 100",
+                    sorter: function(a, b, aRow, bRow) {
+                        const calc = function(rd) {
+                            if (isShopifyB2cParentRow(rd)) return -Infinity;
+                            const lmp = parseFloat(rd.lmp_price || 0);
+                            const price = parseFloat(rd.Price || 0);
+                            if (!lmp || lmp <= 0) return -Infinity;
+                            return ((lmp - price) / lmp) * 100;
+                        };
+                        return calc(aRow.getData()) - calc(bRow.getData());
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (isShopifyB2cParentRow(rowData)) return '';
+
+                        const lmp = parseFloat(rowData.lmp_price || 0);
+                        const price = parseFloat(rowData.Price || 0);
+                        if (!lmp || lmp <= 0) {
+                            return '<span style="color: #999;">N/A</span>';
+                        }
+                        const diff = ((lmp - price) / lmp) * 100;
+                        const color = diff < 0 ? '#dc3545' : '#28a745';
+                        return '<span style="color:' + color + ';font-weight:600;">' + diff.toFixed(1) + '%</span>';
+                    }
+                },
+                {
                     title: "A Prc",
                     field: "A Price",
                     hozAlign: "center",
@@ -2646,6 +2796,273 @@
             document.body.removeChild(link);
             
             showToast('Export downloaded successfully!', 'success');
+        });
+
+        // ==================== Google LMP (from /repricer/google-search) ====================
+
+        function escLmpAttr(val) {
+            return String(val == null ? '' : val)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function updateShopifyB2cLmpRow(sku, competitors, lowestPrice) {
+            if (!table || !sku) return;
+            const list = Array.isArray(competitors) ? competitors : [];
+            const lowest = (lowestPrice != null && lowestPrice > 0)
+                ? parseFloat(lowestPrice)
+                : (list.length
+                    ? Math.min.apply(null, list.map(c => parseFloat(c.price) || 0).filter(p => p > 0))
+                    : null);
+            const lowestLink = list.find(c => Math.abs((parseFloat(c.price) || 0) - (lowest || 0)) < 0.01) || list[0] || null;
+
+            table.getRows().forEach(function(row) {
+                const d = row.getData();
+                if (String(d['(Child) sku'] || '') !== String(sku)) return;
+                row.update({
+                    lmp_price: lowest && lowest > 0 ? Math.round(lowest * 100) / 100 : null,
+                    lmp_link: lowestLink ? (lowestLink.product_link || lowestLink.link || null) : null,
+                    lmp_source: lowestLink ? (lowestLink.source || null) : null,
+                    lmp_title: lowestLink ? (lowestLink.product_title || lowestLink.title || null) : null,
+                    lmp_entries: list,
+                    lmp_entries_total: list.length,
+                });
+            });
+        }
+
+        function renderGoogleLmpList(sku, competitors, lowestPrice) {
+            const list = Array.isArray(competitors) ? competitors : [];
+            if (!list.length) {
+                $('#lmpDataList').html(
+                    '<div class="alert alert-info mb-0">' +
+                    '<i class="fa fa-info-circle"></i> No Google competitors found yet. Add one manually above, or ' +
+                    '<a href="/repricer/google-search?sku=' + encodeURIComponent(sku) + '" target="_blank" rel="noopener">search on Google</a>.' +
+                    '</div>'
+                );
+                return;
+            }
+
+            const lowest = (lowestPrice != null && lowestPrice > 0)
+                ? parseFloat(lowestPrice)
+                : Math.min.apply(null, list.map(c => parseFloat(c.price) || 0).filter(p => p > 0));
+
+            let html = '';
+            if (lowest && lowest > 0) {
+                html += '<div class="mb-3"><span class="badge bg-success">Google lowest: $' + lowest.toFixed(2) + '</span></div>';
+            }
+
+            html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm">' +
+                '<thead class="table-light"><tr>' +
+                '<th>#</th><th>Price</th><th>Source</th><th>Product ID</th><th>Title</th><th>Rating</th><th>Reviews</th><th>Link</th><th>Actions</th>' +
+                '</tr></thead><tbody>';
+
+            list.forEach(function(item, index) {
+                const price = parseFloat(item.price) || 0;
+                const isLowest = price > 0 && lowest > 0 && Math.abs(price - lowest) < 0.01;
+                const link = item.product_link || item.link || '';
+                const title = item.product_title || item.title || '';
+                const titleShort = title.length > 50 ? title.substring(0, 50) + '...' : title;
+                const source = item.source || '—';
+                const productId = item.product_id || '—';
+                const image = item.image || '';
+                const imgHtml = image
+                    ? '<img src="' + escLmpAttr(image) + '" alt="" class="rounded me-1" style="height:40px;width:40px;object-fit:contain;" onerror="this.style.display=\'none\'">'
+                    : '';
+                const rating = item.rating != null
+                    ? '<span><i class="fa fa-star text-warning"></i> ' + parseFloat(item.rating).toFixed(1) + '</span>'
+                    : '<span class="text-muted">—</span>';
+                const reviews = item.reviews != null
+                    ? (parseInt(item.reviews, 10) || 0).toLocaleString()
+                    : '<span class="text-muted">—</span>';
+                const priceBadge = isLowest
+                    ? '<span class="badge bg-success">$' + price.toFixed(2) + ' <i class="fa fa-trophy"></i></span>'
+                    : '<strong>$' + price.toFixed(2) + '</strong>';
+                const linkBtn = link
+                    ? '<a href="' + escLmpAttr(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info" title="Open product"><i class="fa fa-external-link"></i></a>'
+                    : '<span class="text-muted">—</span>';
+                const delBtn = '<button type="button" class="btn btn-sm btn-danger delete-google-lmp-btn" data-id="' +
+                    escLmpAttr(item.id) + '" data-sku="' + escLmpAttr(sku) + '" data-price="' + price +
+                    '" title="Delete this competitor"><i class="fa fa-trash"></i></button>';
+
+                html += '<tr class="' + (isLowest ? 'table-success' : '') + '">' +
+                    '<td class="text-center"><strong>' + (index + 1) + '</strong></td>' +
+                    '<td><div class="d-flex align-items-center">' + imgHtml + priceBadge + '</div></td>' +
+                    '<td style="font-size:11px;" title="' + escLmpAttr(source) + '">' + escLmpAttr(String(source).substring(0, 30)) + '</td>' +
+                    '<td style="font-size:11px;">' + escLmpAttr(productId) + '</td>' +
+                    '<td style="font-size:11px;" title="' + escLmpAttr(title) + '">' + escLmpAttr(titleShort || '—') + '</td>' +
+                    '<td class="text-center">' + rating + '</td>' +
+                    '<td class="text-center">' + reviews + '</td>' +
+                    '<td class="text-center">' + linkBtn + '</td>' +
+                    '<td class="text-center">' + delBtn + '</td>' +
+                    '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            $('#lmpDataList').html(html);
+        }
+
+        function loadGoogleLmpModal(sku) {
+            $('#lmpSku').text(sku);
+            $('#addLmpSku').val(sku);
+            $('#addLmpProductId').val('');
+            $('#addLmpSource').val('');
+            $('#addLmpPrice').val('');
+            $('#addLmpTitle').val('');
+            $('#addLmpLink').val('');
+            $('#lmpOpenGoogleSearch').attr('href', '/repricer/google-search?sku=' + encodeURIComponent(sku));
+
+            const modalEl = document.getElementById('lmpModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+
+            $('#lmpDataList').html(
+                '<div class="text-center py-5">' +
+                '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>' +
+                '<p class="mt-2">Loading competitors...</p></div>'
+            );
+
+            $.ajax({
+                url: '/google-lmp-data',
+                method: 'GET',
+                data: { sku: sku },
+                success: function(response) {
+                    if (response.success) {
+                        renderGoogleLmpList(sku, response.competitors || [], response.lowest_price);
+                        updateShopifyB2cLmpRow(sku, response.competitors || [], response.lowest_price);
+                    } else {
+                        $('#lmpDataList').html(
+                            '<div class="alert alert-warning"><i class="fa fa-info-circle"></i> ' +
+                            escLmpAttr(response.error || 'No competitors found. Add one manually above.') +
+                            '</div>'
+                        );
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                        ? (xhr.responseJSON.error || xhr.responseJSON.message)
+                        : 'Failed to load Google LMP data';
+                    $('#lmpDataList').html(
+                        '<div class="alert alert-danger"><i class="fa fa-exclamation-triangle"></i> ' +
+                        escLmpAttr(msg) + '</div>'
+                    );
+                }
+            });
+        }
+
+        $(document).on('click', '.view-lmp-competitors', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            if (sku) loadGoogleLmpModal(String(sku));
+        });
+
+        $('#addGoogleLmpForm').on('submit', function(e) {
+            e.preventDefault();
+
+            const sku = ($('#addLmpSku').val() || '').trim();
+            const productId = ($('#addLmpProductId').val() || '').trim();
+            const source = ($('#addLmpSource').val() || '').trim() || 'manual';
+            const price = parseFloat($('#addLmpPrice').val());
+            const title = ($('#addLmpTitle').val() || '').trim();
+            const link = ($('#addLmpLink').val() || '').trim();
+
+            if (!sku) {
+                showToast('SKU is required', 'error');
+                return;
+            }
+            if (!productId) {
+                showToast('Product ID is required', 'error');
+                return;
+            }
+            if (!price || price <= 0) {
+                showToast('Valid price is required', 'error');
+                return;
+            }
+
+            const $submitBtn = $(this).find('button[type="submit"]');
+            const originalHtml = $submitBtn.html();
+            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+
+            $.ajax({
+                url: '/google-lmp-add',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: {
+                    sku: sku,
+                    product_id: productId,
+                    source: source,
+                    price: price,
+                    product_link: link || null,
+                    product_title: title || null,
+                },
+                success: function(response) {
+                    $submitBtn.prop('disabled', false).html(originalHtml);
+                    if (response.success || response.data) {
+                        showToast(response.message || 'Google LMP added successfully', 'success');
+                        $('#addLmpProductId').val('');
+                        $('#addLmpSource').val('');
+                        $('#addLmpPrice').val('');
+                        $('#addLmpTitle').val('');
+                        $('#addLmpLink').val('');
+                        loadGoogleLmpModal(sku);
+                    } else {
+                        showToast(response.error || 'Failed to add competitor', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    $submitBtn.prop('disabled', false).html(originalHtml);
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                        ? (xhr.responseJSON.error || xhr.responseJSON.message)
+                        : 'Failed to add Google LMP';
+                    showToast(msg, 'error');
+                }
+            });
+        });
+
+        $(document).on('click', '.delete-google-lmp-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const $btn = $(this);
+            const id = $btn.data('id');
+            const sku = $btn.data('sku') || $('#lmpSku').text();
+            const price = $btn.data('price');
+
+            if (!id) {
+                showToast('Invalid competitor ID', 'error');
+                return;
+            }
+            if (!confirm('Delete this Google competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ')? This cannot be undone.')) {
+                return;
+            }
+
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+
+            $.ajax({
+                url: '/google-lmp-delete',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { id: id },
+                success: function(response) {
+                    if (response.success) {
+                        showToast(response.message || 'Competitor deleted', 'success');
+                        loadGoogleLmpModal(sku);
+                    } else {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        showToast(response.error || 'Failed to delete', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    const msg = (xhr.responseJSON && xhr.responseJSON.error)
+                        ? xhr.responseJSON.error
+                        : 'Failed to delete competitor';
+                    showToast(msg, 'error');
+                }
+            });
         });
     });
 </script>
