@@ -81,7 +81,7 @@ return [
 
     // Marketplace
     ['value' => 'amazon_analytics', 'text' => 'Amazon Analytics', 'group' => 'Marketplace'],
-    ['value' => 'amz_variation_verify', 'text' => 'Amz Variation Verify', 'group' => 'Marketplace'],
+    ['value' => 'amz_variation_verify', 'text' => 'Amazon Ads Variation Verification', 'group' => 'Marketplace'],
     ['value' => 'amz_listing_variation_verify', 'text' => 'Amz Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'ebay_listing_variation_verify', 'text' => 'Ebay Listing Variation Verify', 'group' => 'Marketplace'],
 
@@ -121,6 +121,7 @@ return [
     ['value' => 'temu_zero_view', 'text' => 'Temu 0 View', 'group' => 'Marketplace'],
     ['value' => 'temu_low_visibility', 'text' => 'Temu Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_temu', 'text' => 'Listing Temu', 'group' => 'Marketplace'],
+    ['value' => 'temu2_variation_verify', 'text' => 'Temu 2 Ads Variation Verification', 'group' => 'Marketplace'],
     ['value' => 'temu2_listing_variation_verify', 'text' => 'Temu 2 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'doba', 'text' => 'Doba', 'group' => 'Marketplace'],
     ['value' => 'doba_low_visibility', 'text' => 'Doba Low Visibility', 'group' => 'Marketplace'],

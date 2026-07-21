@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amz Variation Verify'])
+@extends('layouts.vertical', ['title' => 'Amazon Ads Variation Verification'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -111,8 +111,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amz Variation Verify',
-        'sub_title'  => 'Amazon Ads',
+        'page_title' => 'Amazon Ads Variation Verification',
+        'sub_title'  => 'Amazon',
     ])
 
     <div class="row">

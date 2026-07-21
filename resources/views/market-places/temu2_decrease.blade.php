@@ -98,6 +98,130 @@
             background: none !important;
         }
 
+        /* Parent row light blue background (same as /ebay-tabulator-view) */
+        .tabulator-row.temu2-parent-row,
+        .tabulator-row.temu2-parent-row .tabulator-cell,
+        .tabulator-row.temu2-parent-row .tabulator-cell.tabulator-frozen,
+        .tabulator-row.temu2-parent-row .tabulator-cell.tabulator-frozen-left {
+            background-color: #b3e5fc !important;
+        }
+
+        /* Keep frozen left columns above scrolling cells */
+        #temu-table .tabulator-cell.tabulator-frozen,
+        #temu-table .tabulator-cell.tabulator-frozen-left,
+        #temu-table .tabulator-col.tabulator-frozen,
+        #temu-table .tabulator-col.tabulator-frozen-left {
+            z-index: 11;
+        }
+
+        /* Autofit table to viewport; Parent/SKU stay left, everything else centered */
+        #temu-table {
+            width: 100% !important;
+        }
+        #temu-table .tabulator-tableholder {
+            overflow-x: auto;
+        }
+        #temu-table .tabulator-cell {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #temu-table .tabulator-cell[tabulator-field="parent"],
+        #temu-table .tabulator-cell[tabulator-field="sku"],
+        #temu-table .tabulator-col[tabulator-field="parent"] .tabulator-col-content,
+        #temu-table .tabulator-col[tabulator-field="sku"] .tabulator-col-content {
+            text-align: left !important;
+            justify-content: flex-start !important;
+        }
+
+        /* Column visibility — 4 groups (Basics / Pricing / Advertisement / Other)
+           Only style when open (.show); never force display:block or it stays open after refresh. */
+        #column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+
         .dil-percent-value.purple {
             color: #d63384 !important;
             background: none !important;
@@ -195,6 +319,15 @@
                 <div class="d-flex align-items-center flex-wrap gap-2" id="ebay-filter-bar">
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 180px; display: inline-block;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 180px; display: inline-block;">
+
+                    {{-- Row type filter (All Rows / Parents / SKUs) — same as Amazon / Shopify B2C --}}
+                    <select id="parent-filter" class="form-select form-select-sm pricing-filter-item"
+                        style="width: auto; display: inline-block;"
+                        title="Filter by row type: All Rows, Parents only, or SKUs only">
+                        <option value="all" selected>All Rows</option>
+                        <option value="parents">Parents</option>
+                        <option value="skus">SKUs</option>
+                    </select>
 
                     <select id="inventory-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;">
@@ -328,11 +461,11 @@
 
                     <div class="dropdown d-inline-block pricing-filter-item">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
+                            id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                            aria-expanded="false" title="Columns">
                             <i class="fa fa-eye"></i>
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                         </ul>
                     </div>
 
@@ -2574,8 +2707,12 @@
             let notMappedCount = 0;
             let rowsCount = 0;
 
-            // Filtered counts: Rows / 0 Sold / >0 Sold
+            // Filtered counts: Rows / 0 Sold / >0 Sold (exclude parent rows from sold badges)
             filteredData.forEach(row => {
+                if (isTemu2ParentRow(row)) {
+                    rowsCount++;
+                    return;
+                }
                 rowsCount++;
                 const temuL30 = parseInt(row.temu_l30, 10) || 0;
                 const inventory = parseFloat(row.inventory) || 0;
@@ -2583,8 +2720,9 @@
                 if (inventory > 0 && temuL30 > 0) moreSoldCount++;
             });
 
-            // Financials + M L / M M from full dataset (ebay pattern for missing)
+            // Financials + M L / M M from full dataset (ebay pattern for missing) — SKUs only
             allData.forEach(row => {
+                if (isTemu2ParentRow(row)) return;
                 const temuL30 = parseInt(row.temu_l30, 10) || 0;
                 const price = parseFloat(row.base_price) || 0;
                 const temuPrice = parseFloat(row.temu_price) || 0;
@@ -2736,7 +2874,13 @@
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu2-decrease-data",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitColumns",
+            columnDefaults: {
+                hozAlign: "center",
+                headerHozAlign: "center",
+                resizable: true,
+                minWidth: 36,
+            },
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -2744,6 +2888,17 @@
             initialSort: [
                 {column: "cvr_percent", dir: "asc"}
             ],
+            rowFormatter: function(row) {
+                const data = row.getData();
+                const el = row.getElement();
+                if (isTemu2ParentRow(data)) {
+                    el.classList.add('temu2-parent-row');
+                    el.style.setProperty('background-color', '#b3e5fc', 'important');
+                } else {
+                    el.classList.remove('temu2-parent-row');
+                    el.style.removeProperty('background-color');
+                }
+            },
             ajaxResponse: function(url, params, response) {
                 if (response && Array.isArray(response.data)) {
                     const periodFromResponse = (response.period || currentCampaignPeriod || 'L30').toUpperCase();
@@ -2768,25 +2923,67 @@
                 {
                     title: "Image",
                     field: "image_path",
+                    frozen: true,
+                    width: 54,
+                    minWidth: 48,
+                    hozAlign: "center",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
-                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                            return `<img src="${value}" alt="Product" style="width: 40px; height: 40px; object-fit: cover;">`;
                         }
                         return '';
                     },
                     headerSort: false
                 },
                 {
+                    title: "Parent",
+                    field: "parent",
+                    headerFilter: "input",
+                    headerFilterPlaceholder: "Search Parent...",
+                    frozen: true,
+                    width: 110,
+                    minWidth: 80,
+                    hozAlign: "left",
+                    headerHozAlign: "left",
+                    tooltip: true,
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        let value = cell.getValue() || '';
+                        if (!value && isTemu2ParentRow(row)) {
+                            value = String(row.sku || '').replace(/^PARENT\s+/i, '').trim();
+                        }
+                        if (String(value).toUpperCase().startsWith('PARENT ')) {
+                            value = String(value).replace(/^PARENT\s+/i, '').trim();
+                        }
+                        if (!value) return '';
+                        if (isTemu2ParentRow(row)) {
+                            return `<span style="font-weight:700;color:#0d6efd;">${value}</span>`;
+                        }
+                        return value;
+                    }
+                },
+                {
                     title: "SKU",
                     field: "sku",
                     headerFilter: "input",
                     frozen: true,
+                    width: 130,
+                    minWidth: 90,
+                    hozAlign: "left",
+                    headerHozAlign: "left",
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         if (!sku) return '';
-                        
-                        return `${sku} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                        const row = cell.getRow().getData();
+                        const isParent = isTemu2ParentRow(row);
+                        const label = isParent
+                            ? `<span style="font-weight:700;color:#0d6efd;">${sku}</span>`
+                            : sku;
+                        if (isParent) {
+                            return label;
+                        }
+                        return `${label} <button type="button" class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price trend" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                     }
                 },
                 {
@@ -2812,23 +3009,6 @@
                     cellDblClick: function(e, cell) {
                         e.stopPropagation();
                         openTemu2EditLinksModal(cell.getRow());
-                    }
-                },
-                {
-                    title: "Goods ID",
-                    field: "goods_id",
-                    hozAlign: "left",
-                    sorter: "string",
-                    width: 120,
-                    accessorDownload: function(value, data) {
-                        const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
-                        // Leading tab forces Excel to treat as text (avoids scientific notation)
-                        return g ? ('\t' + g) : '';
-                    },
-                    formatter: function(cell) {
-                        const goodsId = (cell.getValue() || '').toString().trim();
-                        if (!goodsId) return '';
-                        return `${goodsId} <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id" data-goods-id="${goodsId}" title="Copy Goods ID" style="border:none;background:none;color:#6c757d;"><i class="fa fa-copy"></i></button>`;
                     }
                 },
                 {
@@ -2927,18 +3107,6 @@
                         const sku = rowData.sku || '';
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>` : '';
                         return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml} ${dotBtn}`.trim();
-                    }
-                },
-                {
-                    title: "T L60",
-                    field: "temu_l60",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        return Math.round(parseFloat(value) || 0);
                     }
                 },
                 {
@@ -3376,14 +3544,13 @@
                 {
                     title: "Spend",
                     field: "spend",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return value > 0 ? '$' + value.toFixed(2) : '0.00';
                     },
-                    visible: true,
-                    width: 100
+                    visible: true
                 },
                 {
                     title: "L60 Spend",
@@ -3409,81 +3576,39 @@
                     }
                 },
                 {
-                    title: "Ad Sales",
-                    field: "ad_sales_l60",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return value > 0 ? '$' + value.toFixed(2) : '<span style="color: #999;">-</span>';
-                    }
-                },
-                {
-                    title: "L60 vs L30",
-                    field: "l60_vs_l30",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const val = cell.getValue();
-                        if (val === null || val === undefined || Number.isNaN(parseFloat(val))) return '<span style="color: #999;">-</span>';
-                        const v = parseFloat(val);
-                        const pct = (v % 1 === 0) ? Math.round(v) : v.toFixed(1);
-                        const direction = v > 0 ? 'L60&lt;' : (v < 0 ? 'L60&gt;' : '');
-                        const color = v > 0 ? '#28a745' : (v < 0 ? '#dc3545' : '#6c757d');
-                        return `<span style="color: ${color}; font-weight: 600;">${pct}%</span>${direction ? ` <span style="font-size: 0.75em; color: #6c757d;" title="${v > 0 ? 'L60 ACOS < L30 ACOS' : 'L60 ACOS > L30 ACOS'}">${direction}</span>` : ''}`;
-                    }
-                },
-                {
                     title: "ACOS%",
                     field: "acos_ad",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                             <span>${Math.round(value)}%</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS%"></i>
                         </div>`;
                     },
-                    visible: false,
-                    width: 100
+                    visible: false
                 },
                 {
                     title: "Ad Clicks",
                     field: "ad_clicks",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                             <span>${value.toLocaleString()}</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
                         </div>`;
                     },
-                    visible: false,
-                    width: 110
+                    visible: false
                 },
                 {
                     title: "Impressions",
                     field: "impressions",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
                     visible: false,
-                    width: 100,
-                    formatter: function(cell) {
-                        const v = parseInt(cell.getValue(), 10) || 0;
-                        return v.toLocaleString();
-                    }
-                },
-                {
-                    title: "Add to cart",
-                    field: "add_to_cart_number",
-                    hozAlign: "right",
-                    sorter: "number",
-                    visible: false,
-                    width: 100,
                     formatter: function(cell) {
                         const v = parseInt(cell.getValue(), 10) || 0;
                         return v.toLocaleString();
@@ -3492,23 +3617,22 @@
                 {
                     title: "OUT ROAS",
                     field: "out_roas_l30",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // Use net_roas as OUT ROAS if out_roas_l30 is not available
                         const value = parseFloat(cell.getValue() || rowData.net_roas || 0);
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                             <span>${value.toFixed(2)}</span>
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="OUT ROAS"></i>
                         </div>`;
                     },
-                    visible: false,
-                    width: 100
+                    visible: false
                 },
                 {
                     title: "IN ROAS",
                     field: "in_roas_l30",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     editor: "number",
                     editorParams: {
                         min: 0,
@@ -3541,7 +3665,7 @@
                             }, 0);
                         }
                         
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                             <span>${value.toFixed(2)}</span>
                             <i class="fa-solid fa-info-circle toggle-in-roas-info" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="IN ROAS"></i>
                         </div>`;
@@ -3598,8 +3722,7 @@
                             }
                         });
                     },
-                    visible: false,
-                    width: 100
+                    visible: false
                 },
                 {
                     title: "Status",
@@ -3681,8 +3804,32 @@
                     },
                     visible: false
                 },
-                
+                {
+                    title: "Goods ID",
+                    field: "goods_id",
+                    hozAlign: "center",
+                    sorter: "string",
+                    minWidth: 70,
+                    accessorDownload: function(value, data) {
+                        const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
+                        // Leading tab forces Excel to treat as text (avoids scientific notation)
+                        return g ? ('\t' + g) : '';
+                    },
+                    formatter: function(cell) {
+                        const goodsId = (cell.getValue() || '').toString().trim();
+                        if (!goodsId) return '';
+                        return `${goodsId} <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id" data-goods-id="${goodsId}" title="Copy Goods ID" style="border:none;background:none;color:#6c757d;"><i class="fa fa-copy"></i></button>`;
+                    }
+                },
             ]
+        });
+
+        let temu2ResizeTimer = null;
+        window.addEventListener('resize', function() {
+            clearTimeout(temu2ResizeTimer);
+            temu2ResizeTimer = setTimeout(function() {
+                if (table) table.redraw(true);
+            }, 150);
         });
 
         function captureColumnVisibilityState() {
@@ -3709,7 +3856,7 @@
         }
 
         let l60ColumnsVisible = false;
-        const l60ColumnFields = ['ad_sold_l60', 'ad_sales_l60', 'l60_vs_l30'];
+        const l60ColumnFields = ['ad_sold_l60'];
         function toggleL60Columns(show) {
             if (!table) return;
             l60ColumnsVisible = show;
@@ -3726,6 +3873,14 @@
             applyFilters();
         });
 
+        /** True for ProductMaster PARENT rows (used by All Rows / Parents / SKUs filter). */
+        function isTemu2ParentRow(data) {
+            if (!data) return false;
+            if (data.is_parent === true || data.is_parent === 1 || data.is_parent === '1') return true;
+            const sku = String(data.sku || '').trim().toUpperCase();
+            return sku.indexOf('PARENT ') === 0 || sku === 'PARENT';
+        }
+
         // Apply filters — same structure as /ebay-tabulator-view, Temu field mapping
         function applyFilters() {
             if (isPlayNavigationActive) {
@@ -3733,6 +3888,7 @@
                 return;
             }
 
+            const parentFilter = $('#parent-filter').val() || 'all';
             const inventoryFilter = $('#inventory-filter').val();
             const tl30Filter = $('#tl30-filter').val();
             const growthSignFilter = $('#growth-sign-filter').val();
@@ -3748,10 +3904,23 @@
             const dilFilter = $('#dil-filter').val() || 'all';
             const skuSearch = ($('#sku-search').val() || '').trim();
             const parentSearch = ($('#parent-search').val() || '').trim();
+            // When showing All Rows / Parents, keep parent summary rows visible even if a data filter would drop them
+            const parentRowsBypassDataFilters = (parentFilter === 'all' || parentFilter === 'parents');
             adsReqFilter = 'all';
             adsRunningFilter = 'all';
 
             table.clearFilter(true);
+
+            // Row type: All Rows / Parents / SKUs (default All Rows — show parents with SKUs)
+            if (parentFilter === 'parents') {
+                table.addFilter(function(data) {
+                    return isTemu2ParentRow(data);
+                });
+            } else if (parentFilter === 'skus') {
+                table.addFilter(function(data) {
+                    return !isTemu2ParentRow(data);
+                });
+            }
 
             if (skuSearch) {
                 table.addFilter(function(data) {
@@ -3766,6 +3935,7 @@
 
             if (inventoryFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const inv = parseFloat(data.inventory) || 0;
                     if (inventoryFilter === 'more') return inv > 0;
                     if (inventoryFilter === 'zero') return inv === 0;
@@ -3775,6 +3945,7 @@
 
             if (tl30Filter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const l30 = parseInt(data.temu_l30, 10) || 0;
                     if (tl30Filter === 'more') return l30 > 0;
                     if (tl30Filter === 'zero') return l30 === 0;
@@ -3784,6 +3955,7 @@
 
             if (growthSignFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const l30 = parseFloat(data.temu_l30) || 0;
                     const l60 = parseFloat(data.temu_l60) || 0;
                     let growth = 0;
@@ -3799,6 +3971,7 @@
 
             if (nrlFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const nr = String(data.nr_req || 'REQ').toUpperCase();
                     const normalized = (nr === 'NR' || nr === 'NRL') ? 'NR' : nr;
                     return normalized === nrlFilter;
@@ -3807,6 +3980,7 @@
 
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const price = parseFloat(data.temu_price) || 0;
                     const gpft = price > 0
                         ? ((price * TEMU2_PCT - (parseFloat(data.lp) || 0) - (parseFloat(data.temu_ship) || 0)) / price) * 100
@@ -3823,6 +3997,7 @@
 
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const groi = parseFloat(data.roi_percent) || 0;
                     if (groiFilter === 'lt40') return groi < 40;
                     if (groiFilter === '40-75') return groi >= 40 && groi < 75;
@@ -3834,6 +4009,7 @@
 
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const cvrRounded = Math.round((parseFloat(data.cvr_percent) || 0) * 100) / 100;
                     if (cvrFilter === '0-0') return cvrRounded === 0;
                     if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
@@ -3847,6 +4023,7 @@
             if (cvrTrendFilter !== 'all') {
                 const cvrTrendTol = 0.1;
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
                     const cvr60 = parseFloat(data.cvr_60) || 0;
                     if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
@@ -3858,6 +4035,7 @@
 
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const dil = parseFloat(data.dil_percent) || 0;
                     if (dilFilter === 'red') return dil < 25;
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
@@ -3868,6 +4046,7 @@
 
             if (spriceFilter === 'blank') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const spriceVal = data.sprice;
                     const sprice = parseFloat(spriceVal);
                     return spriceVal == null || spriceVal === '' || isNaN(sprice) || sprice <= 0;
@@ -3876,6 +4055,7 @@
 
             if (spriceLmpFilter === 'red') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const sprice = parseFloat(data.sprice) || 0;
                     const lmp = parseFloat(data.lmp) || 0;
                     return sprice > 0 && lmp > 0 && sprice > lmp;
@@ -3884,6 +4064,7 @@
 
             if (prcLmpFilter === 'red') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     const price = parseFloat(data.temu_price) || 0;
                     const lmp = parseFloat(data.lmp) || 0;
                     return price > 0 && lmp > 0 && price > lmp;
@@ -3892,12 +4073,14 @@
 
             if (lmpFilter === 'red') {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data) && parentRowsBypassDataFilters) return true;
                     return (parseFloat(data.lmp) || 0) <= 0;
                 });
             }
 
             if (soldSpriceBlankFilterActive) {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data)) return false;
                     const temuL30 = parseInt(data.temu_l30, 10) || 0;
                     const inventory = parseInt(data.inventory, 10) || 0;
                     const spriceVal = data.sprice;
@@ -3908,16 +4091,19 @@
 
             if (zeroSoldFilterActive) {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data)) return false;
                     return (parseInt(data.temu_l30, 10) || 0) === 0 && (parseFloat(data.inventory) || 0) > 0;
                 });
             } else if (moreSoldFilterActive) {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data)) return false;
                     return (parseInt(data.temu_l30, 10) || 0) > 0 && (parseFloat(data.inventory) || 0) > 0;
                 });
             }
 
             if (missingLFilterActive || missingBadgeFilterActive) {
                 table.addFilter(function(data) {
+                    if (isTemu2ParentRow(data)) return false;
                     const inv = parseFloat(data.inventory) || 0;
                     const nrReq = String(data.nr_req || 'REQ').toUpperCase();
                     return data.missing === 'M' && inv > 0 && nrReq !== 'NR' && nrReq !== 'NRL';
@@ -3986,6 +4172,7 @@
             const seen = new Set();
             const out = [];
             fullDataset.forEach(row => {
+                if (isTemu2ParentRow(row)) return;
                 const key = getRowGroupKey(row);
                 if (key !== '|' && !seen.has(key)) {
                     seen.add(key);
@@ -4000,7 +4187,9 @@
             const parentRows = getParentRows();
             if (parentRows.length === 0) return;
             const currentGroupKey = parentRows[currentPlayParentIndex].parent;
-            const displayData = fullDataset.filter(row => getRowGroupKey(row) === currentGroupKey);
+            const displayData = fullDataset.filter(row =>
+                !isTemu2ParentRow(row) && getRowGroupKey(row) === currentGroupKey
+            );
             suppressDataLoadedHandler = true;
             table.clearSort();
             table.setData(displayData).then(() => {
@@ -4173,7 +4362,7 @@
             });
         });
 
-        $('#inventory-filter, #tl30-filter, #growth-sign-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
+        $('#parent-filter, #inventory-filter, #tl30-filter, #growth-sign-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #sprice-lmp-filter, #prc-lmp-filter, #lmp-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -4392,10 +4581,63 @@
         window.iconClicked = false;
 
         /*
-         * Column visibility — same as /ebay-tabulator-view:
-         * shared table channel_tabulator_column_settings via /tabulator-column-visibility
-         * channel = 'temu2_decrease'
+         * Column visibility — 4 groups (Basics / Pricing / Advertisement / Other)
+         * with group-header checkboxes to select/deselect an entire group.
+         * Persists via /tabulator-column-visibility (channel = 'temu2_decrease').
          */
+        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'other'];
+        const COL_VIS_CATEGORY_LABELS = {
+            basics: 'Basics',
+            pricing: 'Pricing',
+            advertisement: 'Advertisement',
+            other: 'Other'
+        };
+
+        function classifyTemu2Column(field, title) {
+            const f = String(field || '');
+            const t = String(title || field || '').replace(/<[^>]*>/g, '');
+            const fl = f.toLowerCase();
+            const tl = t.toLowerCase();
+            const blob = fl + ' ' + tl;
+
+            // Advertisement
+            if (
+                /^(spend|spend_l30|spend_l60|ad_sold_l30|ad_sold_l60|acos_ad|ad_clicks|impressions|out_roas_l30|in_roas_l30|net_roas|campaign_status|target|ads_percent)$/i.test(f) ||
+                /\b(spend|ad\s*sold|acos|ad\s*clicks|impressions|roas|campaign|target|ads\s*%)\b/i.test(tl)
+            ) {
+                return 'advertisement';
+            }
+
+            // Basics — identity / inventory / listing status (incl. Dil%)
+            if (
+                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|temu_l45|missing|MAP|nr_req|nrp|product_clicks)$/i.test(f) ||
+                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|map|nrl|req|views)\b/i.test(tl)
+            ) {
+                return 'basics';
+            }
+
+            // Pricing
+            if (
+                /^(cvr_percent|cvr_30|cvr_45|cvr_60|base_price|temu_price|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_minus_15|recommended_base_price|sprice|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship)$/i.test(f) ||
+                /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship)\b/i.test(tl)
+            ) {
+                return 'pricing';
+            }
+
+            return 'other';
+        }
+
+        function syncGroupHeaderCheckbox(groupEl) {
+            if (!groupEl) return;
+            const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+            const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+            if (!headerCb || !itemCbs.length) return;
+            let checked = 0;
+            itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+            headerCb.checked = checked === itemCbs.length;
+            headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+        }
+
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
             if (!menu) return;
@@ -4413,34 +4655,77 @@
                     const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
 
                     const showAllLi = document.createElement("li");
-                    showAllLi.innerHTML = '<a class="dropdown-item" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                    showAllLi.className = "col-vis-full";
+                    showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
                     menu.appendChild(showAllLi);
-                    const dividerLi = document.createElement("li");
-                    dividerLi.innerHTML = '<hr class="dropdown-divider my-1">';
-                    menu.appendChild(dividerLi);
+
+                    const groupsLi = document.createElement("li");
+                    groupsLi.className = "col-vis-full";
+                    const groupsWrap = document.createElement("div");
+                    groupsWrap.className = "col-vis-groups";
+
+                    const lists = {};
+                    const groupEls = {};
+                    COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                        const group = document.createElement("div");
+                        group.className = "col-vis-group";
+                        group.dataset.category = cat;
+
+                        const titleEl = document.createElement("label");
+                        titleEl.className = "col-vis-group-title";
+                        const groupCb = document.createElement("input");
+                        groupCb.type = "checkbox";
+                        groupCb.className = "col-vis-group-toggle";
+                        groupCb.dataset.group = cat;
+                        groupCb.title = "Select / deselect all in " + COL_VIS_CATEGORY_LABELS[cat];
+                        titleEl.appendChild(groupCb);
+                        titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                        group.appendChild(titleEl);
+
+                        const list = document.createElement("ul");
+                        list.className = "col-vis-group-list";
+                        list.dataset.category = cat;
+                        group.appendChild(list);
+                        groupsWrap.appendChild(group);
+                        lists[cat] = list;
+                        groupEls[cat] = group;
+                    });
 
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
                         if (!def.field || def.field === '_select') return;
                         if (alwaysHiddenColumns.indexOf(def.field) !== -1) return;
 
-                        const li = document.createElement("li");
-                        const label = document.createElement("label");
-                        label.style.display = "block";
-                        label.style.padding = "5px 10px";
-                        label.style.cursor = "pointer";
+                        const rawTitle = def.title || def.field;
+                        const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
+                        const cat = classifyTemu2Column(def.field, title);
 
+                        const li = document.createElement("li");
+                        li.className = "col-vis-item";
+                        li.dataset.field = def.field;
+                        li.dataset.group = cat;
+
+                        const label = document.createElement("label");
                         const checkbox = document.createElement("input");
                         checkbox.type = "checkbox";
                         checkbox.value = def.field;
+                        checkbox.className = "col-vis-field-toggle";
+                        checkbox.dataset.group = cat;
                         checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
-                        checkbox.style.marginRight = "8px";
 
                         label.appendChild(checkbox);
-                        label.appendChild(document.createTextNode(def.title || def.field));
+                        label.appendChild(document.createTextNode(title));
+                        label.title = title;
                         li.appendChild(label);
-                        menu.appendChild(li);
+                        lists[cat].appendChild(li);
                     });
+
+                    COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                        syncGroupHeaderCheckbox(groupEls[cat]);
+                    });
+
+                    groupsLi.appendChild(groupsWrap);
+                    menu.appendChild(groupsLi);
                 })
                 .catch(err => console.error('Error loading column visibility:', err));
         }
@@ -4468,7 +4753,7 @@
         }
 
         // Columns that should ALWAYS stay hidden, regardless of saved state.
-        var alwaysHiddenColumns = ['cvr_60', 'cvr_45', 'temu_l45'];
+        var alwaysHiddenColumns = ['cvr_60', 'cvr_45', 'temu_l45', 'profit'];
         function enforceAlwaysHiddenColumns() {
             alwaysHiddenColumns.forEach(function(col) {
                 try { table.hideColumn(col); } catch (e) {}
@@ -4553,22 +4838,47 @@
             var colMenu = document.getElementById("column-dropdown-menu");
             if (!colMenu) return;
             colMenu.addEventListener("change", function(e) {
-                if (e.target.type === 'checkbox') {
-                    const field = e.target.value;
-                    if (alwaysHiddenColumns.indexOf(field) !== -1) {
-                        e.target.checked = false;
-                        enforceAlwaysHiddenColumns();
-                        return;
-                    }
-                    const col = table.getColumn(field);
-                    if (!col) return;
-                    if (e.target.checked) {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
+                if (e.target.type !== 'checkbox') return;
+
+                // Group header: select / deselect entire group
+                if (e.target.classList.contains('col-vis-group-toggle')) {
+                    const group = e.target.dataset.group;
+                    const checked = e.target.checked;
+                    const groupEl = e.target.closest('.col-vis-group');
+                    const itemCbs = groupEl
+                        ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                        : colMenu.querySelectorAll('.col-vis-field-toggle[data-group="' + group + '"]');
+                    itemCbs.forEach(function(cb) {
+                        const field = cb.value;
+                        if (alwaysHiddenColumns.indexOf(field) !== -1) return;
+                        cb.checked = checked;
+                        const col = table.getColumn(field);
+                        if (!col) return;
+                        if (checked) col.show();
+                        else col.hide();
+                    });
+                    e.target.indeterminate = false;
+                    enforceAlwaysHiddenColumns();
                     saveColumnVisibilityToServer();
+                    return;
                 }
+
+                // Individual column checkbox
+                const field = e.target.value;
+                if (alwaysHiddenColumns.indexOf(field) !== -1) {
+                    e.target.checked = false;
+                    enforceAlwaysHiddenColumns();
+                    return;
+                }
+                const col = table.getColumn(field);
+                if (!col) return;
+                if (e.target.checked) {
+                    col.show();
+                } else {
+                    col.hide();
+                }
+                syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                saveColumnVisibilityToServer();
             });
             // "Show All" — same as /ebay-tabulator-view
             colMenu.addEventListener("click", function(e) {
@@ -4600,10 +4910,6 @@
             const cvr30Col = table.getColumn('cvr_30');
             if (cvr30Col) {
                 cvr30Col.updateDefinition({ title: isL7 ? 'CVR 7' : 'CVR 30' });
-            }
-            const l60VsL30Col = table.getColumn('l60_vs_l30');
-            if (l60VsL30Col) {
-                l60VsL30Col.updateDefinition({ title: isL7 ? 'L60 vs L7' : 'L60 vs L30' });
             }
             $('#temu-total-ad-sold-badge').attr('title', isL7 ? 'Total L7 Ad Sold' : 'Total L30 Ad Sold');
         }

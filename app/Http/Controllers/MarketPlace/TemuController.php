@@ -2983,10 +2983,12 @@ class TemuController extends Controller
                 ->orderBy("sku", "asc")
                 ->get();
 
-            // Filter out parent SKUs
-            $productMasters = $productMasters->filter(function ($item) {
-                return stripos($item->sku, 'PARENT') === false;
-            })->values();
+            // Temu 1: hide PARENT SKUs. Temu 2: keep them for All Rows / Parents / SKUs filter.
+            if (!$isTemu2Pricing) {
+                $productMasters = $productMasters->filter(function ($item) {
+                    return stripos($item->sku, 'PARENT') === false;
+                })->values();
+            }
 
             // 2. Get all SKUs from product master
             $skus = $productMasters->pluck("sku")
@@ -3730,9 +3732,12 @@ class TemuController extends Controller
                     $lmp_link = $temuLmpRow->lmp_link;
                 }
 
+                $isParentRow = stripos((string) $sku, 'PARENT') !== false;
+
                 return [
                     'sku' => $sku,
                     'parent' => $productMaster->parent ?? '',
+                    'is_parent' => $isParentRow,
                     'missing' => $missing,
                     'image_path' => $imagePath,
                     'product_name' => $item ? $item->product_name : '',
@@ -3819,6 +3824,76 @@ class TemuController extends Controller
                     'linked_lmp_skus' => $linkedLmpSkus,
                 ];
             });
+
+            // Temu 2: roll child INV / sales / views onto PARENT rows so they show with All Rows
+            if ($isTemu2Pricing) {
+                $normalizeParentKey = static function ($value): string {
+                    return strtoupper(trim((string) $value));
+                };
+
+                $childrenByParent = [];
+                foreach ($processedData as $row) {
+                    if (! empty($row['is_parent'])) {
+                        continue;
+                    }
+                    $pk = $normalizeParentKey($row['parent'] ?? '');
+                    if ($pk === '') {
+                        continue;
+                    }
+                    $childrenByParent[$pk][] = $row;
+                }
+
+                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey) {
+                    if (empty($row['is_parent'])) {
+                        return $row;
+                    }
+
+                    $pk = $normalizeParentKey($row['parent'] ?? '');
+                    if ($pk === '') {
+                        $pk = $normalizeParentKey(preg_replace('/^PARENT\s+/i', '', (string) ($row['sku'] ?? '')));
+                    }
+                    $children = $childrenByParent[$pk] ?? [];
+                    if ($children === []) {
+                        return $row;
+                    }
+
+                    $inv = 0.0;
+                    $ovl30 = 0.0;
+                    $temuL30 = 0;
+                    $temuL60 = 0;
+                    $views = 0;
+                    $spendL30 = 0.0;
+                    $spend = 0.0;
+                    $hasReq = false;
+                    foreach ($children as $c) {
+                        $inv += (float) ($c['inventory'] ?? 0);
+                        $ovl30 += (float) ($c['ovl30'] ?? 0);
+                        $temuL30 += (int) ($c['temu_l30'] ?? 0);
+                        $temuL60 += (int) ($c['temu_l60'] ?? 0);
+                        $views += (int) ($c['product_clicks'] ?? 0);
+                        $spendL30 += (float) ($c['spend_l30'] ?? 0);
+                        $spend += (float) ($c['spend'] ?? 0);
+                        $nr = strtoupper(trim((string) ($c['nr_req'] ?? 'REQ')));
+                        if ($nr !== 'NR' && $nr !== 'NRL') {
+                            $hasReq = true;
+                        }
+                    }
+
+                    $row['inventory'] = $inv;
+                    $row['ovl30'] = $ovl30;
+                    $row['temu_l30'] = $temuL30;
+                    $row['temu_l60'] = $temuL60;
+                    $row['product_clicks'] = $views;
+                    $row['spend_l30'] = round($spendL30, 2);
+                    $row['spend'] = round($spend, 2);
+                    $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
+                    $row['cvr_percent'] = $views > 0 ? round(($temuL30 / $views) * 100, 2) : 0;
+                    $row['cvr_30'] = $row['cvr_percent'];
+                    $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
+
+                    return $row;
+                })->values();
+            }
 
             // Auto-save daily summary in background (L30 only, Temu channel table only)
             if (!$isL7Period && !$isTemu2Pricing) {

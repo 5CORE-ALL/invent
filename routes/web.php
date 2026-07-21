@@ -182,6 +182,7 @@ use App\Http\Controllers\MarketPlace\Ebay2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay3ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\TikTokListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Temu2ListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\Temu2VariationVerifyController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -3875,7 +3876,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
 
-    // Amz Variation Verify
+    // Amazon Ads Variation Verification
     Route::get('/amz-variation-verify', [AmzVariationVerifyController::class, 'index'])->name('amz.variation.verify');
     Route::get('/amz-variation-verify/data', [AmzVariationVerifyController::class, 'data'])->name('amz.variation.verify.data');
     Route::post('/amz-variation-verify/pull-listings', [AmzVariationVerifyController::class, 'pullListings'])->name('amz.variation.verify.pull');
@@ -4264,6 +4265,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu2-listing-variation-verify', [Temu2ListingVariationVerifyController::class, 'index'])->name('temu2.listing.variation.verify');
     Route::get('/temu2-listing-variation-verify/data', [Temu2ListingVariationVerifyController::class, 'data'])->name('temu2.listing.variation.verify.data');
     Route::post('/temu2-listing-variation-verify/pull-listings', [Temu2ListingVariationVerifyController::class, 'pullListings'])->name('temu2.listing.variation.verify.pull');
+
+    // Temu 2 Ads Variation Verification
+    Route::get('/temu2-variation-verify', [Temu2VariationVerifyController::class, 'index'])->name('temu2.variation.verify');
+    Route::get('/temu2-variation-verify/data', [Temu2VariationVerifyController::class, 'data'])->name('temu2.variation.verify.data');
+    Route::post('/temu2-variation-verify/pull-listings', [Temu2VariationVerifyController::class, 'pullListings'])->name('temu2.variation.verify.pull');
 
     // Temu 2 Tabulator View (separate tables: temu2_daily_data, temu2_daily_data_l60)
     Route::get('/temu2-tabulator', [TemuController::class, 'temu2TabulatorView'])->name('temu2.tabulator');

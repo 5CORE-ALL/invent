@@ -3,36 +3,35 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Models\ADVMastersData;
-use App\Models\AmazonDatasheet;
-use App\Models\AmazonListingRaw;
-use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use App\Services\AmazonSpApiService;
+use App\Models\Temu2CampaignReport;
+use App\Models\Temu2Pricing;
+use App\Support\TemuGoodsIdHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-class AmzVariationVerifyController extends Controller
+class Temu2VariationVerifyController extends Controller
 {
     public function index()
     {
-        return view('market-places.amz_variation_verify');
+        return view('market-places.temu2_variation_verify');
     }
 
     /**
-     * Tabulator data for Amazon Ads Variation Verification.
-     * Listings: amazon_listings_raw / amazon_datsheets
-     * Ads KW/PT: amazon_sp_campaign_reports (L30 name match — same as Ad Running)
+     * Tabulator data for Temu 2 Ads Variation Verification.
+     * Listings: temu2_pricing
+     * Ads: temu2_campaign_reports (L30) — same goods_id → SKU → loose SKU match as Temu 2 Analytics
      *
      * Ads existing = in campaign AND inv >= 0
-     * Over = in campaign but NOT listed in active records
+     * Over = in campaign but NOT listed in temu2_pricing
      */
     public function data(Request $request)
     {
         $listedSkuSet = $this->buildListedSkuLookup();
         $adLookup = $this->buildAdCampaignLookupFromReports();
+        $goodsIdBySku = $this->buildGoodsIdBySkuLookup();
 
         $productMasters = ProductMaster::query()
             ->whereNull('deleted_at')
@@ -47,7 +46,7 @@ class AmzVariationVerifyController extends Controller
             $productMasters->pluck('sku')->filter()->unique()->values()->all()
         );
 
-        $childRows = $productMasters->map(function ($pm) use ($listedSkuSet, $adLookup, $shopifyBySku) {
+        $childRows = $productMasters->map(function ($pm) use ($listedSkuSet, $adLookup, $shopifyBySku, $goodsIdBySku) {
             $parent = trim((string) ($pm->parent ?? ''));
             $sku = trim((string) ($pm->sku ?? ''));
             $available = $this->isSkuListed($sku, $listedSkuSet);
@@ -56,11 +55,8 @@ class AmzVariationVerifyController extends Controller
             $inv = (float) ($shopifyBySku[$sku]->inv ?? 0);
             $invEligible = $inv >= 0;
 
-            $hasKw = $this->skuHasCampaignType($sku, $adLookup, 'kw');
-            $hasPt = $this->skuHasCampaignType($sku, $adLookup, 'pt');
-
-            $kwFields = $this->buildSiblingAdFields($hasKw, $invEligible, $available, $adLookup['empty']);
-            $ptFields = $this->buildSiblingAdFields($hasPt, $invEligible, $available, $adLookup['empty']);
+            $hasAd = $this->skuHasCampaign($sku, $adLookup, $goodsIdBySku);
+            $adFields = $this->buildSiblingAdFields($hasAd, $invEligible, $available, $adLookup['empty']);
 
             return array_merge([
                 'parent' => $parent,
@@ -73,7 +69,7 @@ class AmzVariationVerifyController extends Controller
                 'child_sku_available_label' => $available === null ? '—' : ($available ? 'Yes' : 'No'),
                 'match_status' => $match,
                 'match_label' => $match === null ? '—' : ($match ? 'match' : 'mismatch'),
-            ], $this->prefixAdFields('kw', $kwFields), $this->prefixAdFields('pt', $ptFields));
+            ], $this->prefixAdFields('ad', $adFields));
         })->values()->all();
 
         $parentGroups = [];
@@ -90,8 +86,7 @@ class AmzVariationVerifyController extends Controller
             $knownCount = count($known);
             $parentMatch = $knownCount > 0 ? ($availableCount === $requiredCount) : null;
 
-            $kwRollup = $this->rollupSiblingAds($children, 'kw', $adLookup['empty']);
-            $ptRollup = $this->rollupSiblingAds($children, 'pt', $adLookup['empty']);
+            $adRollup = $this->rollupSiblingAds($children, 'ad', $adLookup['empty']);
 
             $formattedData[] = array_merge([
                 'parent' => $parentKey,
@@ -110,17 +105,17 @@ class AmzVariationVerifyController extends Controller
                 'match_label' => $parentMatch === null
                     ? '—'
                     : ($parentMatch ? 'match' : (($requiredCount - $availableCount) . ' missing')),
-            ], $this->prefixAdFields('kw', $kwRollup), $this->prefixAdFields('pt', $ptRollup));
+            ], $this->prefixAdFields('ad', $adRollup));
         }
 
-        $lastPulledAt = AmazonListingRaw::query()->max('report_imported_at');
-        $listingsCount = AmazonListingRaw::query()->count();
+        $listingsCount = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+        $lastPulledAt = Temu2Pricing::query()->max('updated_at');
         $campaignCount = $adLookup['campaign_count'] ?? 0;
 
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) $listingsCount,
+                'listings_count' => $listingsCount,
                 'last_pulled_at' => $lastPulledAt,
                 'has_listings_cache' => $listingsCount > 0,
                 'required_parent_count' => count($parentGroups),
@@ -129,39 +124,37 @@ class AmzVariationVerifyController extends Controller
                 'ads_count' => $campaignCount,
                 'ads_pulled_at' => null,
                 'has_ads_cache' => ! $adLookup['empty'],
-                'ads_source' => 'amazon_sp_campaign_reports (L30 KW/PT)',
+                'ads_source' => 'temu2_campaign_reports (L30)',
             ],
         ]);
     }
 
     /**
-     * Pull Amazon merchant listings (GET_MERCHANT_LISTINGS_ALL_DATA) via SP-API.
+     * Temu 2 listings come from the temu2_pricing Excel upload (no API pull).
      */
     public function pullListings(Request $request)
     {
         try {
-            set_time_limit(3600);
+            $count = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $lastPulledAt = Temu2Pricing::query()->max('updated_at');
 
-            $service = new AmazonSpApiService();
-            $result = $service->fetchAndStoreListingsReport();
-
-            if (!($result['success'] ?? false)) {
+            if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => $result['message'] ?? 'Failed to pull Amazon listings.',
+                    'message' => 'No Temu 2 listings in temu2_pricing. Upload pricing on Temu 2 Analytics first.',
+                    'count' => 0,
+                    'last_pulled_at' => $lastPulledAt,
                 ], 422);
             }
 
-            $count = (int) ($result['count'] ?? 0);
-
             return response()->json([
                 'status' => 200,
-                'message' => "Pulled {$count} Amazon listings. Parent Vs Listed SKU updated.",
+                'message' => "Temu 2 listings ready. {$count} SKUs in temu2_pricing.",
                 'count' => $count,
-                'last_pulled_at' => AmazonListingRaw::query()->max('report_imported_at'),
+                'last_pulled_at' => $lastPulledAt,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Amazon Ads Variation Verification: pull listings failed', [
+            Log::error('Temu 2 Ads Variation Verification: pull listings failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -173,35 +166,42 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
+     * Same SKU normalize as Temu 2 Analytics (PCS folding + space collapse).
+     */
+    private function normalizeSku(?string $sku): string
+    {
+        $sku = strtoupper(trim((string) $sku));
+        $sku = str_replace("\xC2\xA0", ' ', $sku);
+        $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+        $sku = preg_replace('/\s+/', ' ', $sku);
+
+        return $sku;
+    }
+
+    /**
+     * Alphanumeric-only SKU (Temu 2 Analytics loose fallback).
+     */
+    private function normalizeSkuLoose(?string $sku): string
+    {
+        $s = strtoupper(trim((string) $sku));
+        if ($s === '') {
+            return '';
+        }
+
+        return preg_replace('/[^A-Z0-9]/', '', $s);
+    }
+
+    /**
      * @return array{set: array<string, true>, empty: bool}
      */
     private function buildListedSkuLookup(): array
     {
         $set = [];
 
-        $listings = AmazonListingRaw::query()
-            ->whereNotNull('seller_sku')
-            ->where('seller_sku', '!=', '')
-            ->pluck('seller_sku');
-
-        foreach ($listings as $sellerSku) {
-            $norm = AmazonDatasheet::normalizeSkuForLookup($sellerSku);
+        foreach (Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            $norm = $this->normalizeSku($sku);
             if ($norm !== '') {
                 $set[$norm] = true;
-            }
-        }
-
-        if (empty($set)) {
-            $datasheetSkus = AmazonDatasheet::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->pluck('sku');
-
-            foreach ($datasheetSkus as $sku) {
-                $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-                if ($norm !== '') {
-                    $set[$norm] = true;
-                }
             }
         }
 
@@ -212,11 +212,42 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
+     * Normalized SKU → normalized goods_id from temu2_pricing.
+     *
+     * @return array<string, string>
+     */
+    private function buildGoodsIdBySkuLookup(): array
+    {
+        $map = [];
+
+        if (! Schema::hasTable('temu2_pricing')) {
+            return $map;
+        }
+
+        Temu2Pricing::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'goods_id'])
+            ->each(function ($row) use (&$map) {
+                $norm = $this->normalizeSku($row->sku);
+                $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                if ($norm !== '' && $gid !== null && $gid !== '') {
+                    $map[$norm] = $gid;
+                }
+            });
+
+        return $map;
+    }
+
+    /**
+     * Build L30 campaign presence indexes (goods_id / SKU / loose SKU).
+     *
      * @return array{
      *   empty: bool,
      *   campaign_count: int,
-     *   kw_keys: array<string, true>,
-     *   pt_keys: array<string, true>
+     *   by_goods_id: array<string, true>,
+     *   by_sku: array<string, true>,
+     *   by_sku_loose: array<string, true>
      * }
      */
     private function buildAdCampaignLookupFromReports(): array
@@ -224,99 +255,76 @@ class AmzVariationVerifyController extends Controller
         $empty = [
             'empty' => true,
             'campaign_count' => 0,
-            'kw_keys' => [],
-            'pt_keys' => [],
+            'by_goods_id' => [],
+            'by_sku' => [],
+            'by_sku_loose' => [],
         ];
 
-        if (! Schema::hasTable('amazon_sp_campaign_reports')) {
+        if (! Schema::hasTable('temu2_campaign_reports')) {
             return $empty;
         }
 
-        $campaigns = AmazonSpCampaignReport::query()
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->whereNotNull('campaignName')
-            ->where('campaignName', '!=', '')
-            ->get(['campaignName', 'campaignStatus']);
+        $rows = Temu2CampaignReport::query()
+            ->where('report_range', 'L30')
+            ->get(['goods_id', 'sku']);
 
-        if ($campaigns->isEmpty()) {
+        if ($rows->isEmpty()) {
             return $empty;
         }
 
-        $kwCampaigns = $campaigns->filter(function ($c) {
-            $cn = strtoupper(trim((string) ($c->campaignName ?? '')));
+        $byGoodsId = [];
+        $bySku = [];
+        $bySkuLoose = [];
 
-            return ! str_ends_with($cn, ' PT') && ! str_ends_with($cn, ' PT.');
-        })->values();
-
-        $ptCampaigns = $campaigns->filter(function ($c) {
-            $cn = strtoupper(trim((string) ($c->campaignName ?? '')));
-
-            return str_ends_with($cn, ' PT') || str_ends_with($cn, ' PT.');
-        })->values();
-
-        $pmRows = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->whereNotNull('parent')
-            ->where('parent', '!=', '')
-            ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
-            ->get(['parent', 'sku']);
-
-        $kwKeys = [];
-        $ptKeys = [];
-
-        foreach ($pmRows as $pm) {
-            $parent = trim((string) $pm->parent);
-            $sku = trim((string) $pm->sku);
-            $nameKey = strtoupper(trim(rtrim($sku, '.')));
-            $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-
-            $hasKw = ADVMastersData::matchKwCampaign($kwCampaigns, $sku, $parent, false) !== null;
-            $hasPt = ADVMastersData::matchPtCampaign($ptCampaigns, $sku, $parent, false, false) !== null;
-
-            if ($hasKw) {
-                if ($norm !== '') {
-                    $kwKeys[$norm] = true;
-                }
-                if ($nameKey !== '') {
-                    $kwKeys[$nameKey] = true;
-                }
+        foreach ($rows as $row) {
+            $gid = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+            if ($gid !== null && $gid !== '') {
+                $byGoodsId[$gid] = true;
             }
-            if ($hasPt) {
-                if ($norm !== '') {
-                    $ptKeys[$norm] = true;
-                }
-                if ($nameKey !== '') {
-                    $ptKeys[$nameKey] = true;
-                }
+
+            $skuNorm = $this->normalizeSku($row->sku ?? '');
+            if ($skuNorm !== '') {
+                $bySku[$skuNorm] = true;
+            }
+
+            $skuLoose = $this->normalizeSkuLoose($row->sku ?? '');
+            if ($skuLoose !== '') {
+                $bySkuLoose[$skuLoose] = true;
             }
         }
 
         return [
             'empty' => false,
-            'campaign_count' => $campaigns->count(),
-            'kw_keys' => $kwKeys,
-            'pt_keys' => $ptKeys,
+            'campaign_count' => $rows->count(),
+            'by_goods_id' => $byGoodsId,
+            'by_sku' => $bySku,
+            'by_sku_loose' => $bySkuLoose,
         ];
     }
 
     /**
-     * @param  array{empty: bool, kw_keys: array<string, true>, pt_keys: array<string, true>}  $lookup
+     * Same match chain as Temu 2 Analytics: goods_id → strict SKU → loose SKU.
+     *
+     * @param  array{empty: bool, by_goods_id: array<string, true>, by_sku: array<string, true>, by_sku_loose: array<string, true>}  $lookup
+     * @param  array<string, string>  $goodsIdBySku
      */
-    private function skuHasCampaignType(string $sku, array $lookup, string $type): ?bool
+    private function skuHasCampaign(string $sku, array $lookup, array $goodsIdBySku): ?bool
     {
         if ($lookup['empty']) {
             return null;
         }
 
-        $keys = $type === 'pt' ? ($lookup['pt_keys'] ?? []) : ($lookup['kw_keys'] ?? []);
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-        $nameKey = strtoupper(trim(rtrim($sku, '.')));
+        $norm = $this->normalizeSku($sku);
+        $loose = $this->normalizeSkuLoose($sku);
+        $goodsIdKey = $norm !== '' ? ($goodsIdBySku[$norm] ?? null) : null;
 
-        if ($norm !== '' && isset($keys[$norm])) {
+        if ($goodsIdKey !== null && isset($lookup['by_goods_id'][$goodsIdKey])) {
             return true;
         }
-        if ($nameKey !== '' && isset($keys[$nameKey])) {
+        if ($norm !== '' && isset($lookup['by_sku'][$norm])) {
+            return true;
+        }
+        if ($loose !== '' && isset($lookup['by_sku_loose'][$loose])) {
             return true;
         }
 
@@ -324,8 +332,6 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
-     * Child-level KW/PT status fields.
-     *
      * @return array{status: ?string, label: string, existing: bool, missing: bool, over: bool}
      */
     private function buildSiblingAdFields(?bool $inCampaign, bool $invEligible, ?bool $available, bool $adsEmpty): array
@@ -340,13 +346,8 @@ class AmzVariationVerifyController extends Controller
             ];
         }
 
-        // Over: in campaign but not available in active listed records
         $over = $inCampaign === true && $available === false;
-
-        // Ads existing: in campaign AND inv >= 0
         $existing = $inCampaign === true && $invEligible;
-
-        // Missing: eligible inv but not in campaign
         $missing = $invEligible && $inCampaign === false;
 
         if ($over) {
@@ -373,8 +374,6 @@ class AmzVariationVerifyController extends Controller
     }
 
     /**
-     * Parent rollup for KW or PT siblings.
-     *
      * @param  array<int, array>  $children
      * @return array{status: ?string, label: string, existing: int, missing: int, over: int, required: int}
      */
@@ -442,7 +441,6 @@ class AmzVariationVerifyController extends Controller
         foreach ($fields as $key => $value) {
             $out[$type . '_' . $key] = $value;
         }
-        // Convenience aliases used by the blade
         $out[$type . '_ad_status'] = $fields['status'] ?? null;
         $out[$type . '_ad_label'] = $fields['label'] ?? '—';
 
@@ -458,7 +456,7 @@ class AmzVariationVerifyController extends Controller
             return null;
         }
 
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+        $norm = $this->normalizeSku($sku);
         if ($norm === '') {
             return false;
         }

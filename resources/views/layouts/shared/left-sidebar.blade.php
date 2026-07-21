@@ -1140,7 +1140,7 @@
                                         </a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('amz.variation.verify') }}">Amz Variation Verify</a>
+                                        <a href="{{ route('amz.variation.verify') }}">Amazon Ads Variation Verification</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('amz.listing.variation.verify') }}">Amz Listing Variation Verify</a>
@@ -1658,7 +1658,7 @@
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarTemu2Analytics" aria-expanded="false"
                                 aria-controls="sidebarTemu2Analytics">
-                                <span> Temu 2 Analytics </span>
+                                <span> Temu 2 </span>
                                 <span class="menu-arrow"></span>
                             </a>
                             <div class="collapse" id="sidebarTemu2Analytics">
@@ -1668,6 +1668,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('temu2.variation.verify') }}">Temu 2 Ads Variation Verification</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('temu2.listing.variation.verify') }}">Temu 2 Listing Variation Verify</a>
