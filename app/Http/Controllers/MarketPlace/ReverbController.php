@@ -33,9 +33,12 @@ class ReverbController extends Controller
 {
     protected $apiController;
 
-    public function __construct(ApiController $apiController)
+    protected LmpSkuGroupService $lmpSkuGroupService;
+
+    public function __construct(ApiController $apiController, LmpSkuGroupService $lmpSkuGroupService)
     {
         $this->apiController = $apiController;
+        $this->lmpSkuGroupService = $lmpSkuGroupService;
     }
     public function reverbView(Request $request)
     {
@@ -821,6 +824,21 @@ class ReverbController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck("sku")->toArray();
 
+        // Sku Link LMP groups (shared lmp_sku_links — same as Amazon / eBay tabulators)
+        try {
+            $this->lmpSkuGroupService->prepareForSkus($skus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepareForSkus failed on reverb pricing: '.$e->getMessage());
+        }
+
+        $lmpDetailsLookup = collect();
+        try {
+            $lmpLookups = ReverbSkuCompetitor::buildGroupedLookup('reverb');
+            $lmpDetailsLookup = $lmpLookups['details'];
+        } catch (\Throwable $e) {
+            Log::warning('Could not fetch LMP data from reverb_sku_competitors: '.$e->getMessage());
+        }
+
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::mapByProductSkus($skus);
 
@@ -1080,6 +1098,49 @@ class ReverbController extends Controller
             $processedItem["reverb_daily_qty"] = $rd ? (int) $rd->rd_qty : 0;
             $processedItem["reverb_daily_qty_x_subtotal"] = $rd ? round((float) $rd->rd_qty_x_subtotal, 2) : 0;
             $processedItem["reverb_daily_qty_x_amount"] = $rd ? round((float) $rd->rd_qty_x_amount, 2) : 0;
+
+            // LMP — lowest total_price across Sku Link LMP group (same pattern as Amazon tabulator)
+            $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $sku);
+            $processedItem['linked_lmp_skus'] = $linkedLmpSkus;
+
+            $allLmpEntries = collect();
+            foreach ($linkedLmpSkus as $linkedSku) {
+                foreach (ReverbSkuCompetitor::resolveLookupKeys((string) $linkedSku) as $lookupKey) {
+                    $entries = $lmpDetailsLookup->get($lookupKey);
+                    if ($entries instanceof \Illuminate\Support\Collection && $entries->isNotEmpty()) {
+                        $allLmpEntries = $allLmpEntries->merge($entries);
+                    }
+                }
+            }
+            $allLmpEntries = ReverbSkuCompetitor::dedupeByItemId($allLmpEntries)
+                ->filter(fn ($entry) => (float) ($entry->total_price ?? 0) > 0)
+                ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
+                ->values();
+            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored)) ?: $allLmpEntries->first();
+
+            $processedItem['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
+                ? floatval($lowestLmp->total_price)
+                : null;
+            $processedItem['lmp_link'] = $lowestLmp->product_link ?? null;
+            $processedItem['lmp_item_id'] = $lowestLmp->item_id ?? null;
+            $processedItem['lmp_title'] = $lowestLmp->product_title ?? null;
+            $processedItem['lmp_entries'] = $allLmpEntries
+                ->map(function ($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'item_id' => $entry->item_id,
+                        'price' => floatval($entry->price ?? 0),
+                        'shipping_cost' => floatval($entry->shipping_cost ?? 0),
+                        'total_price' => floatval($entry->total_price ?? 0),
+                        'ignored' => (bool) ($entry->ignored ?? false),
+                        'link' => $entry->product_link,
+                        'title' => $entry->product_title,
+                        'image' => $entry->image ?? null,
+                    ];
+                })
+                ->values()
+                ->toArray();
+            $processedItem['lmp_entries_total'] = $allLmpEntries->count();
 
             $processedData[] = $processedItem;
         }
@@ -1966,5 +2027,42 @@ class ReverbController extends Controller
             Log::error('Error deleting Reverb LMP', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to delete LMP: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function linkedLmpSkusForProduct(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $group = $this->lmpSkuGroupService->groupContaining($sku);
+
+        return $this->normalizeLinkedSkuGroup($group !== [] ? $group : [$sku]);
+    }
+
+    /**
+     * @param  list<string>  $group
+     * @return list<string>
+     */
+    private function normalizeLinkedSkuGroup(array $group): array
+    {
+        $seen = [];
+        $normalized = [];
+
+        foreach ($group as $memberSku) {
+            $display = trim((string) $memberSku);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $normalized[] = $display;
+        }
+
+        return $normalized;
     }
 }

@@ -160,6 +160,40 @@
             color: #1e2125;
             background-color: #e9ecef;
         }
+
+        /* Sku Link LMP badges (same as amazon-tabulator-view) */
+        .linked-sku-badge-wrap .sku-link-lmp-remove {
+            font-size: 0.55rem;
+            margin-left: 4px;
+            opacity: 0.7;
+        }
+        .linked-sku-badge-wrap .sku-link-lmp-remove:hover {
+            opacity: 1;
+        }
+        .sku-link-lmp-suggestion-item {
+            cursor: pointer;
+        }
+        .sku-link-lmp-suggestion-item .form-check-input {
+            margin-top: 0.2rem;
+        }
+        .sku-link-lmp-selected-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #e7f1ff;
+            border: 1px solid #b6d4fe;
+            border-radius: 999px;
+            padding: 2px 8px;
+            margin: 0 4px 4px 0;
+            font-size: 12px;
+        }
+        .sku-link-lmp-selected-chip button {
+            border: 0;
+            background: transparent;
+            line-height: 1;
+            padding: 0 2px;
+            cursor: pointer;
+        }
     </style>
 @endsection
 
@@ -403,6 +437,103 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="reverbSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LMP Competitors Modal (same pattern as ebay/amazon tabulator) -->
+    <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> Reverb Competitors for SKU: <span id="lmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0"><i class="fa fa-plus-circle"></i> Add New Competitor</h6>
+                        </div>
+                        <div class="card-body">
+                            <form id="addCompetitorForm">
+                                <input type="hidden" id="addCompSku" name="sku">
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Reverb Item ID *</label>
+                                        <input type="text" class="form-control" id="addCompItemId" name="item_id"
+                                            required placeholder="e.g., 67894128">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Price *</label>
+                                        <input type="number" class="form-control" id="addCompPrice" name="price"
+                                            step="0.01" min="0" required placeholder="0.00">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Shipping</label>
+                                        <input type="number" class="form-control" id="addCompShipping"
+                                            name="shipping_cost" step="0.01" min="0" placeholder="0.00">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Product Link</label>
+                                        <input type="url" class="form-control" id="addCompLink" name="product_link"
+                                            placeholder="https://reverb.com/item/...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="submit" class="btn btn-success w-100">
+                                            <i class="fa fa-plus"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-12">
+                                        <label class="form-label">Product Title (optional)</label>
+                                        <input type="text" class="form-control" id="addCompTitle"
+                                            name="product_title" placeholder="Product title">
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div id="lmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sku Link LMP Modal -->
+    <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="skuLinkLmpModalLabel">Sku Link LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Link one or more SKUs to <strong id="sku-link-lmp-source"></strong>. All linked SKUs will share LMP competitors.</p>
+                    <label for="sku-link-lmp-input" class="form-label mb-1">Search SKU to link</label>
+                    <input type="text" id="sku-link-lmp-input" class="form-control" placeholder="Search or enter SKU..." autocomplete="off">
+                    <div id="sku-link-lmp-suggestions" class="list-group mt-2 d-none" style="max-height: 220px; overflow-y: auto;"></div>
+                    <div id="sku-link-lmp-selected-wrap" class="mt-2 d-none">
+                        <div class="small text-muted mb-1">Selected to link (<span id="sku-link-lmp-selected-count">0</span>):</div>
+                        <div id="sku-link-lmp-selected-skus" class="d-flex flex-wrap"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
+                        <i class="mdi mdi-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -1220,6 +1351,514 @@
             });
         }
 
+        // ========== LMP + Sku Link LMP (same as amazon/ebay tabulator) ==========
+        let currentLmpData = { sku: null, competitors: [], lowestPrice: null, linkedLmpSkus: [] };
+        const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
+        const linkedSkuBulkLinkUrl = @json(route('sku.link.lmp.linked-skus.bulk-link'));
+        const linkedSkuRemoveUrl = @json(route('sku.link.lmp.linked-skus.remove'));
+        const filteredSkusUrl = @json(route('sku.link.lmp.filtered-skus'));
+        const skuLinkLmpCsrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        let linkedSkuModal = null;
+        let linkedSkuModalRow = null;
+        let linkedSkuModalSelectedSkus = new Set();
+        let linkedSkuSuggestionTimer = null;
+        let linkedSkuSuggestionRequestId = 0;
+
+        function escAttr(text) {
+            return String(text == null ? '' : text)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text == null ? '' : String(text);
+            return div.innerHTML;
+        }
+
+        function escapeHtmlAttr(text) {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+
+        function rowSkuForLinkLmp(rowData) {
+            return String(rowData?.['(Child) sku'] || rowData?.sku || '').trim();
+        }
+
+        function linkedLmpSkuFormatter(cell) {
+            const row = cell.getRow().getData();
+            const rowSku = rowSkuForLinkLmp(row);
+            let skus = row.linked_lmp_skus || [];
+            if (typeof skus === 'string') {
+                try { skus = JSON.parse(skus) || []; } catch (e) { skus = []; }
+            }
+            if (!Array.isArray(skus)) skus = [];
+            if (!skus.length && rowSku) skus = [rowSku];
+
+            const seen = new Set();
+            skus = skus.filter(function (sku) {
+                const norm = String(sku || '').trim().toUpperCase();
+                if (!norm || seen.has(norm)) return false;
+                seen.add(norm);
+                return true;
+            });
+
+            const badges = skus.length
+                ? skus.map(function (sku) {
+                    const skuText = String(sku || '').trim();
+                    const isSelf = skuText.toUpperCase() === rowSku.toUpperCase();
+                    const removeBtn = isSelf
+                        ? ''
+                        : `<button type="button" class="btn-close sku-link-lmp-remove"
+                            data-linked-sku="${escapeHtmlAttr(skuText)}" aria-label="Remove link"></button>`;
+                    return `<span class="linked-sku-badge-wrap badge bg-info-subtle text-dark border me-1 mb-1">
+                        <span class="linked-sku-badge">${escapeHtml(skuText)}</span>${removeBtn}
+                    </span>`;
+                }).join('')
+                : '<span class="text-muted fst-italic">No SKUs</span>';
+
+            return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+        }
+
+        function linkedLmpSkuAddFormatter(cell) {
+            const row = cell.getRow().getData();
+            const rowSku = rowSkuForLinkLmp(row);
+            if (!rowSku) return '';
+            return `<div class="d-flex align-items-center justify-content-center py-1">
+                <button type="button" class="btn btn-sm btn-outline-primary sku-link-lmp-add-btn"
+                    title="Link another SKU" style="padding:2px 8px;" data-sku="${escapeHtmlAttr(rowSku)}">
+                    <i class="mdi mdi-plus"></i> +
+                </button>
+            </div>`;
+        }
+
+        function applyAffectedLinkedSkuRows(affected) {
+            if (!table || !Array.isArray(affected)) return;
+            const bySku = {};
+            affected.forEach(function (item) {
+                if (item?.sku) bySku[item.sku] = item.linked_lmp_skus || [];
+            });
+            table.getRows().forEach(function (row) {
+                const data = row.getData();
+                const sku = rowSkuForLinkLmp(data);
+                if (Object.prototype.hasOwnProperty.call(bySku, sku)) {
+                    row.update({ linked_lmp_skus: bySku[sku] });
+                }
+            });
+            table.replaceData();
+        }
+
+        function removeLinkedSkuFromRow(rowData, linkedSku) {
+            const sku = rowSkuForLinkLmp(rowData);
+            const target = String(linkedSku || '').trim();
+            if (!sku || !target) return;
+            if (!confirm(`Remove LMP link between "${sku}" and "${target}"?`)) return;
+
+            fetch(linkedSkuRemoveUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': skuLinkLmpCsrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ sku: sku, linked_sku: target }),
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not remove linked SKU.');
+                applyAffectedLinkedSkuRows(response.affected);
+            })
+            .catch(function (err) {
+                alert(err.message || 'Could not remove linked SKU.');
+            });
+        }
+
+        function updateLinkedSkuSelectedSummary() {
+            const wrap = document.getElementById('sku-link-lmp-selected-wrap');
+            const listEl = document.getElementById('sku-link-lmp-selected-skus');
+            const countEl = document.getElementById('sku-link-lmp-selected-count');
+            const saveLabel = document.getElementById('sku-link-lmp-save-btn-label');
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            if (countEl) countEl.textContent = String(selected.length);
+            if (saveLabel) {
+                saveLabel.textContent = selected.length > 1 ? ('Link ' + selected.length + ' SKUs') : 'Link SKU(s)';
+            }
+            if (!wrap || !listEl) return;
+            if (!selected.length) {
+                wrap.classList.add('d-none');
+                listEl.innerHTML = '';
+                return;
+            }
+            wrap.classList.remove('d-none');
+            listEl.innerHTML = selected.map(function (sku) {
+                return `<span class="sku-link-lmp-selected-chip">
+                    ${escapeHtml(sku)}
+                    <button type="button" class="sku-link-lmp-selected-remove" data-sku="${escapeHtmlAttr(sku)}" title="Remove">&times;</button>
+                </span>`;
+            }).join('');
+        }
+
+        function renderLinkedSkuSuggestions(term) {
+            const wrap = document.getElementById('sku-link-lmp-suggestions');
+            if (!wrap) return;
+            const query = String(term || '').trim();
+            if (!query) {
+                wrap.classList.add('d-none');
+                wrap.innerHTML = '';
+                return;
+            }
+            clearTimeout(linkedSkuSuggestionTimer);
+            linkedSkuSuggestionTimer = setTimeout(function () {
+                const requestId = ++linkedSkuSuggestionRequestId;
+                fetch(`${filteredSkusUrl}?sku=${encodeURIComponent(query)}`, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (response) {
+                    if (requestId !== linkedSkuSuggestionRequestId) return;
+                    if (!response.success) throw new Error(response.message || 'Could not search SKUs.');
+                    const currentSku = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+                    const existing = new Set(
+                        (Array.isArray(linkedSkuModalRow?.linked_lmp_skus) ? linkedSkuModalRow.linked_lmp_skus : [])
+                            .map(function (sku) { return String(sku || '').trim().toUpperCase(); })
+                    );
+                    const matches = (Array.isArray(response.skus) ? response.skus : [])
+                        .map(function (sku) { return String(sku || '').trim(); })
+                        .filter(function (sku) {
+                            const norm = sku.toUpperCase();
+                            return sku && norm !== currentSku && !existing.has(norm);
+                        })
+                        .slice(0, 12);
+                    if (!matches.length) {
+                        wrap.classList.add('d-none');
+                        wrap.innerHTML = '';
+                        return;
+                    }
+                    wrap.classList.remove('d-none');
+                    wrap.innerHTML = matches.map(function (sku) {
+                        const checked = linkedSkuModalSelectedSkus.has(sku);
+                        return `<label class="list-group-item list-group-item-action py-2 sku-link-lmp-suggestion-item d-flex align-items-center gap-2 mb-0">
+                            <input type="checkbox" class="form-check-input sku-link-lmp-suggestion-cb"
+                                value="${escapeHtmlAttr(sku)}" ${checked ? 'checked' : ''}>
+                            <span class="flex-grow-1">${escapeHtml(sku)}</span>
+                        </label>`;
+                    }).join('');
+                })
+                .catch(function () {
+                    if (requestId !== linkedSkuSuggestionRequestId) return;
+                    wrap.classList.add('d-none');
+                    wrap.innerHTML = '';
+                });
+            }, 200);
+        }
+
+        function getLinkedSkuModalSelections() {
+            const selected = Array.from(linkedSkuModalSelectedSkus);
+            const inputVal = String(document.getElementById('sku-link-lmp-input')?.value || '').trim();
+            const sourceNorm = rowSkuForLinkLmp(linkedSkuModalRow).toUpperCase();
+            if (inputVal && inputVal.toUpperCase() !== sourceNorm) {
+                const already = selected.some(function (sku) { return sku.toUpperCase() === inputVal.toUpperCase(); });
+                if (!already) selected.push(inputVal);
+            }
+            return selected;
+        }
+
+        function openLinkedSkuModal(rowData) {
+            if (!linkedSkuModal || !rowSkuForLinkLmp(rowData)) return;
+            linkedSkuModalRow = rowData;
+            linkedSkuModalSelectedSkus = new Set();
+            document.getElementById('sku-link-lmp-source').textContent = rowSkuForLinkLmp(rowData);
+            const input = document.getElementById('sku-link-lmp-input');
+            input.value = '';
+            renderLinkedSkuSuggestions('');
+            updateLinkedSkuSelectedSummary();
+            linkedSkuModal.show();
+            setTimeout(function () { input?.focus(); }, 200);
+        }
+
+        function saveLinkedSkuFromModal() {
+            const sourceSku = rowSkuForLinkLmp(linkedSkuModalRow);
+            if (!sourceSku) return;
+            const toLink = getLinkedSkuModalSelections();
+            if (!toLink.length) {
+                alert('Select one or more SKUs from the list, or enter a SKU to link.');
+                return;
+            }
+            const allSkus = [sourceSku].concat(toLink);
+            const uniqueSkus = [];
+            const seen = new Set();
+            allSkus.forEach(function (sku) {
+                const norm = String(sku || '').trim().toUpperCase();
+                if (!norm || seen.has(norm)) return;
+                seen.add(norm);
+                uniqueSkus.push(String(sku).trim());
+            });
+            if (uniqueSkus.length < 2) {
+                alert('Select at least one SKU to link.');
+                return;
+            }
+            const btn = document.getElementById('sku-link-lmp-save-btn');
+            const original = btn?.innerHTML || '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...';
+            }
+            const isBulk = uniqueSkus.length > 2 || toLink.length > 1;
+            const fetchPromise = isBulk
+                ? fetch(linkedSkuBulkLinkUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': skuLinkLmpCsrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ skus: uniqueSkus }),
+                })
+                : fetch(linkedSkuAddUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': skuLinkLmpCsrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ sku: sourceSku, linked_sku: toLink[0] }),
+                });
+
+            fetchPromise
+            .then(function (res) { return res.json(); })
+            .then(function (response) {
+                if (!response.success) throw new Error(response.message || 'Could not link SKU(s).');
+                linkedSkuModalSelectedSkus = new Set();
+                linkedSkuModal?.hide();
+                applyAffectedLinkedSkuRows(response.affected);
+            })
+            .catch(function (err) {
+                alert(err.message || 'Could not link SKU(s).');
+            })
+            .finally(function () {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                }
+            });
+        }
+
+        function loadReverbCompetitorsModal(sku, linkedLmpSkus) {
+            $('#lmpSku').text(sku);
+            $('#addCompSku').val(sku);
+            $('#addCompItemId').val('');
+            $('#addCompPrice').val('');
+            $('#addCompShipping').val('');
+            $('#addCompLink').val('');
+            $('#addCompTitle').val('');
+            currentLmpData.sku = sku;
+            currentLmpData.linkedLmpSkus = Array.isArray(linkedLmpSkus) ? linkedLmpSkus : [];
+            $('#lmpModal').modal('show');
+            $('#lmpDataList').html(`
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                    <p class="mt-2">Loading competitors...</p>
+                </div>
+            `);
+            $.ajax({
+                url: '/reverb-lmp-data',
+                method: 'GET',
+                traditional: true,
+                data: { sku: sku, linked_lmp_skus: currentLmpData.linkedLmpSkus },
+                success: function(response) {
+                    if (response.success && response.competitors && response.competitors.length > 0) {
+                        currentLmpData.competitors = response.competitors;
+                        currentLmpData.lowestPrice = response.lowest_price;
+                        renderReverbCompetitorsList(response.competitors, response.lowest_price);
+                    } else {
+                        $('#lmpDataList').html(`
+                            <div class="alert alert-warning">
+                                <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                            </div>
+                        `);
+                    }
+                },
+                error: function() {
+                    $('#lmpDataList').html(`
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-triangle"></i> Could not load competitors. Please try again.
+                        </div>
+                    `);
+                }
+            });
+        }
+
+        function renderReverbCompetitorsList(competitors, lowestPrice) {
+            if (!competitors || competitors.length === 0) {
+                $('#lmpDataList').html(`
+                    <div class="alert alert-info"><i class="fa fa-info-circle"></i> No competitors found for this SKU</div>
+                `);
+                return;
+            }
+            let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
+            html += `<thead class="table-dark"><tr>
+                <th>Image</th><th>Item ID</th><th>Price</th><th>Shipping</th><th>Total</th><th>Title</th><th>Actions</th>
+            </tr></thead><tbody>`;
+            competitors.forEach(function(item) {
+                const isLowest = Math.abs(parseFloat(item.total_price) - parseFloat(lowestPrice)) < 0.01;
+                const rowClass = isLowest ? 'table-success' : '';
+                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
+                const productLink = item.link || `https://reverb.com/item/${item.item_id}`;
+                const imageCell = item.image
+                    ? `<img src="${escAttr(item.image)}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:4px;" loading="lazy">`
+                    : '<span class="text-muted">—</span>';
+                html += `<tr class="${rowClass}">
+                    <td>${imageCell}</td>
+                    <td><span class="text-primary" style="font-weight:600;font-size:11px;">${escAttr(item.item_id || 'N/A')}</span></td>
+                    <td>$${parseFloat(item.price || 0).toFixed(2)}</td>
+                    <td>${parseFloat(item.shipping_cost || 0) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
+                    <td><strong>$${parseFloat(item.total_price || 0).toFixed(2)}</strong> ${badge}</td>
+                    <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(item.title || 'N/A')}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="${escAttr(productLink)}" target="_blank" class="btn btn-sm btn-info" title="View on Reverb"><i class="fa fa-external-link"></i></a>
+                            <button class="btn btn-sm btn-danger delete-reverb-lmp-btn"
+                                data-id="${item.id}" data-item-id="${escAttr(item.item_id)}" data-price="${item.total_price}" title="Delete">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table></div>';
+            $('#lmpDataList').html(html);
+        }
+
+        $(document).on('click', '.view-lmp-competitors', function(e) {
+            e.preventDefault();
+            const sku = $(this).data('sku');
+            let linkedSkus = $(this).data('linked-skus') || [];
+            if (typeof linkedSkus === 'string') {
+                try { linkedSkus = JSON.parse(linkedSkus) || []; } catch (err) { linkedSkus = []; }
+            }
+            if (!Array.isArray(linkedSkus) || !linkedSkus.length) {
+                if (table && table.getRows) {
+                    const r = table.getRows().find(row => row.getData()['(Child) sku'] === sku);
+                    const fromRow = r ? r.getData().linked_lmp_skus : null;
+                    if (Array.isArray(fromRow)) linkedSkus = fromRow;
+                }
+            }
+            loadReverbCompetitorsModal(sku, linkedSkus);
+        });
+
+        $('#addCompetitorForm').on('submit', function(e) {
+            e.preventDefault();
+            const $submitBtn = $(this).find('button[type="submit"]');
+            const originalHtml = $submitBtn.html();
+            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+            $.ajax({
+                url: '/reverb-lmp-add',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: {
+                    sku: $('#addCompSku').val(),
+                    item_id: $('#addCompItemId').val(),
+                    price: $('#addCompPrice').val(),
+                    shipping_cost: $('#addCompShipping').val() || 0,
+                    product_link: $('#addCompLink').val(),
+                    product_title: $('#addCompTitle').val()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showToast('Competitor added successfully', 'success');
+                        $('#addCompItemId').val('');
+                        $('#addCompPrice').val('');
+                        $('#addCompShipping').val('');
+                        $('#addCompLink').val('');
+                        $('#addCompTitle').val('');
+                        loadReverbCompetitorsModal($('#addCompSku').val(), currentLmpData.linkedLmpSkus);
+                        if (table) table.replaceData();
+                    } else {
+                        showToast(response.error || 'Failed to add competitor', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    showToast(xhr.responseJSON?.error || 'Failed to add competitor', 'error');
+                },
+                complete: function() {
+                    $submitBtn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        });
+
+        $(document).on('click', '.delete-reverb-lmp-btn', function() {
+            const $btn = $(this);
+            const id = $btn.data('id');
+            const itemId = $btn.data('item-id');
+            const price = $btn.data('price');
+            if (!confirm(`Delete competitor ${itemId} ($${price})?`)) return;
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            $.ajax({
+                url: '/reverb-lmp-delete',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { id: id },
+                success: function(response) {
+                    if (response.success) {
+                        showToast('Competitor deleted successfully', 'success');
+                        loadReverbCompetitorsModal(currentLmpData.sku, currentLmpData.linkedLmpSkus);
+                        if (table) table.replaceData();
+                    } else {
+                        showToast(response.error || 'Failed to delete competitor', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    showToast(xhr.responseJSON?.error || 'Failed to delete competitor', 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        });
+
+        const skuLinkLmpModalEl = document.getElementById('skuLinkLmpModal');
+        if (skuLinkLmpModalEl) {
+            linkedSkuModal = bootstrap.Modal.getOrCreateInstance(skuLinkLmpModalEl);
+        }
+        document.getElementById('sku-link-lmp-input')?.addEventListener('input', function () {
+            renderLinkedSkuSuggestions(this.value);
+        });
+        document.getElementById('sku-link-lmp-suggestions')?.addEventListener('click', function (e) {
+            const item = e.target.closest('.sku-link-lmp-suggestion-item');
+            if (!item) return;
+            const cb = item.querySelector('.sku-link-lmp-suggestion-cb');
+            if (!cb || e.target === cb) return;
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        document.getElementById('sku-link-lmp-suggestions')?.addEventListener('change', function (e) {
+            const cb = e.target.closest('.sku-link-lmp-suggestion-cb');
+            if (!cb) return;
+            const sku = String(cb.value || '').trim();
+            if (!sku) return;
+            if (cb.checked) linkedSkuModalSelectedSkus.add(sku);
+            else linkedSkuModalSelectedSkus.delete(sku);
+            updateLinkedSkuSelectedSummary();
+        });
+        document.getElementById('sku-link-lmp-selected-skus')?.addEventListener('click', function (e) {
+            const btn = e.target.closest('.sku-link-lmp-selected-remove');
+            if (!btn) return;
+            linkedSkuModalSelectedSkus.delete(String(btn.dataset.sku || '').trim());
+            document.querySelectorAll('.sku-link-lmp-suggestion-cb').forEach(function (cb) {
+                if (cb.value === btn.dataset.sku) cb.checked = false;
+            });
+            updateLinkedSkuSelectedSummary();
+        });
+        document.getElementById('sku-link-lmp-save-btn')?.addEventListener('click', function () {
+            saveLinkedSkuFromModal();
+        });
+
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/reverb-data-json",
@@ -1625,6 +2264,85 @@
                         return `$${value.toFixed(2)}`;
                     },
                     width: 70
+                },
+                {
+                    title: "LMP",
+                    field: "lmp_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const lmpPrice = cell.getValue();
+                        const sku = rowData['(Child) sku'] || '';
+                        const totalCompetitors = rowData.lmp_entries_total || 0;
+                        const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
+                        const linkedSkusAttr = escAttr(JSON.stringify(linkedSkus));
+                        const rvPrice = parseFloat(rowData['RV Price']) || 0;
+
+                        let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
+
+                        if (!lmpPrice && totalCompetitors === 0) {
+                            html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                                style="color: #999; text-decoration: none; cursor: pointer; font-size: 12px;" title="Add competitors">N/A</a>`;
+                        } else if (lmpPrice) {
+                            const finalPrice = parseFloat(lmpPrice) || 0;
+                            const priceColor = (rvPrice > 0 && finalPrice < rvPrice) ? '#dc3545' : '#28a745';
+                            html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">$${finalPrice.toFixed(2)}</span>`;
+                        }
+
+                        if (totalCompetitors > 0) {
+                            html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
+                                <i class="fa fa-eye"></i> View ${totalCompetitors}
+                            </a>`;
+                        } else if (lmpPrice) {
+                            html += `<a href="#" class="view-lmp-competitors" data-sku="${escAttr(sku)}" data-linked-skus="${linkedSkusAttr}"
+                                style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
+                                <i class="fa fa-plus"></i> Add
+                            </a>`;
+                        }
+
+                        html += '</div>';
+                        return html;
+                    },
+                    width: 100
+                },
+                {
+                    title: "Sku Link LMP",
+                    field: "linked_lmp_skus",
+                    hozAlign: "left",
+                    headerHozAlign: "center",
+                    width: 220,
+                    headerSort: false,
+                    cssClass: "linked-sku-col",
+                    formatter: linkedLmpSkuFormatter,
+                    cellClick: function (e, cell) {
+                        if (e.target.closest('.sku-link-lmp-remove')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeLinkedSkuFromRow(
+                                cell.getRow().getData(),
+                                e.target.closest('.sku-link-lmp-remove').dataset.linkedSku || ''
+                            );
+                        }
+                    },
+                },
+                {
+                    title: "+",
+                    field: "linked_lmp_sku_add",
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    width: 52,
+                    headerSort: false,
+                    cssClass: "linked-sku-add-col",
+                    formatter: linkedLmpSkuAddFormatter,
+                    cellClick: function (e, cell) {
+                        if (e.target.closest('.sku-link-lmp-add-btn')) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openLinkedSkuModal(cell.getRow().getData());
+                        }
+                    },
                 },
                 {
                     title: "GPFT%",

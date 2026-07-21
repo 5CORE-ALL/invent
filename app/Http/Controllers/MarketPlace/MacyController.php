@@ -33,9 +33,12 @@ class MacyController extends Controller
 {
     protected $apiController;
 
-    public function __construct(ApiController $apiController)
+    protected LmpSkuGroupService $lmpSkuGroupService;
+
+    public function __construct(ApiController $apiController, LmpSkuGroupService $lmpSkuGroupService)
     {
         $this->apiController = $apiController;
+        $this->lmpSkuGroupService = $lmpSkuGroupService;
     }
 
     // ==================== TABULATOR PRICING VIEW ====================
@@ -89,6 +92,21 @@ class MacyController extends Controller
             ->unique()
             ->values()
             ->all();
+
+        // Sku Link LMP groups + MacySkuCompetitor lookup (same as Reverb / Best Buy tabulators)
+        try {
+            $this->lmpSkuGroupService->prepareForSkus($skus);
+        } catch (\Throwable $e) {
+            Log::warning('LmpSkuGroupService prepareForSkus failed on macys pricing: '.$e->getMessage());
+        }
+
+        $lmpDetailsLookup = collect();
+        try {
+            $lmpLookups = MacySkuCompetitor::buildGroupedLookup('macy');
+            $lmpDetailsLookup = $lmpLookups['details'];
+        } catch (\Throwable $e) {
+            Log::warning('Could not fetch LMP data from macy_sku_competitors: '.$e->getMessage());
+        }
 
         // 3. Related Models
         $shopifyData = ShopifySku::mapByProductSkus($skus);
@@ -309,6 +327,49 @@ class MacyController extends Controller
 
             // Image
             $row["image_path"] = $shopify?->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
+
+            // LMP — lowest total_price from macy_sku_competitors across Sku Link LMP group
+            $linkedLmpSkus = $this->linkedLmpSkusForProduct((string) $pm->sku);
+            $row['linked_lmp_skus'] = $linkedLmpSkus;
+
+            $allLmpEntries = collect();
+            foreach ($linkedLmpSkus as $linkedSku) {
+                foreach (MacySkuCompetitor::resolveLookupKeys((string) $linkedSku) as $lookupKey) {
+                    $entries = $lmpDetailsLookup->get($lookupKey);
+                    if ($entries instanceof \Illuminate\Support\Collection && $entries->isNotEmpty()) {
+                        $allLmpEntries = $allLmpEntries->merge($entries);
+                    }
+                }
+            }
+            $allLmpEntries = MacySkuCompetitor::dedupeByItemId($allLmpEntries)
+                ->filter(fn ($entry) => (float) ($entry->total_price ?? 0) > 0)
+                ->sortBy(fn ($entry) => (float) ($entry->total_price ?? 0))
+                ->values();
+            $lowestLmp = $allLmpEntries->first(fn ($c) => empty($c->ignored)) ?: $allLmpEntries->first();
+
+            $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
+                ? floatval($lowestLmp->total_price)
+                : null;
+            $row['lmp_link'] = $lowestLmp->product_link ?? null;
+            $row['lmp_item_id'] = $lowestLmp->item_id ?? null;
+            $row['lmp_title'] = $lowestLmp->product_title ?? null;
+            $row['lmp_entries'] = $allLmpEntries
+                ->map(function ($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'item_id' => $entry->item_id,
+                        'price' => floatval($entry->price ?? 0),
+                        'shipping_cost' => floatval($entry->shipping_cost ?? 0),
+                        'total_price' => floatval($entry->total_price ?? 0),
+                        'ignored' => (bool) ($entry->ignored ?? false),
+                        'link' => $entry->product_link,
+                        'title' => $entry->product_title,
+                        'image' => $entry->image ?? null,
+                    ];
+                })
+                ->values()
+                ->toArray();
+            $row['lmp_entries_total'] = $allLmpEntries->count();
 
             $result[] = (object) $row;
         }
@@ -1856,5 +1917,42 @@ class MacyController extends Controller
             Log::error('Error deleting Macy LMP', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Failed to delete LMP: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function linkedLmpSkusForProduct(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $group = $this->lmpSkuGroupService->groupContaining($sku);
+
+        return $this->normalizeLinkedSkuGroup($group !== [] ? $group : [$sku]);
+    }
+
+    /**
+     * @param  list<string>  $group
+     * @return list<string>
+     */
+    private function normalizeLinkedSkuGroup(array $group): array
+    {
+        $seen = [];
+        $normalized = [];
+
+        foreach ($group as $memberSku) {
+            $display = trim((string) $memberSku);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $normalized[] = $display;
+        }
+
+        return $normalized;
     }
 }
