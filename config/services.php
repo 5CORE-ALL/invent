@@ -308,7 +308,7 @@ return [
         'api_base' => env('PURCHASING_POWER_API_BASE', 'https://api.purchasingpower.com'),
         /** Purchasing Power MCM Seller API (PM11/P41/P42) */
         'mcm_api_key' => env('PURCHASING_POWER_MCM_API_KEY', env('PURCHASING_POWER_API_KEY')),
-        'mcm_base_url' => env('PURCHASING_POWER_MCM_BASE_URL', 'https://purchasingpower-prod.mirakl.net'),
+        'mcm_base_url' => env('PURCHASING_POWER_MCM_BASE_URL', 'https://purchasingpowerus-prod.mirakl.net'),
         'shop_id' => env('PURCHASING_POWER_SHOP_ID'),
         'mcm_sku_column' => env('PURCHASING_POWER_MCM_SKU_COLUMN', 'shop-sku'),
         'mcm_import_poll_attempts' => (int) env('PURCHASING_POWER_MCM_IMPORT_POLL_ATTEMPTS', 60),

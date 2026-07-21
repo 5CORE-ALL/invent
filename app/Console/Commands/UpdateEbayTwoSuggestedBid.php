@@ -148,13 +148,16 @@ class UpdateEbayTwoSuggestedBid extends Command
             $ebayMetricsNormalized[$normalizedKey] = $item;
         }
 
-        // Load campaign listings efficiently
-        $this->info('Loading campaign listings...');
-        $campaignListings = DB::connection('apicentral')
-            ->table('ebay2_campaign_ads_listings')
-            ->select('listing_id', 'campaign_id', 'bid_percentage', 'suggested_bid')
+        // Same source as /ebay2/campaign-ads (not stale apicentral *_listings).
+        $this->info('Loading campaign listings from ebay2_campaign_ads...');
+        $campaignListings = DB::table('ebay2_campaign_ads')
+            ->select('listing_id', 'campaign_id', 'bid_percentage', 'suggested_bid', 'updated_at')
             ->where('funding_strategy', 'COST_PER_SALE')
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->orderByDesc('updated_at')
             ->get()
+            ->unique('listing_id')
             ->keyBy('listing_id')
             ->map(function ($item) {
                 return (object) [
@@ -162,7 +165,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                     'campaign_id' => $item->campaign_id,
                     'bid_percentage' => $item->bid_percentage,
                     'suggested_bid' => $item->suggested_bid,
-                    'new_bid' => null
+                    'new_bid' => null,
                 ];
             });
 
@@ -372,6 +375,15 @@ class UpdateEbayTwoSuggestedBid extends Command
                     if ($statusCode === 200 || $statusCode === 207) {
                         $this->info("Campaign {$campaignId}: Successfully updated " . count($requestChunk) . " listing(s).");
                         $monitor->incrementUpdated(count($requestChunk));
+                        foreach ($requestChunk as $req) {
+                            DB::table('ebay2_campaign_ads')
+                                ->where('listing_id', (string) ($req['listingId'] ?? ''))
+                                ->where('campaign_id', (string) $campaignId)
+                                ->update([
+                                    'bid_percentage' => round((float) ($req['bidPercentage'] ?? 0), 2),
+                                    'updated_at' => now(),
+                                ]);
+                        }
                     } else {
                         $this->warn("Campaign {$campaignId}: Response: " . substr($responseBody, 0, 200));
                         foreach ($requestChunk as $req) {

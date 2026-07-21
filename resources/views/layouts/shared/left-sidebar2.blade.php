@@ -1430,6 +1430,9 @@
                                         <li>
                                             <a href="{{ url('temu2-decrease') }}">Temu 2 Pricing</a>
                                         </li>
+                                        <li>
+                                            <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>
+                                        </li>
                                     </ul>
                                 </div>
                             </li>

@@ -1667,6 +1667,9 @@
                                         <a href="{{ url('temu2-decrease') }}">Temu 2 - Analytics</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('temu2.ads') }}">Temu 2 Ads</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('temu2.listing.variation.verify') }}">Temu 2 Listing Variation Verify</a>
                                     </li>
                                 </ul>

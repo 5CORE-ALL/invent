@@ -1399,7 +1399,8 @@ class CvrMasterController extends Controller
                     $temuLmpByNormalizedSku,
                     $temuLmpSkuGroupService
                 );
-                $temuLmpPrice = $temuLmpResolved['price'];
+                // Outside (main table): show Temu Recovery instead of raw LMP price
+                $temuLmpPrice = $this->temuLmpRecoveryPrice($temuLmpResolved['price']);
                 $temuLmpLink = $temuLmpResolved['link'];
                 $temuLmpCount = $temuLmpResolved['count'];
 
@@ -2071,7 +2072,8 @@ class CvrMasterController extends Controller
                     $temuLmpByNormalizedSku,
                     $temuLmpSkuGroupService
                 );
-                return $resolved['price'];
+                // Outside (Details LMP): Temu Recovery instead of raw price
+                return $this->temuLmpRecoveryPrice($resolved['price']);
             };
 
             // TikTok LMP: query only linked SKUs (not full tiktok_sku_competitors table)
@@ -4255,15 +4257,11 @@ class CvrMasterController extends Controller
 
             if ($marketplace === 'fba') {
                 // FBA SPRICE is stored in fba_manual_data (same as FBA page). Resolve base SKU -> FBA seller SKU.
-                $baseSku = strtoupper(trim($fullSku));
-                $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                    ->get()
-                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-                $fbaRow = $fbaTableRows->get($baseSku);
-                if (!$fbaRow || empty($fbaRow->seller_sku)) {
+                $fbaSellerSku = $this->findFbaSellerSkuForBase($fullSku);
+                if ($fbaSellerSku === null || $fbaSellerSku === '') {
                     return response()->json(['error' => 'No FBA listing found for this SKU'], 400);
                 }
-                $fbaSellerSku = strtoupper(trim($fbaRow->seller_sku));
+                $fbaSellerSku = strtoupper(trim($fbaSellerSku));
                 $manual = FbaManualData::where('sku', $fbaSellerSku)->first();
                 if (!$manual) {
                     $manual = new FbaManualData();
@@ -4271,8 +4269,14 @@ class CvrMasterController extends Controller
                     $manual->data = [];
                 }
                 $data = is_array($manual->data) ? $manual->data : [];
-                $data['s_price'] = $sprice;
-                $data['SPRICE_STATUS'] = 'applied'; // saved but not pushed
+                // Never persist 0 as a suggested price (clear uses empty / omit)
+                if ($sprice > 0) {
+                    $data['s_price'] = $sprice;
+                    $data['SPRICE_STATUS'] = 'applied'; // saved but not pushed
+                } else {
+                    unset($data['s_price']);
+                    $data['SPRICE_STATUS'] = '';
+                }
                 $manual->data = $data;
                 $manual->save();
 
@@ -4296,26 +4300,36 @@ class CvrMasterController extends Controller
             }
             if (!is_array($value)) $value = [];
             
-            // Update values (Walmart/Temu use lowercase 'sprice'; others use 'SPRICE')
-            if ($marketplace === 'walmart' || $marketplace === 'temu' || $marketplace === 'temu2') {
-                $value['sprice'] = $sprice;
+            // Never write 0 as SPRICE for siblings-apply path; for primary clear, remove keys instead of storing 0
+            if ($sprice > 0) {
+                if ($marketplace === 'walmart' || $marketplace === 'temu' || $marketplace === 'temu2') {
+                    $value['sprice'] = $sprice;
+                } else {
+                    $value['SPRICE'] = $sprice;
+                }
+                $value['SGPFT'] = $sgpft;
+                $value['SROI'] = $sroi;
+                $value['SPFT'] = $spft;
+
+                // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
+                if ($marketplace === 'walmart') {
+                    unset($value['SPRICE']);
+                } elseif ($marketplace === 'temu' || $marketplace === 'temu2') {
+                    $value['sprice'] = $sprice;
+                    $value['SPRICE'] = $sprice; // keep both so CVR + decrease stay in sync
+                    $value['sgprft_percent'] = round($sgpft, 2);
+                    $value['sroi_percent'] = round($sroi, 2);
+                } else {
+                    unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
+                }
             } else {
-                $value['SPRICE'] = $sprice;
-            }
-            $value['SGPFT'] = $sgpft;
-            $value['SROI'] = $sroi;
-            $value['SPFT'] = $spft;
-            
-            // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
-            if ($marketplace === 'walmart') {
-                unset($value['SPRICE']);
-            } elseif ($marketplace === 'temu' || $marketplace === 'temu2') {
-                $value['sprice'] = $sprice;
-                $value['SPRICE'] = $sprice; // keep both so CVR + decrease stay in sync
-                $value['sgprft_percent'] = round($sgpft, 2);
-                $value['sroi_percent'] = round($sroi, 2);
-            } else {
-                unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
+                // Clear SPRICE on this SKU only — never leave literal 0
+                unset(
+                    $value['SPRICE'], $value['sprice'],
+                    $value['SGPFT'], $value['sgpft'], $value['sgprft_percent'],
+                    $value['SROI'], $value['sroi'], $value['sroi_percent'],
+                    $value['SPFT'], $value['spft']
+                );
             }
             
             // Save to correct field (Reverb uses 'values', others use 'value')
@@ -4328,13 +4342,9 @@ class CvrMasterController extends Controller
 
             // When saving Amazon suggested price, also sync to FBA if this SKU has FBA (so FBA page shows same sprice)
             if ($marketplace === 'amazon' && $sprice > 0) {
-                $baseSku = strtoupper(trim($fullSku));
-                $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                    ->get()
-                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-                $fbaRow = $fbaTableRows->get($baseSku);
-                if ($fbaRow && !empty($fbaRow->seller_sku)) {
-                    $fbaSellerSku = strtoupper(trim($fbaRow->seller_sku));
+                $fbaSellerSku = $this->findFbaSellerSkuForBase($fullSku);
+                if ($fbaSellerSku) {
+                    $fbaSellerSku = strtoupper(trim($fbaSellerSku));
                     $fbaManual = FbaManualData::where('sku', $fbaSellerSku)->first();
                     if (!$fbaManual) {
                         $fbaManual = new FbaManualData();
@@ -4367,28 +4377,191 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * After a successful SPRICE save, optionally copy the same SPRICE to sibling SKUs.
+     * Resolve FBA seller SKU for a product base SKU (scoped query — never loads full fba_table).
+     */
+    private function findFbaSellerSkuForBase(string $sku): ?string
+    {
+        $baseSku = strtoupper(trim($sku));
+        if ($baseSku === '') {
+            return null;
+        }
+        $fbaRow = FbaTable::query()
+            ->select(['seller_sku'])
+            ->where(function ($q) use ($baseSku, $sku) {
+                $q->whereRaw('UPPER(TRIM(seller_sku)) = ?', [$baseSku])
+                    ->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [$baseSku . ' FBA'])
+                    ->orWhereRaw('UPPER(REPLACE(REPLACE(seller_sku, " FBA", ""), "FBA", "")) = ?', [$baseSku])
+                    ->orWhere('seller_sku', 'LIKE', $sku . '%FBA%')
+                    ->orWhere('seller_sku', 'LIKE', $sku . '%fba%');
+            })
+            ->where(function ($q) {
+                $q->where('seller_sku', 'LIKE', '%FBA%')->orWhere('seller_sku', 'LIKE', '%fba%');
+            })
+            ->first();
+
+        $seller = $fbaRow ? trim((string) ($fbaRow->seller_sku ?? '')) : '';
+        return $seller !== '' ? $seller : null;
+    }
+
+    /**
+     * Lean SPRICE write for one SKU/channel. Never writes 0. Used by Siblings Apply.
+     */
+    private function applySuggestedSpriceToSku(string $sku, string $marketplace, array $payload): bool
+    {
+        $sprice = floatval($payload['sprice'] ?? 0);
+        if (!($sprice > 0)) {
+            return false; // Do NOT apply 0 anywhere
+        }
+
+        $marketplace = strtolower(trim($marketplace));
+        $sku = trim($sku);
+        if ($sku === '' || $marketplace === '') {
+            return false;
+        }
+
+        $productMaster = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            ?: ProductMaster::where('sku', 'LIKE', $sku . '%')
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+        $fullSku = $productMaster ? trim((string) $productMaster->sku) : $sku;
+
+        $sgpft = floatval($payload['sgpft'] ?? 0);
+        $sroi = floatval($payload['sroi'] ?? 0);
+        $spft = floatval($payload['spft'] ?? 0);
+
+        if ($marketplace === 'fba') {
+            $fbaSellerSku = $this->findFbaSellerSkuForBase($fullSku);
+            if (!$fbaSellerSku) {
+                return false;
+            }
+            $fbaSellerSku = strtoupper(trim($fbaSellerSku));
+            $manual = FbaManualData::firstOrNew(['sku' => $fbaSellerSku]);
+            $data = is_array($manual->data) ? $manual->data : [];
+            $data['s_price'] = $sprice;
+            $data['SPRICE_STATUS'] = 'applied';
+            $manual->data = $data;
+            $manual->save();
+            return true;
+        }
+
+        $skuToUse = $fullSku;
+        if ($marketplace === 'amazon') {
+            $amazonData = AmazonDatasheet::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
+                ?: AmazonDatasheet::where('sku', $fullSku)->first();
+            $skuToUse = $amazonData ? $amazonData->sku : $fullSku;
+        }
+
+        $dataView = null;
+        $usesValues = false;
+        if ($marketplace === 'amazon') {
+            $dataView = AmazonDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
+            $dataView = EbayDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'ebaytwo' || $marketplace === 'ebay2') {
+            $dataView = EbayTwoDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'ebaythree' || $marketplace === 'ebay3') {
+            $dataView = EbayThreeDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'temu') {
+            $dataView = TemuDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'temu2') {
+            if (!Schema::hasTable('temu2_data_view')) {
+                return false;
+            }
+            $dataView = Temu2DataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'doba') {
+            $dataView = DobaDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'walmart') {
+            $dataView = WalmartDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'tiktok') {
+            $existingTtView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+            $dataView = $existingTtView ?: new TiktokShopDataView(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
+            $dataView = BestbuyUSADataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
+            $dataView = MacyDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'reverb') {
+            $dataView = ReverbViewData::firstOrNew(['sku' => $skuToUse]);
+            $usesValues = true;
+        } elseif ($marketplace === 'tiendamia') {
+            $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
+            $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
+            $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $skuToUse]);
+        } else {
+            return false;
+        }
+
+        $value = $usesValues
+            ? (is_array($dataView->values) ? $dataView->values : (is_string($dataView->values) ? json_decode($dataView->values, true) : []))
+            : (is_array($dataView->value) ? $dataView->value : (is_string($dataView->value) ? json_decode($dataView->value, true) : []));
+        if (!is_array($value)) {
+            $value = [];
+        }
+
+        if ($marketplace === 'walmart' || $marketplace === 'temu' || $marketplace === 'temu2') {
+            $value['sprice'] = $sprice;
+        } else {
+            $value['SPRICE'] = $sprice;
+        }
+        $value['SGPFT'] = $sgpft;
+        $value['SROI'] = $sroi;
+        $value['SPFT'] = $spft;
+
+        if ($marketplace === 'walmart') {
+            unset($value['SPRICE']);
+        } elseif ($marketplace === 'temu' || $marketplace === 'temu2') {
+            $value['sprice'] = $sprice;
+            $value['SPRICE'] = $sprice;
+            $value['sgprft_percent'] = round($sgpft, 2);
+            $value['sroi_percent'] = round($sroi, 2);
+        } else {
+            unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
+        }
+
+        if ($usesValues) {
+            $dataView->values = $value;
+        } else {
+            $dataView->value = $value;
+        }
+        $dataView->save();
+
+        if ($marketplace === 'amazon') {
+            $fbaSellerSku = $this->findFbaSellerSkuForBase($fullSku);
+            if ($fbaSellerSku) {
+                $fbaSellerSku = strtoupper(trim($fbaSellerSku));
+                $fbaManual = FbaManualData::firstOrNew(['sku' => $fbaSellerSku]);
+                $fbaData = is_array($fbaManual->data) ? $fbaManual->data : [];
+                $fbaData['s_price'] = $sprice;
+                if (!isset($fbaData['SPRICE_STATUS']) || $fbaData['SPRICE_STATUS'] === '') {
+                    $fbaData['SPRICE_STATUS'] = 'applied';
+                }
+                $fbaManual->data = $fbaData;
+                $fbaManual->save();
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * After a successful SPRICE save, optionally copy the same SPRICE to sibling child SKUs (same parent).
+     * Never applies 0 to siblings.
      */
     private function finishSuggestedSaveWithSiblings(Request $request, string $fullSku, string $marketplace, array $payload)
     {
         $applySiblings = filter_var($request->input('apply_siblings'), FILTER_VALIDATE_BOOLEAN);
         $siblingSaved = [];
+        $sprice = floatval($payload['sprice'] ?? 0);
 
-        if ($applySiblings) {
+        // Siblings Apply only when there is a real (non-zero) suggested price
+        if ($applySiblings && $sprice > 0) {
             foreach ($this->resolveSiblingSkus($fullSku) as $sibSku) {
                 if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($fullSku))) {
                     continue;
                 }
-                $subReq = Request::create('/cvr-master-save-suggested-data', 'POST', array_merge($payload, [
-                    'sku' => $sibSku,
-                    'marketplace' => $marketplace,
-                    'apply_siblings' => 0,
-                ]));
-                $subReq->headers->set('Accept', 'application/json');
                 try {
-                    $resp = $this->saveSuggestedData($subReq);
-                    $data = method_exists($resp, 'getData') ? $resp->getData(true) : [];
-                    if (!empty($data['success'])) {
+                    if ($this->applySuggestedSpriceToSku((string) $sibSku, $marketplace, $payload)) {
                         $siblingSaved[] = $sibSku;
                     }
                 } catch (\Throwable $e) {
@@ -4505,7 +4678,8 @@ class CvrMasterController extends Controller
             }
 
             $applySiblings = filter_var($request->input('apply_siblings'), FILTER_VALIDATE_BOOLEAN);
-            if (!$applySiblings) {
+            // Never push 0 / empty to siblings
+            if (!$applySiblings || !($price > 0)) {
                 return $response;
             }
 
@@ -4519,12 +4693,16 @@ class CvrMasterController extends Controller
                 if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($sku))) {
                     continue;
                 }
-                $subReq = Request::create('/cvr-master-push-price', 'POST', [
+                $sibPayload = [
                     'sku' => $sibSku,
                     'price' => $price,
                     'marketplace' => $marketplace,
                     'apply_siblings' => 0,
-                ]);
+                ];
+                if ($selfPickPrice !== null && $selfPickPrice > 0) {
+                    $sibPayload['self_pick_price'] = $selfPickPrice;
+                }
+                $subReq = Request::create('/cvr-master-push-price', 'POST', $sibPayload);
                 $subReq->headers->set('Accept', 'application/json');
                 try {
                     $sibResp = $this->pushPriceToAmazon($subReq);
@@ -5405,20 +5583,22 @@ class CvrMasterController extends Controller
     {
         $fbaSellerSku = null;
         try {
-            $baseSku = strtoupper(trim($sku));
-            $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                ->get()
-                ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-            $fbaRow = $fbaTableRows->get($baseSku);
+            if (!($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot push — price is 0 or empty.'
+                ], 400);
+            }
 
-            if (!$fbaRow || empty($fbaRow->seller_sku)) {
+            $fbaSellerSku = $this->findFbaSellerSkuForBase($sku);
+            if ($fbaSellerSku === null || $fbaSellerSku === '') {
                 return response()->json([
                     'success' => false,
                     'message' => "No FBA listing found for SKU: $sku"
                 ], 400);
             }
 
-            $fbaSellerSku = trim((string)$fbaRow->seller_sku);
+            $fbaSellerSku = trim((string) $fbaSellerSku);
             $service = new \App\Services\AmazonSpApiService();
             $result = $service->updateAmazonPriceUS($fbaSellerSku, $price);
 
@@ -5864,6 +6044,26 @@ class CvrMasterController extends Controller
      * @param  array<string, TemuLmp|object>  $temuLmpByNormalizedSku
      * @return array{price: float|null, link: string|null, count: int, entries: list<array{price: mixed, link: mixed}>}
      */
+    /**
+     * Temu LMP Recovery (shown outside instead of raw price):
+     * price ≤ $27 → (Price × 0.85) + 2.99
+     * price > $27 → Price × 0.85
+     */
+    private function temuLmpRecoveryPrice($price): ?float
+    {
+        if ($price === null || $price === '' || !is_numeric($price)) {
+            return null;
+        }
+        $p = floatval($price);
+        if (!($p > 0)) {
+            return null;
+        }
+        if ($p <= 27) {
+            return round(($p * 0.85) + 2.99, 2);
+        }
+        return round($p * 0.85, 2);
+    }
+
     private function resolveTemuLmpForSku(
         string $sku,
         array $temuLmpByNormalizedSku,

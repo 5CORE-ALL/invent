@@ -1059,7 +1059,7 @@
                             </button>
                         </div>
                         <div class="form-check form-check-inline mb-0 ms-1 p-1 border rounded bg-white"
-                            title="When checked, SPRICE save and Push also apply to sibling SKUs (same parent)">
+                            title="When checked, the same SPRICE is saved on all child SKUs under the same parent, and Push sends that price to those siblings on each marketplace. Never applies 0.">
                             <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
                             <label class="form-check-label small fw-bold" for="modal-siblings-apply-cb">
                                 Siblings Apply
@@ -2003,7 +2003,12 @@
             return $('#modal-siblings-apply-cb').is(':checked');
         }
 
-        function siblingsApplyPayload() {
+        function siblingsApplyPayload(price) {
+            // Never apply 0 / empty to siblings — only real suggested prices
+            if (price !== undefined && price !== null) {
+                const n = parseFloat(price);
+                if (!isFinite(n) || !(n > 0)) return 0;
+            }
             return isModalSiblingsApply() ? 1 : 0;
         }
 
@@ -3542,7 +3547,7 @@
                     visible: false,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Temu / Temu 2 LMP from temu_lmp (same as /temu-decrease)",
+                    headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — shown instead of raw Temu LMP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
@@ -3557,7 +3562,7 @@
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;">$${price.toFixed(2)}</a>`;
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;" title="Temu Recovery">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -4015,7 +4020,7 @@
                     spft: spft,
                     sroi: sroi,
                     amazon_margin: margin,
-                    apply_siblings: siblingsApplyPayload(),
+                    apply_siblings: siblingsApplyPayload(sprice),
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
@@ -4096,7 +4101,7 @@
                     spft: spft,
                     sroi: sroi,
                     amazon_margin: margin,
-                    apply_siblings: siblingsApplyPayload(),
+                    apply_siblings: siblingsApplyPayload(sprice),
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
@@ -4183,9 +4188,12 @@
                 return;
             }
 
-            // Clear SPRICE — no price input required
+            // Clear SPRICE — no price input required (never clears siblings; Do NOT apply 0)
             if (modalClearSpriceModeActive) {
-                if (!confirm('Clear SPRICE for ' + $rows.length + ' channel(s)' + siblingsApplyLabel() + '?')) return;
+                if (isModalSiblingsApply()) {
+                    showToast('Clear SPRICE applies to this SKU only (siblings never get 0)', 'info');
+                }
+                if (!confirm('Clear SPRICE for ' + $rows.length + ' channel(s) on this SKU only?')) return;
                 const $btn = $(this);
                 const origHtml = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
@@ -4195,6 +4203,7 @@
                     const mp = String($tr.attr('data-marketplace') || '');
                     const $input = $tr.find('.editable-sprice');
                     $input.val('').trigger('input');
+                    // Force apply_siblings off via price=0 guard in saveModalSpriceForRow
                     saveModalSpriceForRow($tr, 0, function(ok) {
                         if (ok) {
                             okCount++;
@@ -4882,13 +4891,16 @@
                         spft: spft,
                         sroi: sroi,
                         amazon_margin: margin,
-                        apply_siblings: siblingsApplyPayload(),
+                        apply_siblings: siblingsApplyPayload(sprice),
                         _token: '{{ csrf_token() }}'
                     },
-                    success: function() {
+                    success: function(res) {
                         if ($input.length) {
                             $input.css('border-color', '#28a745');
                             setTimeout(() => $input.css('border-color', ''), 1000);
+                        }
+                        if (res && res.siblings_count) {
+                            showToast('Saved (+' + res.siblings_count + ' siblings) on ' + s.marketplace, 'success');
                         }
                         finishOne();
                     },
@@ -4944,7 +4956,7 @@
                 sku: target.sku,
                 price: price,
                 marketplace: target.marketplace,
-                apply_siblings: siblingsApplyPayload(),
+                apply_siblings: siblingsApplyPayload(price),
                 _token: '{{ csrf_token() }}'
             };
             // Doba: Self Pick = SPRICE − Ship (same as /doba-tabulator)
@@ -5414,6 +5426,18 @@
             return price + ship;
         }
 
+        /**
+         * Temu LMP Recovery (Temu only):
+         * price ≤ $27 → (Price × 0.85) + 2.99
+         * price > $27 → Price × 0.85
+         */
+        function temuLmpRecovery(price) {
+            const p = parseFloat(price);
+            if (!(p > 0)) return null;
+            if (p <= 27) return +((p * 0.85) + 2.99).toFixed(2);
+            return +(p * 0.85).toFixed(2);
+        }
+
         function lmpChannelIconHtml(channel) {
             if (channel === 'amazon') {
                 return '<span class="lmp-channel-icon amazon" title="Amazon"><i class="fab fa-amazon"></i></span>';
@@ -5729,7 +5753,11 @@
                 badgeParts.push('<span class="badge" style="background:#d9281d;color:#fff;">Reverb $' + reverbLowest.toFixed(2) + '</span>');
             }
             if (temuLowest != null) {
-                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;">Temu $' + temuLowest.toFixed(2) + '</span>');
+                // Outside badge: Temu Recovery (not raw price)
+                const temuRecoveryBadge = temuLmpRecovery(temuLowest);
+                const temuBadgeVal = temuRecoveryBadge != null ? temuRecoveryBadge : temuLowest;
+                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;" title="Temu Recovery from L1 $'
+                    + temuLowest.toFixed(2) + '">Temu $' + temuBadgeVal.toFixed(2) + '</span>');
             }
             if (badgeParts.length) {
                 html += '<div class="lmp-lowest-badges">' + badgeParts.join('') + '</div>';
@@ -5750,8 +5778,14 @@
                 return;
             }
 
+            // Recovery column only on Temu LMP tab (before Price)
+            const showTemuRecoveryCol = (filter === 'temu');
             html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light">'
-                + '<tr><th>#</th><th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
+                + '<tr><th>#</th>'
+                + (showTemuRecoveryCol
+                    ? '<th title="Temu Recovery: ≤$27 → (Price×0.85)+2.99; &gt;$27 → Price×0.85">Recovery</th>'
+                    : '')
+                + '<th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
                 + '</thead><tbody>';
@@ -5774,6 +5808,14 @@
                     + '<span style="font-weight:600;">$' + row.price.toFixed(2) + '</span>'
                     + linkHtml
                     + '</div>';
+                let recoveryCell = '';
+                if (showTemuRecoveryCol) {
+                    const rec = (row.channel === 'temu') ? temuLmpRecovery(row.price) : null;
+                    recoveryCell = (rec != null)
+                        ? '<span style="font-weight:700;color:#fb7701;" title="From Price $'
+                            + row.price.toFixed(2) + '">$' + rec.toFixed(2) + '</span>'
+                        : '<span class="text-muted">-</span>';
+                }
                 const ratingCell = row.rating != null
                     ? '<span><i class="fa fa-star text-warning"></i> ' + row.rating.toFixed(1) + '</span>'
                     : '<span class="text-muted">-</span>';
@@ -5822,6 +5864,7 @@
                 const rowClass = (row.ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 html += '<tr class="' + rowClass + '" title="' + titleAttr + '">'
                     + '<td>' + sn + '</td>'
+                    + (showTemuRecoveryCol ? ('<td class="text-end">' + recoveryCell + '</td>') : '')
                     + '<td>' + priceCell + '</td>'
                     + '<td>' + ratingCell + '</td>'
                     + '<td>' + reviewsCell + '</td>'

@@ -20,7 +20,7 @@ class FetchMacyProducts extends Command
      *
      * @var string
      */
-    protected $signature = 'app:fetch-macy-products';
+    protected $signature = 'app:fetch-macy-products {--pp-mcm-only : Only sync Purchasing Power prices from MCM OF21}';
 
     /**
      * The console command description.
@@ -311,6 +311,12 @@ class FetchMacyProducts extends Command
     {
         // Increase memory limit for this command to handle large product datasets
         ini_set('memory_limit', '256M');
+
+        if ($this->option('pp-mcm-only')) {
+            $this->syncPurchasingPowerPricesFromMcm();
+            DB::connection()->disconnect();
+            return self::SUCCESS;
+        }
         
         $token = $this->getAccessToken();
         if (!$token) return;
@@ -341,10 +347,169 @@ class FetchMacyProducts extends Command
         // Fetch and store Purchasing Power products with channel-specific pricing
         $this->fetchChannelProducts($token, 'purchasingpower', "Purchasing Power", $skuSales);
 
+        // Overlay live MCM offer prices (seller portal) — Connect discount_prices often
+        // diverge from the Purchasing Power marketplace listed price shown in the UI.
+        DB::connection()->disconnect();
+        sleep(1);
+        $this->syncPurchasingPowerPricesFromMcm();
+
         // Final cleanup
         DB::connection()->disconnect();
         
         $this->info("All Macy, Tiendamia, BestbuyUSA, Purchasing Power products stored successfully.");
+    }
+
+    /**
+     * OF21 — pull Purchasing Power MCM offer prices into purchasing_power_products.
+     * Seller portal listed price lives here; Mirakl Connect catalog prices can differ.
+     */
+    private function syncPurchasingPowerPricesFromMcm(): void
+    {
+        $apiKey = trim((string) config('services.purchasingpower.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', ''), '/');
+
+        if ($apiKey === '' || $baseUrl === '') {
+            $this->warn('Purchasing Power MCM API key not set (PURCHASING_POWER_MCM_API_KEY); skipping MCM price sync.');
+            return;
+        }
+
+        $this->info('Syncing Purchasing Power prices from MCM offers (OF21)...');
+
+        $shopId = config('services.purchasingpower.shop_id');
+        $offset = 0;
+        $max = 100;
+        $totalUpdated = 0;
+        $page = 1;
+
+        try {
+            do {
+                $params = [
+                    'max' => $max,
+                    'offset' => $offset,
+                ];
+                if ($shopId !== null && $shopId !== '') {
+                    $params['shop_id'] = (int) $shopId;
+                }
+
+                $response = null;
+                for ($attempt = 1; $attempt <= 5; $attempt++) {
+                    $response = Http::withoutVerifying()
+                        ->withHeaders([
+                            'Authorization' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->timeout(60)
+                        ->get($baseUrl.'/api/offers', $params);
+
+                    if ($response->status() !== 429) {
+                        break;
+                    }
+
+                    $sleepSec = min(30, 3 * $attempt);
+                    $this->warn("MCM rate limited (429); sleeping {$sleepSec}s then retry {$attempt}/5...");
+                    sleep($sleepSec);
+                }
+
+                if (! $response || ! $response->successful()) {
+                    $status = $response ? $response->status() : 0;
+                    $body = $response ? substr($response->body(), 0, 300) : 'no response';
+                    $this->error('Purchasing Power MCM OF21 failed: HTTP '.$status.' '.$body);
+                    Log::error('Purchasing Power MCM OF21 failed', [
+                        'status' => $status,
+                        'body' => $response ? substr($response->body(), 0, 1000) : null,
+                    ]);
+                    return;
+                }
+
+                $offers = $response->json('offers') ?? [];
+                $totalCount = (int) ($response->json('total_count') ?? 0);
+                $updates = [];
+
+                foreach ($offers as $offer) {
+                    if (! is_array($offer)) {
+                        continue;
+                    }
+
+                    $sku = trim((string) ($offer['shop_sku'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+
+                    $price = $this->extractMcmOfferPrice($offer);
+                    if ($price === null) {
+                        continue;
+                    }
+
+                    $updates[] = [
+                        'sku' => $sku,
+                        'price' => $price,
+                        'stock' => isset($offer['quantity']) && is_numeric($offer['quantity'])
+                            ? (int) $offer['quantity']
+                            : 0,
+                    ];
+                }
+
+                if (! empty($updates)) {
+                    $now = now()->toDateTimeString();
+                    foreach (array_chunk($updates, 50) as $chunk) {
+                        $values = [];
+                        $bindings = [];
+                        foreach ($chunk as $update) {
+                            $values[] = '(?, ?, ?, 0, ?, ?)';
+                            $bindings[] = $update['sku'];
+                            $bindings[] = $update['price'];
+                            $bindings[] = $update['stock'];
+                            $bindings[] = $now;
+                            $bindings[] = $now;
+                        }
+
+                        $sql = 'INSERT INTO purchasing_power_products (sku, price, stock, m_l30, created_at, updated_at) VALUES '
+                            .implode(', ', $values)
+                            .' ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), updated_at = VALUES(updated_at)';
+
+                        DB::statement($sql, $bindings);
+                        $totalUpdated += count($chunk);
+                    }
+                }
+
+                $fetched = count($offers);
+                $this->info("MCM offers page {$page}: processed {$fetched} (updated {$totalUpdated}, total_count={$totalCount})");
+                $offset += $max;
+                $page++;
+                unset($offers, $updates);
+                sleep(1); // avoid Mirakl MCM 429
+
+                // Stop when page is short, or we've covered total_count (when provided).
+                $hasMore = $fetched >= $max && ($totalCount === 0 || $offset < $totalCount);
+            } while ($hasMore);
+
+            $this->info("Purchasing Power MCM price sync complete. Updated: {$totalUpdated}");
+        } catch (\Throwable $e) {
+            $this->error('Purchasing Power MCM price sync error: '.$e->getMessage());
+            Log::error('Purchasing Power MCM price sync error', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $offer
+     */
+    private function extractMcmOfferPrice(array $offer): ?float
+    {
+        $candidates = [
+            data_get($offer, 'applicable_pricing.price'),
+            data_get($offer, 'price'),
+            data_get($offer, 'all_prices.0.price'),
+            data_get($offer, 'discount.discount_price'),
+            data_get($offer, 'discount.origin_price'),
+        ];
+
+        foreach ($candidates as $value) {
+            if ($value !== null && $value !== '' && is_numeric($value)) {
+                return round((float) $value, 2);
+            }
+        }
+
+        return null;
     }
 
     private function fetchChannelProducts($token, $channelCode, $channelName, $skuSales)

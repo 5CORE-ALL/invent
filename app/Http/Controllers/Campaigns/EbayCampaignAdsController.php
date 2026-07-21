@@ -201,6 +201,13 @@ class EbayCampaignAdsController extends Controller
 
                 if ($response->successful()) {
                     foreach ($requests as $r) {
+                        DB::table('ebay_campaign_ads')
+                            ->where('listing_id', (string) $r['listingId'])
+                            ->where('campaign_id', (string) $campaignId)
+                            ->update([
+                                'bid_percentage' => round((float) $r['bidPercentage'], 2),
+                                'updated_at' => now(),
+                            ]);
                         $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
                         $success++;
                     }
@@ -314,6 +321,13 @@ class EbayCampaignAdsController extends Controller
 
                 if ($response->successful()) {
                     foreach ($requests as $r) {
+                        DB::table('ebay_campaign_ads')
+                            ->where('listing_id', (string) $r['listingId'])
+                            ->where('campaign_id', (string) $campaignId)
+                            ->update([
+                                'bid_percentage' => round((float) $r['bidPercentage'], 2),
+                                'updated_at' => now(),
+                            ]);
                         $results[] = ['sku' => $r['sku'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
                         $success++;
                     }

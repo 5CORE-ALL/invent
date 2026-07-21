@@ -599,89 +599,114 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('app:ebay3-campaign-reports', 'ebay3-campaign-reports', '19:20');
 
         
-        $retryFiveTimesUntil('ebay:sync-campaign-listings', 'ebay-sync-campaign-listings', '20:30');
-        $retryFiveTimesUntil('ebay2:sync-campaign-listings', 'ebay2-sync-campaign-listings', '20:32');
-        $retryFiveTimesUntil('ebay3:sync-campaign-listings', 'ebay3-sync-campaign-listings', '20:34');
+        // Campaign-ads sync: single daily run (not $retryFiveTimesUntil — 5 named
+        // mutexes let the same job fire 5×/day and confuse cron-monitor "missed").
+        // Intentionally NOT wrapped in $ist() — slots are after IST_WINDOW_END (20:00).
+        // withoutOverlapping(90): typical runtime ~10–12 min; TTL clears stale locks.
+        $schedule->command('ebay:sync-campaign-listings')
+            ->dailyAt('20:30')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-sync-campaign-listings')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay:auto-update-over-bids')
+        $schedule->command('ebay2:sync-campaign-listings')
+            ->dailyAt('20:32')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-campaign-listings')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay3:sync-campaign-listings')
+            ->dailyAt('20:34')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-campaign-listings')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Post-20:00 eBay ads jobs — must NOT use $ist() (09:00–20:00), or they never fire.
+        $schedule->command('ebay:auto-update-over-bids')
             ->dailyAt('21:00')
             ->timezone('Asia/Kolkata')
             ->name('ebay-over-bids')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay:auto-update-under-bids')
+        $schedule->command('ebay:auto-update-under-bids')
             ->dailyAt('21:02')
             ->timezone('Asia/Kolkata')
             ->name('ebay-under-bids')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay2:auto-update-utilized-bids')
+        $schedule->command('ebay2:auto-update-utilized-bids')
             ->dailyAt('21:04')
             ->timezone('Asia/Kolkata')
             ->name('ebay2-utilized-bids')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay3:auto-update-utilized-bids')
+        $schedule->command('ebay3:auto-update-utilized-bids')
             ->dailyAt('21:06')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-utilized-bids')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay:update-suggestedbid')
+        $schedule->command('ebay:update-suggestedbid')
             ->dailyAt('21:20')
             ->timezone('Asia/Kolkata')
             ->name('ebay-suggestedbid')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay2:update-suggestedbid')
+        $schedule->command('ebay2:update-suggestedbid')
             ->dailyAt('21:23')
             ->timezone('Asia/Kolkata')
             ->name('ebay2-suggestedbid')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay3:update-suggestedbid')
+        $schedule->command('ebay3:update-suggestedbid')
             ->dailyAt('21:26')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-suggestedbid')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay1:update-budget')
+        $schedule->command('ebay1:update-budget')
             ->dailyAt('21:29')
             ->timezone('Asia/Kolkata')
             ->name('ebay1-budget')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay2:update-budget')
+        $schedule->command('ebay2:update-budget')
             ->dailyAt('21:31')
             ->timezone('Asia/Kolkata')
             ->name('ebay2-budget')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
-        $ist($schedule->command('ebay3:update-budget')
+        $schedule->command('ebay3:update-budget')
             ->dailyAt('21:33')
             ->timezone('Asia/Kolkata')
             ->name('ebay3-budget')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         $ist($schedule->command('ebay:collect-metrics')
             ->dailyAt('19:15')
@@ -691,13 +716,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('ebay:store-utilization-counts')
+        $schedule->command('ebay:store-utilization-counts')
             ->dailyAt('21:40')
             ->timezone('Asia/Kolkata')
             ->name('ebay-utilization-counts')
-            ->withoutOverlapping()
+            ->withoutOverlapping(60)
             ->runInBackground()
-            ->appendOutputTo($log));
+            ->appendOutputTo($log);
 
         /*
         |--------------------------------------------------------------------------

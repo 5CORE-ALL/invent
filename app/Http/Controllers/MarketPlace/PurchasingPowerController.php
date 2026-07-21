@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
+use App\Models\MacysPriceData;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\PurchasingPowerDataView;
@@ -58,9 +59,23 @@ class PurchasingPowerController extends Controller
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy('sku');
+        $ppMetrics    = PurchasingPowerProduct::whereIn('sku', $skus)->get()->keyBy(fn ($i) => strtoupper((string) $i->sku));
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
+
+        // Mirakl seller-portal offers export (Default price) — same sheet Macy pricing uses.
+        // Connect/API catalog prices often diverge from portal Default price (e.g. $24.47 vs $32.99).
+        $offerSheetBySku = MacysPriceData::query()
+            ->where(function ($q) use ($skus) {
+                $upper = array_values(array_unique(array_map(static fn ($s) => strtoupper((string) $s), $skus)));
+                $q->whereIn(DB::raw('UPPER(sku)'), $upper)
+                    ->orWhereIn(DB::raw('UPPER(offer_sku)'), $upper);
+            })
+            ->get()
+            ->keyBy(function ($item) {
+                $key = strtoupper(trim((string) ($item->offer_sku ?: $item->sku)));
+                return $key;
+            });
 
         // Sales qty from uploaded purchasing_power_sales (excluding Canceled)
         // Match by offer_sku (= product_masters.sku), NOT product_sku (which is Mirakl internal numeric ID)
@@ -79,8 +94,9 @@ class PurchasingPowerController extends Controller
             $parent  = $pm->parent;
 
             $shopify   = $shopifyData->get($pm->sku);
-            $ppMetric  = $ppMetrics[$pm->sku] ?? null;
+            $ppMetric  = $ppMetrics[$sku] ?? $ppMetrics[strtoupper((string) $pm->sku)] ?? null;
             $amazon    = $amazonData[strtoupper($pm->sku)] ?? null;
+            $offerSheet = $offerSheetBySku[$sku] ?? null;
 
             $row = [];
             $row['Parent']      = $parent;
@@ -90,8 +106,13 @@ class PurchasingPowerController extends Controller
             $row['L30']  = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
             $row['PP L30']   = $salesQty[strtoupper($pm->sku)] ?? $ppMetric->m_l30 ?? 0;
-            $row['PP Price'] = $ppMetric->price ?? 0;
-            $row['PP INV']   = $ppMetric->stock ?? 0;
+            // Prc: portal offers sheet first (matches seller Default price), else live product row.
+            $row['PP Price'] = $offerSheet
+                ? floatval($offerSheet->price ?? 0)
+                : floatval($ppMetric->price ?? 0);
+            $row['PP INV']   = $offerSheet && $offerSheet->quantity !== null
+                ? (int) $offerSheet->quantity
+                : (int) ($ppMetric->stock ?? 0);
 
             $row['A Price'] = $amazon ? floatval($amazon->price ?? 0) : null;
 

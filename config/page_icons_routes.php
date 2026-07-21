@@ -136,6 +136,7 @@ return [
     'macys.daily.sales.data' => 'sidebar_analytics',
     'macys.*' => 'sidebar_ads',
     'temu.*' => 'sidebar_ads',
+    'temu2.*' => 'sidebar_ads',
     'shein.*' => 'sidebar_ads',
     'faire.*' => 'sidebar_ads',
     'aliexpress.*' => 'sidebar_ads',
