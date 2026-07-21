@@ -57,6 +57,7 @@ use App\Models\ViewsPullData;
 use App\Models\TemuViewData;
 use App\Models\Temu2ViewData;
 use App\Models\TemuAdData;
+use App\Models\Temu2CampaignReport;
 use App\Models\TemuLmp;
 use App\Models\MarketplacePercentage;
 use App\Services\LmpSkuGroupService;
@@ -415,6 +416,7 @@ class CvrMasterController extends Controller
             $temu2L30ByProductSku = array_fill_keys($skus, 0);
             $temu2PricingByProductSku = array_fill_keys($skus, null);
             $temu2ViewByGoodsId = [];
+            $temu2SpendByGoodsId = [];
             if (Schema::hasTable('temu2_view_data')) {
                 foreach (
                     Temu2ViewData::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
@@ -432,6 +434,29 @@ class CvrMasterController extends Controller
                     }
                 }
             }
+            // L30 Ads spend from /temu2/ads upload (temu2_campaign_reports)
+            if (Schema::hasTable('temu2_campaign_reports')) {
+                try {
+                    foreach (
+                        Temu2CampaignReport::where('report_range', 'L30')
+                            ->selectRaw('goods_id, COALESCE(SUM(spend), 0) as spend')
+                            ->groupBy('goods_id')
+                            ->get() as $r
+                    ) {
+                        $spend = round((float) ($r->spend ?? 0), 2);
+                        $rawGid = (string) ($r->goods_id ?? '');
+                        if ($rawGid !== '') {
+                            $temu2SpendByGoodsId[$rawGid] = $spend;
+                        }
+                        $nk = TemuGoodsIdHelper::normalizeKey($r->goods_id);
+                        if ($nk) {
+                            $temu2SpendByGoodsId[$nk] = $spend;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR Master - Temu 2 campaign spend load skipped: ' . $e->getMessage());
+                }
+            }
             if (Schema::hasTable('temu2_pricing') && Schema::hasTable('temu2_daily_data')) {
                 try {
                     $temu2L30ByProductSku = $this->buildTemu2L30ByProductSkusMap($skus, true);
@@ -440,6 +465,7 @@ class CvrMasterController extends Controller
                     Log::info('CVR Master - Temu 2 Data fetched', [
                         'temu2_pricing_rows'   => $temu2PricingsAll->count(),
                         'temu2_skus_w_l30'     => count(array_filter($temu2L30ByProductSku, fn ($q) => (int) $q > 0)),
+                        'temu2_spend_goods'    => count($temu2SpendByGoodsId),
                     ]);
                 } catch (\Throwable $e) {
                     Log::warning('CVR Master - Temu 2 batch load skipped: ' . $e->getMessage());
@@ -1112,13 +1138,26 @@ class CvrMasterController extends Controller
                     $temuPFT = $temuGPFT - $temuAD;
                 }
 
-                // === TEMU 2 CALCULATIONS (same price/GPFT as Temu; no ad % in rollups) ===
+                // === TEMU 2 CALCULATIONS (same price/GPFT as Temu; Ads% from temu2_campaign_reports L30) ===
                 $temu2Pricing = $temu2PricingByProductSku[$sku] ?? null;
                 $temu2BasePrice = $temu2Pricing ? floatval($temu2Pricing->base_price ?? 0) : 0;
                 $temu2Price = $temu2BasePrice > 0 ? ($temu2BasePrice <= 26.99 ? $temu2BasePrice + 2.99 : $temu2BasePrice) : 0;
                 $temu2L30 = (int) ($temu2L30ByProductSku[$sku] ?? 0);
                 $temu2GPFT = $temu2Price > 0 ? ((($temu2Price * $temuPercentage - $lp - $temuShip) / $temu2Price) * 100) : 0;
-                $temu2PFT = $temu2GPFT;
+                $temu2AdSpend = 0.0;
+                if ($temu2Pricing) {
+                    $t2Gid = $temu2Pricing->goods_id ?? null;
+                    $t2Raw = $t2Gid !== null && $t2Gid !== '' ? (string) $t2Gid : '';
+                    $t2Nk = TemuGoodsIdHelper::normalizeKey($t2Gid);
+                    $temu2AdSpend = (float) ($temu2SpendByGoodsId[$t2Raw] ?? ($t2Nk ? ($temu2SpendByGoodsId[$t2Nk] ?? 0) : 0));
+                }
+                $temu2Revenue = $temu2Price * $temu2L30;
+                if ($temu2AdSpend > 0 && $temu2L30 == 0) {
+                    $temu2AD = 100;
+                } else {
+                    $temu2AD = $temu2Revenue > 0 ? ($temu2AdSpend / $temu2Revenue) * 100 : 0;
+                }
+                $temu2PFT = ($temu2AD == 100) ? $temu2GPFT : ($temu2GPFT - $temu2AD);
                 $temu2Views = 0;
                 if ($temu2Pricing) {
                     $temu2Views = $this->lookupTemuViewsByGoodsId(
@@ -1247,7 +1286,7 @@ class CvrMasterController extends Controller
                 if ($ppPrice > 0) $gpftValues[] = $ppGPFT;
                 
                 // Sales-weighted Ads%: (Σ ad spend $) ÷ (Σ sales $) × 100
-                // for marketplaces with ads (Amazon, Temu, Walmart) that have sales
+                // for marketplaces with ads (Amazon, Temu, Temu 2, Walmart) that have sales
                 $totalAdsAmount = 0.0;
                 $totalAdSalesAmount = 0.0;
                 if ($amazonRevenue > 0) {
@@ -1257,6 +1296,10 @@ class CvrMasterController extends Controller
                 if ($temuRevenue > 0) {
                     $totalAdsAmount += $temuAdSpend;
                     $totalAdSalesAmount += $temuRevenue;
+                }
+                if ($temu2Revenue > 0) {
+                    $totalAdsAmount += $temu2AdSpend;
+                    $totalAdSalesAmount += $temu2Revenue;
                 }
                 if ($wL30 > 0) {
                     $totalAdsAmount += $walmartAdSpend;
@@ -3157,7 +3200,8 @@ class CvrMasterController extends Controller
                     $temu2GPFTBr = $temu2PriceBr > 0
                         ? round((($temu2PriceBr * $temu2Margin - $lp - $temuShip) / $temu2PriceBr) * 100, 2)
                         : 0;
-                    $temu2NPFTBr = $temu2GPFTBr; // Temu2 Ads% forced 0 on /temu2-decrease
+                    // NPFT recalculated below after channel Ads% (AMM / temu2_campaign_reports)
+                    $temu2NPFTBr = $temu2GPFTBr;
                     if ($temu2PricingRow) {
                         $temu2ViewsBr = $this->resolveTemuProductClicks(
                             $temu2PricingRow->goods_id ?? null,
@@ -3195,6 +3239,8 @@ class CvrMasterController extends Controller
             $temu2HasListSignal = ($temu2PricingRow && (float) ($temu2PricingRow->base_price ?? 0) > 0)
                 || $temu2L30Br > 0
                 || $suggSpT2 > 0.01;
+            $temu2ChannelAdsPct = (float) $getChannelAdsPercent('Temu2');
+            $temu2NPFTBr = round($temu2GPFTBr - $temu2ChannelAdsPct, 2);
             $breakdownData[] = [
                 'marketplace' => 'Temu2',
                 'sku' => $temu2HasListSignal ? $fullSku : 'Not Listed',
@@ -3202,8 +3248,8 @@ class CvrMasterController extends Controller
                 'views' => $temu2ViewsBr,
                 'l30' => $temu2L30Br,
                 'gpft' => $temu2GPFTBr,
-                'ad' => 0,
-                'tacos_ch' => 0,
+                'ad' => $temu2ChannelAdsPct,
+                'tacos_ch' => $temu2ChannelAdsPct,
                 'npft' => $temu2NPFTBr,
                 'is_listed' => $temu2HasListSignal,
                 'sprice' => $temu2Suggested['sprice'],
@@ -3733,13 +3779,13 @@ class CvrMasterController extends Controller
                 $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
                 $gpftPct = (float) ($row['gpft'] ?? 0);
 
-                // TikTok: SKU TACOS; Temu2/Doba: Ads% = 0 (same as channel pages); else channel Ads%
+                // TikTok: SKU TACOS; Doba/Reverb: Ads% = 0; else channel Ads% (incl. Temu / Temu 2 from AMM)
                 if ($mp === 'tiktok') {
                     $adsPct = (float) ($row['tacos_ch'] ?? $row['ad'] ?? 0);
                     $row['ad'] = $adsPct;
                     $row['tacos_ch'] = $adsPct;
                     $row['npft'] = round($gpftPct - $adsPct, 2);
-                } elseif (in_array($mp, ['temu2', 'doba', 'reverb'], true)) {
+                } elseif (in_array($mp, ['doba', 'reverb'], true)) {
                     // Doba / Reverb: match channel pricing pages — PFT/ROI never subtract ads
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
@@ -3747,6 +3793,10 @@ class CvrMasterController extends Controller
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
                     $row['tacos_ch'] = $adsPct;
+                    // Temu / Temu 2: Ads% column + SPFT use channel Ads% (same as AMM)
+                    if (in_array($mp, ['temu', 'temu2'], true)) {
+                        $row['ad'] = $adsPct;
+                    }
                     $row['npft'] = round($gpftPct - $adsPct, 2);
                 }
 

@@ -2496,11 +2496,11 @@
                     const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                     const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
                     sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
-                    // Doba/Reverb: SPFT = SGPFT (no ads); TikTok: SPFT = SGPFT − TACOS%; else L30==0 skip-ads
+                    // Doba/Reverb: SPFT = SGPFT (no ads); TikTok/Temu/Temu2: SPFT = SGPFT − channel Ads%; else L30==0 skip-ads
                     if (isNoAdsMp) {
                         spft = sgpft;
-                    } else if (mpLower === 'tiktok') {
-                        spft = sgpft - tacosCh;
+                    } else if (mpLower === 'tiktok' || mpLower === 'temu' || mpLower === 'temu2') {
+                        spft = (tacosCh === 100) ? sgpft : (sgpft - tacosCh);
                     } else {
                         spft = (l30 == 0 ? sgpft : (sgpft - ad));
                     }

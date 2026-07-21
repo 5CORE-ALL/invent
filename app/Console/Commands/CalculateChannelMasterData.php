@@ -137,6 +137,19 @@ class CalculateChannelMasterData extends Command
                                 $this->info("  - Using {$plsPercentage}% marketplace percentage from marketplace_percentages table");
                             }
 
+                            // Temu / Temu 2: Spend from temu(_2)_campaign_reports (L30 ads upload)
+                            if ($channelName === 'Temu' || $channelName === 'Temu 2') {
+                                $this->newLine();
+                                $this->info("Processing {$channelName} with campaign report spend:");
+                                $this->info("  - L30 Sales: " . ($channelData['L30 Sales'] ?? 'N/A'));
+                                $this->info("  - Total Ad Spend: " . ($channelData['Total Ad Spend'] ?? 'N/A'));
+                                $this->info("  - KW Spent: " . ($channelData['KW Spent'] ?? 'N/A'));
+                                $this->info("  - Ads %: " . ($channelData['Ads%'] ?? 'N/A'));
+                                $this->info("  - TACOS %: " . ($channelData['TACOS %'] ?? $channelData['TACOS'] ?? 'N/A'));
+                                $this->info("  - N PFT %: " . ($channelData['N PFT'] ?? 'N/A'));
+                                $this->info("  - N ROI: " . ($channelData['N ROI'] ?? 'N/A'));
+                            }
+
                             $this->saveChannelData($channelData, $calculatedAt, $dataAsOf);
                             $bar->advance();
                         }
@@ -208,11 +221,13 @@ class CalculateChannelMasterData extends Command
             'total_profit' => $parseNumber($data['Total PFT'] ?? 0),
             'n_pft' => $parseNumber($data['N PFT'] ?? 0),
             'n_roi' => $parseNumber($data['N ROI'] ?? 0),
-            'tacos_percentage' => $parseNumber($data['TACOS'] ?? 0),
+            // Channel rows use "TACOS %" (with space); fast-path cache uses "TACOS"
+            'tacos_percentage' => $parseNumber($data['TACOS %'] ?? $data['TACOS'] ?? $data['Ads%'] ?? 0),
             'cogs' => $parseNumber($data['cogs'] ?? 0),
 
-            'total_ad_spend' => $parseNumber($data['Total Ad Spend'] ?? 0),
-            'ads_percentage' => $parseNumber($data['Ads%'] ?? 0),
+            // Prefer Total Ad Spend; fall back to KW Spent (Temu / Temu 2 ads upload)
+            'total_ad_spend' => $parseNumber($data['Total Ad Spend'] ?? $data['KW Spent'] ?? 0),
+            'ads_percentage' => $parseNumber($data['Ads%'] ?? $data['TACOS %'] ?? $data['TACOS'] ?? 0),
             'clicks' => (int) ($data['Clicks'] ?? 0),
             'ad_sold' => (int) ($data['Ad Sold'] ?? 0),
             'ad_sales' => $parseNumber($data['Ad Sales'] ?? 0),

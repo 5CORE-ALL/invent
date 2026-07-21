@@ -106,6 +106,7 @@ use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
 use App\Models\TemuDailyData;
 use App\Models\TemuDailyDataL60;
+use App\Models\Temu2CampaignReport;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DailyDataL60;
 use App\Models\TemuMetric;
@@ -861,6 +862,26 @@ class ChannelMasterController extends Controller
             // byte-identical with those pages.
             if (array_key_exists('cvr_pct', $mapMiss)) {
                 $row['CVR'] = $mapMiss['cvr_pct'];
+            }
+
+            // Temu 2: overlay live Spend from temu2_campaign_reports (same as /temu2/ads)
+            if ($isTemu2) {
+                $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
+                $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
+                if ($liveSales) {
+                    $l30ForAds = (float) ($liveSales['total_revenue'] ?? $l30ForAds);
+                }
+                $adsPct = $l30ForAds > 0 ? ($totalAdSpend / $l30ForAds) * 100 : 0;
+                $gProfitPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
+                $totalPft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+                $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+                $row['Total Ad Spend'] = round($totalAdSpend, 2);
+                $row['KW Spent'] = round($totalAdSpend, 2);
+                $row['Ads%'] = round($adsPct, 2).'%';
+                $row['TACOS %'] = round($adsPct, 2).'%';
+                $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
+                $netProfit = $totalPft - $totalAdSpend;
+                $row['N ROI'] = $cogs > 0 ? round(($netProfit / $cogs) * 100, 2) : ($row['N ROI'] ?? 0);
             }
         }
         unset($row);
@@ -3877,9 +3898,39 @@ class ChannelMasterController extends Controller
                     ]);
                 }
 
-                case 'temu2':
-                    // Temu 2: no ad data table; return zeros
-                    return $defaults;
+                case 'temu2': {
+                    // Authoritative L30 totals from temu2_campaign_reports (/temu2/ads upload)
+                    $tot = Temu2CampaignReport::where('report_range', 'L30')
+                        ->selectRaw('
+                            COALESCE(SUM(spend), 0) AS spend,
+                            COALESCE(SUM(clicks), 0) AS clicks,
+                            COALESCE(SUM(COALESCE(base_price_sales, 0)), 0) AS base_price_sales,
+                            COALESCE(SUM(COALESCE(sub_orders, 0)), 0) AS sub_orders
+                        ')
+                        ->first();
+                    $sp = round((float) ($tot->spend ?? 0), 2);
+                    $c = (int) ($tot->clicks ?? 0);
+                    $s = round((float) ($tot->base_price_sales ?? 0), 2);
+                    $u = (int) ($tot->sub_orders ?? 0);
+
+                    $liveSales = $this->getTemuLiveSalesSummaryFromTabulator(true);
+                    $salesRevenue = (float) ($liveSales['total_revenue'] ?? 0);
+                    $adsPercent = $salesRevenue > 0 ? ($sp / $salesRevenue) * 100 : 0;
+
+                    return array_merge($defaults, [
+                        'clicks' => $c,
+                        'ad_sales' => $s,
+                        'ad_sold' => $u,
+                        'KW Clicks' => $c,
+                        'KW Sales' => $s,
+                        'KW Sold' => $u,
+                        'KW Spent' => $sp,
+                        'Total Ad Spend' => $sp,
+                        'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
+                        'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
+                        'Ads%' => round($adsPercent, 2),
+                    ]);
+                }
 
                 case 'topdawg':
                     return $defaults;
@@ -4006,7 +4057,8 @@ class ChannelMasterController extends Controller
                 return round((float) ($metrics['Total Ad Spend'] ?? 0), 2);
 
             case 'temu2':
-                return 0.0;
+                // Same source as /temu2/ads Spend badge — SUM(spend) on L30 upload
+                return round((float) (Temu2CampaignReport::where('report_range', 'L30')->sum('spend') ?? 0), 2);
 
             case 'topdawg':
                 return 0.0;
@@ -5136,6 +5188,9 @@ class ChannelMasterController extends Controller
                 $l30SalesVal = (float) str_replace(['$', ',', '%'], '', $row['L30 Sales'] ?? 0);
                 $adsPercentage = $l30SalesVal > 0 ? ($totalAdSpend / $l30SalesVal) * 100 : 0;
                 $row['Ads%'] = round($adsPercentage, 2) . '%';
+                // Keep TACOS % in sync with Ads% (channel rows use "TACOS %"; cache may use "TACOS")
+                $row['TACOS %'] = $row['Ads%'];
+                $row['TACOS'] = round($adsPercentage, 2);
 
                 // Recalculate N PFT based on recalculated Ads% (NPFT% = GPFT% - Ads%)
                 $gpftPercent = (float) str_replace(['$', ',', '%'], '', $row['Gprofit%'] ?? 0);
@@ -8738,6 +8793,7 @@ class ChannelMasterController extends Controller
         if (!$metrics) {
             $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
             $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(true);
+            $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
             $result[] = [
                 'Channel '   => 'Temu 2',
                 'L-60 Sales' => 0,
@@ -8753,13 +8809,13 @@ class ChannelMasterController extends Controller
                 'Total PFT'  => 0,
                 'N PFT'      => '0%',
                 'N ROI'      => '0%',
-                'KW Spent'   => 0,
+                'KW Spent'   => $totalAdSpend,
                 'PT Spent'   => 0,
                 'HL Spent'   => 0,
                 'PMT Spent'  => 0,
                 'Shopping Spent' => 0,
                 'SERP Spent' => 0,
-                'Total Ad Spend' => 0,
+                'Total Ad Spend' => $totalAdSpend,
                 'Ads%'       => '0%',
                 'TACOS %'    => '0%',
                 'type'       => $channelData->type ?? '',
@@ -8797,10 +8853,12 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? $gProfitPct;
-        $nRoi = $metrics->n_roi ?? $gRoi;
+        // Live Spend from temu2_campaign_reports (/temu2/ads) — same as Temu 1 path
         $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
+        $tacosPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+        $adsPercentage = $tacosPercentage;
+        $nPft = $gProfitPct - $tacosPercentage;
+        $nRoi = $totalCogs > 0 ? (($totalProfit - $totalAdSpend) / $totalCogs) * 100 : 0;
 
         // Growth = ((L30 - L60) / L60) * 100.
         // Final fallback only if neither historical snapshot nor static file gave us a value.
@@ -8811,7 +8869,6 @@ class ChannelMasterController extends Controller
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
-        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         $channelData = ChannelMaster::where('channel', 'Temu 2')->first();
         $mapMissCounts = $this->getTemuLiveMapMissNMapFromDecreaseData(true);

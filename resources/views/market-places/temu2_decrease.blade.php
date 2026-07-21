@@ -416,6 +416,9 @@
                             data-badge-metric="total_sales" data-badge-label="Sales"
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="L30 sales from Temu 2 orders (same source as sales summary)">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="total-spend-badge"
+                            style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: bold;"
+                            title="Sum of Spend from Temu 2 Ads upload">Spend: $0.00</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -615,61 +618,6 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="submit" form="uploadViewDataForm" class="btn btn-success">
                         <i class="fa fa-upload me-1"></i>Up View Data
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Ad Data Modal -->
-    <div class="modal fade" id="uploadAdDataModal" tabindex="-1" aria-labelledby="uploadAdDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-warning text-dark">
-                    <h5 class="modal-title" id="uploadAdDataModalLabel">
-                        <i class="fa fa-chart-line me-2"></i>Upload Temu Ad Data
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    
-                    <form id="uploadAdDataForm" action="{{ route('temu.addata.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="adDataFile" class="form-label fw-bold">
-                                <i class="fa fa-file-excel text-success me-1"></i>Choose Excel File
-                            </label>
-                            <input type="file" class="form-control" id="adDataFile" name="ad_data_file" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fa fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
-                            </div>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i>
-                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
-                            <br>
-                            <i class="fa fa-info-circle me-1"></i>
-                            Upload the Temu Ads report Excel directly (as exported from Temu).
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadAdDataForm" class="btn btn-warning">
-                        <i class="fa fa-upload me-1"></i>Up Ad Data
                     </button>
                 </div>
             </div>
@@ -2722,6 +2670,16 @@
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
             $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
             $('#total-sales-amt-badge').text('Sales: $' + Math.round(salesAmt).toLocaleString());
+            // Prefer file total from temu2_campaign_reports — summing per-SKU spend double-counts
+            // when multiple SKUs share one goods_id.
+            const backendSpend = adTotalsFromBackend ? parseFloat(adTotalsFromBackend.spend) : NaN;
+            const spendSum = Number.isFinite(backendSpend)
+                ? backendSpend
+                : (totalSpendL30 > 0 ? totalSpendL30 : totalSpend);
+            $('#total-spend-badge').text('Spend: $' + Number(spendSum).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }));
             $('#qty-sold-badge').text('Qty: ' + Number(qtyAmt).toLocaleString());
             $('#avg-gpft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
             $('#groi-percent-badge').text('GROI: ' + avgGroi.toFixed(1) + '%');
@@ -2765,6 +2723,7 @@
 
         let totalCampaignCountFromBackend = 0;
         let salesSummaryFromBackend = null;
+        let adTotalsFromBackend = null; // authoritative Spend from temu2_campaign_reports
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
         let currentCampaignPeriod = 'L30';
 
@@ -2791,6 +2750,7 @@
                     currentCampaignPeriod = periodFromResponse;
                     totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
                     salesSummaryFromBackend = response.sales_summary || null;
+                    adTotalsFromBackend = response.ad_totals || null;
                     // Use exact aggregate_ads_percent from backend (matches all-marketplace-master)
                     // This is the authoritative value - always use it for NPFT calculation
                     if (response.aggregate_ads_percent != null && response.aggregate_ads_percent !== undefined) {
@@ -3420,12 +3380,9 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                            <span>${value.toFixed(2)}</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Spend"></i>
-                        </div>`;
+                        return value > 0 ? '$' + value.toFixed(2) : '0.00';
                     },
-                    visible: false, 
+                    visible: true,
                     width: 100
                 },
                 {
@@ -4540,6 +4497,8 @@
                             }
                         });
                     }
+                    // Keep Spend visible (display-only; not Temu ads feature set)
+                    try { table.showColumn('spend'); } catch (e) {}
                     enforceAlwaysHiddenColumns();
                 })
                 .catch(err => console.error('Error applying column visibility:', err));
@@ -4548,6 +4507,7 @@
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
+            try { table.showColumn('spend'); } catch (e) {}
             enforceAlwaysHiddenColumns();
         });
 

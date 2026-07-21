@@ -8,6 +8,7 @@ use App\Models\EbayOrder;
 use App\Models\Ebay2Order;
 use App\Models\TemuAdData;
 use App\Models\TemuCampaignReport;
+use App\Models\Temu2CampaignReport;
 use App\Models\Temu2DailyData;
 use App\Models\TopDawgOrderMetric;
 use App\Models\SheinDailyData;
@@ -710,7 +711,7 @@ class UpdateMarketplaceDailyMetrics extends Command
      * Temu 2: mirrors temu2_tabulator_view badges and getTemu2DailyData filtering.
      * Filters to ProductMaster SKUs, applies fbPrice (+$2.99 if order total < $27),
      * and reads margin from marketplace_percentages.TemuTwo (fallback 0.96).
-     * No separate ad table for Temu 2; ad spend = 0.
+     * Ad spend from temu2_campaign_reports (L30 upload on /temu2/ads).
      */
     private function calculateTemu2Metrics($date)
     {
@@ -842,8 +843,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Temu 2: no separate ad table; use 0 for ad spend
-        $temu2Spent = 0;
+        // Temu 2: L30 spend from temu2_campaign_reports (/temu2/ads upload)
+        $temu2Spent = (float) (Temu2CampaignReport::where('report_range', 'L30')->sum('spend') ?? 0);
         $tacosPercentage = $totalL30Sales > 0 ? ($temu2Spent / $totalL30Sales) * 100 : 0;
         $nPftPercentage = $pftPercentage - $tacosPercentage;
         $netProfit = $totalPft - $temu2Spent;

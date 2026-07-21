@@ -4316,11 +4316,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
     Route::post('/temu2-decrease/save-links', [TemuController::class, 'saveTemu2DecreaseLinks'])->name('temu2.decrease.save.links');
 
-    // Temu 2 Ads (Tabulator + L7/L30 campaign report upload → temu2_campaign_reports)
+    // Temu 2 Ads — raw temu2_campaign_reports (upload + Tabulator, no matching)
     Route::controller(Temu2AdsController::class)->group(function () {
         Route::get('/temu2/ads', 'index')->name('temu2.ads');
         Route::get('/temu2/ads/data', 'getTemu2AdsData')->name('temu2.ads.data');
-        Route::post('/temu2/ads/update', 'updateTemu2Ads')->name('temu2.ads.update');
         Route::post('/temu2/ads/upload-campaign-report', 'uploadCampaignReport')->name('temu2.ads.upload.campaign');
     });
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
