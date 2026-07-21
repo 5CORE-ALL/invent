@@ -3558,6 +3558,10 @@ class AmazonAdsController extends Controller
      */
     public function pushSpSbids(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
         $rows = $request->input('rows');
         if (! is_array($rows) || $rows === []) {
             return response()->json([
@@ -3699,6 +3703,10 @@ class AmazonAdsController extends Controller
      */
     public function pushSbSbids(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
         $rows = $request->input('rows');
         if (! is_array($rows) || $rows === []) {
             return response()->json([
@@ -3819,6 +3827,10 @@ class AmazonAdsController extends Controller
      */
     public function pushSpSbgts(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
         $rows = $request->input('rows');
         if (! is_array($rows) || $rows === []) {
             return response()->json([
@@ -3944,6 +3956,10 @@ class AmazonAdsController extends Controller
      */
     public function pushSbSbgts(Request $request): JsonResponse
     {
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '0');
+        set_time_limit(0);
+
         $rows = $request->input('rows');
         if (! is_array($rows) || $rows === []) {
             return response()->json([

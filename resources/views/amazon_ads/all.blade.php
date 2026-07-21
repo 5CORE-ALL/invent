@@ -115,10 +115,10 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">BGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 10 as daily budget for the rows on this page (SP/SB only).">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbgtBtn" title="Push SBGT in chunks of 5 as daily budget for the rows on this page (SP/SB only).">
                             <i class="fa fa-cloud-upload-alt"></i> SBGT
                         </button>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 10 using the values shown on this page (SP/SB only).">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="amazonAdsPushSbidBtn" title="Push SBID in chunks of 5 using the values shown on this page (SP/SB only).">
                             <i class="fa fa-cloud-upload-alt"></i> SBID
                         </button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
@@ -824,7 +824,7 @@
                 pagination: true,
                 paginationMode: 'remote',
                 paginationSize: 100,
-                paginationSizeSelector: [25, 50, 100, 250, 500],
+                paginationSizeSelector: [25, 50, 100, 250, 500, 1000],
                 paginationCounter: 'rows',
                 paginationButtonCount: 10,
                 paginationInitialPage: 1,
@@ -1165,6 +1165,7 @@
                 runNext(0);
             }
 
+            var AMZ_PUSH_CHUNK_SIZE = 5;
             var pushSbidBtn = document.getElementById('amazonAdsPushSbidBtn');
             if (pushSbidBtn) {
                 pushSbidBtn.addEventListener('click', function () {
@@ -1172,16 +1173,16 @@
                     var rows = amzCollectSbidRows();
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
                     var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
-                    var chunks = Math.ceil(rows.length / 10) || 1;
+                    var chunks = Math.ceil(rows.length / AMZ_PUSH_CHUNK_SIZE) || 1;
                     amzRunPush({
                         url: isSp ? pushSpSbidsUrl : pushSbSbidsUrl,
                         btn: pushSbidBtn,
                         rows: rows,
-                        chunkSize: 10,
+                        chunkSize: AMZ_PUSH_CHUNK_SIZE,
                         label: 'SBID push',
-                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of 10 (' + chunks + ' request(s)). Each row uses the SBID shown in the grid (Lbid fallback).',
+                        confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row uses the SBID shown in the grid (Lbid fallback).',
                         loadingTitle: 'Pushing SBID…',
-                        loadingDetail: 'Updating SBIDs for ' + rows.length + ' row(s) in chunks of 10.'
+                        loadingDetail: 'Updating SBIDs for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
                 });
             }
@@ -1192,16 +1193,16 @@
                     var rows = amzCollectSbgtRows();
                     var nSel = table && table.getSelectedData ? table.getSelectedData().length : 0;
                     var scope = nSel > 0 ? ('the ' + rows.length + ' checked row(s)') : ('all ' + rows.length + ' eligible row(s) on this page');
-                    var chunks = Math.ceil(rows.length / 10) || 1;
+                    var chunks = Math.ceil(rows.length / AMZ_PUSH_CHUNK_SIZE) || 1;
                     amzRunPush({
                         url: isSp ? pushSpSbgtsUrl : pushSbSbgtsUrl,
                         btn: pushSbgtBtn,
                         rows: rows,
-                        chunkSize: 10,
+                        chunkSize: AMZ_PUSH_CHUNK_SIZE,
                         label: 'SBGT push',
-                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of 10 (' + chunks + ' request(s)). Each row sets the daily budget to its SBGT tier (in dollars).',
+                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of ' + AMZ_PUSH_CHUNK_SIZE + ' (' + chunks + ' request(s)). Each row sets the daily budget to its SBGT tier (in dollars).',
                         loadingTitle: 'Pushing SBGT…',
-                        loadingDetail: 'Updating budgets for ' + rows.length + ' row(s) in chunks of 10.'
+                        loadingDetail: 'Updating budgets for ' + rows.length + ' row(s) in chunks of ' + AMZ_PUSH_CHUNK_SIZE + '.'
                     });
                 });
             }

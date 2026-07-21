@@ -436,7 +436,7 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and SBGT tier values">SBGT RULE</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Runs budget:update-shopping — sets Google Shopping daily budgets from the saved SBGT rule. Waits until complete; shows success or error.">
+                        <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes SBGTs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
                         </button>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 10 using grid values (by campaign_id). Waits until complete; shows success or error.">
@@ -2386,13 +2386,15 @@
                     var scope = nSel > 0
                         ? ('the ' + ids.length + ' checked row(s)')
                         : ('all ' + ids.length + ' row(s) on this page');
+                    var sbgtChunks = Math.ceil(ids.length / 10) || 1;
                     gacRunArtisanPush({
                         url: gacRawPushSbgtUrl,
                         btn: pushSbgtBtn,
                         campaign_ids: ids,
-                        confirmMsg: 'Push SBGT to ' + scope + '? Each row is sent to Google Ads using the SBGT value shown in the grid (direct by campaign_id).',
+                        chunkSize: 10,
+                        confirmMsg: 'Push SBGT to ' + scope + '? Sends in chunks of 10 (' + sbgtChunks + ' request(s)). Each row uses the SBGT shown in the grid.',
                         loadingTitle: 'Pushing SBGT (budget:update-shopping)…',
-                        loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s). Waiting for Google Ads API — do not close this tab.',
+                        loadingDetail: 'Updating budgets for ' + ids.length + ' campaign id(s) in chunks of 10.',
                     });
                 });
             }
