@@ -69,7 +69,7 @@ class NeweggOrderSyncService
             }
 
             $pages++;
-            $orders = $this->extractOrders($res['json'] ?? []);
+            $orders = app(NeweggOrderDetailService::class)->extractOrders($res['json'] ?? []);
             if ($orders === []) {
                 break;
             }
@@ -157,40 +157,27 @@ class NeweggOrderSyncService
     }
 
     /**
-     * @param  array<string, mixed>|null  $json
-     * @return list<array<string, mixed>>
-     */
-    protected function extractOrders(?array $json): array
-    {
-        if (! is_array($json)) {
-            return [];
-        }
-
-        $list = data_get($json, 'ResponseBody.OrderInfoList')
-            ?? data_get($json, 'OrderInfoList')
-            ?? data_get($json, 'ResponseBody.OrderInfo')
-            ?? [];
-
-        if ($list === [] || $list === null) {
-            return [];
-        }
-
-        // Single order object
-        if (isset($list['OrderNumber']) || isset($list['SellerOrderNumber'])) {
-            return [$list];
-        }
-
-        return array_values(array_filter($list, 'is_array'));
-    }
-
-    /**
      * @param  array<string, mixed>  $order
      */
     protected function upsertOrder(array $order): int
     {
+        $detailService = app(NeweggOrderDetailService::class);
+        $unwrapped = $detailService->extractOrders(['OrderInfoList' => [$order]]);
+        $order = $unwrapped[0] ?? $order;
+
         $orderId = (string) ($order['OrderNumber'] ?? $order['SellerOrderNumber'] ?? '');
         if ($orderId === '') {
             return 0;
+        }
+
+        // Preserve ship-to / customer PII if this page payload is blank.
+        $existingPayload = NeweggOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('raw_payload')
+            ->orderBy('id')
+            ->value('raw_payload');
+        if (is_array($existingPayload)) {
+            $order = $this->mergeShipToFields($existingPayload, $order);
         }
 
         $orderDate = $order['OrderDate'] ?? $order['OrderDownloadedOn'] ?? null;
@@ -220,7 +207,7 @@ class NeweggOrderSyncService
             if (! is_array($item)) {
                 continue;
             }
-            $sku = trim((string) ($item['SellerPartNumber'] ?? $item['SellerPartNumber'] ?? ''));
+            $sku = trim((string) ($item['SellerPartNumber'] ?? ''));
             if ($sku === '') {
                 $sku = trim((string) ($item['NeweggItemNumber'] ?? '__unknown__'));
             }
@@ -245,6 +232,31 @@ class NeweggOrderSyncService
         }
 
         return $count;
+    }
+
+    /**
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $incoming
+     * @return array<string, mixed>
+     */
+    protected function mergeShipToFields(array $existing, array $incoming): array
+    {
+        $keys = [
+            'ShipToAddress1', 'ShipToAddress2', 'ShipToCityName', 'ShipToStateCode',
+            'ShipToZipCode', 'ShipToCountryCode', 'ShipToFirstName', 'ShipToLastName',
+            'ShipToCompany', 'ShipToPhoneNumber', 'CustomerName', 'CustomerEmailAddress',
+            'CustomerPhoneNumber',
+        ];
+
+        foreach ($keys as $key) {
+            $newVal = trim((string) ($incoming[$key] ?? ''));
+            $oldVal = trim((string) ($existing[$key] ?? ''));
+            if ($newVal === '' && $oldVal !== '') {
+                $incoming[$key] = $existing[$key];
+            }
+        }
+
+        return $incoming;
     }
 
     protected function queueReadyImports(): void

@@ -526,6 +526,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/aliexpress/refresh-products/status', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'refreshProductsStatus'])->name('aliexpress.refresh.status');
         Route::post('/aliexpress/fetch-orders', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'fetchOrders'])->name('aliexpress.fetch.orders');
         Route::post('/aliexpress/sync-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncInventoryNow'])->name('aliexpress.sync.inventory');
+        Route::post('/aliexpress/sync-tracking', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncTrackingNow'])->name('aliexpress.sync.tracking');
         Route::post('/aliexpress/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\AliexpressSyncController::class, 'syncMismatchInventoryNow'])->name('aliexpress.sync.mismatch.inventory');
         Route::get('/alibaba/connect', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'connect'])->name('alibaba.connect');
         Route::post('/alibaba/test-connection', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'testConnection'])->name('alibaba.test');
@@ -561,6 +562,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/orders/{order}', [\App\Http\Controllers\MarketplaceController::class, 'showOrder'])->name('marketplace.orders.show')->whereNumber('order');
         Route::post('/orders/{order}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullOrder'])->name('marketplace.orders.pull')->whereNumber('order');
+        Route::post('/orders/{order}/push-tracking', [\App\Http\Controllers\MarketplaceController::class, 'pushTracking'])->name('marketplace.orders.push-tracking')->whereNumber('order');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
         Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
         Route::post('/orders/push', [\App\Http\Controllers\MarketplaceController::class, 'pushOrderToShopify'])->name('marketplace.orders.push');

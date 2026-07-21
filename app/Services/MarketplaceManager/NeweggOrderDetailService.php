@@ -46,8 +46,16 @@ class NeweggOrderDetailService
      */
     public function fetchAndPersistOrderDetail(string $orderId): array
     {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return ['success' => false, 'message' => 'Order ID is required.'];
+        }
+
+        // Match FetchNeweggOrders / Newegg docs: OrderNumberList.OrderNumber[]
         $res = $this->neweggApi->getOrders([
-            'OrderNumber' => $orderId,
+            'OrderNumberList' => [
+                'OrderNumber' => [$orderId],
+            ],
         ], 1, 10);
 
         if (! empty($res['blocked_by_cloudflare'])) {
@@ -58,13 +66,21 @@ class NeweggOrderDetailService
             return ['success' => false, 'message' => $res['error'] ?? 'Order fetch failed'];
         }
 
-        $list = data_get($res['json'], 'ResponseBody.OrderInfoList')
-            ?? data_get($res['json'], 'OrderInfoList')
-            ?? [];
-        $order = is_array($list) ? (isset($list[0]) ? $list[0] : $list) : null;
-        if (! is_array($order) || $order === []) {
+        $order = $this->findOrderInResponse($res['json'] ?? null, $orderId);
+        if ($order === null) {
             return ['success' => false, 'message' => 'Order not found on Newegg'];
         }
+
+        // Never wipe a good cached ShipTo address with a blank/privacy-stripped refresh.
+        $existing = NeweggOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('raw_payload')
+            ->orderBy('id')
+            ->value('raw_payload');
+        $order = $this->mergePreservedShipTo(
+            is_array($existing) ? $existing : [],
+            $order
+        );
 
         NeweggOrderMetric::query()
             ->where('order_id', $orderId)
@@ -89,6 +105,8 @@ class NeweggOrderDetailService
             $raw = $raw['order'];
         }
 
+        $raw = $this->unwrapOrderInfoNode($raw);
+
         if ($raw === []) {
             return [];
         }
@@ -105,11 +123,169 @@ class NeweggOrderDetailService
             || isset($raw['ShipToAddress1'])
             || isset($raw['ItemInfoList'])
             || isset($raw['ItemList'])
+            || isset($raw['CustomerName'])
+            || isset($raw['CustomerEmailAddress'])
         ) {
             return $this->normalizeNeweggOrder($raw, $line);
         }
 
         return $raw;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $json
+     * @return array<string, mixed>|null
+     */
+    protected function findOrderInResponse(?array $json, string $orderId): ?array
+    {
+        foreach ($this->extractOrders($json) as $candidate) {
+            $candidateId = trim((string) ($candidate['OrderNumber'] ?? $candidate['SellerOrderNumber'] ?? ''));
+            if ($candidateId !== '' && $candidateId === $orderId) {
+                return $candidate;
+            }
+        }
+
+        // If API returned exactly one order, accept it even when id field naming differs.
+        $orders = $this->extractOrders($json);
+        if (count($orders) === 1) {
+            return $orders[0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Unwrap Newegg OrderInfoList / OrderInfo envelopes into a flat list of orders.
+     *
+     * @param  array<string, mixed>|null  $json
+     * @return list<array<string, mixed>>
+     */
+    public function extractOrders(?array $json): array
+    {
+        if (! is_array($json)) {
+            return [];
+        }
+
+        $list = data_get($json, 'ResponseBody.OrderInfoList')
+            ?? data_get($json, 'OrderInfoList')
+            ?? data_get($json, 'ResponseBody.OrderInfo')
+            ?? data_get($json, 'OrderInfo')
+            ?? [];
+
+        if ($list === [] || $list === null) {
+            return [];
+        }
+
+        if (! is_array($list)) {
+            return [];
+        }
+
+        // Single flat order.
+        if ($this->looksLikeOrderInfo($list)) {
+            return [$list];
+        }
+
+        // { "OrderInfo": { ... } } or { "OrderInfo": [ {...}, {...} ] }
+        if (isset($list['OrderInfo'])) {
+            $list = $list['OrderInfo'];
+            if (! is_array($list)) {
+                return [];
+            }
+            if ($this->looksLikeOrderInfo($list)) {
+                return [$list];
+            }
+        }
+
+        $out = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $row = $this->unwrapOrderInfoNode($row);
+            if ($this->looksLikeOrderInfo($row)) {
+                $out[] = $row;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array<string, mixed>
+     */
+    protected function unwrapOrderInfoNode(array $node): array
+    {
+        if ($this->looksLikeOrderInfo($node)) {
+            return $node;
+        }
+
+        if (isset($node['OrderInfo']) && is_array($node['OrderInfo'])) {
+            $inner = $node['OrderInfo'];
+            if (isset($inner[0]) && is_array($inner[0])) {
+                $inner = $inner[0];
+            }
+            if (is_array($inner) && $this->looksLikeOrderInfo($inner)) {
+                return $inner;
+            }
+        }
+
+        return $node;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    protected function looksLikeOrderInfo(array $row): bool
+    {
+        return isset($row['OrderNumber'])
+            || isset($row['SellerOrderNumber'])
+            || isset($row['ShipToAddress1'])
+            || isset($row['ItemInfoList'])
+            || isset($row['ItemList'])
+            || isset($row['CustomerEmailAddress'])
+            || isset($row['CustomerName']);
+    }
+
+    /**
+     * Keep previously stored ship-to / customer PII when a refresh returns blanks.
+     *
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $incoming
+     * @return array<string, mixed>
+     */
+    protected function mergePreservedShipTo(array $existing, array $incoming): array
+    {
+        $existing = $this->unwrapOrderInfoNode($existing);
+        if (! $this->looksLikeOrderInfo($existing)) {
+            return $incoming;
+        }
+
+        $preserveKeys = [
+            'ShipToAddress1',
+            'ShipToAddress2',
+            'ShipToCityName',
+            'ShipToStateCode',
+            'ShipToZipCode',
+            'ShipToCountryCode',
+            'ShipToFirstName',
+            'ShipToLastName',
+            'ShipToCompany',
+            'ShipToPhoneNumber',
+            'CustomerName',
+            'CustomerEmailAddress',
+            'CustomerPhoneNumber',
+        ];
+
+        foreach ($preserveKeys as $key) {
+            $newVal = trim((string) ($incoming[$key] ?? ''));
+            $oldVal = trim((string) ($existing[$key] ?? ''));
+            if ($newVal === '' && $oldVal !== '') {
+                $incoming[$key] = $existing[$key];
+            }
+        }
+
+        return $incoming;
     }
 
     /**
@@ -214,6 +390,14 @@ class NeweggOrderDetailService
         $tax = $order['SalesTax'] ?? $order['TaxAmount'] ?? $order['VATTotal'] ?? null;
         $created = $order['OrderDate'] ?? $order['OrderDownloadedOn'] ?? optional($line->order_date)?->toDateTimeString();
 
+        $address1 = trim((string) ($order['ShipToAddress1'] ?? ''));
+        $address2 = trim((string) ($order['ShipToAddress2'] ?? ''));
+        $city = trim((string) ($order['ShipToCityName'] ?? ''));
+        $province = trim((string) ($order['ShipToStateCode'] ?? ''));
+        $zip = trim((string) ($order['ShipToZipCode'] ?? ''));
+        $country = trim((string) ($order['ShipToCountryCode'] ?? ''));
+        $company = trim((string) ($order['ShipToCompany'] ?? ''));
+
         return [
             'order_id' => $orderId,
             'order_number' => $orderId,
@@ -236,19 +420,21 @@ class NeweggOrderDetailService
                 'last_name' => $last !== '' ? $last : null,
                 'login_id' => $email !== '' ? $email : null,
                 'email' => $email !== '' ? $email : null,
-                'country' => (string) ($order['ShipToCountryCode'] ?? ''),
+                'country' => $country !== '' ? $country : null,
             ],
             'receipt_address' => [
                 'contact_person' => $contact !== '' ? $contact : null,
-                'address' => (string) ($order['ShipToAddress1'] ?? ''),
-                'address2' => (string) ($order['ShipToAddress2'] ?? ''),
-                'city' => (string) ($order['ShipToCityName'] ?? ''),
-                'province' => (string) ($order['ShipToStateCode'] ?? ''),
-                'state' => (string) ($order['ShipToStateCode'] ?? ''),
-                'zip' => (string) ($order['ShipToZipCode'] ?? ''),
-                'zip_code' => (string) ($order['ShipToZipCode'] ?? ''),
-                'country' => (string) ($order['ShipToCountryCode'] ?? ''),
-                'country_name' => (string) ($order['ShipToCountryCode'] ?? ''),
+                'company' => $company !== '' ? $company : null,
+                'address' => $address1,
+                'address2' => $address2,
+                'detail_address' => $address1 !== '' ? $address1 : null,
+                'city' => $city,
+                'province' => $province,
+                'state' => $province,
+                'zip' => $zip,
+                'zip_code' => $zip,
+                'country' => $country,
+                'country_name' => $country,
                 'mobile_no' => $phone !== '' ? $phone : null,
                 'phone_number' => $phone !== '' ? $phone : null,
                 'email' => $email !== '' ? $email : null,

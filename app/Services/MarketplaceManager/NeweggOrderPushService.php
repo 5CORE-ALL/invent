@@ -133,16 +133,26 @@ class NeweggOrderPushService
             ];
         }
 
+        // Snapshot cached root before live refresh — refresh used to wipe ShipTo and
+        // create Shopify orders without shipping_address.
+        $cachedRoot = $this->orderDetailService->resolveOrderRoot($order);
+
         $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
         $order->refresh();
 
         $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
         if (empty($detailResult['success']) && $orderRoot === []) {
+            $orderRoot = $cachedRoot;
+        }
+        if ($orderRoot === [] && $cachedRoot === []) {
             return [
                 'success' => false,
                 'message' => $detailResult['message'] ?? 'Could not load Newegg order details before Shopify push.',
             ];
         }
+
+        // If live refresh lost ship-to fields, restore from pre-refresh cache.
+        $orderRoot = $this->restoreShippingFromCache($orderRoot, $cachedRoot);
 
         $lines = NeweggOrderMetric::query()
             ->where('order_id', $orderId)
@@ -584,5 +594,69 @@ class NeweggOrderPushService
         }
 
         return false;
+    }
+
+    /**
+     * If live Newegg refresh blanked ship-to / buyer email, restore from cached root.
+     *
+     * @param  array<string, mixed>  $fresh
+     * @param  array<string, mixed>  $cached
+     * @return array<string, mixed>
+     */
+    protected function restoreShippingFromCache(array $fresh, array $cached): array
+    {
+        if ($cached === []) {
+            return $fresh;
+        }
+        if ($fresh === []) {
+            return $cached;
+        }
+
+        $freshAddr = is_array($fresh['receipt_address'] ?? null) ? $fresh['receipt_address'] : [];
+        $cachedAddr = is_array($cached['receipt_address'] ?? null) ? $cached['receipt_address'] : [];
+        $freshLine1 = trim((string) ($freshAddr['address'] ?? $freshAddr['address1'] ?? ''));
+        $cachedLine1 = trim((string) ($cachedAddr['address'] ?? $cachedAddr['address1'] ?? ''));
+
+        if ($freshLine1 === '' && $cachedLine1 !== '') {
+            $fresh['receipt_address'] = array_merge($cachedAddr, array_filter(
+                $freshAddr,
+                static fn ($v) => $v !== null && $v !== ''
+            ));
+        } elseif ($cachedLine1 !== '') {
+            foreach (['address', 'address2', 'city', 'province', 'state', 'zip', 'zip_code', 'country', 'country_name', 'contact_person', 'company', 'mobile_no', 'phone_number', 'email'] as $key) {
+                $newVal = trim((string) ($freshAddr[$key] ?? ''));
+                $oldVal = trim((string) ($cachedAddr[$key] ?? ''));
+                if ($newVal === '' && $oldVal !== '') {
+                    $freshAddr[$key] = $cachedAddr[$key];
+                }
+            }
+            $fresh['receipt_address'] = $freshAddr;
+        }
+
+        $freshEmail = trim((string) (
+            $fresh['buyer_email']
+            ?? ($fresh['buyer_info']['email'] ?? null)
+            ?? ($fresh['receipt_address']['email'] ?? null)
+            ?? ''
+        ));
+        $cachedEmail = trim((string) (
+            $cached['buyer_email']
+            ?? ($cached['buyer_info']['email'] ?? null)
+            ?? ($cached['receipt_address']['email'] ?? null)
+            ?? ''
+        ));
+        if ($freshEmail === '' && $cachedEmail !== '') {
+            $fresh['buyer_email'] = $cachedEmail;
+            $fresh['buyer_info'] = array_merge(
+                is_array($fresh['buyer_info'] ?? null) ? $fresh['buyer_info'] : [],
+                is_array($cached['buyer_info'] ?? null) ? $cached['buyer_info'] : [],
+                ['email' => $cachedEmail]
+            );
+            if (is_array($fresh['receipt_address'] ?? null)) {
+                $fresh['receipt_address']['email'] = $cachedEmail;
+            }
+        }
+
+        return $fresh;
     }
 }

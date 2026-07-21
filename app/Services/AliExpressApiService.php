@@ -1863,4 +1863,218 @@ class AliExpressApiService
             'errors' => array_values(array_filter($errors)),
         ];
     }
+
+    /**
+     * Declare shipment / fill tracking — aliexpress.logistics.sellershipmentfortop
+     *
+     * @param  array{
+     *   out_ref: string,
+     *   logistics_no: string,
+     *   service_name: string,
+     *   send_type?: string,
+     *   tracking_website?: string|null,
+     *   description?: string|null,
+     *   actual_carrier?: string|null
+     * }  $params
+     * @return array{success: bool, message?: string, data?: mixed, request_id?: string|null}
+     */
+    public function declareSellerShipment(array $params): array
+    {
+        $outRef = trim((string) ($params['out_ref'] ?? ''));
+        $logisticsNo = trim((string) ($params['logistics_no'] ?? ''));
+        $serviceName = trim((string) ($params['service_name'] ?? ''));
+        $sendType = strtolower(trim((string) ($params['send_type'] ?? 'all')));
+        if (! in_array($sendType, ['all', 'part'], true)) {
+            $sendType = 'all';
+        }
+
+        if ($outRef === '' || $logisticsNo === '' || $serviceName === '') {
+            return [
+                'success' => false,
+                'message' => 'out_ref, logistics_no, and service_name are required to declare shipment.',
+            ];
+        }
+
+        $business = [
+            'out_ref' => $outRef,
+            'logistics_no' => $logisticsNo,
+            'service_name' => $serviceName,
+            'send_type' => $sendType,
+        ];
+
+        foreach (['tracking_website', 'description', 'actual_carrier', 'package_type', 'ioss', 'locale'] as $optional) {
+            $value = trim((string) ($params[$optional] ?? ''));
+            if ($value !== '') {
+                $business[$optional] = $value;
+            }
+        }
+
+        $raw = $this->callRestGateway('aliexpress.logistics.sellershipmentfortop', $business);
+        if (empty($raw['success']) && ! empty($this->gatewayFallback)) {
+            $fallback = $this->callSync('aliexpress.logistics.sellershipmentfortop', $business);
+            if (! empty($fallback['success']) || empty($raw['network_error'])) {
+                $raw = ! empty($fallback['success']) ? $fallback : $raw;
+            }
+        }
+
+        if (empty($raw['success'])) {
+            return [
+                'success' => false,
+                'message' => $raw['message'] ?? 'AliExpress declare shipment failed.',
+                'response' => $raw['response'] ?? $raw['data'] ?? null,
+                'request_id' => $raw['request_id'] ?? null,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Shipment declared on AliExpress.',
+            'data' => $raw['data'] ?? $raw['result'] ?? null,
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Modify previously declared tracking — aliexpress.logistics.sellermodifiedshipmentfortop
+     *
+     * @param  array{
+     *   out_ref: string,
+     *   old_logistics_no: string,
+     *   new_logistics_no: string,
+     *   old_service_name: string,
+     *   new_service_name: string,
+     *   send_type?: string,
+     *   tracking_website?: string|null,
+     *   description?: string|null,
+     *   actual_carrier?: string|null
+     * }  $params
+     * @return array{success: bool, message?: string, data?: mixed, request_id?: string|null}
+     */
+    public function modifySellerShipment(array $params): array
+    {
+        $outRef = trim((string) ($params['out_ref'] ?? ''));
+        $oldNo = trim((string) ($params['old_logistics_no'] ?? ''));
+        $newNo = trim((string) ($params['new_logistics_no'] ?? ''));
+        $oldService = trim((string) ($params['old_service_name'] ?? ''));
+        $newService = trim((string) ($params['new_service_name'] ?? ''));
+        $sendType = strtolower(trim((string) ($params['send_type'] ?? 'all')));
+        if (! in_array($sendType, ['all', 'part'], true)) {
+            $sendType = 'all';
+        }
+
+        if ($outRef === '' || $oldNo === '' || $newNo === '' || $oldService === '' || $newService === '') {
+            return [
+                'success' => false,
+                'message' => 'out_ref, old/new logistics_no, and old/new service_name are required to modify shipment.',
+            ];
+        }
+
+        $business = [
+            'out_ref' => $outRef,
+            'old_logistics_no' => $oldNo,
+            'new_logistics_no' => $newNo,
+            'old_service_name' => $oldService,
+            'new_service_name' => $newService,
+            'send_type' => $sendType,
+        ];
+
+        foreach (['tracking_website', 'description', 'actual_carrier', 'package_type', 'locale'] as $optional) {
+            $value = trim((string) ($params[$optional] ?? ''));
+            if ($value !== '') {
+                $business[$optional] = $value;
+            }
+        }
+
+        $raw = $this->callRestGateway('aliexpress.logistics.sellermodifiedshipmentfortop', $business);
+        if (empty($raw['success']) && ! empty($this->gatewayFallback)) {
+            $fallback = $this->callSync('aliexpress.logistics.sellermodifiedshipmentfortop', $business);
+            if (! empty($fallback['success']) || empty($raw['network_error'])) {
+                $raw = ! empty($fallback['success']) ? $fallback : $raw;
+            }
+        }
+
+        if (empty($raw['success'])) {
+            return [
+                'success' => false,
+                'message' => $raw['message'] ?? 'AliExpress modify shipment failed.',
+                'response' => $raw['response'] ?? $raw['data'] ?? null,
+                'request_id' => $raw['request_id'] ?? null,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Shipment tracking updated on AliExpress.',
+            'data' => $raw['data'] ?? $raw['result'] ?? null,
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
+
+    /**
+     * Logistics services supported for seller shipment declare.
+     * aliexpress.logistics.redefining.listlogisticsservice
+     *
+     * @return array{success: bool, message?: string, services?: list<array{service_name: string, display_name?: string}>}
+     */
+    public function listLogisticsServices(): array
+    {
+        $raw = $this->callRestGateway('aliexpress.logistics.redefining.listlogisticsservice', []);
+        if (empty($raw['success']) && ! empty($this->gatewayFallback)) {
+            $fallback = $this->callSync('aliexpress.logistics.redefining.listlogisticsservice', []);
+            if (! empty($fallback['success']) || empty($raw['network_error'])) {
+                $raw = ! empty($fallback['success']) ? $fallback : $raw;
+            }
+        }
+
+        if (empty($raw['success'])) {
+            return [
+                'success' => false,
+                'message' => $raw['message'] ?? 'Could not list AliExpress logistics services.',
+                'services' => [],
+            ];
+        }
+
+        $payload = is_array($raw['data'] ?? null) ? $raw['data'] : [];
+        $result = is_array($raw['result'] ?? null) ? $raw['result'] : ($payload['result'] ?? $payload);
+        $list = $result['result_list']
+            ?? $result['resultList']
+            ?? $result['aeop_logistics_service_result']
+            ?? $result['aeopLogisticsServiceResult']
+            ?? $result['logistics_service_list']
+            ?? $result;
+
+        if (is_array($list) && isset($list['aeop_logistics_service_result'])) {
+            $list = $list['aeop_logistics_service_result'];
+        }
+        if (is_array($list) && isset($list['aeopLogisticsServiceResult'])) {
+            $list = $list['aeopLogisticsServiceResult'];
+        }
+        if (! is_array($list)) {
+            $list = [];
+        }
+        if (isset($list['service_name']) || isset($list['serviceName'])) {
+            $list = [$list];
+        }
+
+        $services = [];
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim((string) ($row['service_name'] ?? $row['serviceName'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $services[] = [
+                'service_name' => $name,
+                'display_name' => trim((string) ($row['display_name'] ?? $row['displayName'] ?? $name)),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'services' => $services,
+            'request_id' => $raw['request_id'] ?? null,
+        ];
+    }
 }

@@ -1009,6 +1009,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
+        // Shopify label/tracking → AliExpress declare/modify shipment (settings-gated).
+        $schedule->job(new \App\Jobs\SyncAliexpressTrackingJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sync-tracking')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
             ->everyFourHours()
             ->timezone('Asia/Kolkata')

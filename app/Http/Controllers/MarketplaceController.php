@@ -121,6 +121,16 @@ class MarketplaceController extends Controller
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
 
+    public function pushTracking(Request $request, string $marketplace, int $order): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace === 'aliexpress') {
+            return app(AliexpressSyncController::class)->pushTrackingToAliexpress($order);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Tracking push not supported for this marketplace.'], 404);
+    }
+
     public function orders(Request $request, string $marketplace): View
     {
         $marketplace = strtolower($marketplace);

@@ -159,9 +159,10 @@ class NeweggDetailFormatter
             ],
             'shipping' => [
                 'recipient' => $addr['contact_person'] ?? $addr['receiver'] ?? null,
+                'company' => $addr['company'] ?? null,
                 'detail_address' => $addr['detail_address'] ?? null,
-                'address_line_1' => $addr['address'] ?? null,
-                'address_line_2' => $addr['address2'] ?? null,
+                'address_line_1' => $addr['address'] ?? $addr['address1'] ?? $addr['detail_address'] ?? null,
+                'address_line_2' => $addr['address2'] ?? $addr['address_2'] ?? null,
                 'city' => $addr['city'] ?? null,
                 'province' => $addr['province'] ?? $addr['state'] ?? null,
                 'zip' => $addr['zip'] ?? $addr['zip_code'] ?? null,
@@ -362,15 +363,20 @@ class NeweggDetailFormatter
 
         $address1 = trim((string) ($shipping['address_line_1'] ?? ''));
         if ($address1 === '' && ! empty($shipping['detail_address'])) {
-            $address1 = (string) $shipping['detail_address'];
+            $address1 = trim((string) $shipping['detail_address']);
+        }
+        if ($address1 === '' && ! empty($shipping['full_address'])) {
+            $address1 = trim((string) $shipping['full_address']);
         }
 
         if ($address1 !== '') {
             $countryCode = $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null);
             $province = trim((string) ($shipping['province'] ?? ''));
+            $company = trim((string) ($shipping['company'] ?? ''));
             $address = array_filter([
                 'first_name' => $firstName,
                 'last_name' => $lastName,
+                'company' => $company !== '' ? $company : null,
                 'address1' => $address1,
                 'address2' => $shipping['address_line_2'] ?? null,
                 'city' => $shipping['city'] ?? null,
@@ -383,6 +389,8 @@ class NeweggDetailFormatter
 
             $payload['shipping_address'] = $address;
             $payload['billing_address'] = $address;
+            // Also attach to customer so Shopify customer profile shows the address.
+            $payload['customer']['addresses'] = [array_merge($address, ['default' => true])];
         }
 
         $payload['line_items'] = $lineItems;

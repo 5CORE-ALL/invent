@@ -18,6 +18,7 @@ use App\Services\MarketplaceManager\AliexpressLiveListingsService;
 use App\Services\MarketplaceManager\AliexpressOrderDetailService;
 use App\Services\MarketplaceManager\AliexpressOrderPushService;
 use App\Services\MarketplaceManager\AliexpressOrderSyncService;
+use App\Services\MarketplaceManager\AliexpressTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
@@ -717,6 +718,47 @@ class AliexpressSyncController extends Controller
         ]);
     }
 
+    /**
+     * Push Shopify fulfillment tracking number to AliExpress (declare / modify shipment).
+     */
+    public function pushTrackingToAliexpress(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('aliexpress')) {
+            return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
+        }
+
+        $line = AliexpressOrderMetric::query()->findOrFail($id);
+        $result = app(AliexpressTrackingSyncService::class)->pushTrackingForOrder($line);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'skipped' => ! empty($result['skipped']),
+            'action' => $result['action'] ?? null,
+            'message' => $result['message'] ?? 'Tracking push finished.',
+            'shopify_tracking' => $result['shopify_tracking'] ?? null,
+            'shopify_carrier' => $result['shopify_carrier'] ?? null,
+            'service_name' => $result['service_name'] ?? null,
+        ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    /**
+     * Bulk push Shopify tracking → AliExpress for linked orders.
+     */
+    public function syncTrackingNow(): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('aliexpress')) {
+            return response()->json(['success' => false, 'message' => 'AliExpress not connected.']);
+        }
+
+        \App\Jobs\SyncAliexpressTrackingJob::dispatch(false);
+
+        return response()->json([
+            'success' => true,
+            'queued' => true,
+            'message' => 'Tracking sync queued. It reads Shopify fulfillments and declares/updates tracking on AliExpress.',
+        ]);
+    }
+
     public function fetchOrders(Request $request): JsonResponse
     {
         @set_time_limit(0);
@@ -1046,6 +1088,7 @@ class AliexpressSyncController extends Controller
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
+            'push_tracking_to_aliexpress',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_aliexpress', 'sync_title', 'sync_images',
