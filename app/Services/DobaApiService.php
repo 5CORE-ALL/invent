@@ -224,9 +224,18 @@ class DobaApiService
                 'response' => $responseData
             ]);
 
-            // Check for HTTP errors first
+            // Check for HTTP errors first (surface Doba's responseMessage — e.g. IP whitelist)
             if ($response->failed()) {
-                $errorMsg = "HTTP Error {$statusCode}";
+                $apiMsg = is_array($responseData)
+                    ? (string) ($responseData['responseMessage'] ?? $responseData['message'] ?? '')
+                    : '';
+                if ($apiMsg !== '' && (stripos($apiMsg, 'whitelist') !== false || stripos($apiMsg, 'IP') !== false)) {
+                    $errorMsg = 'Doba API IP whitelist check failed — add this server\'s public IP in the Doba Open Platform app settings. (' . $apiMsg . ')';
+                } elseif ($apiMsg !== '') {
+                    $errorMsg = "HTTP Error {$statusCode}: {$apiMsg}";
+                } else {
+                    $errorMsg = "HTTP Error {$statusCode}";
+                }
                 Log::error('Doba HTTP request failed', [
                     'item_id' => $itemId,
                     'status' => $statusCode,

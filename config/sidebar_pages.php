@@ -83,6 +83,7 @@ return [
     ['value' => 'amazon_analytics', 'text' => 'Amazon Analytics', 'group' => 'Marketplace'],
     ['value' => 'amz_variation_verify', 'text' => 'Amz Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'amz_listing_variation_verify', 'text' => 'Amz Listing Variation Verify', 'group' => 'Marketplace'],
+    ['value' => 'ebay_listing_variation_verify', 'text' => 'Ebay Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'amz_zero_view', 'text' => 'Amazon 0 View', 'group' => 'Marketplace'],
 
@@ -120,6 +121,7 @@ return [
     ['value' => 'temu_zero_view', 'text' => 'Temu 0 View', 'group' => 'Marketplace'],
     ['value' => 'temu_low_visibility', 'text' => 'Temu Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_temu', 'text' => 'Listing Temu', 'group' => 'Marketplace'],
+    ['value' => 'temu2_listing_variation_verify', 'text' => 'Temu 2 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'doba', 'text' => 'Doba', 'group' => 'Marketplace'],
     ['value' => 'doba_low_visibility', 'text' => 'Doba Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_doba', 'text' => 'Listing Doba', 'group' => 'Marketplace'],
@@ -129,9 +131,11 @@ return [
     ['value' => 'ebay2_tabulator_view', 'text' => 'Ebay 2 Analytics', 'group' => 'Marketplace'],
     ['value' => 'ebay2op_tabulator_view', 'text' => 'Ebay 2 Open Box', 'group' => 'Marketplace'],
     ['value' => 'listing_ebayTwo', 'text' => 'Listing Ebay 2', 'group' => 'Marketplace'],
+    ['value' => 'ebay2_listing_variation_verify', 'text' => 'Ebay 2 Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'ebayThree', 'text' => 'Ebay 3', 'group' => 'Marketplace'],
     ['value' => 'listing_ebayThree', 'text' => 'Listing Ebay 3', 'group' => 'Marketplace'],
+    ['value' => 'ebay3_listing_variation_verify', 'text' => 'Ebay 3 Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'walmart', 'text' => 'Walmart', 'group' => 'Marketplace'],
     ['value' => 'listing_walmart', 'text' => 'Listing Walmart', 'group' => 'Marketplace'],
@@ -146,6 +150,7 @@ return [
     ['value' => 'faire', 'text' => 'Faire', 'group' => 'Marketplace'],
     ['value' => 'tiktokshop', 'text' => 'Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'listing_tiktokshop', 'text' => 'Listing Tiktok Shop', 'group' => 'Marketplace'],
+    ['value' => 'tiktok_listing_variation_verify', 'text' => 'TikTok 1 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'tiktok_pricing', 'text' => 'TikTok Pricing', 'group' => 'Marketplace'],
 
     ['value' => 'mercariwship', 'text' => 'Mercari w Ship', 'group' => 'Marketplace'],

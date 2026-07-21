@@ -7236,14 +7236,17 @@
 
                     let deliveryHtml = '<span style="color: #999;">—</span>';
                     if (item.delivery) {
-                        const isFree = /free/i.test(item.delivery);
-                        const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
-                        if (paidMatch) {
-                            deliveryHtml = `<span style="color: #dc3545; font-weight: 600;" title="${escAttr(item.delivery)}">$${paidMatch[1]} ship</span>`;
-                        } else if (isFree) {
-                            deliveryHtml = `<span style="color: #28a745; font-weight: 600;" title="${escAttr(item.delivery)}">FREE</span>`;
+                        const delText = String(item.delivery);
+                        // Free / FREE for Prime members → show 0
+                        const isFree = /\bfree\b/i.test(delText)
+                            || (/\bprime\b/i.test(delText) && /\bfree\b/i.test(delText));
+                        const paidMatch = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
+                        if (isFree) {
+                            deliveryHtml = `<span style="color: #28a745; font-weight: 600;" title="${escAttr(delText)}">0</span>`;
+                        } else if (paidMatch) {
+                            deliveryHtml = `<span style="color: #dc3545; font-weight: 600;" title="${escAttr(delText)}">$${paidMatch[1]} ship</span>`;
                         } else {
-                            deliveryHtml = `<span style="font-size: 10px;" title="${escAttr(item.delivery)}">${String(item.delivery).substring(0, 22)}${String(item.delivery).length > 22 ? '…' : ''}</span>`;
+                            deliveryHtml = `<span style="font-size: 10px;" title="${escAttr(delText)}">${delText.substring(0, 22)}${delText.length > 22 ? '…' : ''}</span>`;
                         }
                     }
                     

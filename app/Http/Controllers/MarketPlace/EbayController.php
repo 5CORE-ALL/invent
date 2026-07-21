@@ -3506,6 +3506,7 @@ class EbayController extends Controller
                         'price' => floatval($comp->price ?? 0),
                         'shipping_cost' => floatval($comp->shipping_cost ?? 0),
                         'total_price' => floatval($comp->total_price ?? 0),
+                        'ignored' => (bool) ($comp->ignored ?? false),
                         'link' => $comp->product_link,
                         'title' => $comp->product_title,
                         'image' => $comp->image ?? null,
@@ -3706,22 +3707,30 @@ class EbayController extends Controller
     {
         try {
             $id = $request->input('id');
+            $requestItemId = trim((string) $request->input('item_id', ''));
             
             Log::info('Delete eBay LMP request received', [
                 'id' => $id,
+                'item_id' => $requestItemId,
                 'all_input' => $request->all()
             ]);
             
-            if (!$id) {
+            if (!$id && $requestItemId === '') {
                 return response()->json([
                     'error' => 'LMP ID is required'
                 ], 400);
             }
             
-            $lmp = \App\Models\EbaySkuCompetitor::find($id);
+            $lmp = $id ? \App\Models\EbaySkuCompetitor::find($id) : null;
+            if (!$lmp && $requestItemId !== '') {
+                $lmp = \App\Models\EbaySkuCompetitor::query()
+                    ->where('item_id', $requestItemId)
+                    ->orderBy('id')
+                    ->first();
+            }
             
             if (!$lmp) {
-                Log::warning('eBay LMP entry not found', ['id' => $id]);
+                Log::warning('eBay LMP entry not found', ['id' => $id, 'item_id' => $requestItemId]);
                 return response()->json([
                     'error' => 'LMP entry not found'
                 ], 404);
@@ -3730,25 +3739,38 @@ class EbayController extends Controller
             DB::beginTransaction();
             
             $sku = $lmp->sku;
-            $itemId = $lmp->item_id;
+            $itemId = trim((string) ($lmp->item_id ?: $requestItemId));
             $totalPrice = $lmp->total_price;
 
-            $parent = ProductMaster::query()
-                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim((string) $sku))])
-                ->value('parent');
+            // LMP modal merges Sku-Link group rows and dedupes by item_id.
+            // Deleting only one row lets the same listing reappear from a linked SKU.
+            $toDelete = collect([$lmp]);
+            if ($itemId !== '') {
+                $toDelete = \App\Models\EbaySkuCompetitor::query()
+                    ->where('item_id', $itemId)
+                    ->get();
+            }
 
-            LmpCompetitorHistory::logAction(
-                sku: (string) $sku,
-                action: 'deleted',
-                itemId: (string) $itemId,
-                competitorId: (int) $lmp->id,
-                productTitle: $lmp->product_title,
-                totalPrice: is_numeric($totalPrice) ? (float) $totalPrice : null,
-                parent: $parent ? (string) $parent : null,
-                updatedBy: Auth::user()?->name ?? 'N/A',
-            );
-            
-            $lmp->delete();
+            $deletedIds = [];
+            foreach ($toDelete as $row) {
+                $parent = ProductMaster::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim((string) $row->sku))])
+                    ->value('parent');
+
+                LmpCompetitorHistory::logAction(
+                    sku: (string) $row->sku,
+                    action: 'deleted',
+                    itemId: (string) ($row->item_id ?: $itemId),
+                    competitorId: (int) $row->id,
+                    productTitle: $row->product_title,
+                    totalPrice: is_numeric($row->total_price) ? (float) $row->total_price : (is_numeric($totalPrice) ? (float) $totalPrice : null),
+                    parent: $parent ? (string) $parent : null,
+                    updatedBy: Auth::user()?->name ?? 'N/A',
+                );
+
+                $deletedIds[] = (int) $row->id;
+                $row->delete();
+            }
             
             DB::commit();
             
@@ -3756,12 +3778,17 @@ class EbayController extends Controller
                 'id' => $id,
                 'sku' => $sku,
                 'item_id' => $itemId,
-                'total_price' => $totalPrice
+                'total_price' => $totalPrice,
+                'deleted_ids' => $deletedIds,
+                'deleted_count' => count($deletedIds),
             ]);
             
             return response()->json([
                 'success' => true,
-                'message' => 'LMP deleted successfully'
+                'message' => count($deletedIds) > 1
+                    ? ('LMP deleted successfully (' . count($deletedIds) . ' linked rows)')
+                    : 'LMP deleted successfully',
+                'deleted_ids' => $deletedIds,
             ]);
             
         } catch (\Exception $e) {

@@ -3124,6 +3124,7 @@ class OverallAmazonController extends Controller
                         'title' => $comp->product_title,
                         'seller_name' => $comp->seller_name,
                         'price' => floatval($comp->price),
+                        'ignored' => (bool) ($comp->ignored ?? false),
                         'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
                         'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
                         'extracted_old_price' => $comp->extracted_old_price !== null ? floatval($comp->extracted_old_price) : null,
@@ -3268,10 +3269,23 @@ class OverallAmazonController extends Controller
             DB::beginTransaction();
             
             $sku = $lmp->sku;
-            $asin = $lmp->asin;
+            $asin = trim((string) ($lmp->asin ?? ''));
             $price = $lmp->price;
-            
-            $lmp->delete();
+
+            // LMP modal merges Sku-Link group rows and dedupes by ASIN.
+            // Delete every linked-SKU copy of this listing so it does not reappear.
+            $toDelete = collect([$lmp]);
+            if ($asin !== '') {
+                $toDelete = AmazonSkuCompetitor::query()
+                    ->whereRaw('UPPER(TRIM(asin)) = ?', [strtoupper($asin)])
+                    ->get();
+            }
+
+            $deletedIds = [];
+            foreach ($toDelete as $row) {
+                $deletedIds[] = (int) $row->id;
+                $row->delete();
+            }
             
             DB::commit();
             
@@ -3279,13 +3293,18 @@ class OverallAmazonController extends Controller
                 'id' => $id,
                 'sku' => $sku,
                 'asin' => $asin,
-                'price' => $price
+                'price' => $price,
+                'deleted_ids' => $deletedIds,
+                'deleted_count' => count($deletedIds),
             ]);
             
             return response()->json([
                 'success' => true,
-                'message' => 'Competitor deleted successfully',
-                'deleted_id' => $id
+                'message' => count($deletedIds) > 1
+                    ? ('Competitor deleted successfully (' . count($deletedIds) . ' linked rows)')
+                    : 'Competitor deleted successfully',
+                'deleted_id' => $id,
+                'deleted_ids' => $deletedIds,
             ]);
             
         } catch (\Exception $e) {

@@ -696,6 +696,24 @@
                                         </a>
                                     </li>
                                     <li>
+                                        <a href="{{ url('/repricer/reverb-search') }}"
+                                            class="{{ request()->is('repricer/reverb-search*') ? 'active' : '' }}">
+                                            Reverb Competitors
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/macy-search') }}"
+                                            class="{{ request()->is('repricer/macy-search*') ? 'active' : '' }}">
+                                            Macy's Competitors
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/bestbuy-search') }}"
+                                            class="{{ request()->is('repricer/bestbuy-search*') ? 'active' : '' }}">
+                                            Best Buy Competitors
+                                        </a>
+                                    </li>
+                                    <li>
                                         <a href="{{ url('/repricer/google-search') }}"
                                             class="{{ request()->is('repricer/google-search*') ? 'active' : '' }}">
                                             Google Competitors
@@ -1350,6 +1368,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('ebay.listing.variation.verify') }}">Ebay Listing Variation Verify</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ url('ebay-tabulator-view') }}">Ebay - Analytics
                                         </a>
                                     </li>
@@ -1644,6 +1666,9 @@
                                     <li>
                                         <a href="{{ url('temu2-decrease') }}">Temu 2 - Analytics</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('temu2.listing.variation.verify') }}">Temu 2 Listing Variation Verify</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1694,6 +1719,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('ebay2.listing.variation.verify') }}">Ebay 2 Listing Variation Verify</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ route('ebay2.campaign.ads') }}">eBay 2 Campaign Ads (Raw)</a>
                                     </li>
                                 </ul>
@@ -1714,6 +1743,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('ebay3.listing.variation.verify') }}">Ebay 3 Listing Variation Verify</a>
                                     </li>
 
 
@@ -1923,6 +1955,8 @@
                 <div class="collapse" id="sidebarTiktokShop">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
+                        </li>
+                        <li><a href="{{ route('tiktok.listing.variation.verify') }}">TikTok 1 Listing Variation Verify</a>
                         </li>
                         {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}

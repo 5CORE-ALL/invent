@@ -17,6 +17,7 @@ class AmazonSkuCompetitor extends Model
         'product_title',
         'seller_name',
         'price',
+        'ignored',
         'rating',
         'reviews',
         'extracted_old_price',
@@ -30,6 +31,7 @@ class AmazonSkuCompetitor extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'ignored' => 'boolean',
         'rating' => 'decimal:2',
         'reviews' => 'integer',
         'extracted_old_price' => 'decimal:2',
@@ -58,7 +60,11 @@ class AmazonSkuCompetitor extends Model
 
     public static function lowestFromCollection($items)
     {
-        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
+        // L1 = lowest non-ignored (same idea as Temu LMP ignore)
+        $active = collect($items)->filter(fn ($item) => empty($item->ignored));
+        $pool = $active->isNotEmpty() ? $active : collect();
+
+        return $pool->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
     }
 
     public static function sortCollectionByNumericPrice($items)
@@ -90,11 +96,17 @@ class AmazonSkuCompetitor extends Model
     {
         $normalizedSku = self::normalizeSkuKey($sku);
 
-        return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
+        $q = self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
             ->where('marketplace', $marketplace)
             ->wherePositivePrice()
-            ->orderByNumericPrice('asc')
-            ->first();
+            ->orderByNumericPrice('asc');
+        if (\Illuminate\Support\Facades\Schema::hasColumn('amazon_sku_competitors', 'ignored')) {
+            $q->where(function ($qq) {
+                $qq->where('ignored', false)->orWhereNull('ignored');
+            });
+        }
+
+        return $q->first();
     }
 
     /**

@@ -103,6 +103,7 @@ class GoogleLmpController extends Controller
                     'product_id' => $comp->product_id,
                     'source' => $comp->source,
                     'price' => (float) ($comp->price ?? 0),
+                    'ignored' => (bool) ($comp->ignored ?? false),
                     'link' => $comp->product_link,
                     'product_link' => $comp->product_link,
                     'title' => $comp->product_title,
@@ -184,13 +185,31 @@ class GoogleLmpController extends Controller
             }
 
             DB::beginTransaction();
-            $lmp->delete();
+
+            $productId = trim((string) ($lmp->product_id ?? ''));
+            // Delete every Sku-Link copy of this Google listing (modal dedupes by product_id).
+            $toDelete = collect([$lmp]);
+            if ($productId !== '') {
+                $toDelete = GoogleSkuCompetitor::query()
+                    ->where('product_id', $productId)
+                    ->get();
+            }
+
+            $deletedIds = [];
+            foreach ($toDelete as $row) {
+                $deletedIds[] = (int) $row->id;
+                $row->delete();
+            }
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Competitor deleted successfully',
+                'message' => count($deletedIds) > 1
+                    ? ('Competitor deleted successfully (' . count($deletedIds) . ' linked rows)')
+                    : 'Competitor deleted successfully',
                 'deleted_id' => (int) $id,
+                'deleted_ids' => $deletedIds,
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();

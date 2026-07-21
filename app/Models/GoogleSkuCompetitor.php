@@ -18,12 +18,14 @@ class GoogleSkuCompetitor extends Model
         'product_title',
         'image',
         'price',
+        'ignored',
         'rating',
         'reviews',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'ignored' => 'boolean',
         'rating' => 'decimal:2',
         'reviews' => 'integer',
     ];
@@ -47,7 +49,10 @@ class GoogleSkuCompetitor extends Model
 
     public static function lowestFromCollection($items)
     {
-        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
+        $active = collect($items)->filter(fn ($item) => empty($item->ignored));
+        $pool = $active->isNotEmpty() ? $active : collect();
+
+        return $pool->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
     }
 
     public static function sortCollectionByNumericPrice($items)

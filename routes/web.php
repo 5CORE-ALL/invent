@@ -176,6 +176,11 @@ use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
 use App\Http\Controllers\MarketPlace\AmzListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\AmzVariationVerifyController;
+use App\Http\Controllers\MarketPlace\EbayListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\Ebay2ListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\Ebay3ListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\TikTokListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\Temu2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -3224,6 +3229,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
     Route::post('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'setColumnVisibility'])->name('bestbuy.pricing.column.set');
     Route::post('/bestbuy-upload-price', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'uploadPriceData'])->name('bestbuy-upload-price');
+    Route::get('/bestbuy-lmp-data', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getBestbuyLmpData'])->name('bestbuy.lmp.data');
+    Route::post('/bestbuy-lmp-add', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'addBestbuyLmp'])->name('bestbuy.lmp.add');
+    Route::post('/bestbuy-lmp-update', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'updateBestbuyLmp'])->name('bestbuy.lmp.update');
+    Route::post('/bestbuy-lmp-delete', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'deleteBestbuyLmp'])->name('bestbuy.lmp.delete');
 
     // Macy's Pricing Routes (Tabulator)
     Route::get('/macys-pricing', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysTabulatorView'])->name('macys.pricing');
@@ -3234,6 +3243,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/macys-upload-price', [\App\Http\Controllers\MarketPlace\MacyController::class, 'uploadPriceData'])->name('macys.upload.price');
     Route::get('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getTabulatorColumnVisibility'])->name('macys.pricing.column.get');
     Route::post('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'setTabulatorColumnVisibility'])->name('macys.pricing.column.set');
+    Route::get('/macy-lmp-data', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getMacyLmpData'])->name('macy.lmp.data');
+    Route::post('/macy-lmp-add', [\App\Http\Controllers\MarketPlace\MacyController::class, 'addMacyLmp'])->name('macy.lmp.add');
+    Route::post('/macy-lmp-update', [\App\Http\Controllers\MarketPlace\MacyController::class, 'updateMacyLmp'])->name('macy.lmp.update');
+    Route::post('/macy-lmp-delete', [\App\Http\Controllers\MarketPlace\MacyController::class, 'deleteMacyLmp'])->name('macy.lmp.delete');
 
     // Purchasing Power Pricing Routes (Tabulator)
     Route::get('/purchasing-power-pricing', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'pricingView'])->name('purchasing.power.pricing');
@@ -3261,6 +3274,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/reverb-save-bump-req', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveBumpReq'])->name('reverb.save.bump.req');
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
+    Route::get('/reverb-lmp-data', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getReverbLmpData'])->name('reverb.lmp.data');
+    Route::post('/reverb-lmp-add', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'addReverbLmp'])->name('reverb.lmp.add');
+    Route::post('/reverb-lmp-update', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbLmp'])->name('reverb.lmp.update');
+    Route::post('/reverb-lmp-delete', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'deleteReverbLmp'])->name('reverb.lmp.delete');
     Route::get('/reverb/fallback-stats', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fallbackStats'])->name('reverb.fallback.stats');
 
     // Reverb Sales Routes (Tabulator - Daily Sales Data)
@@ -3285,6 +3302,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-data-json', [CvrMasterController::class, 'getCvrDataJson'])->name('cvr.master.data.json');
     Route::get('/cvr-master-breakdown', [CvrMasterController::class, 'getBreakdownData'])->name('cvr.master.breakdown');
     Route::get('/cvr-master-temu-lmp', [CvrMasterController::class, 'getTemuLmpData'])->name('cvr.master.temu.lmp');
+    Route::post('/cvr-master-lmp-ignore', [CvrMasterController::class, 'toggleLmpIgnored'])->name('cvr.master.lmp.ignore');
     Route::get('/cvr-master-column-visibility', [CvrMasterController::class, 'getColumnVisibility'])->name('cvr.master.column.get');
     Route::post('/cvr-master-column-visibility', [CvrMasterController::class, 'saveColumnVisibility'])->name('cvr.master.column.set');
     Route::post('/cvr-master-remark', [CvrMasterController::class, 'saveRemark'])->name('cvr.master.remark.save');
@@ -3295,6 +3313,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-chart-data', [CvrMasterController::class, 'getPricingMasterChartData'])->name('cvr.master.chart.data');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
+    Route::get('/cvr-master-siblings', [CvrMasterController::class, 'getSiblingSkus'])->name('cvr.master.siblings');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
 
     // Pricing Master CVR Route (uses CVR Master controller)
@@ -3302,6 +3321,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     // Sold Master Route (uses CVR Master controller)
     Route::get('/sold-master', [CvrMasterController::class, 'soldMasterView'])->name('sold.master');
+
+    // TikTok 1 Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
+    Route::get('/tiktok-listing-variation-verify', [TikTokListingVariationVerifyController::class, 'index'])->name('tiktok.listing.variation.verify');
+    Route::get('/tiktok-listing-variation-verify/data', [TikTokListingVariationVerifyController::class, 'data'])->name('tiktok.listing.variation.verify.data');
+    Route::post('/tiktok-listing-variation-verify/pull-listings', [TikTokListingVariationVerifyController::class, 'pullListings'])->name('tiktok.listing.variation.verify.pull');
 
     // TikTok Pricing Routes (Tabulator)
     Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');
@@ -3835,6 +3859,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-analytics/export', [EbayThreeController::class, 'exportEbayThreeAnalytics'])->name('ebay3.analytics.export');
     Route::get('/ebay3-analytics/sample', [EbayThreeController::class, 'downloadSample'])->name('ebay3.analytics.sample');
 
+    // Ebay 3 Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
+    Route::get('/ebay3-listing-variation-verify', [Ebay3ListingVariationVerifyController::class, 'index'])->name('ebay3.listing.variation.verify');
+    Route::get('/ebay3-listing-variation-verify/data', [Ebay3ListingVariationVerifyController::class, 'data'])->name('ebay3.listing.variation.verify.data');
+    Route::post('/ebay3-listing-variation-verify/pull-listings', [Ebay3ListingVariationVerifyController::class, 'pullListings'])->name('ebay3.listing.variation.verify.pull');
+
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
     Route::post('/ebay3/save-links', [EbayThreeController::class, 'saveLinks'])->name('ebay3.save.links');
@@ -3927,6 +3956,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Listing Audit ebay
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
+
+    // Ebay Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
+    Route::get('/ebay-listing-variation-verify', [EbayListingVariationVerifyController::class, 'index'])->name('ebay.listing.variation.verify');
+    Route::get('/ebay-listing-variation-verify/data', [EbayListingVariationVerifyController::class, 'data'])->name('ebay.listing.variation.verify.data');
+    Route::post('/ebay-listing-variation-verify/pull-listings', [EbayListingVariationVerifyController::class, 'pullListings'])->name('ebay.listing.variation.verify.pull');
+
     Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
     Route::get('/ebay-campaign-data-by-sku', [EbayController::class, 'getCampaignDataBySku'])->name('ebay.campaign.data.by.sku');
@@ -3980,6 +4015,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/ebay-zero-view', action: [EbayZeroController::class, 'ebayZero'])->name('ebay.zero.view');
     Route::get('/ebay-low-visibility-view', action: [EbayLowVisibilityController::class, 'ebayLowVisibility'])->name('ebay.low.visibility.view');
+    // Ebay 2 Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
+    Route::get('/ebay2-listing-variation-verify', [Ebay2ListingVariationVerifyController::class, 'index'])->name('ebay2.listing.variation.verify');
+    Route::get('/ebay2-listing-variation-verify/data', [Ebay2ListingVariationVerifyController::class, 'data'])->name('ebay2.listing.variation.verify.data');
+    Route::post('/ebay2-listing-variation-verify/pull-listings', [Ebay2ListingVariationVerifyController::class, 'pullListings'])->name('ebay2.listing.variation.verify.pull');
+
     // Listing Audit ebay2
     Route::get('/ebay2-tabulator-view', [EbayTwoController::class, 'ebay2TabulatorView'])->name('ebay2.tabulator.view');
     Route::post('/ebay2/save-links', [EbayTwoController::class, 'saveLinks'])->name('ebay2.save.links');
@@ -4098,6 +4138,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
     Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
     Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
+
+    // Temu 2 Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
+    Route::get('/temu2-listing-variation-verify', [Temu2ListingVariationVerifyController::class, 'index'])->name('temu2.listing.variation.verify');
+    Route::get('/temu2-listing-variation-verify/data', [Temu2ListingVariationVerifyController::class, 'data'])->name('temu2.listing.variation.verify.data');
+    Route::post('/temu2-listing-variation-verify/pull-listings', [Temu2ListingVariationVerifyController::class, 'pullListings'])->name('temu2.listing.variation.verify.pull');
 
     // Temu 2 Tabulator View (separate tables: temu2_daily_data, temu2_daily_data_l60)
     Route::get('/temu2-tabulator', [TemuController::class, 'temu2TabulatorView'])->name('temu2.tabulator');
@@ -5813,6 +5858,36 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/filter-options', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getFilterOptions'])->name('filter-options');
         Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus'])->name('skus');
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    Route::prefix('repricer/reverb-search')->name('repricer.reverb-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\ReverbSearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    Route::prefix('repricer/macy-search')->name('repricer.macy-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\MacySearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\MacySearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\MacySearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\MacySearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\MacySearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\MacySearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\MacySearchController::class, 'storeCompetitors'])->name('store-competitors');
+    });
+
+    Route::prefix('repricer/bestbuy-search')->name('repricer.bestbuy-search.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'index'])->name('index');
+        Route::post('/search', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'search'])->name('search');
+        Route::get('/history', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'getSearchHistory'])->name('history');
+        Route::get('/results', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'getResults'])->name('results');
+        Route::get('/filter-options', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'getFilterOptions'])->name('filter-options');
+        Route::get('/skus', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'getSkus'])->name('skus');
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\BestbuySearchController::class, 'storeCompetitors'])->name('store-competitors');
     });
 
     Route::prefix('repricer/google-search')->name('repricer.google-search.')->group(function () {

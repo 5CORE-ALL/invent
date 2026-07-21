@@ -16,12 +16,14 @@ class EbaySkuCompetitor extends Model
         'image',
         'product_title',
         'price',
+        'ignored',
         'shipping_cost',
         'total_price',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'ignored' => 'boolean',
         'shipping_cost' => 'decimal:2',
         'total_price' => 'decimal:2',
     ];
@@ -36,11 +38,17 @@ class EbaySkuCompetitor extends Model
         $normalizedSku = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
         
         // Match using normalized SKU comparison (handles line breaks in database)
-        return self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
+        $q = self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
             ->where('marketplace', $marketplace)
             ->where('total_price', '>', 0)
-            ->orderBy('total_price', 'asc')
-            ->first();
+            ->orderBy('total_price', 'asc');
+        if (\Illuminate\Support\Facades\Schema::hasColumn('ebay_sku_competitors', 'ignored')) {
+            $q->where(function ($qq) {
+                $qq->where('ignored', false)->orWhereNull('ignored');
+            });
+        }
+
+        return $q->first();
     }
 
     /**
@@ -78,7 +86,9 @@ class EbaySkuCompetitor extends Model
         return [
             'details' => $lmpRecords,
             'lowest' => $lmpRecords->map(function ($items) {
-                return $items->first();
+                $active = $items->filter(fn ($item) => empty($item->ignored));
+
+                return $active->isNotEmpty() ? $active->first() : null;
             }),
         ];
     }

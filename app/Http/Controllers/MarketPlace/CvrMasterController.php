@@ -12,6 +12,7 @@ use App\Models\ShopifySku;
 use App\Models\ReverbProduct;
 use App\Models\AmazonDatasheet;
 use App\Models\MacyProduct;
+use App\Models\MacysPriceData;
 use App\Models\TemuMetric;
 use App\Models\TemuDailyData;
 use App\Models\TemuPricing;
@@ -39,6 +40,7 @@ use App\Models\ReverbViewData;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifyB2BDataView;
 use App\Models\TiendamiaProduct;
+use App\Models\TiendamiaPriceUpload;
 use App\Models\TiendamiaDataView;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
@@ -67,6 +69,9 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\GoogleSkuCompetitor;
 use App\Models\EbaySkuCompetitor;
+use App\Models\BestbuySkuCompetitor;
+use App\Models\MacySkuCompetitor;
+use App\Models\ReverbSkuCompetitor;
 use App\Models\CvrRemark;
 use App\Models\AmazonListingStatus;
 use App\Models\EbayListingStatus;
@@ -243,10 +248,16 @@ class CvrMasterController extends Controller
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
             $bestbuyPercentage = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
             
-            // Fetch BestBuy product data
+            // Fetch BestBuy product + uploaded sheet (same as /bestbuy-pricing)
+            // Sheet SKUs are stored UPPERCASE — key by upper so mixed-case PM SKUs match.
             $bestbuyProducts = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-            $bestbuyPriceData = BestbuyPriceData::whereIn('sku', $skus)->get()->keyBy('sku');
-            
+            $bestbuyPriceData = BestbuyPriceData::whereIn('sku', array_values(array_unique(array_merge(
+                    $skus,
+                    array_map('strtoupper', $skus)
+                ))))
+                ->get()
+                ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+
             Log::info('CVR Master - BestBuy Data fetched', [
                 'bestbuy_products' => $bestbuyProducts->count(),
                 'bestbuy_price_data' => $bestbuyPriceData->count(),
@@ -264,34 +275,62 @@ class CvrMasterController extends Controller
             // Get Macy's percentage from MarketplacePercentage (default 80%)
             $macyMarketplace = MarketplacePercentage::where('marketplace', 'Macys')->first();
             $macyPercentage = $macyMarketplace ? ($macyMarketplace->percentage / 100) : 0.80;
-            
-            // Fetch Macy's product data
-            $macyProducts = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-            
+
+            // Same price source as /macys-pricing: macys_price_data sheet first, else macy_products.price
+            $normalizeMacySku = static fn ($s) => strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $s))));
+            $macyProducts = MacyProduct::whereIn('sku', $skus)->get()
+                ->keyBy(fn ($m) => $normalizeMacySku($m->sku));
+            $macyPriceSheet = MacysPriceData::whereIn('sku', array_values(array_unique(array_merge(
+                    $skus,
+                    array_map('strtoupper', $skus)
+                ))))
+                ->get()
+                ->keyBy(fn ($m) => $normalizeMacySku($m->sku));
+
             Log::info('CVR Master - Macy Data fetched', [
                 'macy_products' => $macyProducts->count(),
+                'macy_price_sheet' => $macyPriceSheet->count(),
                 'macy_percentage' => $macyPercentage * 100 . '%'
             ]);
 
-            // Get Reverb percentage from MarketplacePercentage (default 85%)
+            // Get Reverb percentage from MarketplacePercentage (default 85%) — same as /reverb-pricing
             $reverbMarketplace = MarketplacePercentage::where('marketplace', 'Reverb')->first();
-            $reverbPercentage = $reverbMarketplace ? ($reverbMarketplace->percentage / 100) : 0.85;
-            
-            // Fetch Reverb product data
-            $reverbProducts = ReverbProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-            
+            $reverbPercentage = $reverbMarketplace ? ((float) $reverbMarketplace->percentage / 100) : 0.85;
+
+            // Same normalized SKU lookup as /reverb-pricing (spacing / case / PCS drift)
+            $reverbProductsByNorm = ReverbProduct::buildLookupByNormalizedSku($skus);
+
             Log::info('CVR Master - Reverb Data fetched', [
-                'reverb_products' => $reverbProducts->count(),
+                'reverb_products' => count($reverbProductsByNorm),
                 'reverb_percentage' => $reverbPercentage * 100 . '%'
             ]);
 
-            // Get Doba percentage from MarketplacePercentage (default 100%)
+            // Get Doba percentage from MarketplacePercentage (same as /doba-tabulator; default 95%)
             $dobaMarketplace = MarketplacePercentage::where('marketplace', 'Doba')->first();
-            $dobaPercentage = $dobaMarketplace ? ($dobaMarketplace->percentage / 100) : 1.00;
-            
-            // FetchDoba product data
-            $dobaMetrics = DobaMetric::whereIn('sku', $skus)->get()->keyBy('sku');
-            
+            $dobaPercentage = $dobaMarketplace ? ((float) $dobaMarketplace->percentage / 100) : 0.95;
+
+            // Fetch Doba product data — key by normalized SKU like DobaController
+            $normalizeDobaSku = static fn ($s) => strtoupper(trim((string) $s));
+            $dobaMetrics = DobaMetric::whereIn('sku', $skus)->get()
+                ->keyBy(fn ($m) => $normalizeDobaSku($m->sku));
+            $missingDobaSkus = collect($skus)
+                ->map($normalizeDobaSku)
+                ->unique()
+                ->reject(fn ($s) => $dobaMetrics->has($s))
+                ->values();
+            if ($missingDobaSkus->isNotEmpty()) {
+                DobaMetric::query()
+                    ->where(function ($q) use ($missingDobaSkus) {
+                        foreach ($missingDobaSkus as $s) {
+                            $q->orWhereRaw('UPPER(TRIM(sku)) = ?', [$s]);
+                        }
+                    })
+                    ->get()
+                    ->each(function ($m) use ($dobaMetrics, $normalizeDobaSku) {
+                        $dobaMetrics->put($normalizeDobaSku($m->sku), $m);
+                    });
+            }
+
             Log::info('CVR Master - Doba Data fetched', [
                 'doba_metrics' => $dobaMetrics->count(),
                 'doba_percentage' => $dobaPercentage * 100 . '%'
@@ -770,17 +809,19 @@ class CvrMasterController extends Controller
                 // TikTok PFT% = GPFT% (no ads for TikTok)
                 $tiktokPFT = $tiktokGPFT;
 
-                // Get BestBuy data
+                // BestBuy — same as /bestbuy-pricing BB Price: sheet first, else product
                 $bestbuyProduct = $bestbuyProducts->get($sku);
-                $bestbuyPriceItem = $bestbuyPriceData->get($sku);
-                
-                // Price: BestbuyPriceData takes priority, fallback to BestbuyUsaProduct
-                $bbPrice = $bestbuyPriceItem ? floatval($bestbuyPriceItem->price ?? 0) : floatval($bestbuyProduct->price ?? 0);
-                
-                // Calculate BestBuy GPFT% = ((price × percentage - ship - lp) / price) × 100
-                $bbGPFT = $bbPrice > 0 ? ((($bbPrice * $bestbuyPercentage - $lp - $ship) / $bbPrice) * 100) : 0;
-                
-                // BestBuy PFT% = GPFT% (no ads for BestBuy)
+                $bestbuyPriceItem = $bestbuyPriceData->get(strtoupper((string) $sku));
+                $bbPrice = $bestbuyPriceItem
+                    ? floatval($bestbuyPriceItem->price ?? 0)
+                    : ($bestbuyProduct ? floatval($bestbuyProduct->price ?? 0) : 0);
+
+                // GPFT% = ((price × percentage − ship − lp) / price) × 100
+                $bbGPFT = $bbPrice > 0
+                    ? round((($bbPrice * $bestbuyPercentage - $lp - $ship) / $bbPrice) * 100, 2)
+                    : 0;
+
+                // BestBuy PFT% = GPFT% (no ads)
                 $bbPFT = $bbGPFT;
 
                 // Get Shopify B2C data - uses overall_l30 from shopify_skus (already fetched)
@@ -794,24 +835,35 @@ class CvrMasterController extends Controller
                 // Shopify B2C PFT% = GPFT% (no ads)
                 $sb2cPFT = $sb2cGPFT;
 
-                // Get Macy's data
-                $macyProduct = $macyProducts->get($sku);
-                $macyPrice = $macyProduct ? floatval($macyProduct->price ?? 0) : 0;
-                
-                // Calculate Macy's GPFT% = ((price × percentage - ship - lp) / price) × 100
-                $macyGPFT = $macyPrice > 0 ? ((($macyPrice * $macyPercentage - $lp - $ship) / $macyPrice) * 100) : 0;
-                
-                // Macy's PFT% = GPFT% (no ads for Macy's)
+                // Macy's price — same as /macys-pricing MC Price: sheet first, else product
+                $macySkuKey = $normalizeMacySku($sku);
+                $macyProduct = $macyProducts->get($macySkuKey);
+                $macySheetRow = $macyPriceSheet->get($macySkuKey);
+                $macyPrice = $macySheetRow
+                    ? floatval($macySheetRow->price ?? 0)
+                    : ($macyProduct ? floatval($macyProduct->price ?? 0) : 0);
+
+                // GPFT% = ((price × percentage − ship − lp) / price) × 100  (same as /macys-pricing)
+                $macyGPFT = $macyPrice > 0
+                    ? round((($macyPrice * $macyPercentage - $lp - $ship) / $macyPrice) * 100, 2)
+                    : 0;
+
+                // Macy's PFT% = GPFT% (no ads)
                 $macyPFT = $macyGPFT;
 
-                // Get Reverb data
-                $reverbProduct = $reverbProducts->get($sku);
+                // Reverb — same as /reverb-pricing RV Price from reverb_products (normalized SKU)
+                $reverbNormKey = ReverbProduct::normalizeSkuForLookup($sku);
+                $reverbProduct = ($reverbNormKey !== '' && isset($reverbProductsByNorm[$reverbNormKey]))
+                    ? $reverbProductsByNorm[$reverbNormKey]
+                    : null;
                 $reverbPrice = $reverbProduct ? floatval($reverbProduct->price ?? 0) : 0;
-                
-                // Calculate Reverb GPFT% = ((price × percentage - ship - lp) / price) × 100
-                $reverbGPFT = $reverbPrice > 0 ? ((($reverbPrice * $reverbPercentage - $lp - $ship) / $reverbPrice) * 100) : 0;
-                
-                // Reverb PFT% = GPFT% (no ads for Reverb)
+
+                // GPFT% = ((price × percentage − lp − ship) / price) × 100
+                $reverbGPFT = $reverbPrice > 0
+                    ? round((($reverbPrice * $reverbPercentage - $lp - $ship) / $reverbPrice) * 100, 2)
+                    : 0;
+
+                // Reverb PFT% = GPFT% (no ads — same as /reverb-pricing)
                 $reverbPFT = $reverbGPFT;
 
                 // === EBAY 1 CALCULATIONS ===
@@ -844,15 +896,16 @@ class CvrMasterController extends Controller
                 // eBay 3 PFT% = GPFT% (no ads)
                 $ebay3PFT = $ebay3GPFT;
 
-                // Get Doba data
-                $dobaMetric = $dobaMetrics->get($sku);
+                // Get Doba data — same as /doba-tabulator: Price=anticipated_income, no ads
+                $dobaMetric = $dobaMetrics->get($normalizeDobaSku($sku));
                 $dobaPrice = $dobaMetric ? floatval($dobaMetric->anticipated_income ?? 0) : 0;
-                
-                // Calculate Doba GPFT% = ((price × percentage - ship - lp) / price) × 100
-                // Doba uses 100% (no marketplace commission)
-                $dobaGPFT = $dobaPrice > 0 ? ((($dobaPrice * $dobaPercentage - $lp - $ship) / $dobaPrice) * 100) : 0;
-                
-                // Doba PFT% = GPFT% (no ads for Doba)
+
+                // GPFT% = ((price × margin − LP − Ship) / price) × 100  (margin from MarketplacePercentage)
+                $dobaGPFT = $dobaPrice > 0
+                    ? round((($dobaPrice * $dobaPercentage - $lp - $ship) / $dobaPrice) * 100, 2)
+                    : 0;
+
+                // Doba PFT% = GPFT% (no ads — same as /doba-tabulator)
                 $dobaPFT = $dobaGPFT;
                 
                 // Log Doba calculations for debugging
@@ -1755,10 +1808,13 @@ class CvrMasterController extends Controller
                 Log::info('Found full SKU in ProductMaster: ' . $fullSku . ' (from: ' . $sku . ')');
             }
 
-            // Fetch channel LMP lookups for breakdown LMP column (Amazon / eBay / Google / Temu / TikTok)
+            // Fetch channel LMP lookups for breakdown LMP column (Amazon / eBay / Google / BestBuy / Macy / Reverb / Temu / TikTok)
             $amazonLmpLookup = collect();
             $ebayLmpLookup = collect();
             $googleLmpLookup = collect();
+            $bestbuyLmpLookup = collect();
+            $macyLmpLookup = collect();
+            $reverbLmpLookup = collect();
             $tiktokLmpDetailsLookup = collect();
             $temuLmpByNormalizedSku = [];
             $temuLmpSkuGroupService = null;
@@ -1767,6 +1823,15 @@ class CvrMasterController extends Controller
                 $amazonLmpLookup = AmazonSkuCompetitor::buildGroupedLookup('amazon')['lowest'];
                 $ebayLmpLookup = EbaySkuCompetitor::buildGroupedLookup('ebay')['lowest'];
                 $googleLmpLookup = GoogleSkuCompetitor::buildGroupedLookup('google')['lowest'];
+                if (Schema::hasTable('bestbuy_sku_competitors')) {
+                    $bestbuyLmpLookup = BestbuySkuCompetitor::buildGroupedLookup('bestbuy')['lowest'];
+                }
+                if (Schema::hasTable('macy_sku_competitors')) {
+                    $macyLmpLookup = MacySkuCompetitor::buildGroupedLookup('macy')['lowest'];
+                }
+                if (Schema::hasTable('reverb_sku_competitors')) {
+                    $reverbLmpLookup = ReverbSkuCompetitor::buildGroupedLookup('reverb')['lowest'];
+                }
             } catch (\Exception $e) {
                 Log::warning('Could not fetch LMP lookups in breakdown: ' . $e->getMessage());
             }
@@ -1826,6 +1891,51 @@ class CvrMasterController extends Controller
                     return round(floatval($lmp->price), 2);
                 }
                 return null;
+            };
+            $resolveBestbuyLmpPrice = function (?string $lookupSku = null) use ($bestbuyLmpLookup) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                $lmp = $bestbuyLmpLookup->get($key);
+                if (!$lmp) {
+                    return null;
+                }
+                $total = floatval($lmp->total_price ?? 0);
+                if ($total <= 0) {
+                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                }
+                return $total > 0 ? round($total, 2) : null;
+            };
+            $resolveMacyLmpPrice = function (?string $lookupSku = null) use ($macyLmpLookup) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                $lmp = $macyLmpLookup->get($key);
+                if (!$lmp) {
+                    return null;
+                }
+                $total = floatval($lmp->total_price ?? 0);
+                if ($total <= 0) {
+                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                }
+                return $total > 0 ? round($total, 2) : null;
+            };
+            $resolveReverbLmpPrice = function (?string $lookupSku = null) use ($reverbLmpLookup) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                $lmp = $reverbLmpLookup->get($key);
+                if (!$lmp) {
+                    return null;
+                }
+                $total = floatval($lmp->total_price ?? 0);
+                if ($total <= 0) {
+                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                }
+                return $total > 0 ? round($total, 2) : null;
             };
             $resolveTemuLmpPrice = function (?string $lookupSku = null) use ($temuLmpByNormalizedSku, $temuLmpSkuGroupService) {
                 $resolved = $this->resolveTemuLmpForSku(
@@ -2284,19 +2394,22 @@ class CvrMasterController extends Controller
             
             // NOTE: Temu is added later with enhanced suggested data (line ~1518)
 
-            // Fetch Doba data from doba_metrics table (using full SKU)
-            $dobaMetric = DobaMetric::where('sku', $fullSku)->first();
-            
-            // Get Doba percentage from MarketplacePercentage
+            // Fetch Doba data — same source/formulas as /doba-tabulator (with-ship):
+            // Price = anticipated_income, margin from MarketplacePercentage (default 95%),
+            // GPFT/ROI = (price × margin − LP − Ship) / price|LP × 100 (no ads).
+            $dobaSkuNorm = strtoupper(trim((string) $fullSku));
+            $dobaMetric = DobaMetric::where('sku', $fullSku)->first()
+                ?? DobaMetric::whereRaw('UPPER(TRIM(sku)) = ?', [$dobaSkuNorm])->first();
+
             $dobaMarketplace = MarketplacePercentage::where('marketplace', 'Doba')->first();
-            $dobaPercentage = $dobaMarketplace ? ($dobaMarketplace->percentage / 100) : 1.00;
-            
+            $dobaPercentage = $dobaMarketplace ? ((float) $dobaMarketplace->percentage / 100) : 0.95;
+
             $dobaPrice = $dobaMetric ? floatval($dobaMetric->anticipated_income ?? 0) : 0;
-            
-            // Calculate Doba GPFT% = ((price × percentage - ship - lp) / price) × 100
-            $dobaGPFT = $dobaPrice > 0 ? ((($dobaPrice * $dobaPercentage - $lp - $ship) / $dobaPrice) * 100) : 0;
-            
-            // Doba doesn't have ads, so NPFT = GPFT
+
+            // Same as DobaController PFT_percentage / ROI_percentage
+            $dobaGPFT = $dobaPrice > 0
+                ? round((($dobaPrice * $dobaPercentage - $lp - $ship) / $dobaPrice) * 100, 2)
+                : 0;
             $dobaNPFT = $dobaGPFT;
             
             Log::info("Breakdown - Doba for SKU: $fullSku", [
@@ -2342,7 +2455,15 @@ class CvrMasterController extends Controller
                 'l30' => $dobaMetric->quantity_l30 ?? 0,
                 'gpft' => $dobaGPFT,
                 'ad' => 0,
+                'tacos_ch' => 0,
                 'npft' => $dobaNPFT,
+                // GROI/NROI for Doba = ROI_percentage from /doba-tabulator (no ads)
+                'groi' => ($lp > 0 && $dobaPrice > 0)
+                    ? round((($dobaPrice * $dobaPercentage - $lp - $ship) / $lp) * 100, 2)
+                    : 0,
+                'nroi' => ($lp > 0 && $dobaPrice > 0)
+                    ? round((($dobaPrice * $dobaPercentage - $lp - $ship) / $lp) * 100, 2)
+                    : 0,
                 'is_listed' => $hasDobaData,
                 'sprice' => $dobaSuggested['sprice'],
                 'sgpft' => $dobaSuggested['sgpft'],
@@ -2516,25 +2637,6 @@ class CvrMasterController extends Controller
                 'seller_link' => $ttSellerLink,
             ];
 
-            // Fetch BestBuy data (matching BestBuyPricingController)
-            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
-            $bestbuyPrice = BestbuyPriceData::where('sku', $fullSku)->first();
-            
-            // Get BestBuy percentage
-            $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
-            $bbPercentage = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
-            
-            // Price: BestbuyPriceData takes priority, fallback to BestbuyUsaProduct
-            $bbPrice = $bestbuyPrice ? floatval($bestbuyPrice->price ?? 0) : floatval($bestbuyProduct->price ?? 0);
-            
-            // Calculate BestBuy GPFT% = ((price × percentage - ship - lp) / price) × 100
-            $bbGPFT = $bbPrice > 0 ? ((($bbPrice * $bbPercentage - $lp - $ship) / $bbPrice) * 100) : 0;
-            
-            // BestBuy doesn't have ads, so NPFT = GPFT
-            $bbNPFT = $bbGPFT;
-            
-            // NOTE: BestBuy is added later with enhanced suggested data (line ~1594)
-
             // Fetch Shopify B2C data
             // Price/views from shopify_skus, L30 from shopify_b2c_daily_data (count rows)
             $shopifySku = ShopifySku::where('sku', $fullSku)->first();
@@ -2670,24 +2772,31 @@ class CvrMasterController extends Controller
                 'seller_link' => null,
             ];
 
-            // Fetch Macy data from macy_products table (using full SKU)
-            $macyProduct = MacyProduct::where('sku', $fullSku)->first();
-            
-            // Get Macy's percentage
+            // Macy — same sources/formulas as /macys-pricing:
+            // MC Price = macys_price_data.price (sheet) if present, else macy_products.price
+            $macySkuNorm = strtoupper(trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', (string) $fullSku))));
+            $macyProduct = MacyProduct::where('sku', $fullSku)->first()
+                ?? MacyProduct::whereRaw('UPPER(TRIM(REPLACE(sku, CHAR(160), \' \'))) = ?', [$macySkuNorm])->first();
+            $macySheetRow = MacysPriceData::where('sku', $fullSku)->first()
+                ?? MacysPriceData::whereRaw('UPPER(TRIM(sku)) = ?', [$macySkuNorm])->first();
+
             $macyMarketplace = MarketplacePercentage::where('marketplace', 'Macys')->first();
-            $macyPercentage = $macyMarketplace ? ($macyMarketplace->percentage / 100) : 0.80;
-            
-            $macyPrice = $macyProduct ? floatval($macyProduct->price ?? 0) : 0;
-            
-            // Calculate Macy's GPFT% = ((price × percentage - ship - lp) / price) × 100
-            $macyGPFT = $macyPrice > 0 ? ((($macyPrice * $macyPercentage - $lp - $ship) / $macyPrice) * 100) : 0;
-            
-            // Macy's doesn't have ads, NPFT = GPFT
-            $macyL30 = $macyProduct->m_l30 ?? 0;
-            $macyNPFT = $macyL30 == 0 ? $macyGPFT : $macyGPFT;
-            
+            $macyPercentage = $macyMarketplace ? ((float) $macyMarketplace->percentage / 100) : 0.80;
+
+            $macyPrice = $macySheetRow
+                ? floatval($macySheetRow->price ?? 0)
+                : ($macyProduct ? floatval($macyProduct->price ?? 0) : 0);
+
+            $macyGPFT = $macyPrice > 0
+                ? round((($macyPrice * $macyPercentage - $lp - $ship) / $macyPrice) * 100, 2)
+                : 0;
+
+            $macyL30 = $macyProduct ? intval($macyProduct->m_l30 ?? 0) : 0;
+            $macyNPFT = $macyGPFT;
+
             // Get Macy suggested data from macy_data_view
-            $macyDataView = MacyDataView::where('sku', $fullSku)->first();
+            $macyDataView = MacyDataView::where('sku', $fullSku)->first()
+                ?? MacyDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$macySkuNorm])->first();
             $macySuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             if ($macyDataView) {
                 $val = is_array($macyDataView->value) ? $macyDataView->value : json_decode($macyDataView->value, true);
@@ -2696,8 +2805,8 @@ class CvrMasterController extends Controller
                                       'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
                 }
             }
-            
-            $hasMacyData = $macyProduct && ($macyL30 > 0 || $macyPrice > 0);
+
+            $hasMacyData = ($macyProduct || $macySheetRow) && ($macyL30 > 0 || $macyPrice > 0);
             
             $breakdownData[] = [
                 'marketplace' => 'MACY',
@@ -2722,41 +2831,53 @@ class CvrMasterController extends Controller
                 'seller_link' => $macyLinks[1],
             ];
 
-            // Fetch Reverb data from reverb_products table (using full SKU)
-            $reverbProduct = ReverbProduct::where('sku', $fullSku)->first();
-            
-            // Get Reverb percentage
+            // Reverb — same sources/formulas as /reverb-pricing:
+            // RV Price = reverb_products.price via normalized SKU lookup; no ads.
+            $reverbNormKey = ReverbProduct::normalizeSkuForLookup($fullSku);
+            $reverbLookup = ReverbProduct::buildLookupByNormalizedSku([$fullSku, $sku]);
+            $reverbProduct = ($reverbNormKey !== '' && isset($reverbLookup[$reverbNormKey]))
+                ? $reverbLookup[$reverbNormKey]
+                : null;
+
             $reverbMarketplace = MarketplacePercentage::where('marketplace', 'Reverb')->first();
-            $reverbPercentage = $reverbMarketplace ? ($reverbMarketplace->percentage / 100) : 0.85;
-            
+            $reverbPercentage = $reverbMarketplace ? ((float) $reverbMarketplace->percentage / 100) : 0.85;
+
             $rvPrice = $reverbProduct ? floatval($reverbProduct->price ?? 0) : 0;
-            
-            // Calculate Reverb GPFT% = ((price × percentage - ship - lp) / price) × 100
-            $rvGPFT = $rvPrice > 0 ? ((($rvPrice * $reverbPercentage - $lp - $ship) / $rvPrice) * 100) : 0;
-            
-            // Reverb doesn't have ads, NPFT = GPFT
-            $reverbL30 = $reverbProduct->r_l30 ?? 0;
-            $rvNPFT = $reverbL30 == 0 ? $rvGPFT : $rvGPFT;
-            
-            // Get Reverb suggested data from reverb_view_data
-            $reverbDataView = ReverbViewData::where('sku', $fullSku)->first();
+            $rvGPFT = $rvPrice > 0
+                ? round((($rvPrice * $reverbPercentage - $lp - $ship) / $rvPrice) * 100, 2)
+                : 0;
+            $reverbL30 = $reverbProduct ? intval($reverbProduct->r_l30 ?? 0) : 0;
+            $rvNPFT = $rvGPFT;
+
+            // SPRICE from reverb_view_data (normalized SKU, same as /reverb-pricing)
+            $reverbViewLookup = ReverbProduct::buildModelLookupByNormalizedSku(ReverbViewData::class, [$fullSku, $sku]);
+            $reverbDataView = ($reverbNormKey !== '' && isset($reverbViewLookup[$reverbNormKey]))
+                ? $reverbViewLookup[$reverbNormKey]
+                : null;
             $reverbSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $reverbViewVal = [];
             if ($reverbDataView) {
-                $val = is_array($reverbDataView->values) ? $reverbDataView->values : 
-                       json_decode($reverbDataView->values, true);
-                if (is_array($val)) {
+                $reverbViewVal = is_array($reverbDataView->values) ? $reverbDataView->values :
+                       (json_decode($reverbDataView->values, true) ?: []);
+                if (is_array($reverbViewVal)) {
                     // Reverb stores SPFT/SROI with % symbols, need to strip them
                     $reverbSuggested = [
-                        'sprice' => floatval($val['SPRICE'] ?? 0),
-                        'sgpft' => floatval($val['SGPFT'] ?? 0),
-                        'sroi' => floatval(str_replace('%', '', $val['SROI'] ?? '0')),
-                        'spft' => floatval(str_replace('%', '', $val['SPFT'] ?? '0'))
+                        'sprice' => floatval($reverbViewVal['SPRICE'] ?? 0),
+                        'sgpft' => floatval($reverbViewVal['SGPFT'] ?? 0),
+                        'sroi' => floatval(str_replace('%', '', $reverbViewVal['SROI'] ?? '0')),
+                        'spft' => floatval(str_replace('%', '', $reverbViewVal['SPFT'] ?? '0'))
                     ];
                 }
             }
-            
-            $hasReverbData = $reverbProduct && ($reverbL30 > 0 || $rvPrice > 0);
-            
+
+            $listingStateRv = strtolower(trim((string) ($reverbProduct->listing_state ?? '')));
+            $isActiveReverbListing = $reverbProduct && (
+                ($listingStateRv === '' && !empty($reverbProduct->reverb_listing_id))
+                || in_array($listingStateRv, ['live', 'active'], true)
+            );
+            $spricePushedRv = (($reverbViewVal['SPRICE_STATUS'] ?? null) === 'pushed');
+            $hasReverbData = $rvPrice > 0 || $reverbL30 > 0 || $isActiveReverbListing || $spricePushedRv;
+
             $breakdownData[] = [
                 'marketplace' => 'Reverb',
                 'sku' => $hasReverbData ? $fullSku : 'Not Listed',
@@ -2765,6 +2886,7 @@ class CvrMasterController extends Controller
                 'l30' => $reverbL30,
                 'gpft' => $rvGPFT,
                 'ad' => 0,
+                'tacos_ch' => 0,
                 'npft' => $rvNPFT,
                 'is_listed' => $hasReverbData,
                 'sprice' => $reverbSuggested['sprice'],
@@ -2966,16 +3088,28 @@ class CvrMasterController extends Controller
 
             // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
 
-            // Add BestBuy
-            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
+            // BestBuy — same sources/formulas as /bestbuy-pricing:
+            // BB Price = bestbuy_price_data (sheet, UPPER sku) if present, else bestbuy_usa_products.price
+            $bbSkuUpper = strtoupper(trim((string) $fullSku));
+            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first()
+                ?? BestbuyUsaProduct::whereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])->first();
+            $bestbuySheetRow = BestbuyPriceData::where('sku', $bbSkuUpper)->first()
+                ?? BestbuyPriceData::whereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])->first();
+
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
-            $bestbuyMargin = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
-            $bestbuyPrice = $bestbuyProduct->price ?? 0;
-            $bestbuyL30 = 0; // BestBuy L30 data source needed
-            $bestbuyGPFT = $bestbuyPrice > 0 ? (($bestbuyPrice * $bestbuyMargin - $lp - $ship) / $bestbuyPrice) * 100 : 0;
-            $bestbuyNPFT = $bestbuyL30 == 0 ? $bestbuyGPFT : $bestbuyGPFT;
-            
-            $bestbuyDataView = BestbuyUSADataView::where('sku', $fullSku)->first();
+            $bestbuyMargin = $bestbuyMarketplace ? ((float) $bestbuyMarketplace->percentage / 100) : 0.80;
+
+            $bestbuyPrice = $bestbuySheetRow
+                ? floatval($bestbuySheetRow->price ?? 0)
+                : ($bestbuyProduct ? floatval($bestbuyProduct->price ?? 0) : 0);
+            $bestbuyL30 = $bestbuyProduct ? intval($bestbuyProduct->m_l30 ?? 0) : 0;
+            $bestbuyGPFT = $bestbuyPrice > 0
+                ? round((($bestbuyPrice * $bestbuyMargin - $lp - $ship) / $bestbuyPrice) * 100, 2)
+                : 0;
+            $bestbuyNPFT = $bestbuyGPFT;
+
+            $bestbuyDataView = BestbuyUSADataView::where('sku', $fullSku)->first()
+                ?? BestbuyUSADataView::whereRaw('UPPER(TRIM(sku)) = ?', [$bbSkuUpper])->first();
             $bestbuySuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             if ($bestbuyDataView) {
                 $val = is_array($bestbuyDataView->value) ? $bestbuyDataView->value : json_decode($bestbuyDataView->value, true);
@@ -2984,17 +3118,20 @@ class CvrMasterController extends Controller
                                          'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
                 }
             }
-            
+
+            $hasBestbuyData = ($bestbuyProduct || $bestbuySheetRow) && ($bestbuyL30 > 0 || $bestbuyPrice > 0);
+
             $breakdownData[] = [
                 'marketplace' => 'BestBuy',
-                'sku' => $bestbuyProduct ? $fullSku : 'Not Listed',
+                'sku' => $hasBestbuyData ? $fullSku : 'Not Listed',
                 'price' => $bestbuyPrice,
                 'views' => null, // BestBuy has no views metric
                 'l30' => $bestbuyL30,
                 'gpft' => $bestbuyGPFT,
                 'ad' => 0,
+                'tacos_ch' => 0,
                 'npft' => $bestbuyNPFT,
-                'is_listed' => $bestbuyProduct ? true : false,
+                'is_listed' => $hasBestbuyData,
                 'sprice' => $bestbuySuggested['sprice'],
                 'sgpft' => $bestbuySuggested['sgpft'],
                 'sroi' => $bestbuySuggested['sroi'],
@@ -3008,36 +3145,59 @@ class CvrMasterController extends Controller
                 'seller_link' => $bestbuyLinks[1],
             ];
 
-            // Add Tiendamia
-            $tiendamiaProduct = TiendamiaProduct::where('sku', $fullSku)->first();
+            // Tiendamia — same sources/formulas as /tiendamia-pricing:
+            // Price = tiendamia_price_uploads (sheet, exact offer_sku/product_sku) first,
+            // else tiendamia_products.price. L30 from product (UPPER sku).
+            $tmSkuTrimmed = trim((string) $fullSku);
+            $tmSkuUpper = strtoupper($tmSkuTrimmed);
+
+            $tiendamiaSheetRow = TiendamiaPriceUpload::whereNotNull('price')
+                ->where(function ($q) use ($tmSkuTrimmed) {
+                    $q->where('offer_sku', $tmSkuTrimmed)
+                        ->orWhere('product_sku', $tmSkuTrimmed);
+                })
+                ->first();
+
+            $tiendamiaProduct = TiendamiaProduct::where('sku', $tmSkuUpper)->first()
+                ?? TiendamiaProduct::whereRaw('UPPER(TRIM(sku)) = ?', [$tmSkuUpper])->first();
+
             $tiendamiaMarketplace = MarketplacePercentage::where('marketplace', 'Tiendamia')->first();
-            $tiendamiaMargin = $tiendamiaMarketplace ? ($tiendamiaMarketplace->percentage / 100) : 0.83;
-            $tiendamiaPrice = $tiendamiaProduct->price ?? 0;
-            $tiendamiaL30 = $tiendamiaProduct->m_l30 ?? 0;
-            $tiendamiaGPFT = $tiendamiaPrice > 0 ? (($tiendamiaPrice * $tiendamiaMargin - $lp - $ship) / $tiendamiaPrice) * 100 : 0;
-            $tiendamiaNPFT = $tiendamiaL30 == 0 ? $tiendamiaGPFT : $tiendamiaGPFT;
-            
-            $tiendamiaDataView = TiendamiaDataView::where('sku', $fullSku)->first();
+            $tiendamiaMargin = $tiendamiaMarketplace ? ((float) $tiendamiaMarketplace->percentage / 100) : 0.83;
+
+            $tiendamiaPrice = $tiendamiaSheetRow
+                ? floatval($tiendamiaSheetRow->price ?? 0)
+                : ($tiendamiaProduct ? floatval($tiendamiaProduct->price ?? 0) : 0);
+            $tiendamiaL30 = $tiendamiaProduct ? intval($tiendamiaProduct->m_l30 ?? 0) : 0;
+            $tiendamiaGPFT = $tiendamiaPrice > 0
+                ? round((($tiendamiaPrice * $tiendamiaMargin - $lp - $ship) / $tiendamiaPrice) * 100, 2)
+                : 0;
+            $tiendamiaNPFT = $tiendamiaGPFT;
+
+            $tiendamiaDataView = TiendamiaDataView::where('sku', $fullSku)->first()
+                ?? TiendamiaDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$tmSkuUpper])->first();
             $tiendamiaSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             if ($tiendamiaDataView) {
-                $val = is_array($tiendamiaDataView->value) ? $tiendamiaDataView->value : 
+                $val = is_array($tiendamiaDataView->value) ? $tiendamiaDataView->value :
                        json_decode($tiendamiaDataView->value, true);
                 if (is_array($val)) {
                     $tiendamiaSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
                                            'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
                 }
             }
-            
+
+            $hasTiendamiaData = ($tiendamiaProduct || $tiendamiaSheetRow) && ($tiendamiaL30 > 0 || $tiendamiaPrice > 0);
+
             $breakdownData[] = [
                 'marketplace' => 'Tiendamia',
-                'sku' => $tiendamiaProduct ? $fullSku : 'Not Listed',
+                'sku' => $hasTiendamiaData ? $fullSku : 'Not Listed',
                 'price' => $tiendamiaPrice,
                 'views' => null, // Tiendamia has no views metric
                 'l30' => $tiendamiaL30,
                 'gpft' => $tiendamiaGPFT,
                 'ad' => 0,
+                'tacos_ch' => 0,
                 'npft' => $tiendamiaNPFT,
-                'is_listed' => $tiendamiaProduct ? true : false,
+                'is_listed' => $hasTiendamiaData,
                 'sprice' => $tiendamiaSuggested['sprice'],
                 'sgpft' => $tiendamiaSuggested['sgpft'],
                 'sroi' => $tiendamiaSuggested['sroi'],
@@ -3404,6 +3564,33 @@ class CvrMasterController extends Controller
                 }
             }
             $googleLmpPrice = $resolveGoogleLmpPrice($fullSku);
+            $bestbuyLmpPrice = $resolveBestbuyLmpPrice($fullSku);
+            if ($bestbuyLmpPrice === null) {
+                foreach (BestbuySkuCompetitor::resolveLookupKeys($fullSku) as $bbKey) {
+                    $bestbuyLmpPrice = $resolveBestbuyLmpPrice($bbKey);
+                    if ($bestbuyLmpPrice !== null) {
+                        break;
+                    }
+                }
+            }
+            $macyLmpPrice = $resolveMacyLmpPrice($fullSku);
+            if ($macyLmpPrice === null) {
+                foreach (MacySkuCompetitor::resolveLookupKeys($fullSku) as $macyKey) {
+                    $macyLmpPrice = $resolveMacyLmpPrice($macyKey);
+                    if ($macyLmpPrice !== null) {
+                        break;
+                    }
+                }
+            }
+            $reverbLmpPrice = $resolveReverbLmpPrice($fullSku);
+            if ($reverbLmpPrice === null) {
+                foreach (ReverbSkuCompetitor::resolveLookupKeys($fullSku) as $reverbKey) {
+                    $reverbLmpPrice = $resolveReverbLmpPrice($reverbKey);
+                    if ($reverbLmpPrice !== null) {
+                        break;
+                    }
+                }
+            }
             $temuLmpPrice = $resolveTemuLmpPrice($fullSku);
             $tiktokLmpPrice = $resolveTiktokLmpPrice($fullSku);
 
@@ -3411,13 +3598,14 @@ class CvrMasterController extends Controller
                 $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
                 $gpftPct = (float) ($row['gpft'] ?? 0);
 
-                // TikTok: SKU TACOS; Temu2: Ads% = 0 (same as /temu2-decrease); else channel Ads%
+                // TikTok: SKU TACOS; Temu2/Doba: Ads% = 0 (same as channel pages); else channel Ads%
                 if ($mp === 'tiktok') {
                     $adsPct = (float) ($row['tacos_ch'] ?? $row['ad'] ?? 0);
                     $row['ad'] = $adsPct;
                     $row['tacos_ch'] = $adsPct;
                     $row['npft'] = round($gpftPct - $adsPct, 2);
-                } elseif ($mp === 'temu2') {
+                } elseif (in_array($mp, ['temu2', 'doba', 'reverb'], true)) {
+                    // Doba / Reverb: match channel pricing pages — PFT/ROI never subtract ads
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
@@ -3451,6 +3639,51 @@ class CvrMasterController extends Controller
                 } elseif ($mp === 'google') {
                     $lmpChannel = 'google';
                     $lmpPrice = $googleLmpPrice;
+                } elseif (in_array($mp, ['bestbuy', 'bestbuyusa'], true)) {
+                    $lmpChannel = 'bestbuy';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveBestbuyLmpPrice($rowSku);
+                    if ($lmpPrice === null) {
+                        foreach (BestbuySkuCompetitor::resolveLookupKeys($rowSku, $fullSku) as $bbKey) {
+                            $lmpPrice = $resolveBestbuyLmpPrice($bbKey);
+                            if ($lmpPrice !== null) {
+                                break;
+                            }
+                        }
+                    }
+                    if ($lmpPrice === null) {
+                        $lmpPrice = $bestbuyLmpPrice;
+                    }
+                } elseif (in_array($mp, ['macy', 'macys'], true)) {
+                    $lmpChannel = 'macy';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveMacyLmpPrice($rowSku);
+                    if ($lmpPrice === null) {
+                        foreach (MacySkuCompetitor::resolveLookupKeys($rowSku, $fullSku) as $macyKey) {
+                            $lmpPrice = $resolveMacyLmpPrice($macyKey);
+                            if ($lmpPrice !== null) {
+                                break;
+                            }
+                        }
+                    }
+                    if ($lmpPrice === null) {
+                        $lmpPrice = $macyLmpPrice;
+                    }
+                } elseif ($mp === 'reverb') {
+                    $lmpChannel = 'reverb';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveReverbLmpPrice($rowSku);
+                    if ($lmpPrice === null) {
+                        foreach (ReverbSkuCompetitor::resolveLookupKeys($rowSku, $fullSku) as $reverbKey) {
+                            $lmpPrice = $resolveReverbLmpPrice($reverbKey);
+                            if ($lmpPrice !== null) {
+                                break;
+                            }
+                        }
+                    }
+                    if ($lmpPrice === null) {
+                        $lmpPrice = $reverbLmpPrice;
+                    }
                 } elseif (in_array($mp, ['temu', 'temu2'], true)) {
                     // Same temu_lmp source used by /temu-decrease and /temu2-decrease
                     $lmpChannel = 'temu';
@@ -3748,6 +3981,70 @@ class CvrMasterController extends Controller
     /**
      * Save suggested pricing data (SPRICE, SGPFT, SPFT, SROI) to data_view tables
      */
+    /**
+     * Sibling SKUs = all ProductMaster children sharing the same parent
+     * (excludes PARENT summary rows). Includes the seed SKU when found.
+     */
+    private function resolveSiblingSkus(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $pm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        if (!$pm) {
+            $pm = ProductMaster::where('sku', 'LIKE', $sku . '%')->first();
+        }
+        if (!$pm) {
+            return [$sku];
+        }
+
+        $parent = trim((string) ($pm->parent ?? ''));
+        if ($parent === '') {
+            return [trim((string) $pm->sku)];
+        }
+
+        $skus = ProductMaster::where('parent', $parent)
+            ->where('sku', 'NOT LIKE', 'PARENT %')
+            ->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter(fn ($s) => $s !== '')
+            ->unique(fn ($s) => strtoupper($s))
+            ->values()
+            ->all();
+
+        return !empty($skus) ? $skus : [trim((string) $pm->sku)];
+    }
+
+    /**
+     * List sibling SKUs for the Details modal "Siblings Apply" checkbox.
+     */
+    public function getSiblingSkus(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', $request->input('sku', '')));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+        }
+
+        $all = $this->resolveSiblingSkus($sku);
+        $others = array_values(array_filter(
+            $all,
+            fn ($s) => strtoupper(trim((string) $s)) !== strtoupper(trim($sku))
+        ));
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'parent' => optional(
+                ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            )->parent,
+            'siblings' => $others,
+            'all' => $all,
+            'count' => count($others),
+        ]);
+    }
+
     public function saveSuggestedData(Request $request)
     {
         try {
@@ -3842,7 +4139,15 @@ class CvrMasterController extends Controller
                 $data['SPRICE_STATUS'] = 'applied'; // saved but not pushed
                 $manual->data = $data;
                 $manual->save();
-                return response()->json(['success' => true]);
+
+                return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, [
+                    'sprice' => $sprice,
+                    'sgpft' => $sgpft,
+                    'sroi' => $sroi,
+                    'spft' => $spft,
+                    'amazon_margin' => $amazonMargin,
+                    'avg_pft' => $avgPft,
+                ]);
             }
 
             // Get existing value (Reverb uses 'values', others use 'value')
@@ -3910,12 +4215,64 @@ class CvrMasterController extends Controller
                 }
             }
 
-            return response()->json(['success' => true]);
+            return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, [
+                'sprice' => $sprice,
+                'sgpft' => $sgpft,
+                'sroi' => $sroi,
+                'spft' => $spft,
+                'amazon_margin' => $amazonMargin,
+                'avg_pft' => $avgPft,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error saving suggested data: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $message = config('app.debug') ? $e->getMessage() : 'Failed to save';
             return response()->json(['error' => $message], 500);
         }
+    }
+
+    /**
+     * After a successful SPRICE save, optionally copy the same SPRICE to sibling SKUs.
+     */
+    private function finishSuggestedSaveWithSiblings(Request $request, string $fullSku, string $marketplace, array $payload)
+    {
+        $applySiblings = filter_var($request->input('apply_siblings'), FILTER_VALIDATE_BOOLEAN);
+        $siblingSaved = [];
+
+        if ($applySiblings) {
+            foreach ($this->resolveSiblingSkus($fullSku) as $sibSku) {
+                if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($fullSku))) {
+                    continue;
+                }
+                $subReq = Request::create('/cvr-master-save-suggested-data', 'POST', array_merge($payload, [
+                    'sku' => $sibSku,
+                    'marketplace' => $marketplace,
+                    'apply_siblings' => 0,
+                ]));
+                $subReq->headers->set('Accept', 'application/json');
+                try {
+                    $resp = $this->saveSuggestedData($subReq);
+                    $data = method_exists($resp, 'getData') ? $resp->getData(true) : [];
+                    if (!empty($data['success'])) {
+                        $siblingSaved[] = $sibSku;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR siblings SPRICE save failed', [
+                        'sku' => $sibSku,
+                        'marketplace' => $marketplace,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'siblings_applied' => $siblingSaved,
+            'siblings_count' => count($siblingSaved),
+            'message' => count($siblingSaved)
+                ? ('Saved (+' . count($siblingSaved) . ' siblings)')
+                : 'Saved',
+        ]);
     }
 
     /**
@@ -3930,6 +4287,7 @@ class CvrMasterController extends Controller
                 'sku' => $request->input('sku'),
                 'price' => $request->input('price'),
                 'marketplace' => $request->input('marketplace'),
+                'apply_siblings' => $request->input('apply_siblings'),
                 'all_input' => $request->all()
             ]);
 
@@ -3953,50 +4311,114 @@ class CvrMasterController extends Controller
             }
 
             $sku = strtoupper(trim($request->input('sku')));
-            $price = round(floatval($request->input('price')), 2);
+            $rawPrice = $request->input('price');
             $marketplace = strtolower($request->input('marketplace'));
 
-            // Validate price
-            if ($price <= 0) {
+            // Never push when price is null / empty / zero
+            if ($rawPrice === null || $rawPrice === '' || !is_numeric($rawPrice)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Price must be greater than 0.'
+                    'message' => 'Price is required and must be a number greater than 0.'
                 ], 400);
             }
 
+            $price = round(floatval($rawPrice), 2);
+            if ($price <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot push — price is 0 or empty.'
+                ], 400);
+            }
+
+            $selfPickPrice = $request->has('self_pick_price')
+                ? round(floatval($request->input('self_pick_price')), 2)
+                : null;
+
             // Handle different marketplaces (API push where available)
             if ($marketplace === 'amazon') {
-                return $this->pushToAmazon($sku, $price);
+                $response = $this->pushToAmazon($sku, $price);
             } elseif ($marketplace === 'doba') {
-                return $this->pushToDoba($sku, $price);
+                $response = $this->pushToDoba($sku, $price, $selfPickPrice);
             } elseif ($marketplace === 'walmart') {
-                return $this->pushToWalmart($sku, $price);
+                $response = $this->pushToWalmart($sku, $price);
             } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c' || $marketplace === 'shopify') {
-                return $this->pushToShopifyB2C($sku, $price);
+                $response = $this->pushToShopifyB2C($sku, $price);
             } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
-                return $this->pushToShopifyB2B($sku, $price);
+                $response = $this->pushToShopifyB2B($sku, $price);
             } elseif ($marketplace === 'pls' || $marketplace === 'prolightsounds') {
-                return $this->pushToPls($sku, $price);
+                $response = $this->pushToPls($sku, $price);
             } elseif ($marketplace === 'reverb') {
-                return $this->pushToReverb($sku, $price);
+                $response = $this->pushToReverb($sku, $price);
             } elseif ($marketplace === 'fba') {
-                return $this->pushToFba($sku, $price);
+                $response = $this->pushToFba($sku, $price);
             } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
-                return $this->pushToEbay($sku, $price);
+                $response = $this->pushToEbay($sku, $price);
             } elseif ($marketplace === 'ebay2' || $marketplace === 'ebaytwo') {
-                return $this->pushToEbay2($sku, $price);
+                $response = $this->pushToEbay2($sku, $price);
             } elseif ($marketplace === 'ebay3' || $marketplace === 'ebaythree') {
-                return $this->pushToEbay3($sku, $price);
+                $response = $this->pushToEbay3($sku, $price);
             } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
-                return $this->pushToBestBuy($sku, $price);
+                $response = $this->pushToBestBuy($sku, $price);
             } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
-                return $this->pushToMacy($sku, $price);
+                $response = $this->pushToMacy($sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
                     'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, FBA."
                 ], 400);
             }
+
+            $applySiblings = filter_var($request->input('apply_siblings'), FILTER_VALIDATE_BOOLEAN);
+            if (!$applySiblings) {
+                return $response;
+            }
+
+            $primaryData = method_exists($response, 'getData') ? $response->getData(true) : [];
+            if (empty($primaryData['success'])) {
+                return $response;
+            }
+
+            $siblingResults = [];
+            foreach ($this->resolveSiblingSkus($sku) as $sibSku) {
+                if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($sku))) {
+                    continue;
+                }
+                $subReq = Request::create('/cvr-master-push-price', 'POST', [
+                    'sku' => $sibSku,
+                    'price' => $price,
+                    'marketplace' => $marketplace,
+                    'apply_siblings' => 0,
+                ]);
+                $subReq->headers->set('Accept', 'application/json');
+                try {
+                    $sibResp = $this->pushPriceToAmazon($subReq);
+                    $sibData = method_exists($sibResp, 'getData') ? $sibResp->getData(true) : [];
+                    $siblingResults[] = [
+                        'sku' => $sibSku,
+                        'success' => !empty($sibData['success']),
+                        'message' => $sibData['message'] ?? ($sibData['error'] ?? ''),
+                    ];
+                } catch (\Throwable $e) {
+                    $siblingResults[] = [
+                        'sku' => $sibSku,
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+            }
+
+            $okSiblings = count(array_filter($siblingResults, fn ($r) => !empty($r['success'])));
+            $baseMsg = $primaryData['message'] ?? 'Price pushed';
+            if (count($siblingResults) > 0) {
+                $baseMsg .= ' (+' . $okSiblings . '/' . count($siblingResults) . ' siblings)';
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $baseMsg,
+                'siblings' => $siblingResults,
+                'siblings_count' => $okSiblings,
+            ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('CVR Master - Validation exception', [
@@ -4088,13 +4510,16 @@ class CvrMasterController extends Controller
 
     /**
      * Push price to Doba
-     * Matches DobaController::pushPriceToDoba implementation
+     * Matches DobaController::pushPriceToDoba + /doba-tabulator (self pick = SPRICE − Ship)
      */
-    private function pushToDoba($sku, $price)
+    private function pushToDoba($sku, $price, $selfPickPrice = null)
     {
         try {
-            // Get item_id from doba_metrics table
-            $dobaMetric = DobaMetric::where('sku', $sku)->first();
+            // Case-insensitive SKU lookup (DB may store "CAPO BLUE 1Pc")
+            $dobaMetric = DobaMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])->first();
+            if (!$dobaMetric) {
+                $dobaMetric = DobaMetric::where('sku', $sku)->first();
+            }
             
             if (!$dobaMetric || !$dobaMetric->item_id) {
                 $this->savePricePushStatus($sku, 'doba', 'error', $price);
@@ -4112,7 +4537,28 @@ class CvrMasterController extends Controller
             }
 
             $itemId = $dobaMetric->item_id;
-            $selfPickPrice = $dobaMetric->self_pick_price ?? null; // Get self_pick_price from metric
+            $metricSku = trim((string) $dobaMetric->sku);
+
+            // Same as /doba-tabulator: Self Pick = SPRICE − Ship (ProductMaster ship)
+            if ($selfPickPrice === null || !is_numeric($selfPickPrice) || floatval($selfPickPrice) < 0) {
+                $ship = 0.0;
+                $pm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($metricSku)])->first();
+                if ($pm) {
+                    // ProductMaster stores ship inside Values JSON
+                    $vals = is_array($pm->Values) ? $pm->Values
+                        : (json_decode($pm->Values ?? '{}', true) ?: []);
+                    $ship = floatval($vals['ship'] ?? 0);
+                }
+                if ($ship <= 0 && is_numeric($dobaMetric->self_pick_price ?? null)
+                    && is_numeric($dobaMetric->anticipated_income ?? null)
+                    && floatval($dobaMetric->anticipated_income) > 0) {
+                    // Infer ship from last known anticipated − self_pick
+                    $ship = max(0, floatval($dobaMetric->anticipated_income) - floatval($dobaMetric->self_pick_price));
+                }
+                $selfPickPrice = round(max(0, floatval($price) - $ship), 2);
+            } else {
+                $selfPickPrice = round(floatval($selfPickPrice), 2);
+            }
             
             // Push to Doba using API (matching DobaController implementation)
             $dobaApiService = new DobaApiService();
@@ -4126,14 +4572,15 @@ class CvrMasterController extends Controller
                     : (string) $priceResult['errors'];
 
                 // Save error status to doba_data_view
-                $this->savePricePushStatus($sku, 'doba', 'error', $price);
+                $this->savePricePushStatus($metricSku, 'doba', 'error', $price);
                 
                 Log::warning('CVR Master - Doba price push failed', [
-                    'sku' => $sku,
+                    'sku' => $metricSku,
                     'item_id' => $itemId,
                     'price' => $price,
                     'self_pick_price' => $selfPickPrice,
-                    'error' => $errorMessage
+                    'error' => $errorMessage,
+                    'debug' => $priceResult['debug'] ?? null,
                 ]);
                 
                 return response()->json([
@@ -4143,11 +4590,15 @@ class CvrMasterController extends Controller
                 ], 400);
             }
 
-            // Only push to Doba API - do not update local doba_metrics (main table)
-            $this->savePricePushStatus($sku, 'doba', 'pushed', $price);
+            // Keep local metrics in sync (same as DobaController::pushPriceToDoba)
+            $dobaMetric->anticipated_income = $price;
+            $dobaMetric->self_pick_price = $selfPickPrice;
+            $dobaMetric->save();
+
+            $this->savePricePushStatus($metricSku, 'doba', 'pushed', $price);
             
             Log::info('CVR Master - Doba price push successful', [
-                'sku' => $sku,
+                'sku' => $metricSku,
                 'item_id' => $itemId,
                 'price' => $price,
                 'self_pick_price' => $selfPickPrice
@@ -4155,7 +4606,7 @@ class CvrMasterController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => "Price $" . number_format($price, 2) . " pushed to Doba successfully for SKU: $sku",
+                'message' => "Price $" . number_format($price, 2) . " pushed to Doba successfully for SKU: $metricSku",
                 'data' => [
                     'price_update' => $priceResult
                 ]
@@ -5304,6 +5755,7 @@ class CvrMasterController extends Controller
                 $competitors[] = [
                     'id' => 'temu-' . ($idx + 1),
                     'price' => round($price, 2),
+                    'ignored' => !empty($entry['ignored']),
                     'product_link' => $entry['link'] ?? null,
                     'link' => $entry['link'] ?? null,
                     'product_title' => '',
@@ -5320,6 +5772,117 @@ class CvrMasterController extends Controller
         } catch (\Exception $e) {
             Log::error('Error fetching Temu LMP data: ' . $e->getMessage());
             return response()->json(['success' => false, 'error' => 'Failed to fetch Temu LMP'], 500);
+        }
+    }
+
+    /**
+     * Toggle LMP competitor ignored flag (same behavior as /temu-decrease ignore for L1).
+     * Amazon / eBay / Google: column on *_sku_competitors. Temu: lmp_entries[].ignored.
+     */
+    public function toggleLmpIgnored(Request $request)
+    {
+        $marketplace = strtolower(trim((string) $request->input('marketplace', '')));
+        $ignored = filter_var($request->input('ignored'), FILTER_VALIDATE_BOOLEAN);
+        $id = $request->input('id');
+        $sku = trim((string) $request->input('sku', ''));
+
+        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu'], true)) {
+            return response()->json(['success' => false, 'error' => 'Invalid marketplace'], 400);
+        }
+
+        try {
+            if ($marketplace === 'temu') {
+                if ($sku === '') {
+                    return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+                }
+                $idx = preg_match('/^temu-(\d+)$/i', (string) $id, $mm) ? ((int) $mm[1] - 1) : -1;
+                if ($idx < 0) {
+                    return response()->json(['success' => false, 'error' => 'Invalid Temu LMP id'], 400);
+                }
+
+                $temuLmpByNormalizedSku = [];
+                if (Schema::hasTable('temu_lmp')) {
+                    foreach (TemuLmp::all() as $temuLmpRow) {
+                        $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+                    }
+                }
+                $groupService = null;
+                try {
+                    $groupService = app(LmpSkuGroupService::class);
+                    $groupService->prepareForSkus([$sku]);
+                } catch (\Throwable $e) {
+                    $groupService = null;
+                }
+                $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
+                $entries = $resolved['entries'];
+                if ($idx >= count($entries)) {
+                    return response()->json(['success' => false, 'error' => 'Temu LMP entry not found'], 404);
+                }
+                $entries[$idx]['ignored'] = $ignored;
+
+                $normalizeSku = function ($s) {
+                    return self::normalizeTemuSkuForCvr((string) $s);
+                };
+                $target = $normalizeSku($sku);
+                $row = $temuLmpByNormalizedSku[$target] ?? null;
+                if (!$row) {
+                    $row = TemuLmp::create([
+                        'sku' => $sku,
+                        'lmp_entries' => $entries,
+                    ]);
+                }
+
+                $active = array_values(array_filter($entries, fn ($e) => empty($e['ignored'])));
+                $prices = array_values(array_filter(array_map(fn ($e) => $e['price'] ?? null, $active), fn ($p) => $p !== null && $p !== ''));
+                $firstPrice = count($prices) > 0 ? min(array_map('floatval', $prices)) : null;
+                $firstLink = null;
+                if ($firstPrice !== null) {
+                    foreach ($active as $e) {
+                        if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $firstPrice) {
+                            $firstLink = $e['link'] ?? null;
+                            break;
+                        }
+                    }
+                }
+
+                $row->update([
+                    'sku' => $sku,
+                    'lmp' => $firstPrice,
+                    'lmp_link' => $firstLink,
+                    'lmp_entries' => $entries,
+                    'lmp_2' => null,
+                    'lmp_link_2' => null,
+                ]);
+
+                return response()->json(['success' => true, 'ignored' => $ignored, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+            }
+
+            $model = match ($marketplace) {
+                'amazon' => AmazonSkuCompetitor::class,
+                'ebay' => EbaySkuCompetitor::class,
+                'google' => GoogleSkuCompetitor::class,
+                'bestbuy' => BestbuySkuCompetitor::class,
+                'macy' => MacySkuCompetitor::class,
+                'reverb' => ReverbSkuCompetitor::class,
+            };
+            $table = (new $model)->getTable();
+            if (!Schema::hasColumn($table, 'ignored')) {
+                return response()->json(['success' => false, 'error' => 'Ignore column missing — run migrations'], 500);
+            }
+            if (!$id || !is_numeric($id)) {
+                return response()->json(['success' => false, 'error' => 'Valid ID is required'], 400);
+            }
+            $comp = $model::find((int) $id);
+            if (!$comp) {
+                return response()->json(['success' => false, 'error' => 'LMP entry not found'], 404);
+            }
+            $comp->ignored = $ignored;
+            $comp->save();
+
+            return response()->json(['success' => true, 'ignored' => $ignored, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+        } catch (\Throwable $e) {
+            Log::error('toggleLmpIgnored failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'error' => 'Failed to update ignore: ' . $e->getMessage()], 500);
         }
     }
 

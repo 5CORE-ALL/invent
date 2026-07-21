@@ -12,7 +12,11 @@ use App\Models\ProductMaster;
 use App\Models\BestbuyUsaProduct;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\BestbuyPriceData;
+use App\Models\BestbuySkuCompetitor;
 use App\Models\AmazonDatasheet;
+use App\Models\LmpCompetitorHistory;
+use App\Services\LmpSkuGroupService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\BestBuyApiService;
@@ -981,6 +985,275 @@ class BestBuyPricingController extends Controller
         } catch (\Exception $e) {
             // Don't break the main response if summary save fails
             Log::error('Error saving daily BestBuy summary: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * BestBuy LMP competitors for Master Analytics drawer (same shape as /ebay-lmp-data).
+     */
+    public function getBestbuyLmpData(Request $request)
+    {
+        try {
+            $sku = trim((string) $request->input('sku'));
+            $linkedSkus = $request->input('linked_lmp_skus', []);
+            if ($sku === '') {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+            if (!is_array($linkedSkus)) {
+                $linkedSkus = [];
+            }
+
+            $groupSkus = [$sku];
+            try {
+                $lmpGroupService = new LmpSkuGroupService();
+                $seed = array_values(array_filter(array_map(
+                    fn ($value) => trim((string) $value),
+                    array_merge([$sku], $linkedSkus)
+                )));
+                $lmpGroupService->prepareForSkus($seed);
+                $resolved = $lmpGroupService->groupContaining($sku);
+                if (!empty($resolved)) {
+                    $groupSkus = $resolved;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('LmpSkuGroupService in getBestbuyLmpData failed: ' . $e->getMessage());
+            }
+
+            $groupSkus = array_values(array_unique(array_filter(array_map(
+                fn ($value) => trim((string) $value),
+                array_merge($groupSkus, $linkedSkus, [$sku])
+            ))));
+
+            $competitors = collect();
+            foreach ($groupSkus as $groupSku) {
+                foreach (BestbuySkuCompetitor::resolveLookupKeys($groupSku) as $lookupSku) {
+                    $found = BestbuySkuCompetitor::getCompetitorsForSku($lookupSku, 'bestbuy');
+                    if ($found->isNotEmpty()) {
+                        $competitors = $competitors->merge($found);
+                    }
+                }
+            }
+            $competitors = BestbuySkuCompetitor::dedupeByItemId($competitors)
+                ->filter(fn ($comp) => (float) ($comp->total_price ?? 0) > 0)
+                ->sortBy(fn ($comp) => (float) ($comp->total_price ?? 0))
+                ->values();
+
+            $lowest = $competitors->first(fn ($c) => empty($c->ignored)) ?: $competitors->first();
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'competitors' => $competitors->map(function ($comp) {
+                    return [
+                        'id' => $comp->id,
+                        'item_id' => $comp->item_id,
+                        'price' => floatval($comp->price ?? 0),
+                        'shipping_cost' => floatval($comp->shipping_cost ?? 0),
+                        'total_price' => floatval($comp->total_price ?? 0),
+                        'ignored' => (bool) ($comp->ignored ?? false),
+                        'link' => $comp->product_link,
+                        'title' => $comp->product_title,
+                        'image' => $comp->image ?? null,
+                        'created_at' => optional($comp->created_at)->format('Y-m-d H:i:s'),
+                    ];
+                }),
+                'lowest_price' => $lowest ? floatval($lowest->total_price) : null,
+                'total_count' => $competitors->count(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching BestBuy LMP data', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to fetch LMP data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function addBestbuyLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'item_id' => 'required|string',
+                'price' => 'required|numeric|min:0',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'product_title' => 'nullable|string',
+                'image' => 'nullable|string',
+            ]);
+
+            $sku = $validated['sku'];
+            $itemId = trim((string) $validated['item_id']);
+            $price = (float) $validated['price'];
+            $shippingCost = (float) ($validated['shipping_cost'] ?? 0);
+            $totalPrice = $price + $shippingCost;
+
+            if (BestbuySkuCompetitor::where('sku', $sku)->where('item_id', $itemId)->exists()) {
+                return response()->json([
+                    'error' => 'This BestBuy item is already added as a competitor for this SKU',
+                ], 409);
+            }
+
+            DB::beginTransaction();
+            $lmp = BestbuySkuCompetitor::create([
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'price' => $price,
+                'shipping_cost' => $shippingCost,
+                'total_price' => $totalPrice,
+                'marketplace' => 'bestbuy',
+                'product_link' => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+                'image' => $validated['image'] ?? null,
+            ]);
+
+            $parent = ProductMaster::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+                ->value('parent');
+
+            LmpCompetitorHistory::logAction(
+                sku: $sku,
+                action: 'added',
+                itemId: $itemId,
+                competitorId: (int) $lmp->id,
+                productTitle: $validated['product_title'] ?? null,
+                totalPrice: $totalPrice,
+                parent: $parent ? (string) $parent : null,
+                updatedBy: Auth::user()?->name ?? 'N/A',
+            );
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'BestBuy LMP added successfully',
+                'data' => [
+                    'id' => $lmp->id,
+                    'sku' => $lmp->sku,
+                    'item_id' => $lmp->item_id,
+                    'price' => floatval($lmp->price),
+                    'shipping_cost' => floatval($lmp->shipping_cost),
+                    'total_price' => floatval($lmp->total_price),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['error' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error adding BestBuy LMP', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to add LMP: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function updateBestbuyLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'id' => 'required|integer',
+                'price' => 'required|numeric|min:0',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'item_id' => 'nullable|string',
+            ]);
+
+            $lmp = BestbuySkuCompetitor::find($validated['id']);
+            if (!$lmp) {
+                return response()->json(['error' => 'LMP entry not found'], 404);
+            }
+
+            $price = (float) $validated['price'];
+            $shippingCost = array_key_exists('shipping_cost', $validated) && $validated['shipping_cost'] !== null
+                ? (float) $validated['shipping_cost']
+                : (float) ($lmp->shipping_cost ?? 0);
+
+            DB::beginTransaction();
+            $lmp->price = $price;
+            $lmp->shipping_cost = $shippingCost;
+            $lmp->total_price = $price + $shippingCost;
+            if (array_key_exists('product_link', $validated)) {
+                $lmp->product_link = $validated['product_link'] ?: null;
+            }
+            if (!empty($validated['item_id'])) {
+                $lmp->item_id = $validated['item_id'];
+            }
+            $lmp->save();
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'BestBuy LMP updated successfully',
+                'data' => [
+                    'id' => $lmp->id,
+                    'item_id' => $lmp->item_id,
+                    'price' => floatval($lmp->price),
+                    'total_price' => floatval($lmp->total_price),
+                    'product_link' => $lmp->product_link,
+                ],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['error' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error updating BestBuy LMP', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to update LMP: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function deleteBestbuyLmp(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+            $requestItemId = trim((string) $request->input('item_id', ''));
+            if (!$id && $requestItemId === '') {
+                return response()->json(['error' => 'LMP ID is required'], 400);
+            }
+
+            $lmp = $id ? BestbuySkuCompetitor::find($id) : null;
+            if (!$lmp && $requestItemId !== '') {
+                $lmp = BestbuySkuCompetitor::query()
+                    ->where('item_id', $requestItemId)
+                    ->orderBy('id')
+                    ->first();
+            }
+            if (!$lmp) {
+                return response()->json(['error' => 'LMP entry not found'], 404);
+            }
+
+            DB::beginTransaction();
+            $itemId = trim((string) ($lmp->item_id ?: $requestItemId));
+            $toDelete = collect([$lmp]);
+            if ($itemId !== '') {
+                $toDelete = BestbuySkuCompetitor::query()->where('item_id', $itemId)->get();
+            }
+
+            $deletedIds = [];
+            foreach ($toDelete as $row) {
+                $parent = ProductMaster::query()
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim((string) $row->sku))])
+                    ->value('parent');
+                LmpCompetitorHistory::logAction(
+                    sku: (string) $row->sku,
+                    action: 'deleted',
+                    itemId: (string) ($row->item_id ?: $itemId),
+                    competitorId: (int) $row->id,
+                    productTitle: $row->product_title,
+                    totalPrice: is_numeric($row->total_price) ? (float) $row->total_price : null,
+                    parent: $parent ? (string) $parent : null,
+                    updatedBy: Auth::user()?->name ?? 'N/A',
+                );
+                $deletedIds[] = (int) $row->id;
+                $row->delete();
+            }
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => count($deletedIds) > 1
+                    ? ('BestBuy LMP deleted (' . count($deletedIds) . ' linked rows)')
+                    : 'BestBuy LMP deleted successfully',
+                'deleted_ids' => $deletedIds,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error deleting BestBuy LMP', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to delete LMP: ' . $e->getMessage()], 500);
         }
     }
 }

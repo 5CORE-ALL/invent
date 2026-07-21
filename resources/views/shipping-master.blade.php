@@ -2432,6 +2432,7 @@
                 if (!isProductNavigationActive || currentProductParentIndex === -1) return;
                 const currentParent = productUniqueParents[currentProductParentIndex];
                 filteredData = tableData.filter(item => item.Parent === currentParent && matchesRowTypeFilter(item));
+                applyCurrentSort();
                 renderTable(filteredData);
                 updateProductButtonStates();
             }
@@ -2911,6 +2912,7 @@
 
                     return true;
                 });
+                applyCurrentSort();
                 renderTable(filteredData);
             }
 
@@ -2921,6 +2923,149 @@
                     clearTimeout(t);
                     t = setTimeout(() => fn.apply(this, arguments), ms);
                 };
+            }
+
+            // Click-to-sort on table headers (no sort icons shown)
+            let currentSortKey = null;
+            let currentSortDir = 1; // 1 = asc, -1 = desc
+            let currentSortType = 'text';
+
+            function getShippingSortValue(item, key) {
+                if (key === 'status') {
+                    const s = (item.status != null && item.status !== '') ? item.status : (item.Values && item.Values.status);
+                    return String(s || '');
+                }
+                if (key === 'label_qty') {
+                    return item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
+                }
+                if (key === 'shopify_inv') {
+                    return item.shopify_inv;
+                }
+                if (key === 'avg') {
+                    return avgUniShipCarrierRates(item);
+                }
+                if (key === 'wt_act_lb') {
+                    return itemWeightActLbResolved(item);
+                }
+                if (key === 'wt_act_oz') {
+                    return itemWeightActOzFromLb(itemWeightActLbResolved(item));
+                }
+                if (key === 'l_cm') {
+                    if (item.l_cm != null && item.l_cm !== '') return item.l_cm;
+                    const inch = parseFloat(item.l);
+                    return Number.isFinite(inch) ? inch * 2.54 : null;
+                }
+                if (key === 'w_cm') {
+                    if (item.w_cm != null && item.w_cm !== '') return item.w_cm;
+                    const inch = parseFloat(item.w);
+                    return Number.isFinite(inch) ? inch * 2.54 : null;
+                }
+                if (key === 'h_cm') {
+                    if (item.h_cm != null && item.h_cm !== '') return item.h_cm;
+                    const inch = parseFloat(item.h);
+                    return Number.isFinite(inch) ? inch * 2.54 : null;
+                }
+                if (key === 'ctn_cbm') {
+                    return (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
+                }
+                if (key === 'ctn_cbm_each') {
+                    const cbm = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
+                    const qty = parseFloat(item.ctn_qty) || 0;
+                    return qty > 0 ? cbm / qty : 0;
+                }
+                if (key === 'verified_data') {
+                    let v = item.verified_data;
+                    if ((v == null) && item.Values) v = item.Values.verified_data;
+                    return (v === 1 || v === true) ? 1 : 0;
+                }
+                return item[key];
+            }
+
+            function applyCurrentSort() {
+                if (!currentSortKey || !Array.isArray(filteredData) || filteredData.length === 0) return;
+                const key = currentSortKey;
+                const type = currentSortType;
+                const dir = currentSortDir;
+                filteredData.sort((a, b) => {
+                    let av = getShippingSortValue(a, key);
+                    let bv = getShippingSortValue(b, key);
+                    if (type === 'num') {
+                        av = parseFloat(av);
+                        bv = parseFloat(bv);
+                        if (isNaN(av)) av = -Infinity;
+                        if (isNaN(bv)) bv = -Infinity;
+                        return (av - bv) * dir;
+                    }
+                    av = String(av || '').toLowerCase();
+                    bv = String(bv || '').toLowerCase();
+                    return av.localeCompare(bv) * dir;
+                });
+            }
+
+            function setupSort() {
+                const table = document.getElementById('dim-wt-master-datatable');
+                if (!table) return;
+                const ths = table.querySelectorAll('thead th');
+                // Column index -> { key, type }. null / missing = not sortable.
+                const sortMap = {
+                    2: { key: 'Parent', type: 'text' },
+                    3: { key: 'SKU', type: 'text' },
+                    4: { key: 'status', type: 'text' },
+                    5: { key: 'label_qty', type: 'num' },
+                    6: { key: 'shopify_inv', type: 'num' },
+                    7: { key: 'ship', type: 'num' },
+                    8: { key: 'ship_bb', type: 'num' },
+                    9: { key: 'tt_ship', type: 'num' },
+                    10: { key: 'temu_ship', type: 'num' },
+                    11: { key: 'temu_gofo', type: 'num' },
+                    12: { key: 'ebay2_ship', type: 'num' },
+                    13: { key: 'gofo', type: 'num' },
+                    14: { key: 'fedex', type: 'num' },
+                    15: { key: 'ups', type: 'num' },
+                    16: { key: 'usps', type: 'num' },
+                    17: { key: 'uni', type: 'num' },
+                    19: { key: 'avg', type: 'num' },
+                    20: { key: 'fba_sku', type: 'text' },
+                    21: { key: 'fba_ship', type: 'num' },
+                    22: { key: 'fba_manual_ship', type: 'num' },
+                    23: { key: 'wt_act_kg', type: 'num' },
+                    24: { key: 'wt_act_lb', type: 'num' },
+                    25: { key: 'wt_act_oz', type: 'num' },
+                    26: { key: 'wt_decl', type: 'num' },
+                    27: { key: 'l', type: 'num' },
+                    28: { key: 'w', type: 'num' },
+                    29: { key: 'h', type: 'num' },
+                    30: { key: 'l_cm', type: 'num' },
+                    31: { key: 'w_cm', type: 'num' },
+                    32: { key: 'h_cm', type: 'num' },
+                    33: { key: 'ctn_l', type: 'num' },
+                    34: { key: 'ctn_w', type: 'num' },
+                    35: { key: 'ctn_h', type: 'num' },
+                    36: { key: 'ctn_cbm', type: 'num' },
+                    37: { key: 'ctn_qty', type: 'num' },
+                    38: { key: 'ctn_cbm_each', type: 'num' },
+                    39: { key: 'verified_data', type: 'num' },
+                };
+
+                ths.forEach((th, idx) => {
+                    const cfg = sortMap[idx];
+                    if (!cfg) return;
+                    th.style.cursor = 'pointer';
+                    th.title = (th.title ? th.title + ' — ' : '') + 'Click to sort';
+                    th.addEventListener('click', function(e) {
+                        // Don't sort when interacting with header filters / controls
+                        if (e.target.closest('input, select, button, a, textarea, label')) return;
+                        if (currentSortKey === cfg.key) {
+                            currentSortDir = -currentSortDir;
+                        } else {
+                            currentSortKey = cfg.key;
+                            currentSortType = cfg.type;
+                            currentSortDir = 1;
+                        }
+                        applyCurrentSort();
+                        renderTable(filteredData);
+                    });
+                });
             }
 
             // Setup search and filter listeners (called once at init)
@@ -4081,6 +4226,7 @@
 
             // Initialize (search and playback listeners once to avoid duplicates on reload)
             setupSearch();
+            setupSort();
             setupProductPlaybackListeners();
             loadData();
             setupExcelExport();
