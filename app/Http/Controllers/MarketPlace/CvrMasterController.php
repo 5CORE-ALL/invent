@@ -1808,135 +1808,180 @@ class CvrMasterController extends Controller
                 Log::info('Found full SKU in ProductMaster: ' . $fullSku . ' (from: ' . $sku . ')');
             }
 
-            // Fetch channel LMP lookups for breakdown LMP column (Amazon / eBay / Google / BestBuy / Macy / Reverb / Temu / TikTok)
-            $amazonLmpLookup = collect();
-            $ebayLmpLookup = collect();
-            $googleLmpLookup = collect();
-            $bestbuyLmpLookup = collect();
-            $macyLmpLookup = collect();
-            $reverbLmpLookup = collect();
-            $tiktokLmpDetailsLookup = collect();
+            // Per-SKU LMP resolvers only (never load full competitor tables — OOM on 128MB)
+            $lmpPriceCache = [];
+            $cacheLmp = function (string $channel, string $key, $resolver) use (&$lmpPriceCache) {
+                $ck = $channel . '|' . $key;
+                if (array_key_exists($ck, $lmpPriceCache)) {
+                    return $lmpPriceCache[$ck];
+                }
+                try {
+                    $lmpPriceCache[$ck] = $resolver();
+                } catch (\Throwable $e) {
+                    $lmpPriceCache[$ck] = null;
+                }
+                return $lmpPriceCache[$ck];
+            };
+
+            $resolveAmazonLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
+                $key = AmazonSkuCompetitor::normalizeSkuKey($lookupSku);
+                if ($key === '') {
+                    return null;
+                }
+                return $cacheLmp('amazon', $key, function () use ($lookupSku) {
+                    $lmp = AmazonSkuCompetitor::getLowestPriceForSku($lookupSku, 'amazon');
+                    if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
+                        return round(floatval($lmp->price), 2);
+                    }
+                    return null;
+                });
+            };
+            $resolveEbayLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
+                $key = EbaySkuCompetitor::normalizeSkuKey($lookupSku);
+                if ($key === '') {
+                    return null;
+                }
+                return $cacheLmp('ebay', $key, function () use ($lookupSku) {
+                    $lmp = EbaySkuCompetitor::getLowestPriceForSku($lookupSku, 'ebay');
+                    if (!$lmp) {
+                        return null;
+                    }
+                    $total = floatval($lmp->total_price ?? 0);
+                    if ($total <= 0) {
+                        $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                    }
+                    return $total > 0 ? round($total, 2) : null;
+                });
+            };
+            $resolveGoogleLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
+                if ($key === '') {
+                    return null;
+                }
+                return $cacheLmp('google', $key, function () use ($lookupSku) {
+                    $comps = GoogleSkuCompetitor::getCompetitorsForSku($lookupSku, 'google');
+                    $active = $comps->filter(fn ($c) => empty($c->ignored));
+                    $lmp = $active->isNotEmpty() ? $active->sortBy(fn ($c) => floatval($c->price ?? 0))->first() : null;
+                    if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
+                        return round(floatval($lmp->price), 2);
+                    }
+                    return null;
+                });
+            };
+            $resolveBestbuyLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
+                $key = BestbuySkuCompetitor::normalizeSkuKey($lookupSku);
+                if ($key === '') {
+                    return null;
+                }
+                return $cacheLmp('bestbuy', $key, function () use ($lookupSku) {
+                    if (!Schema::hasTable('bestbuy_sku_competitors')) {
+                        return null;
+                    }
+                    $lmp = BestbuySkuCompetitor::getLowestPriceForSku($lookupSku, 'bestbuy');
+                    if (!$lmp) {
+                        return null;
+                    }
+                    $total = floatval($lmp->total_price ?? 0);
+                    if ($total <= 0) {
+                        $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                    }
+                    return $total > 0 ? round($total, 2) : null;
+                });
+            };
+            $resolveMacyLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
+                $key = MacySkuCompetitor::normalizeSkuKey($lookupSku);
+                if ($key === '') {
+                    return null;
+                }
+                return $cacheLmp('macy', $key, function () use ($lookupSku) {
+                    if (!Schema::hasTable('macy_sku_competitors')) {
+                        return null;
+                    }
+                    $lmp = MacySkuCompetitor::getLowestPriceForSku($lookupSku, 'macy');
+                    if (!$lmp) {
+                        return null;
+                    }
+                    $total = floatval($lmp->total_price ?? 0);
+                    if ($total <= 0) {
+                        $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                    }
+                    return $total > 0 ? round($total, 2) : null;
+                });
+            };
+            $resolveReverbLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
+                $key = ReverbSkuCompetitor::normalizeSkuKey($lookupSku);
+                if ($key === '') {
+                    return null;
+                }
+                return $cacheLmp('reverb', $key, function () use ($lookupSku) {
+                    if (!Schema::hasTable('reverb_sku_competitors')) {
+                        return null;
+                    }
+                    $lmp = ReverbSkuCompetitor::getLowestPriceForSku($lookupSku, 'reverb');
+                    if (!$lmp) {
+                        return null;
+                    }
+                    $total = floatval($lmp->total_price ?? 0);
+                    if ($total <= 0) {
+                        $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
+                    }
+                    return $total > 0 ? round($total, 2) : null;
+                });
+            };
+
+            // Temu LMP: only load rows for this SKU's LMP group (never TemuLmp::all())
             $temuLmpByNormalizedSku = [];
             $temuLmpSkuGroupService = null;
-            $tiktokLmpSkuGroupService = null;
-            try {
-                $amazonLmpLookup = AmazonSkuCompetitor::buildGroupedLookup('amazon')['lowest'];
-                $ebayLmpLookup = EbaySkuCompetitor::buildGroupedLookup('ebay')['lowest'];
-                $googleLmpLookup = GoogleSkuCompetitor::buildGroupedLookup('google')['lowest'];
-                if (Schema::hasTable('bestbuy_sku_competitors')) {
-                    $bestbuyLmpLookup = BestbuySkuCompetitor::buildGroupedLookup('bestbuy')['lowest'];
-                }
-                if (Schema::hasTable('macy_sku_competitors')) {
-                    $macyLmpLookup = MacySkuCompetitor::buildGroupedLookup('macy')['lowest'];
-                }
-                if (Schema::hasTable('reverb_sku_competitors')) {
-                    $reverbLmpLookup = ReverbSkuCompetitor::buildGroupedLookup('reverb')['lowest'];
-                }
-            } catch (\Exception $e) {
-                Log::warning('Could not fetch LMP lookups in breakdown: ' . $e->getMessage());
-            }
-            try {
-                $tiktokLmpDetailsLookup = TiktokSkuCompetitor::buildGroupedLookup('tiktok')['details'];
-                $tiktokLmpSkuGroupService = app(LmpSkuGroupService::class);
-                $tiktokLmpSkuGroupService->prepareForSkus([$fullSku, $sku]);
-            } catch (\Exception $e) {
-                Log::warning('Could not fetch TikTok LMP in breakdown: ' . $e->getMessage());
-            }
             try {
                 if (Schema::hasTable('temu_lmp')) {
-                    foreach (TemuLmp::all() as $temuLmpRow) {
-                        $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
-                    }
                     $temuLmpSkuGroupService = app(LmpSkuGroupService::class);
                     $temuLmpSkuGroupService->prepareForSkus([$fullSku, $sku]);
+                    $temuMemberSkus = [$fullSku, $sku];
+                    try {
+                        $group = $temuLmpSkuGroupService->groupContaining($fullSku);
+                        if (!empty($group)) {
+                            $temuMemberSkus = array_merge($temuMemberSkus, $group);
+                        }
+                    } catch (\Throwable $e) {
+                        // keep seed SKUs
+                    }
+                    $temuMemberSkus = array_values(array_unique(array_filter(array_map(
+                        fn ($s) => trim((string) $s),
+                        $temuMemberSkus
+                    ))));
+                    if ($temuMemberSkus !== []) {
+                        // Exact SKU match first
+                        foreach (TemuLmp::whereIn('sku', $temuMemberSkus)->get() as $temuLmpRow) {
+                            $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+                        }
+                        // Normalized fallback only for missing members (bounded OR, not full table)
+                        $missingNorms = [];
+                        foreach ($temuMemberSkus as $memberSku) {
+                            $n = self::normalizeTemuSkuForCvr($memberSku);
+                            if ($n !== '' && !isset($temuLmpByNormalizedSku[$n])) {
+                                $missingNorms[$n] = true;
+                            }
+                        }
+                        if ($missingNorms !== []) {
+                            $q = TemuLmp::query();
+                            $q->where(function ($qq) use ($missingNorms) {
+                                foreach (array_keys($missingNorms) as $n) {
+                                    $qq->orWhereRaw(
+                                        'UPPER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(sku), CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?',
+                                        [$n]
+                                    );
+                                }
+                            });
+                            foreach ($q->limit(50)->get() as $temuLmpRow) {
+                                $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+                            }
+                        }
+                    }
                 }
             } catch (\Exception $e) {
                 Log::warning('Could not fetch Temu LMP in breakdown: ' . $e->getMessage());
             }
 
-            $skuLookupKey = strtoupper(preg_replace('/\s+/', ' ', trim($fullSku ?? $sku)));
-            $resolveAmazonLmpPrice = function (?string $lookupSku = null) use ($amazonLmpLookup) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
-                if ($key === '') {
-                    return null;
-                }
-                $lmp = $amazonLmpLookup->get($key);
-                if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
-                    return round(floatval($lmp->price), 2);
-                }
-                return null;
-            };
-            $resolveEbayLmpPrice = function (?string $lookupSku = null) use ($ebayLmpLookup) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
-                if ($key === '') {
-                    return null;
-                }
-                $lmp = $ebayLmpLookup->get($key);
-                if (!$lmp) {
-                    return null;
-                }
-                $total = floatval($lmp->total_price ?? 0);
-                if ($total <= 0) {
-                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
-                }
-                return $total > 0 ? round($total, 2) : null;
-            };
-            $resolveGoogleLmpPrice = function (?string $lookupSku = null) use ($googleLmpLookup) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
-                if ($key === '') {
-                    return null;
-                }
-                $lmp = $googleLmpLookup->get($key);
-                if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
-                    return round(floatval($lmp->price), 2);
-                }
-                return null;
-            };
-            $resolveBestbuyLmpPrice = function (?string $lookupSku = null) use ($bestbuyLmpLookup) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
-                if ($key === '') {
-                    return null;
-                }
-                $lmp = $bestbuyLmpLookup->get($key);
-                if (!$lmp) {
-                    return null;
-                }
-                $total = floatval($lmp->total_price ?? 0);
-                if ($total <= 0) {
-                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
-                }
-                return $total > 0 ? round($total, 2) : null;
-            };
-            $resolveMacyLmpPrice = function (?string $lookupSku = null) use ($macyLmpLookup) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
-                if ($key === '') {
-                    return null;
-                }
-                $lmp = $macyLmpLookup->get($key);
-                if (!$lmp) {
-                    return null;
-                }
-                $total = floatval($lmp->total_price ?? 0);
-                if ($total <= 0) {
-                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
-                }
-                return $total > 0 ? round($total, 2) : null;
-            };
-            $resolveReverbLmpPrice = function (?string $lookupSku = null) use ($reverbLmpLookup) {
-                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($lookupSku ?? ''))));
-                if ($key === '') {
-                    return null;
-                }
-                $lmp = $reverbLmpLookup->get($key);
-                if (!$lmp) {
-                    return null;
-                }
-                $total = floatval($lmp->total_price ?? 0);
-                if ($total <= 0) {
-                    $total = floatval($lmp->price ?? 0) + floatval($lmp->shipping_cost ?? 0);
-                }
-                return $total > 0 ? round($total, 2) : null;
-            };
             $resolveTemuLmpPrice = function (?string $lookupSku = null) use ($temuLmpByNormalizedSku, $temuLmpSkuGroupService) {
                 $resolved = $this->resolveTemuLmpForSku(
                     (string) ($lookupSku ?? ''),
@@ -1945,48 +1990,51 @@ class CvrMasterController extends Controller
                 );
                 return $resolved['price'];
             };
-            // TikTok LMP = landed (price + shipping), merged across Sku Link LMP group — same as /tiktok-pricing
-            $resolveTiktokLmpPrice = function (?string $lookupSku = null) use ($tiktokLmpDetailsLookup, $tiktokLmpSkuGroupService) {
+
+            // TikTok LMP: query only linked SKUs (not full tiktok_sku_competitors table)
+            $tiktokLmpSkuGroupService = null;
+            try {
+                $tiktokLmpSkuGroupService = app(LmpSkuGroupService::class);
+                $tiktokLmpSkuGroupService->prepareForSkus([$fullSku, $sku]);
+            } catch (\Exception $e) {
+                Log::warning('Could not init TikTok LMP groups in breakdown: ' . $e->getMessage());
+            }
+            $resolveTiktokLmpPrice = function (?string $lookupSku = null) use ($tiktokLmpSkuGroupService, $cacheLmp) {
                 $skuVal = trim((string) ($lookupSku ?? ''));
-                if ($skuVal === '' || !$tiktokLmpDetailsLookup instanceof \Illuminate\Support\Collection) {
+                if ($skuVal === '') {
                     return null;
                 }
-                $members = [$skuVal];
-                if ($tiktokLmpSkuGroupService) {
-                    try {
-                        $group = $tiktokLmpSkuGroupService->groupContaining($skuVal);
-                        if (!empty($group)) {
-                            $members = $group;
+                $cacheKey = TiktokSkuCompetitor::normalizeSkuKey($skuVal);
+                return $cacheLmp('tiktok', $cacheKey, function () use ($skuVal, $tiktokLmpSkuGroupService) {
+                    $members = [$skuVal];
+                    if ($tiktokLmpSkuGroupService) {
+                        try {
+                            $group = $tiktokLmpSkuGroupService->groupContaining($skuVal);
+                            if (!empty($group)) {
+                                $members = $group;
+                            }
+                        } catch (\Throwable $e) {
+                            // keep single-SKU fallback
                         }
-                    } catch (\Throwable $e) {
-                        // keep single-SKU fallback
                     }
-                }
-                $merged = collect();
-                $seen = [];
-                foreach ($members as $linkedSku) {
-                    $linkedKey = TiktokSkuCompetitor::normalizeSkuKey((string) $linkedSku);
-                    $groupEntries = $tiktokLmpDetailsLookup->get($linkedKey);
-                    if (!$groupEntries instanceof \Illuminate\Support\Collection) {
-                        continue;
-                    }
-                    foreach ($groupEntries as $entry) {
-                        $dedupeKey = ((string) ($entry->id ?? '')) . '|'
-                            . ((string) ($entry->product_id ?? '')) . '|'
-                            . strtoupper(trim((string) ($entry->product_link ?? '')));
-                        if (isset($seen[$dedupeKey])) {
-                            continue;
+                    $merged = collect();
+                    foreach ($members as $linkedSku) {
+                        $found = TiktokSkuCompetitor::getCompetitorsForSku((string) $linkedSku, 'tiktok');
+                        if ($found->isNotEmpty()) {
+                            $merged = $merged->merge($found);
                         }
-                        $seen[$dedupeKey] = true;
-                        $merged->push($entry);
                     }
-                }
-                $lowest = TiktokSkuCompetitor::lowestFromCollection($merged);
-                if (!$lowest || !is_numeric($lowest->price ?? null)) {
-                    return null;
-                }
-                $landed = floatval($lowest->price) + floatval($lowest->shipping_cost ?? 0);
-                return $landed > 0 ? round($landed, 2) : null;
+                    if ($merged->isEmpty()) {
+                        return null;
+                    }
+                    $merged = TiktokSkuCompetitor::dedupeByProductId($merged);
+                    $lowest = TiktokSkuCompetitor::lowestFromCollection($merged);
+                    if (!$lowest || !is_numeric($lowest->price ?? null)) {
+                        return null;
+                    }
+                    $landed = floatval($lowest->price) + floatval($lowest->shipping_cost ?? 0);
+                    return $landed > 0 ? round($landed, 2) : null;
+                });
             };
 
             // Get LP and Ship from ProductMaster for profit calculations
@@ -3429,30 +3477,32 @@ class CvrMasterController extends Controller
                 'seller_link' => null,
             ];
 
-            // FBA row – same structure as other marketplaces (only when SKU has FBA data)
+            // FBA row – same structure as other marketplaces (scoped to this SKU only)
             try {
                 $baseSku = strtoupper(trim($fullSku));
-                $fbaTableRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                    ->get()
-                    ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-                $fbaRow = $fbaTableRows->get($baseSku);
+                $fbaRow = FbaTable::query()
+                    ->where(function ($q) use ($baseSku, $fullSku) {
+                        $q->whereRaw('UPPER(TRIM(seller_sku)) = ?', [$baseSku])
+                            ->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [$baseSku . ' FBA'])
+                            ->orWhereRaw('UPPER(REPLACE(REPLACE(seller_sku, " FBA", ""), "FBA", "")) = ?', [$baseSku])
+                            ->orWhere('seller_sku', 'LIKE', $fullSku . '%FBA%')
+                            ->orWhere('seller_sku', 'LIKE', $fullSku . '%fba%');
+                    })
+                    ->where(function ($q) {
+                        $q->where('seller_sku', 'LIKE', '%FBA%')->orWhere('seller_sku', 'LIKE', '%fba%');
+                    })
+                    ->first();
                 if ($fbaRow) {
-                    $fbaPriceData = FbaPrice::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                        ->get()
-                        ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-                    $fbaMonthlyData = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                        ->get()
-                        ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-                    $fbaReportsData = FbaReportsMaster::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-                        ->get()
-                        ->keyBy(fn($item) => strtoupper(trim(preg_replace('/\s*FBA\s*/i', '', (string)($item->seller_sku ?? '')))));
-                    $fbaManualData = FbaManualData::all()->keyBy(fn($item) => strtoupper(trim((string)($item->sku ?? ''))));
-
-                    $fbaPriceInfo = $fbaPriceData->get($baseSku);
-                    $fbaMonthly = $fbaMonthlyData->get($baseSku);
-                    $fbaReports = $fbaReportsData->get($baseSku);
-                    $fbaSellerSku = trim((string)($fbaRow->seller_sku ?? ''));
-                    $fbaManual = $fbaManualData->get(strtoupper($fbaSellerSku)) ?? $fbaManualData->get($baseSku);
+                    $fbaSellerSku = trim((string) ($fbaRow->seller_sku ?? ''));
+                    $fbaSellerSkuUpper = strtoupper($fbaSellerSku);
+                    $fbaPriceInfo = FbaPrice::whereRaw('UPPER(TRIM(seller_sku)) = ?', [$fbaSellerSkuUpper])->first()
+                        ?? FbaPrice::whereRaw('UPPER(REPLACE(REPLACE(seller_sku, " FBA", ""), "FBA", "")) = ?', [$baseSku])->first();
+                    $fbaMonthly = FbaMonthlySale::whereRaw('UPPER(TRIM(seller_sku)) = ?', [$fbaSellerSkuUpper])->first()
+                        ?? FbaMonthlySale::whereRaw('UPPER(REPLACE(REPLACE(seller_sku, " FBA", ""), "FBA", "")) = ?', [$baseSku])->first();
+                    $fbaReports = FbaReportsMaster::whereRaw('UPPER(TRIM(seller_sku)) = ?', [$fbaSellerSkuUpper])->first()
+                        ?? FbaReportsMaster::whereRaw('UPPER(REPLACE(REPLACE(seller_sku, " FBA", ""), "FBA", "")) = ?', [$baseSku])->first();
+                    $fbaManual = FbaManualData::whereRaw('UPPER(TRIM(sku)) = ?', [$fbaSellerSkuUpper])->first()
+                        ?? FbaManualData::whereRaw('UPPER(TRIM(sku)) = ?', [$baseSku])->first();
 
                     $fbaPrice = $fbaPriceInfo ? floatval($fbaPriceInfo->price ?? 0) : 0;
                     $fbaL30 = $fbaMonthly ? ($fbaMonthly->l30_units ?? 0) : 0;
@@ -3988,13 +4038,15 @@ class CvrMasterController extends Controller
     private function resolveSiblingSkus(string $sku): array
     {
         $sku = trim($sku);
-        if ($sku === '') {
+        if ($sku === '' || strcasecmp($sku, 'Not Listed') === 0) {
             return [];
         }
 
         $pm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
         if (!$pm) {
-            $pm = ProductMaster::where('sku', 'LIKE', $sku . '%')->first();
+            $pm = ProductMaster::where('sku', 'LIKE', $sku . '%')
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
         }
         if (!$pm) {
             return [$sku];
@@ -4005,7 +4057,8 @@ class CvrMasterController extends Controller
             return [trim((string) $pm->sku)];
         }
 
-        $skus = ProductMaster::where('parent', $parent)
+        // Case/whitespace-insensitive parent match (ProductMaster parent values vary)
+        $skus = ProductMaster::whereRaw('UPPER(TRIM(parent)) = ?', [strtoupper($parent)])
             ->where('sku', 'NOT LIKE', 'PARENT %')
             ->pluck('sku')
             ->map(fn ($s) => trim((string) $s))
@@ -4099,9 +4152,9 @@ class CvrMasterController extends Controller
                 // Same store as /tiktok-pricing (tiktok_shop_data_views)
                 $existingTtView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
                 $dataView = $existingTtView ?: new TiktokShopDataView(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'bestbuy') {
+            } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
                 $dataView = BestbuyUSADataView::firstOrNew(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'macy') {
+            } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
                 $dataView = MacyDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'reverb') {
                 $dataView = ReverbViewData::firstOrNew(['sku' => $skuToUse]);

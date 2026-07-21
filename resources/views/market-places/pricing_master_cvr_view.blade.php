@@ -1911,6 +1911,8 @@
         function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil) {
             $('#modalSkuName').text(sku);
             syncModalGroupSelects('');
+            // Fresh SKU → clear siblings checkbox so it isn't accidentally left on from prior SKU
+            $('#modal-siblings-apply-cb').prop('checked', false);
             refreshModalSiblingSkus(sku);
             
             // Set product image in modal totals row
@@ -1991,6 +1993,12 @@
         let modalSelectedChannels = new Set();
         let modalSiblingSkus = []; // other SKUs sharing the same parent
 
+        function getModalPrimarySku() {
+            const sku = String($('#modalSkuName').text() || '').trim();
+            if (!sku || sku.toUpperCase() === 'SKU' || sku.toUpperCase() === 'NOT LISTED') return '';
+            return sku;
+        }
+
         function isModalSiblingsApply() {
             return $('#modal-siblings-apply-cb').is(':checked');
         }
@@ -2002,13 +2010,32 @@
         function siblingsApplyLabel() {
             if (!isModalSiblingsApply()) return '';
             const n = modalSiblingSkus.length;
-            return n > 0 ? (' (+' + n + ' siblings)') : ' (+ siblings)';
+            if (n > 0) {
+                const preview = modalSiblingSkus.slice(0, 3).join(', ')
+                    + (n > 3 ? (' +' + (n - 3) + ' more') : '');
+                return ' (+' + n + ' siblings: ' + preview + ')';
+            }
+            return ' (+ siblings)';
+        }
+
+        function updateModalSiblingsCountUi() {
+            const n = modalSiblingSkus.length;
+            const $count = $('#modal-siblings-count');
+            const $cb = $('#modal-siblings-apply-cb');
+            if (n > 0) {
+                $count.text('(' + n + ')').attr('title', modalSiblingSkus.join(', '));
+                $cb.prop('disabled', false);
+            } else {
+                $count.text('(0)').attr('title', 'No sibling SKUs share this parent');
+            }
         }
 
         function refreshModalSiblingSkus(sku) {
             modalSiblingSkus = [];
-            $('#modal-siblings-count').text('');
-            if (!sku) return;
+            updateModalSiblingsCountUi();
+            sku = String(sku || getModalPrimarySku() || '').trim();
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') return;
+
             // Prefer in-memory master table rows (same parent)
             try {
                 if (typeof fullDataset !== 'undefined' && Array.isArray(fullDataset)) {
@@ -2018,16 +2045,15 @@
                     });
                     const parent = row && row.parent ? String(row.parent).trim() : '';
                     if (parent) {
+                        const parentNorm = parent.toUpperCase();
                         modalSiblingSkus = fullDataset
                             .filter(function(r) {
                                 return !r.is_parent_summary
-                                    && String(r.parent || '').trim() === parent
+                                    && String(r.parent || '').trim().toUpperCase() === parentNorm
                                     && String(r.sku || '').trim().toUpperCase() !== norm;
                             })
                             .map(function(r) { return r.sku; });
-                        if (modalSiblingSkus.length) {
-                            $('#modal-siblings-count').text('(' + modalSiblingSkus.length + ')');
-                        }
+                        updateModalSiblingsCountUi();
                     }
                 }
             } catch (e) { /* ignore */ }
@@ -2039,13 +2065,38 @@
                 success: function(res) {
                     if (res && res.success && Array.isArray(res.siblings)) {
                         modalSiblingSkus = res.siblings;
-                        $('#modal-siblings-count').text(
-                            modalSiblingSkus.length ? ('(' + modalSiblingSkus.length + ')') : ''
-                        );
+                        updateModalSiblingsCountUi();
                     }
+                },
+                error: function() {
+                    // keep any in-memory siblings already found
+                    updateModalSiblingsCountUi();
                 }
             });
         }
+
+        $(document).on('change', '#modal-siblings-apply-cb', function() {
+            if (!$(this).is(':checked')) return;
+            const sku = getModalPrimarySku();
+            if (!sku) {
+                showToast('Open a SKU details modal first', 'error');
+                $(this).prop('checked', false);
+                return;
+            }
+            if (!modalSiblingSkus.length) {
+                // Re-fetch once in case count was stale
+                refreshModalSiblingSkus(sku);
+                setTimeout(function() {
+                    if (!modalSiblingSkus.length) {
+                        showToast('No sibling SKUs found for this parent', 'error');
+                    } else {
+                        showToast('Siblings Apply ON — will update ' + modalSiblingSkus.length + ' sibling(s)', 'success');
+                    }
+                }, 400);
+                return;
+            }
+            showToast('Siblings Apply ON — will update ' + modalSiblingSkus.length + ' sibling(s)', 'success');
+        });
         // Group: A = Amazon + others (exclude Temu, Doba, B2B); D = Doba; T = Temu
         const MODAL_GROUP_EXCLUDE_FROM_A = ['temu', 'temu2', 'doba', 'sb2b', 'shopifyb2b', 'shopify_b2b'];
         const MODAL_GROUP_CHANNELS = {
@@ -3930,11 +3981,12 @@
         $(document).on('blur', '.editable-sprice', function() {
             const input = $(this);
             const row = input.closest('tr');
-            const sku = row.attr('data-sku');
+            // Always use modal SKU (row data-sku can be "Not Listed" / channel listing SKU)
+            const sku = getModalPrimarySku() || row.attr('data-sku');
             const marketplace = row.attr('data-marketplace');
             const sprice = parseFloat(input.val()) || 0;
             
-            if (sprice === 0) return;
+            if (!sku || sprice === 0) return;
             
             const lp = parseFloat(row.attr('data-lp')) || 0;
             const ship = parseFloat(row.attr('data-ship')) || 0;
@@ -4010,7 +4062,7 @@
         }
 
         function saveModalSpriceForRow($row, sprice, done) {
-            const sku = $row.attr('data-sku');
+            const sku = getModalPrimarySku() || $row.attr('data-sku');
             const marketplace = $row.attr('data-marketplace');
             const lp = parseFloat($row.attr('data-lp')) || 0;
             const ship = parseFloat($row.attr('data-ship')) || 0;
@@ -4028,6 +4080,11 @@
                 : ((mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
 
+            if (!sku || !marketplace) {
+                if (done) done(false);
+                return;
+            }
+
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
@@ -4042,7 +4099,9 @@
                     apply_siblings: siblingsApplyPayload(),
                     _token: '{{ csrf_token() }}'
                 },
-                success: function() { if (done) done(true); },
+                success: function(res) {
+                    if (done) done(true, res);
+                },
                 error: function() { if (done) done(false); }
             });
         }
@@ -4126,7 +4185,7 @@
 
             // Clear SPRICE — no price input required
             if (modalClearSpriceModeActive) {
-                if (!confirm('Clear SPRICE for ' + $rows.length + ' channel(s)?')) return;
+                if (!confirm('Clear SPRICE for ' + $rows.length + ' channel(s)' + siblingsApplyLabel() + '?')) return;
                 const $btn = $(this);
                 const origHtml = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
@@ -4176,7 +4235,7 @@
 
             const mode = modalSamePriceModeActive ? 'same' : (modalIncreaseModeActive ? 'increase' : 'decrease');
             const actionLabel = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Decrease');
-            if (!confirm(actionLabel + ' SPRICE for ' + $rows.length + ' channel(s)?')) return;
+            if (!confirm(actionLabel + ' SPRICE for ' + $rows.length + ' channel(s)' + siblingsApplyLabel() + '?')) return;
 
             const $btn = $(this);
             const origHtml = $btn.html();
@@ -4245,11 +4304,12 @@
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
             }
-            if (!confirm(labelPrefix + ' — set SPRICE on ' + $rows.length + ' channel(s)?')) return;
+            if (!confirm(labelPrefix + ' — set SPRICE on ' + $rows.length + ' channel(s)' + siblingsApplyLabel() + '?')) return;
 
             let doneCount = 0;
             let okCount = 0;
             let skipped = 0;
+            let siblingsOk = 0;
             $rows.forEach(function($tr) {
                 const lp = parseFloat($tr.attr('data-lp')) || 0;
                 const ship = parseFloat($tr.attr('data-ship')) || 0;
@@ -4276,9 +4336,12 @@
                 const newPrice = +Number(computed.newPrice).toFixed(2);
                 const mp = String($tr.attr('data-marketplace') || '');
                 $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
-                saveModalSpriceForRow($tr, newPrice, function(ok) {
+                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
                     if (ok) {
                         okCount++;
+                        if (res && res.siblings_count) {
+                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
+                        }
                         ovl30ModalData.forEach(function(item) {
                             if (String(item.marketplace || '') === mp) item.sprice = newPrice;
                         });
@@ -4288,7 +4351,8 @@
                         showToast(
                             okCount
                                 ? (labelPrefix + ' applied to ' + okCount + ' channel(s)'
-                                    + (skipped ? ' (' + skipped + ' skipped)' : ''))
+                                    + (skipped ? ' (' + skipped + ' skipped)' : '')
+                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : ''))
                                 : 'Failed to save SPRICE',
                             okCount ? 'success' : 'error'
                         );
@@ -4811,7 +4875,7 @@
                     url: '/cvr-master-save-suggested-data',
                     method: 'POST',
                     data: {
-                        sku: s.sku,
+                        sku: getModalPrimarySku() || s.sku,
                         marketplace: s.marketplace,
                         sprice: sprice,
                         sgpft: sgpft,
@@ -4850,15 +4914,16 @@
 
         function collectOvl30PushTargets(onlySelected) {
             const targets = [];
+            const primarySku = getModalPrimarySku();
             $('#ovl30DetailsTableBody tr:visible').each(function() {
                 const $tr = $(this);
                 const $btn = $tr.find('.push-price-btn');
                 if (!$btn.length || $btn.prop('disabled')) return;
                 const mp = String($btn.data('marketplace') || $tr.attr('data-marketplace') || '');
                 if (onlySelected && modalSelectedChannels.size > 0 && !modalSelectedChannels.has(mp)) return;
-                const sku = String($btn.data('sku') || $tr.attr('data-sku') || '');
+                const sku = primarySku || String($btn.attr('data-sku') || $tr.attr('data-sku') || '');
                 const price = parseOvl30PushPrice($tr.find('.editable-sprice').val());
-                if (price == null || !sku || !mp) return;
+                if (price == null || !sku || !mp || sku.toUpperCase() === 'NOT LISTED') return;
                 targets.push({ sku: sku, marketplace: mp, price: price, $btn: $btn, $tr: $tr });
             });
             return targets;
@@ -4929,14 +4994,18 @@
             const btn = $(this);
             if (btn.prop('disabled')) return;
             const row = btn.closest('tr');
-            const sku = btn.data('sku');
-            const marketplace = btn.data('marketplace');
+            const sku = getModalPrimarySku() || String(btn.attr('data-sku') || row.attr('data-sku') || '');
+            const marketplace = btn.attr('data-marketplace') || btn.data('marketplace') || row.attr('data-marketplace');
             const priceInput = row.find('.editable-sprice');
             const price = parseOvl30PushPrice(priceInput.val());
 
             if (price == null) {
                 showToast('Cannot push — SPRICE is 0 or empty', 'error');
                 priceInput.focus();
+                return;
+            }
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') {
+                showToast('Cannot push — invalid SKU', 'error');
                 return;
             }
 
