@@ -228,6 +228,22 @@
         .table-responsive tbody tr:hover td.shipping-rate-cell.shipping-rate-alert {
             color: #b02a37 !important;
         }
+        .shipping-rate-cell.label-qty-ok {
+            background-color: #bbf7d0 !important;
+            color: #166534 !important;
+        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.label-qty-ok {
+            background-color: #86efac !important;
+            color: #14532d !important;
+        }
+        .shipping-rate-cell.label-qty-alert {
+            background-color: #fecaca !important;
+            color: #991b1b !important;
+        }
+        .table-responsive tbody tr:hover td.shipping-rate-cell.label-qty-alert {
+            background-color: #fca5a5 !important;
+            color: #7f1d1d !important;
+        }
         .table-responsive tbody td.shipping-rate-cell.shipping-rate-high {
             color: #dc3545 !important;
         }
@@ -371,6 +387,11 @@
         .table-responsive tbody td.hide-fba-sku-col {
             display: none;
         }
+        /* Hide Fedex / UPS / USPS / UNI ship columns */
+        .table-responsive thead th.hide-carrier-col,
+        .table-responsive tbody td.hide-carrier-col {
+            display: none;
+        }
 
         .table {
             margin-bottom: 0;
@@ -419,6 +440,44 @@
         }
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
+
+        /* Label Type dropdown in Type column — color by value */
+        .label-type-dropdown {
+            font-size: 10px;
+            padding: 2px 4px;
+            max-width: 78px;
+            min-width: 62px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+            background: #fff;
+            color: #212529;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .label-type-dropdown.label-type-env {
+            background-color: #fecaca;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+        .label-type-dropdown.label-type-std {
+            background-color: #bbf7d0;
+            border-color: #22c55e;
+            color: #166534;
+        }
+        .label-type-dropdown.label-type-osize {
+            background-color: #e9d5ff;
+            border-color: #a855f7;
+            color: #6b21a8;
+        }
+        .label-type-dropdown.label-type-pallet {
+            background-color: #bfdbfe;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+        .label-type-dropdown:focus {
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
+            outline: none;
+        }
 
         .status-badges-full {
             width: 100%;
@@ -808,8 +867,19 @@
                                         <select id="filterLabelQty" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Label Qty column">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
-                                            <option value="zero">0</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
                                             <option value="has">Has value</option>
+                                        </select>
+                                    </th>
+                                    <th class="th-has-filter shipping-rate-header" title="Label Type">
+                                        <div class="th-vertical-label">Type</div>
+                                        <select id="filterLabelType" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Label Type">
+                                            <option value="all">All</option>
+                                            <option value="ENV">ENV</option>
+                                            <option value="STD">STD</option>
+                                            <option value="O-Size">O-Size</option>
+                                            <option value="Pallet">Pallet</option>
                                         </select>
                                     </th>
                                     <th class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
@@ -876,7 +946,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="fedex">
+                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="fedex">
                                         <div class="th-vertical-label">Fedex</div>
                                         <select id="filterFedexCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Fedex">
                                             <option value="all">All</option>
@@ -885,7 +955,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="ups">
+                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="ups">
                                         <div class="th-vertical-label">UPS</div>
                                         <select id="filterUpsCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter UPS">
                                             <option value="all">All</option>
@@ -894,7 +964,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="usps">
+                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="usps">
                                         <div class="th-vertical-label">USPS</div>
                                         <select id="filterUspsCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter USPS">
                                             <option value="all">All</option>
@@ -903,7 +973,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="uni">
+                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="uni">
                                         <div class="th-vertical-label">UNI</div>
                                         <select id="filterUniCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter UNI">
                                             <option value="all">All</option>
@@ -1018,6 +1088,15 @@
                             <div class="col-md-4">
                                 <label for="editLabelQty" class="form-label fw-bold">Label Qty</label>
                                 <input type="number" step="1" min="0" class="form-control fw-bold" id="editLabelQty" name="label_qty" placeholder="Label Qty">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editLabelType" class="form-label fw-bold" title="Label Type">Type</label>
+                                <select class="form-select fw-bold" id="editLabelType" name="label_type" title="Label Type">
+                                    <option value="ENV">ENV</option>
+                                    <option value="STD" selected>STD</option>
+                                    <option value="O-Size">O-Size</option>
+                                    <option value="Pallet">Pallet</option>
+                                </select>
                             </div>
                         </div>
                         
@@ -1552,13 +1631,35 @@
                     });
             }
 
+            /** Label Type choices for the Type column. */
+            const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            const LABEL_TYPE_COLOR_CLASS = {
+                'ENV': 'label-type-env',
+                'STD': 'label-type-std',
+                'O-Size': 'label-type-osize',
+                'Pallet': 'label-type-pallet'
+            };
+
+            function normalizeLabelType(raw) {
+                const v = String(raw == null ? '' : raw).trim();
+                return LABEL_TYPE_OPTIONS.includes(v) ? v : 'STD';
+            }
+
+            function applyLabelTypeColor(dropdown, labelType) {
+                if (!dropdown) return;
+                const type = normalizeLabelType(labelType);
+                Object.values(LABEL_TYPE_COLOR_CLASS).forEach(cls => dropdown.classList.remove(cls));
+                const colorCls = LABEL_TYPE_COLOR_CLASS[type];
+                if (colorCls) dropdown.classList.add(colorCls);
+            }
+
             // Render table
             function renderTable(data) {
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="34" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="42" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -1629,16 +1730,42 @@
                     row.appendChild(statusCell);
 
                     // Label Qty column (from Product Master Values.label_qty)
+                    // Blank or 0 → missing ("-"/M badge); otherwise show the number.
                     const labelQtyCell = document.createElement('td');
                     labelQtyCell.className = 'text-center shipping-rate-cell';
                     const labelQtyRaw = item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
-                    if (labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '') {
+                    const labelQtyBlank = labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '' ||
+                        (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '');
+                    const labelQtyNum = labelQtyBlank ? NaN : parseInt(labelQtyRaw, 10);
+                    if (labelQtyBlank || (Number.isFinite(labelQtyNum) && labelQtyNum === 0)) {
                         labelQtyCell.textContent = '-';
                     } else {
-                        const labelQtyNum = parseInt(labelQtyRaw, 10);
                         labelQtyCell.textContent = Number.isFinite(labelQtyNum) ? String(labelQtyNum) : String(labelQtyRaw);
+                        if (labelQtyNum === 1) {
+                            labelQtyCell.classList.add('label-qty-ok');
+                        } else if (labelQtyNum === 2 || labelQtyNum === 3) {
+                            labelQtyCell.classList.add('label-qty-alert');
+                        }
                     }
                     row.appendChild(labelQtyCell);
+
+                    // Type column (Label Type) — ENV / STD / O-Size / Pallet; default STD
+                    const labelTypeCell = document.createElement('td');
+                    labelTypeCell.className = 'text-center shipping-rate-cell';
+                    const labelTypeVal = normalizeLabelType(item.label_type);
+                    const labelTypeColorCls = LABEL_TYPE_COLOR_CLASS[labelTypeVal] || 'label-type-std';
+                    labelTypeCell.innerHTML = `
+                        <select class="label-type-dropdown ${labelTypeColorCls}"
+                            data-sku="${escapeHtml(item.SKU || '')}"
+                            data-id="${escapeHtml(String(item.id || ''))}"
+                            data-prev="${escapeHtml(labelTypeVal)}"
+                            title="Label Type">
+                            ${LABEL_TYPE_OPTIONS.map(opt =>
+                                `<option value="${opt}"${opt === labelTypeVal ? ' selected' : ''}>${opt}</option>`
+                            ).join('')}
+                        </select>
+                    `;
+                    row.appendChild(labelTypeCell);
 
                     // INV column (bold; child 0 / missing = red)
                     const invCell = document.createElement('td');
@@ -1701,9 +1828,10 @@
                     row.appendChild(shipBbPmCell);
 
                     const carrierShipHighlight = [];
-                    const appendCarrierShipCell = (rawValue) => {
+                    const appendCarrierShipCell = (rawValue, extraClass = '') => {
                         const td = document.createElement('td');
                         setShippingNumericCell(td, rawValue, isParentRow);
+                        if (extraClass) td.classList.add(...extraClass.split(/\s+/).filter(Boolean));
                         const value = carrierShipNumericFromCell(td);
                         if (value !== null) carrierShipHighlight.push({ td, value });
                         row.appendChild(td);
@@ -1714,10 +1842,10 @@
                     appendCarrierShipCell(item.temu_gofo);
                     appendCarrierShipCell(item.ebay2_ship);
                     appendCarrierShipCell(item.gofo);
-                    appendCarrierShipCell(item.fedex);
-                    appendCarrierShipCell(item.ups);
-                    appendCarrierShipCell(item.usps);
-                    appendCarrierShipCell(item.uni);
+                    appendCarrierShipCell(item.fedex, 'hide-carrier-col');
+                    appendCarrierShipCell(item.ups, 'hide-carrier-col');
+                    appendCarrierShipCell(item.usps, 'hide-carrier-col');
+                    appendCarrierShipCell(item.uni, 'hide-carrier-col');
                     highlightCarrierShipMinMax(carrierShipHighlight);
 
                     const pickPackCell = document.createElement('td');
@@ -1938,41 +2066,43 @@
              *  click handler to focus the right input. */
             const SHIPPING_COLUMN_INDEX_TO_FIELD = {
                 5:  'label_qty',
-                6:  'inv',
-                7:  'ship',
-                8:  'ship_bb',
-                9:  'tt_ship',
-                10: 'temu_ship',
-                11: 'temu_gofo',
-                12: 'ebay2_ship',
-                13: 'gofo',
-                14: 'fedex',
-                15: 'ups',
-                16: 'usps',
-                17: 'uni',
-                20: 'fba_sku',
-                21: 'fba_ship',
-                22: 'fba_manual_ship',
-                23: 'wt_act_kg',
-                24: 'wt_act',
-                25: 'wt_act',          // Item Weight (OZ) is derived from wt_act — focus the LB input
-                26: 'wt_decl',
-                27: 'l',
-                28: 'w',
-                29: 'h',
-                30: 'l_cm',
-                31: 'w_cm',
-                32: 'h_cm',
-                33: 'ctn_l',
-                34: 'ctn_w',
-                35: 'ctn_h',
-                37: 'ctn_qty'
+                6:  'label_type',
+                7:  'inv',
+                8:  'ship',
+                9:  'ship_bb',
+                10: 'tt_ship',
+                11: 'temu_ship',
+                12: 'temu_gofo',
+                13: 'ebay2_ship',
+                14: 'gofo',
+                15: 'fedex',
+                16: 'ups',
+                17: 'usps',
+                18: 'uni',
+                21: 'fba_sku',
+                22: 'fba_ship',
+                23: 'fba_manual_ship',
+                24: 'wt_act_kg',
+                25: 'wt_act',
+                26: 'wt_act',          // Item Weight (OZ) is derived from wt_act — focus the LB input
+                27: 'wt_decl',
+                28: 'l',
+                29: 'w',
+                30: 'h',
+                31: 'l_cm',
+                32: 'w_cm',
+                33: 'h_cm',
+                34: 'ctn_l',
+                35: 'ctn_w',
+                36: 'ctn_h',
+                38: 'ctn_qty'
             };
 
             /** Human-readable field labels used by the small "Enter Missing
              *  Data" modal title. */
             const SHIPPING_FIELD_LABELS = {
                 label_qty:       'Label Qty',
+                label_type:      'Label Type',
                 wt_act_kg:       'Item Weight ACT (Kg)',
                 wt_act:          'Item WT ACT (LB)',
                 wt_decl:         'Item WT DECL (LB)',
@@ -2811,6 +2941,7 @@
                 const filterW = document.getElementById('filterW').value;
                 const filterH = document.getElementById('filterH').value;
                 const filterLabelQty = document.getElementById('filterLabelQty')?.value || 'all';
+                const filterLabelType = document.getElementById('filterLabelType')?.value || 'all';
                 const filterShipCol = document.getElementById('filterShipCol')?.value || 'all';
                 const filterShipBbCol = document.getElementById('filterShipBbCol')?.value || 'all';
                 const filterTtShipCol = document.getElementById('filterTtShipCol')?.value || 'all';
@@ -2853,19 +2984,27 @@
                         }
                     }
 
-                    // Label Qty filter
+                    // Label Qty filter — blank and 0 both count as Missing
                     if (filterLabelQty && filterLabelQty !== 'all') {
                         const labelQtyRaw = item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
                         const blank = labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '' ||
                             (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '');
                         const num = blank ? NaN : parseInt(labelQtyRaw, 10);
+                        const isLabelQtyMissing = blank || (Number.isFinite(num) && num === 0);
                         if (filterLabelQty === 'missing') {
-                            if (!blank) return false;
-                        } else if (filterLabelQty === 'zero') {
-                            if (!Number.isFinite(num) || num !== 0) return false;
+                            if (!isLabelQtyMissing) return false;
+                        } else if (filterLabelQty === '2') {
+                            if (!Number.isFinite(num) || num !== 2) return false;
+                        } else if (filterLabelQty === '3') {
+                            if (!Number.isFinite(num) || num !== 3) return false;
                         } else if (filterLabelQty === 'has') {
-                            if (blank || !Number.isFinite(num) || num === 0) return false;
+                            if (isLabelQtyMissing || !Number.isFinite(num)) return false;
                         }
+                    }
+
+                    // Label Type filter
+                    if (filterLabelType && filterLabelType !== 'all') {
+                        if (normalizeLabelType(item.label_type) !== filterLabelType) return false;
                     }
 
                     // Weight ACT (Kg) filter
@@ -2937,6 +3076,9 @@
                 }
                 if (key === 'label_qty') {
                     return item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
+                }
+                if (key === 'label_type') {
+                    return normalizeLabelType(item.label_type);
                 }
                 if (key === 'shopify_inv') {
                     return item.shopify_inv;
@@ -3012,39 +3154,40 @@
                     3: { key: 'SKU', type: 'text' },
                     4: { key: 'status', type: 'text' },
                     5: { key: 'label_qty', type: 'num' },
-                    6: { key: 'shopify_inv', type: 'num' },
-                    7: { key: 'ship', type: 'num' },
-                    8: { key: 'ship_bb', type: 'num' },
-                    9: { key: 'tt_ship', type: 'num' },
-                    10: { key: 'temu_ship', type: 'num' },
-                    11: { key: 'temu_gofo', type: 'num' },
-                    12: { key: 'ebay2_ship', type: 'num' },
-                    13: { key: 'gofo', type: 'num' },
-                    14: { key: 'fedex', type: 'num' },
-                    15: { key: 'ups', type: 'num' },
-                    16: { key: 'usps', type: 'num' },
-                    17: { key: 'uni', type: 'num' },
-                    19: { key: 'avg', type: 'num' },
-                    20: { key: 'fba_sku', type: 'text' },
-                    21: { key: 'fba_ship', type: 'num' },
-                    22: { key: 'fba_manual_ship', type: 'num' },
-                    23: { key: 'wt_act_kg', type: 'num' },
-                    24: { key: 'wt_act_lb', type: 'num' },
-                    25: { key: 'wt_act_oz', type: 'num' },
-                    26: { key: 'wt_decl', type: 'num' },
-                    27: { key: 'l', type: 'num' },
-                    28: { key: 'w', type: 'num' },
-                    29: { key: 'h', type: 'num' },
-                    30: { key: 'l_cm', type: 'num' },
-                    31: { key: 'w_cm', type: 'num' },
-                    32: { key: 'h_cm', type: 'num' },
-                    33: { key: 'ctn_l', type: 'num' },
-                    34: { key: 'ctn_w', type: 'num' },
-                    35: { key: 'ctn_h', type: 'num' },
-                    36: { key: 'ctn_cbm', type: 'num' },
-                    37: { key: 'ctn_qty', type: 'num' },
-                    38: { key: 'ctn_cbm_each', type: 'num' },
-                    39: { key: 'verified_data', type: 'num' },
+                    6: { key: 'label_type', type: 'text' },
+                    7: { key: 'shopify_inv', type: 'num' },
+                    8: { key: 'ship', type: 'num' },
+                    9: { key: 'ship_bb', type: 'num' },
+                    10: { key: 'tt_ship', type: 'num' },
+                    11: { key: 'temu_ship', type: 'num' },
+                    12: { key: 'temu_gofo', type: 'num' },
+                    13: { key: 'ebay2_ship', type: 'num' },
+                    14: { key: 'gofo', type: 'num' },
+                    15: { key: 'fedex', type: 'num' },
+                    16: { key: 'ups', type: 'num' },
+                    17: { key: 'usps', type: 'num' },
+                    18: { key: 'uni', type: 'num' },
+                    20: { key: 'avg', type: 'num' },
+                    21: { key: 'fba_sku', type: 'text' },
+                    22: { key: 'fba_ship', type: 'num' },
+                    23: { key: 'fba_manual_ship', type: 'num' },
+                    24: { key: 'wt_act_kg', type: 'num' },
+                    25: { key: 'wt_act_lb', type: 'num' },
+                    26: { key: 'wt_act_oz', type: 'num' },
+                    27: { key: 'wt_decl', type: 'num' },
+                    28: { key: 'l', type: 'num' },
+                    29: { key: 'w', type: 'num' },
+                    30: { key: 'h', type: 'num' },
+                    31: { key: 'l_cm', type: 'num' },
+                    32: { key: 'w_cm', type: 'num' },
+                    33: { key: 'h_cm', type: 'num' },
+                    34: { key: 'ctn_l', type: 'num' },
+                    35: { key: 'ctn_w', type: 'num' },
+                    36: { key: 'ctn_h', type: 'num' },
+                    37: { key: 'ctn_cbm', type: 'num' },
+                    38: { key: 'ctn_qty', type: 'num' },
+                    39: { key: 'ctn_cbm_each', type: 'num' },
+                    40: { key: 'verified_data', type: 'num' },
                 };
 
                 ths.forEach((th, idx) => {
@@ -3080,7 +3223,7 @@
 
                 const filterSTATUSEl = document.getElementById('filterSTATUS');
                 if (filterSTATUSEl) filterSTATUSEl.addEventListener('change', applyFilters);
-                const filterIds = ['filterLabelQty', 'filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
+                const filterIds = ['filterLabelQty', 'filterLabelType', 'filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
                 filterIds.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
@@ -3135,7 +3278,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -3144,6 +3287,9 @@
                         },
                         "Label Qty": {
                             key: "label_qty"
+                        },
+                        "Type": {
+                            key: "label_type"
                         },
                         "Status": {
                             key: "status"
@@ -3299,6 +3445,9 @@
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
 
+                                        if (key === 'label_type') {
+                                            value = normalizeLabelType(value);
+                                        }
                                         // CTN CBM: calculated as CTN L * CTN W * CTN H / 1000000
                                         if (key === 'ctn_cbm') {
                                             value = (parseFloat(item.ctn_l) || 0) * (parseFloat(item.ctn_w) || 0) * (parseFloat(item.ctn_h) || 0) / 1000000;
@@ -3859,6 +4008,7 @@
                 const labelQtyVal = product.label_qty ?? product['Label QTY'] ?? product.Label_QTY;
                 document.getElementById('editLabelQty').value =
                     (labelQtyVal !== null && labelQtyVal !== undefined && labelQtyVal !== '') ? labelQtyVal : '';
+                document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
                 document.getElementById('editWtDecl').value = product.wt_decl || '';
@@ -3968,6 +4118,7 @@
                         if (Number.isFinite(n)) baseFormData[propName] = n;
                     };
                     addNumericIfPresent('editLabelQty', 'label_qty');
+                    baseFormData.label_type = normalizeLabelType(document.getElementById('editLabelType').value);
                     addNumericIfPresent('editShip', 'ship');
                     addNumericIfPresent('editShipBb', 'ship_bb');
                     addNumericIfPresent('editTtShip', 'tt_ship');
@@ -4221,6 +4372,58 @@
                 });
             }
             setupVerifiedDropdowns();
+
+            // Type column – Label Type dropdown (ENV / STD / O-Size / Pallet)
+            function setupLabelTypeDropdowns() {
+                document.addEventListener('change', async function(e) {
+                    if (!e.target || !e.target.classList.contains('label-type-dropdown')) return;
+                    const dropdown = e.target;
+                    const sku = dropdown.getAttribute('data-sku');
+                    const productId = dropdown.getAttribute('data-id');
+                    const prev = dropdown.getAttribute('data-prev') || 'STD';
+                    const labelType = normalizeLabelType(dropdown.value);
+                    dropdown.value = labelType;
+                    applyLabelTypeColor(dropdown, labelType);
+                    dropdown.disabled = true;
+                    try {
+                        const response = await fetch('/dim-wt-master/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify({
+                                product_id: productId ? Number(productId) : undefined,
+                                sku: sku,
+                                label_type: labelType
+                            })
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok || data.success === false) {
+                            throw new Error(data.message || 'Failed to update Label Type');
+                        }
+                        dropdown.setAttribute('data-prev', labelType);
+                        const product = tableData.find(d =>
+                            (productId && String(d.id) === String(productId)) || d.SKU === sku
+                        );
+                        if (product) {
+                            product.label_type = labelType;
+                            if (product.Values && typeof product.Values === 'object') {
+                                product.Values.label_type = labelType;
+                            }
+                        }
+                        showToast('success', 'Label Type updated');
+                    } catch (err) {
+                        const restored = normalizeLabelType(prev);
+                        dropdown.value = restored;
+                        applyLabelTypeColor(dropdown, restored);
+                        showToast('danger', err.message || 'Failed to update Label Type');
+                    } finally {
+                        dropdown.disabled = false;
+                    }
+                });
+            }
+            setupLabelTypeDropdowns();
 
             populateWtActLbFilterOptions();
 

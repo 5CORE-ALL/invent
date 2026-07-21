@@ -540,6 +540,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/reverb/refresh-products/status', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'refreshProductsStatus'])->name('reverb.refresh.status');
         Route::post('/reverb/fetch-orders', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'fetchOrders'])->name('reverb.fetch.orders');
         Route::post('/reverb/sync-inventory', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncInventoryNow'])->name('reverb.sync.inventory');
+        Route::post('/reverb/sync-tracking', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncTrackingNow'])->name('reverb.sync.tracking');
         Route::post('/reverb/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'syncMismatchInventoryNow'])->name('reverb.sync.mismatch.inventory');
         Route::get('/newegg/connect', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'connect'])->name('newegg.connect');
         Route::post('/newegg/test-connection', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'testConnection'])->name('newegg.test');
@@ -2044,6 +2045,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         return view('customer-care.qc_and_packing', array_merge(compact('marketplaces'), [
             'importUrl' => route('customer.care.qc.and.packing.issues.import'),
+            // Merge Created At into Created By (name + short date; full ts on hover)
+            // for the main list and the Order History card.
+            'mergeCreatedAtIntoCreatedBy' => true,
+            // Shrink columns to content width; center all cell values.
+            'autofitTableColumns' => true,
         ]));
     })->name('customer.care.qc.and.packing');
     Route::get('/customer-care/qc-and-packing/sku-details', function (\Illuminate\Http\Request $request) {
@@ -2053,7 +2059,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         }
 
         $row = \Illuminate\Support\Facades\DB::table('product_master as pm')
-            ->selectRaw('pm.sku, pm.parent, pm.Values as values_json, pm.main_image, pm.image1')
+            ->selectRaw('pm.id, pm.sku, pm.parent, pm.Values as values_json, pm.main_image, pm.image1')
             ->whereRaw('LOWER(TRIM(pm.sku)) = ?', [strtolower($sku)])
             ->first();
 
@@ -2091,16 +2097,48 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             ?? $normalizeImage($row->main_image ?? null)
             ?? $normalizeImage($row->image1 ?? null);
 
+        $productMasterId = (int) ($row->id ?? 0) ?: null;
+        $instructionsItemPkg = '';
+        if ($productMasterId && \Illuminate\Support\Facades\Schema::hasTable('instructions_item_pkg')) {
+            $pkg = \Illuminate\Support\Facades\DB::table('instructions_item_pkg')
+                ->where('product_master_id', $productMasterId)
+                ->value('instructions');
+            if ($pkg !== null) {
+                $instructionsItemPkg = mb_substr((string) $pkg, 0, 2000);
+            }
+        }
+
+        $qcEnhance = ['issue' => '', 'action_req' => '', 'status_remark' => ''];
+        if (\Illuminate\Support\Facades\Schema::hasTable('quality_enhance')) {
+            $qe = \Illuminate\Support\Facades\DB::table('quality_enhance')
+                ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower((string) $row->sku)])
+                ->value('values');
+            if (is_string($qe) && trim($qe) !== '') {
+                $decodedQe = json_decode($qe, true);
+                if (is_array($decodedQe)) {
+                    $qcEnhance = [
+                        'issue' => (string) ($decodedQe['issue'] ?? ''),
+                        'action_req' => (string) ($decodedQe['action_req'] ?? ''),
+                        'status_remark' => (string) ($decodedQe['status_remark'] ?? ''),
+                    ];
+                }
+            }
+        }
+
         return response()->json([
             'found' => true,
             'sku' => $row->sku,
             'parent' => $row->parent,
             'qty' => (float) ($shopify?->qty ?? 0),
             'image_url' => $imageUrl,
-            'product_master_id' => (int) ($row->id ?? 0) ?: null,
+            'product_master_id' => $productMasterId,
             'ctn_instructions' => isset($values['ctn_instructions'])
                 ? mb_substr((string) $values['ctn_instructions'], 0, 100)
                 : '',
+            'instructions_item_pkg' => $instructionsItemPkg,
+            'qc_enhance_issue' => $qcEnhance['issue'],
+            'qc_enhance_action_req' => $qcEnhance['action_req'],
+            'qc_enhance_status_remark' => $qcEnhance['status_remark'],
         ]);
     })->name('customer.care.qc.and.packing.sku.details');
     Route::get('/customer-care/qc-and-packing/issues', function () {
@@ -2145,11 +2183,45 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
         }
 
+        $instrPkgByProductId = [];
+        if ($productMap !== [] && \Illuminate\Support\Facades\Schema::hasTable('instructions_item_pkg')) {
+            $productIds = collect($productMap)->pluck('id')->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+            if ($productIds !== []) {
+                $pkgRows = \Illuminate\Support\Facades\DB::table('instructions_item_pkg')
+                    ->whereIn('product_master_id', $productIds)
+                    ->get(['product_master_id', 'instructions']);
+                foreach ($pkgRows as $pkgRow) {
+                    $instrPkgByProductId[(int) $pkgRow->product_master_id] = mb_substr((string) ($pkgRow->instructions ?? ''), 0, 2000);
+                }
+            }
+        }
+
+        $qcEnhanceBySku = [];
+        if ($skus !== [] && \Illuminate\Support\Facades\Schema::hasTable('quality_enhance')) {
+            $placeholders = implode(',', array_fill(0, count($skus), '?'));
+            $qeRows = \Illuminate\Support\Facades\DB::table('quality_enhance')
+                ->select('sku', 'values')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $skus)
+                ->get();
+            foreach ($qeRows as $qeRow) {
+                $decodedQe = json_decode($qeRow->values ?? '', true);
+                if (! is_array($decodedQe)) {
+                    $decodedQe = [];
+                }
+                $qcEnhanceBySku[strtoupper(trim((string) $qeRow->sku))] = [
+                    'issue' => (string) ($decodedQe['issue'] ?? ''),
+                    'action_req' => (string) ($decodedQe['action_req'] ?? ''),
+                    'status_remark' => (string) ($decodedQe['status_remark'] ?? ''),
+                ];
+            }
+        }
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz, $productMap) {
+        $data = $rows->map(function ($row) use ($tz, $productMap, $instrPkgByProductId, $qcEnhanceBySku) {
             $k = strtoupper(trim((string) ($row->sku ?? '')));
             $productMasterId = null;
             $ctnInstructions = '';
+            $instructionsItemPkg = '';
             if (isset($productMap[$k])) {
                 $p = $productMap[$k];
                 $productMasterId = (int) $p->id;
@@ -2157,7 +2229,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 if (is_array($vals) && isset($vals['ctn_instructions'])) {
                     $ctnInstructions = mb_substr((string) $vals['ctn_instructions'], 0, 100);
                 }
+                $instructionsItemPkg = $instrPkgByProductId[$productMasterId] ?? '';
             }
+            $qe = $qcEnhanceBySku[$k] ?? ['issue' => '', 'action_req' => '', 'status_remark' => ''];
 
             return [
                 'id' => (int) $row->id,
@@ -2184,6 +2258,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     : '',
                 'product_master_id' => $productMasterId,
                 'ctn_instructions' => $ctnInstructions,
+                'instructions_item_pkg' => $instructionsItemPkg,
+                'qc_enhance_issue' => $qe['issue'],
+                'qc_enhance_action_req' => $qe['action_req'],
+                'qc_enhance_status_remark' => $qe['status_remark'],
             ];
         })->values();
 
@@ -2231,11 +2309,45 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
             }
         }
 
+        $histInstrPkgByProductId = [];
+        if ($histProductMap !== [] && \Illuminate\Support\Facades\Schema::hasTable('instructions_item_pkg')) {
+            $productIds = collect($histProductMap)->pluck('id')->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+            if ($productIds !== []) {
+                $pkgRows = \Illuminate\Support\Facades\DB::table('instructions_item_pkg')
+                    ->whereIn('product_master_id', $productIds)
+                    ->get(['product_master_id', 'instructions']);
+                foreach ($pkgRows as $pkgRow) {
+                    $histInstrPkgByProductId[(int) $pkgRow->product_master_id] = mb_substr((string) ($pkgRow->instructions ?? ''), 0, 2000);
+                }
+            }
+        }
+
+        $histQcEnhanceBySku = [];
+        if ($histSkus !== [] && \Illuminate\Support\Facades\Schema::hasTable('quality_enhance')) {
+            $placeholders = implode(',', array_fill(0, count($histSkus), '?'));
+            $qeRows = \Illuminate\Support\Facades\DB::table('quality_enhance')
+                ->select('sku', 'values')
+                ->whereRaw("UPPER(TRIM(sku)) IN ({$placeholders})", $histSkus)
+                ->get();
+            foreach ($qeRows as $qeRow) {
+                $decodedQe = json_decode($qeRow->values ?? '', true);
+                if (! is_array($decodedQe)) {
+                    $decodedQe = [];
+                }
+                $histQcEnhanceBySku[strtoupper(trim((string) $qeRow->sku))] = [
+                    'issue' => (string) ($decodedQe['issue'] ?? ''),
+                    'action_req' => (string) ($decodedQe['action_req'] ?? ''),
+                    'status_remark' => (string) ($decodedQe['status_remark'] ?? ''),
+                ];
+            }
+        }
+
         $tz = config('app.timezone');
-        $data = $rows->map(function ($row) use ($tz, $histProductMap) {
+        $data = $rows->map(function ($row) use ($tz, $histProductMap, $histInstrPkgByProductId, $histQcEnhanceBySku) {
             $k = strtoupper(trim((string) ($row->sku ?? '')));
             $productMasterId = null;
             $ctnInstructions = '';
+            $instructionsItemPkg = '';
             if (isset($histProductMap[$k])) {
                 $p = $histProductMap[$k];
                 $productMasterId = (int) $p->id;
@@ -2243,7 +2355,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                 if (is_array($vals) && isset($vals['ctn_instructions'])) {
                     $ctnInstructions = mb_substr((string) $vals['ctn_instructions'], 0, 100);
                 }
+                $instructionsItemPkg = $histInstrPkgByProductId[$productMasterId] ?? '';
             }
+            $qe = $histQcEnhanceBySku[$k] ?? ['issue' => '', 'action_req' => '', 'status_remark' => ''];
 
             return [
                 'id' => (int) $row->id,
@@ -2280,6 +2394,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
                     : '',
                 'product_master_id' => $productMasterId,
                 'ctn_instructions' => $ctnInstructions,
+                'instructions_item_pkg' => $instructionsItemPkg,
+                'qc_enhance_issue' => $qe['issue'],
+                'qc_enhance_action_req' => $qe['action_req'],
+                'qc_enhance_status_remark' => $qe['status_remark'],
             ];
         })->values();
 
@@ -4633,6 +4751,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/quality-enhance/data', 'getData')->name('quality.enhance.data');
         Route::post('/quality-enhance/save', 'saveQualityEnhance')->name('quality.enhance.save');
         Route::post('/quality-enhance/update', 'update')->name('quality.enhance.update');
+        Route::post('/quality-enhance/upsert-by-sku', 'upsertBySku')->name('quality.enhance.upsertBySku');
     });
 
     Route::controller(ContainerPlanningController::class)->group(function () {

@@ -559,6 +559,9 @@ class CategoryController extends Controller
 
     public function getDimWtMasterData(Request $request)
     {
+        // First load: persist Label Type = STD for every product that has none yet.
+        $this->ensureShippingLabelTypeDefaults();
+
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
@@ -674,6 +677,11 @@ class CategoryController extends Controller
                     $row = array_merge($row, $values);
                 }
             }
+
+            // Label Type defaults to STD when unset (same field as Shipping Master)
+            $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            $labelType = isset($row['label_type']) ? trim((string) $row['label_type']) : '';
+            $row['label_type'] = in_array($labelType, $allowedLabelTypes, true) ? $labelType : 'STD';
 
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
@@ -982,6 +990,7 @@ class CategoryController extends Controller
                 'usps' => 'nullable|numeric',
                 'uni' => 'nullable|numeric',
                 'label_qty' => 'nullable|integer',
+                'label_type' => 'nullable|string|in:ENV,STD,O-Size,Pallet',
                 'fba_ship_calculation' => 'nullable|numeric',
                 'fba_manual_ship' => 'nullable|numeric',
             ]);
@@ -1086,6 +1095,10 @@ class CategoryController extends Controller
             if (array_key_exists('label_qty', $validated)) {
                 $v = $validated['label_qty'];
                 $values['label_qty'] = ($v !== null && $v !== '') ? (int) $v : null;
+            }
+            if (array_key_exists('label_type', $validated)) {
+                $v = $validated['label_type'];
+                $values['label_type'] = ($v !== null && $v !== '') ? (string) $v : 'STD';
             }
 
             // Snapshot of the OLD Values (before save) for change tracking
@@ -1197,6 +1210,7 @@ class CategoryController extends Controller
             'cbm_e' => 'CBM (E)',
             'ctn_gwt' => 'CTN GWT',
             'label_qty' => 'Label Qty',
+            'label_type' => 'Label Type',
         ];
     }
 
@@ -1224,6 +1238,7 @@ class CategoryController extends Controller
             'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
             'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
             'label_qty',
+            'label_type',
             'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship',
             'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni',
         ];
@@ -1428,6 +1443,9 @@ class CategoryController extends Controller
 
     public function getShippingMasterData(Request $request)
     {
+        // First load: persist Label Type = STD for every product that has none yet.
+        $this->ensureShippingLabelTypeDefaults();
+
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
@@ -1499,6 +1517,11 @@ class CategoryController extends Controller
                 }
             }
 
+            // Label Type defaults to STD when unset
+            $allowedLabelTypes = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            $labelType = isset($row['label_type']) ? trim((string) $row['label_type']) : '';
+            $row['label_type'] = in_array($labelType, $allowedLabelTypes, true) ? $labelType : 'STD';
+
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
@@ -1548,6 +1571,44 @@ class CategoryController extends Controller
             'data' => $result,
             'status' => 200,
         ]);
+    }
+
+    /**
+     * One-time backfill: set Values.label_type = STD for every product
+     * that does not yet have a Label Type. Cached so it only runs once.
+     */
+    private function ensureShippingLabelTypeDefaults(): void
+    {
+        $cacheKey = 'shipping_master_label_type_std_backfilled';
+        if (Cache::get($cacheKey)) {
+            return;
+        }
+
+        try {
+            ProductMaster::query()->orderBy('id')->chunkById(200, function ($products) {
+                foreach ($products as $product) {
+                    $values = is_array($product->Values)
+                        ? $product->Values
+                        : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                    if (! is_array($values)) {
+                        $values = [];
+                    }
+
+                    $current = isset($values['label_type']) ? trim((string) $values['label_type']) : '';
+                    if ($current !== '') {
+                        continue;
+                    }
+
+                    $values['label_type'] = 'STD';
+                    $product->Values = $values;
+                    $product->save();
+                }
+            });
+
+            Cache::forever($cacheKey, true);
+        } catch (\Throwable $e) {
+            Log::warning('Shipping Master label_type STD backfill failed: '.$e->getMessage());
+        }
     }
 
     public function getShippingMasterStatuses()

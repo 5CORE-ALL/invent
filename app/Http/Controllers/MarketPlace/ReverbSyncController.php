@@ -22,6 +22,7 @@ use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
 use App\Services\MarketplaceManager\ReverbOrderDetailService;
 use App\Services\MarketplaceManager\ReverbOrderPushService;
 use App\Services\MarketplaceManager\ReverbOrderSyncService;
+use App\Services\MarketplaceManager\ReverbTrackingSyncService;
 use App\Services\ShopifyApiService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
@@ -926,6 +927,47 @@ class ReverbSyncController extends Controller
         ]);
     }
 
+    /**
+     * Push Shopify fulfillment tracking number to Reverb (mark shipped).
+     */
+    public function pushTrackingToReverb(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('reverb')) {
+            return response()->json(['success' => false, 'message' => 'Reverb not connected.']);
+        }
+
+        $line = ReverbOrderMetric::query()->findOrFail($id);
+        $result = app(ReverbTrackingSyncService::class)->pushTrackingForOrder($line);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'skipped' => ! empty($result['skipped']),
+            'action' => $result['action'] ?? null,
+            'message' => $result['message'] ?? 'Tracking push finished.',
+            'shopify_tracking' => $result['shopify_tracking'] ?? null,
+            'shopify_carrier' => $result['shopify_carrier'] ?? null,
+            'provider' => $result['provider'] ?? null,
+        ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    /**
+     * Bulk push Shopify tracking → Reverb for linked orders.
+     */
+    public function syncTrackingNow(): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('reverb')) {
+            return response()->json(['success' => false, 'message' => 'Reverb not connected.']);
+        }
+
+        \App\Jobs\SyncReverbTrackingJob::dispatch(false);
+
+        return response()->json([
+            'success' => true,
+            'queued' => true,
+            'message' => 'Tracking sync queued. It reads Shopify fulfillments and marks orders shipped on Reverb.',
+        ]);
+    }
+
     public function fetchOrders(Request $request): JsonResponse
     {
         @set_time_limit(0);
@@ -1267,6 +1309,7 @@ class ReverbSyncController extends Controller
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
+            'push_tracking_to_reverb', 'tracking_send_notification',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_reverb', 'sync_title', 'sync_images',

@@ -276,6 +276,49 @@
         .verified-data-dropdown option[value="0"] { color: #dc3545; }
         .verified-data-dropdown option[value="1"] { color: #28a745; }
 
+        /* Label Type dropdown in Type column — color by value */
+        .label-type-dropdown {
+            font-size: 10px;
+            padding: 2px 4px;
+            max-width: 78px;
+            min-width: 62px;
+            border-radius: 4px;
+            border: 1px solid #ced4da;
+            background: #fff;
+            color: #212529;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .label-type-dropdown.label-type-env {
+            background-color: #fecaca;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+        .label-type-dropdown.label-type-std {
+            background-color: #bbf7d0;
+            border-color: #22c55e;
+            color: #166534;
+        }
+        .label-type-dropdown.label-type-osize {
+            background-color: #e9d5ff;
+            border-color: #a855f7;
+            color: #6b21a8;
+        }
+        .label-type-dropdown.label-type-pallet {
+            background-color: #bfdbfe;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+        .label-type-dropdown:focus {
+            box-shadow: 0 0 0 2px rgba(26, 86, 183, 0.25);
+            outline: none;
+        }
+
+        .girth-plus-l-alert {
+            color: #dc3545 !important;
+            font-weight: 700;
+        }
+
         .status-badges-full {
             width: 100%;
             flex-wrap: wrap;
@@ -616,6 +659,16 @@
                                         <span class="th-vertical-label" style="font-size: 9px;">STATUS</span>
                                     </th>
                                     <th><span class="th-vertical-label">INV</span></th>
+                                    <th class="th-has-filter" title="Label Type">
+                                        <div class="th-vertical-label">Type</div>
+                                        <select id="filterLabelType" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Label Type">
+                                            <option value="all">All</option>
+                                            <option value="ENV">ENV</option>
+                                            <option value="STD">STD</option>
+                                            <option value="O-Size">O-Size</option>
+                                            <option value="Pallet">Pallet</option>
+                                        </select>
+                                    </th>
                                     <th class="item-dim-header hide-item-wt-act">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item Weight ACT<br>(Kg)</span>
                                     </th>
@@ -630,6 +683,15 @@
                                     </th>
                                     <th class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item H IN</span>
+                                    </th>
+                                    <th class="item-dim-header" title="Girth = 2 × (Width + Height)">
+                                        <span class="th-vertical-label" style="font-size: 9px;">GIRTH</span>
+                                    </th>
+                                    <th class="item-dim-header" title="GIRTH + Length">
+                                        <span class="th-vertical-label" style="font-size: 9px;">GIRTH + L</span>
+                                    </th>
+                                    <th class="item-dim-header" title="Item CBM (from Product Master Values.cbm)">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Itm CBM</span>
                                     </th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
                                     <th class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
@@ -1091,7 +1153,8 @@
                             // changes show immediately in the current view (no manual refresh).
                             const hasActiveFilter = verifiedFilter !== null ||
                                 (document.getElementById('parentSearch')?.value || '') !== '' ||
-                                (document.getElementById('skuSearch')?.value || '') !== '';
+                                (document.getElementById('skuSearch')?.value || '') !== '' ||
+                                ((document.getElementById('filterLabelType')?.value || 'all') !== 'all');
                             if (hasActiveFilter) {
                                 applyFilters();
                             } else {
@@ -1111,13 +1174,69 @@
                     });
             }
 
+            /** Label Type choices for the Type column. */
+            const LABEL_TYPE_OPTIONS = ['ENV', 'STD', 'O-Size', 'Pallet'];
+            const LABEL_TYPE_COLOR_CLASS = {
+                'ENV': 'label-type-env',
+                'STD': 'label-type-std',
+                'O-Size': 'label-type-osize',
+                'Pallet': 'label-type-pallet'
+            };
+
+            function normalizeLabelType(raw) {
+                const v = String(raw == null ? '' : raw).trim();
+                return LABEL_TYPE_OPTIONS.includes(v) ? v : 'STD';
+            }
+
+            function applyLabelTypeColor(dropdown, labelType) {
+                if (!dropdown) return;
+                const type = normalizeLabelType(labelType);
+                Object.values(LABEL_TYPE_COLOR_CLASS).forEach(cls => dropdown.classList.remove(cls));
+                const colorCls = LABEL_TYPE_COLOR_CLASS[type];
+                if (colorCls) dropdown.classList.add(colorCls);
+            }
+
+            /**
+             * Reorder item inch dims: highest → Length, 2nd → Width, 3rd → Height.
+             * Girth = 2 × (Width + Height); GIRTH + L = Girth + Length.
+             */
+            function getOrganizedItemDims(item) {
+                const nums = [item.l, item.w, item.h]
+                    .map(v => {
+                        if (v === null || v === undefined || v === '') return null;
+                        const n = parseFloat(v);
+                        return Number.isFinite(n) ? n : null;
+                    })
+                    .filter(n => n !== null)
+                    .sort((a, b) => b - a);
+
+                const length = nums.length > 0 ? nums[0] : null;
+                const width = nums.length > 1 ? nums[1] : null;
+                const height = nums.length > 2 ? nums[2] : null;
+                const girth = (width !== null && height !== null) ? (2 * (width + height)) : null;
+                const girthPlusL = (girth !== null && length !== null) ? (girth + length) : null;
+
+                return { length, width, height, girth, girthPlusL };
+            }
+
+            /** Item CBM from Values.cbm, or calculated from L×W×H (inch → cm³ → m³). */
+            function getItemCbm(item) {
+                const stored = parseFloat(item.cbm);
+                if (Number.isFinite(stored) && stored > 0) return stored;
+                const l = parseFloat(item.l);
+                const w = parseFloat(item.w);
+                const h = parseFloat(item.h);
+                if (![l, w, h].every(n => Number.isFinite(n) && n > 0)) return null;
+                return ((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000;
+            }
+
             // Render table
             function renderTable(data) {
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="24" class="text-center">No data found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="28" class="text-center">No data found</td></tr>';
                     return;
                 }
 
@@ -1187,6 +1306,24 @@
                     }
                     row.appendChild(invCell);
 
+                    // Type column (Label Type) — ENV / STD / O-Size / Pallet; default STD
+                    const labelTypeCell = document.createElement('td');
+                    labelTypeCell.className = 'text-center';
+                    const labelTypeVal = normalizeLabelType(item.label_type);
+                    const labelTypeColorCls = LABEL_TYPE_COLOR_CLASS[labelTypeVal] || 'label-type-std';
+                    labelTypeCell.innerHTML = `
+                        <select class="label-type-dropdown ${labelTypeColorCls}"
+                            data-sku="${escapeHtml(item.SKU || '')}"
+                            data-id="${escapeHtml(String(item.id || ''))}"
+                            data-prev="${escapeHtml(labelTypeVal)}"
+                            title="Label Type">
+                            ${LABEL_TYPE_OPTIONS.map(opt =>
+                                `<option value="${opt}"${opt === labelTypeVal ? ' selected' : ''}>${opt}</option>`
+                            ).join('')}
+                        </select>
+                    `;
+                    row.appendChild(labelTypeCell);
+
                     // Weight ACT (Kg) column (hidden)
                     const wtActKgCell = document.createElement('td');
                     wtActKgCell.className = 'text-center hide-item-wt-act';
@@ -1199,23 +1336,49 @@
                     wtActCell.textContent = cellVal(item.wt_act, 1);
                     row.appendChild(wtActCell);
 
-                    // L column (inch) - round to whole number
+                    // Item L/W/H (inch) — reorganized: highest=L, 2nd=W, 3rd=H
+                    const orgDims = getOrganizedItemDims(item);
                     const lCell = document.createElement('td');
                     lCell.className = 'text-center';
-                    lCell.textContent = cellVal(item.l, 0);
+                    lCell.title = 'Length (highest of L/W/H)';
+                    lCell.textContent = cellVal(orgDims.length, 0);
                     row.appendChild(lCell);
 
-                    // W column (inch) - round to whole number
                     const wCell = document.createElement('td');
                     wCell.className = 'text-center';
-                    wCell.textContent = cellVal(item.w, 0);
+                    wCell.title = 'Width (2nd highest of L/W/H)';
+                    wCell.textContent = cellVal(orgDims.width, 0);
                     row.appendChild(wCell);
 
-                    // H column (inch) - round to whole number
                     const hCell = document.createElement('td');
                     hCell.className = 'text-center';
-                    hCell.textContent = cellVal(item.h, 0);
+                    hCell.title = 'Height (3rd / lowest of L/W/H)';
+                    hCell.textContent = cellVal(orgDims.height, 0);
                     row.appendChild(hCell);
+
+                    // GIRTH = 2 × (Width + Height)
+                    const girthCell = document.createElement('td');
+                    girthCell.className = 'text-center';
+                    girthCell.title = 'Girth = 2 × (Width + Height)';
+                    girthCell.textContent = cellVal(orgDims.girth, 0);
+                    row.appendChild(girthCell);
+
+                    // GIRTH + L — values > 130 shown in red
+                    const girthPlusLCell = document.createElement('td');
+                    girthPlusLCell.className = 'text-center';
+                    girthPlusLCell.title = 'GIRTH + Length';
+                    girthPlusLCell.textContent = cellVal(orgDims.girthPlusL, 0);
+                    if (!isParentRow && orgDims.girthPlusL !== null && orgDims.girthPlusL > 130) {
+                        girthPlusLCell.classList.add('girth-plus-l-alert');
+                    }
+                    row.appendChild(girthPlusLCell);
+
+                    // Itm CBM — existing Values.cbm (or calc from L×W×H)
+                    const itmCbmCell = document.createElement('td');
+                    itmCbmCell.className = 'text-center';
+                    itmCbmCell.title = 'Item CBM';
+                    itmCbmCell.textContent = isParentRow ? '--' : formatNumber(getItemCbm(item), 4);
+                    row.appendChild(itmCbmCell);
 
                     // Length (CM) column (use stored value or convert from inch) - hidden
                     const lCmCell = document.createElement('td');
@@ -1561,10 +1724,15 @@
             function applyFilters() {
                 const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
                 const skuSearchVal = (document.getElementById('skuSearch')?.value || '').toLowerCase();
+                const filterLabelType = document.getElementById('filterLabelType')?.value || 'all';
 
                 filteredData = tableData.filter(item => {
                     if (parentSearchVal && !(item.Parent || '').toLowerCase().includes(parentSearchVal)) return false;
                     if (skuSearchVal && !(item.SKU || '').toLowerCase().includes(skuSearchVal)) return false;
+
+                    if (filterLabelType && filterLabelType !== 'all') {
+                        if (normalizeLabelType(item.label_type) !== filterLabelType) return false;
+                    }
 
                     if (verifiedFilter !== null) {
                         const isParentSku = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
@@ -1602,29 +1770,47 @@
                     3: { key: 'SKU', type: 'text' },
                     4: { key: 'status', type: 'text' },
                     5: { key: 'shopify_inv', type: 'num' },
-                    6: { key: 'wt_act_kg', type: 'num' },
-                    7: { key: 'wt_act', type: 'num' },
-                    8: { key: 'l', type: 'num' },
-                    9: { key: 'w', type: 'num' },
-                    10: { key: 'h', type: 'num' },
-                    11: { key: 'l_cm', type: 'num' },
-                    12: { key: 'w_cm', type: 'num' },
-                    13: { key: 'h_cm', type: 'num' },
-                    14: { key: 'ctn_l', type: 'num' },
-                    15: { key: 'ctn_w', type: 'num' },
-                    16: { key: 'ctn_h', type: 'num' },
-                    17: { key: 'ctn_cbm', type: 'num' },
-                    18: { key: 'ctn_qty', type: 'num' },
-                    19: { key: 'ctn_cbm_each', type: 'num' },
-                    20: { key: 'ctn_instructions', type: 'text' },
-                    21: { key: 'instructions_item_pkg', type: 'text' },
-                    22: { key: 'verified_data', type: 'num' },
+                    6: { key: 'label_type', type: 'text' },
+                    7: { key: 'wt_act_kg', type: 'num' },
+                    8: { key: 'wt_act', type: 'num' },
+                    9: { key: 'org_l', type: 'num' },
+                    10: { key: 'org_w', type: 'num' },
+                    11: { key: 'org_h', type: 'num' },
+                    12: { key: 'girth', type: 'num' },
+                    13: { key: 'girth_plus_l', type: 'num' },
+                    14: { key: 'cbm', type: 'num' },
+                    15: { key: 'l_cm', type: 'num' },
+                    16: { key: 'w_cm', type: 'num' },
+                    17: { key: 'h_cm', type: 'num' },
+                    18: { key: 'ctn_l', type: 'num' },
+                    19: { key: 'ctn_w', type: 'num' },
+                    20: { key: 'ctn_h', type: 'num' },
+                    21: { key: 'ctn_cbm', type: 'num' },
+                    22: { key: 'ctn_qty', type: 'num' },
+                    23: { key: 'ctn_cbm_each', type: 'num' },
+                    24: { key: 'ctn_instructions', type: 'text' },
+                    25: { key: 'instructions_item_pkg', type: 'text' },
+                    26: { key: 'verified_data', type: 'num' },
                 };
 
                 const getVal = (item, key) => {
                     if (key === 'status') {
                         const s = (item.status != null && item.status !== '') ? item.status : (item.Values && item.Values.status);
                         return String(s || '');
+                    }
+                    if (key === 'label_type') {
+                        return normalizeLabelType(item.label_type);
+                    }
+                    if (key === 'org_l' || key === 'org_w' || key === 'org_h' || key === 'girth' || key === 'girth_plus_l') {
+                        const d = getOrganizedItemDims(item);
+                        if (key === 'org_l') return d.length;
+                        if (key === 'org_w') return d.width;
+                        if (key === 'org_h') return d.height;
+                        if (key === 'girth') return d.girth;
+                        return d.girthPlusL;
+                    }
+                    if (key === 'cbm') {
+                        return getItemCbm(item);
                     }
                     if (key === 'verified_data') {
                         let v = item.verified_data;
@@ -1638,7 +1824,8 @@
                     const cfg = sortMap[idx];
                     if (!cfg) return;
                     th.style.cursor = 'pointer';
-                    th.addEventListener('click', function() {
+                    th.addEventListener('click', function(e) {
+                        if (e.target.closest('input, select, button, a, textarea, label')) return;
                         if (currentSortKey === cfg.key) {
                             currentSortDir = -currentSortDir;
                         } else {
@@ -1670,6 +1857,8 @@
                 const applyFiltersDebounced = debounce(applyFilters, 180);
                 if (parentSearch) parentSearch.addEventListener('input', applyFiltersDebounced);
                 if (skuSearch) skuSearch.addEventListener('input', applyFiltersDebounced);
+                const filterLabelTypeEl = document.getElementById('filterLabelType');
+                if (filterLabelTypeEl) filterLabelTypeEl.addEventListener('change', applyFilters);
                 const sectionFilterEl = document.getElementById('dimWtSectionFilter');
                 if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
 
@@ -1719,7 +1908,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
+                    const columns = ["SKU", "Status", "INV", "Type", "Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "GIRTH", "GIRTH + L", "Itm CBM", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1732,6 +1921,9 @@
                         "INV": {
                             key: "shopify_inv"
                         },
+                        "Type": {
+                            key: "label_type"
+                        },
                         "Weight ACT (Kg)": {
                             key: "wt_act_kg"
                         },
@@ -1742,13 +1934,22 @@
                             key: "wt_decl"
                         },
                         "Length (inch)": {
-                            key: "l"
+                            key: "org_l"
                         },
                         "Width (inch)": {
-                            key: "w"
+                            key: "org_w"
                         },
                         "Height (Inch)": {
-                            key: "h"
+                            key: "org_h"
+                        },
+                        "GIRTH": {
+                            key: "girth"
+                        },
+                        "GIRTH + L": {
+                            key: "girth_plus_l"
+                        },
+                        "Itm CBM": {
+                            key: "cbm"
                         },
                         "Length (CM)": {
                             key: "l_cm"
@@ -1812,6 +2013,28 @@
                                     if (colDef) {
                                         const key = colDef.key;
                                         let value = item[key] !== undefined && item[key] !== null ? item[key] : '';
+
+                                        if (key === 'label_type') {
+                                            value = normalizeLabelType(value);
+                                        }
+
+                                        // Organized inch dims + girth (highest=L, 2nd=W, 3rd=H)
+                                        if (key === 'org_l' || key === 'org_w' || key === 'org_h' || key === 'girth' || key === 'girth_plus_l') {
+                                            const d = getOrganizedItemDims(item);
+                                            if (key === 'org_l') value = d.length;
+                                            else if (key === 'org_w') value = d.width;
+                                            else if (key === 'org_h') value = d.height;
+                                            else if (key === 'girth') value = d.girth;
+                                            else value = d.girthPlusL;
+                                            row.push(value === null || value === undefined ? '' : Math.round(value));
+                                            return;
+                                        }
+
+                                        if (key === 'cbm') {
+                                            const itmCbm = getItemCbm(item);
+                                            row.push(itmCbm === null ? '' : parseFloat(itmCbm.toFixed(4)));
+                                            return;
+                                        }
 
                                         // Verified: export as 0/1 (real value stored in Values.verified_data)
                                         if (key === 'verified_data') {
@@ -2669,6 +2892,58 @@
                 });
             }
             setupVerifiedDropdowns();
+
+            // Type column – Label Type dropdown (ENV / STD / O-Size / Pallet)
+            function setupLabelTypeDropdowns() {
+                document.addEventListener('change', async function(e) {
+                    if (!e.target || !e.target.classList.contains('label-type-dropdown')) return;
+                    const dropdown = e.target;
+                    const sku = dropdown.getAttribute('data-sku');
+                    const productId = dropdown.getAttribute('data-id');
+                    const prev = dropdown.getAttribute('data-prev') || 'STD';
+                    const labelType = normalizeLabelType(dropdown.value);
+                    dropdown.value = labelType;
+                    applyLabelTypeColor(dropdown, labelType);
+                    dropdown.disabled = true;
+                    try {
+                        const response = await fetch('/dim-wt-master/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify({
+                                product_id: productId ? Number(productId) : undefined,
+                                sku: sku,
+                                label_type: labelType
+                            })
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok || data.success === false) {
+                            throw new Error(data.message || 'Failed to update Label Type');
+                        }
+                        dropdown.setAttribute('data-prev', labelType);
+                        const product = tableData.find(d =>
+                            (productId && String(d.id) === String(productId)) || d.SKU === sku
+                        );
+                        if (product) {
+                            product.label_type = labelType;
+                            if (product.Values && typeof product.Values === 'object') {
+                                product.Values.label_type = labelType;
+                            }
+                        }
+                        showToast('success', 'Label Type updated');
+                    } catch (err) {
+                        const restored = normalizeLabelType(prev);
+                        dropdown.value = restored;
+                        applyLabelTypeColor(dropdown, restored);
+                        showToast('danger', err.message || 'Failed to update Label Type');
+                    } finally {
+                        dropdown.disabled = false;
+                    }
+                });
+            }
+            setupLabelTypeDropdowns();
 
             // Initialize (search and playback listeners once to avoid duplicates on reload)
             setupSearch();

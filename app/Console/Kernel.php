@@ -1060,6 +1060,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
+        // Shopify label/tracking → Reverb mark shipped (settings-gated).
+        $schedule->job(new \App\Jobs\SyncReverbTrackingJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sync-tracking')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         // Link-map refresh (local SKU ↔ product_id only). Hourly to limit marketplace API load.
         $schedule->command('aliexpress:sync-link-map')
             ->hourly()

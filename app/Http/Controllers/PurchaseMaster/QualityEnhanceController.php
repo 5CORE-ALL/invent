@@ -108,5 +108,71 @@ class QualityEnhanceController extends Controller
         }
     }
 
+    /**
+     * Create or update quality_enhance values for one SKU (used by QC & Packing modal).
+     */
+    public function upsertBySku(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+            'issue' => 'nullable|string|max:2000',
+            'action_req' => 'nullable|string|max:2000',
+            'status_remark' => 'nullable|string|max:2000',
+        ]);
 
+        $sku = trim((string) $validated['sku']);
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'SKU is required.'], 422);
+        }
+
+        $values = [
+            'issue' => trim((string) ($validated['issue'] ?? '')),
+            'action_req' => trim((string) ($validated['action_req'] ?? '')),
+            'status_remark' => trim((string) ($validated['status_remark'] ?? '')),
+        ];
+
+        $existing = DB::table('quality_enhance')
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [strtolower($sku)])
+            ->first();
+
+        $allEmpty = $values['issue'] === '' && $values['action_req'] === '' && $values['status_remark'] === '';
+
+        if ($allEmpty) {
+            if ($existing) {
+                DB::table('quality_enhance')->where('id', $existing->id)->delete();
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cleared.',
+                'issue' => '',
+                'action_req' => '',
+                'status_remark' => '',
+            ]);
+        }
+
+        if ($existing) {
+            DB::table('quality_enhance')->where('id', $existing->id)->update([
+                'values' => json_encode($values),
+                'updated_at' => now(),
+            ]);
+            $id = (int) $existing->id;
+        } else {
+            $id = (int) DB::table('quality_enhance')->insertGetId([
+                'sku' => $sku,
+                'values' => json_encode($values),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Saved.',
+            'id' => $id,
+            'issue' => $values['issue'],
+            'action_req' => $values['action_req'],
+            'status_remark' => $values['status_remark'],
+        ]);
+    }
 }

@@ -686,9 +686,12 @@ return [
             'ALIBABA_SHOPIFY_SOURCE_URL_TEMPLATE',
             'https://www.alibaba.com/trade/order_detail.htm?orderId={order_id}'
         ),
+        // Alibaba.com ICBU OAuth (NOT AliExpress api-sg.aliexpress.com).
+        // Authorize: https://oauth.alibaba.com/authorize?...&sp=ICBU
+        // Token:     https://oauth.alibaba.com/token
         'redirect_uri' => env('ALIBABA_REDIRECT_URI', env('APP_URL')),
-        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://api-sg.aliexpress.com'),
-        'token_url' => env('ALIBABA_TOKEN_URL', 'https://api-sg.aliexpress.com/auth/token/create'),
+        'auth_base' => env('ALIBABA_AUTH_BASE', 'https://oauth.alibaba.com'),
+        'token_url' => env('ALIBABA_TOKEN_URL', 'https://oauth.alibaba.com/token'),
     ],
 
     'aliexpress' => [

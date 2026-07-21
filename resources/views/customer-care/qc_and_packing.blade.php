@@ -907,27 +907,128 @@
             background-color: #b8860b;
         }
 
-        /* Root Cause / Instructions CTN: red = empty, green = has data; full text on hover (title) */
+        /* Root Cause / Instructions CTN: magnifying glass — green = has data, red = empty; full text on hover */
         .status-dot-indicator {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            line-height: 1;
             vertical-align: middle;
             flex-shrink: 0;
             cursor: help;
         }
 
         .status-dot-missing {
-            background-color: #dc3545;
+            color: #dc3545;
         }
 
         .status-dot-available {
-            background-color: #198754;
+            color: #198754;
         }
 
         .qc-ctn-instr-wrap .status-dot-indicator {
-            margin-right: 6px;
+            margin-right: 2px;
+        }
+
+        .qc-item-pkg-cell,
+        .qc-enhance-cell {
+            min-width: 52px;
+            white-space: nowrap;
+        }
+
+        /* Autofit: full left-to-right width; narrow cols hug content; values centered. */
+        .orders-hold-table.orders-hold-table--autofit {
+            width: 100%;
+            max-width: 100%;
+            table-layout: auto;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit th,
+        .orders-hold-table.orders-hold-table--autofit td {
+            text-align: center !important;
+            vertical-align: middle !important;
+            width: 1%;
+            min-width: 0;
+            max-width: none;
+            white-space: nowrap;
+            padding: 0.35rem 0.4rem;
+        }
+
+        /* Let SKU + Issue absorb remaining horizontal space */
+        .orders-hold-table.orders-hold-table--autofit th.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--autofit td.orders-hold-col-sku,
+        .orders-hold-table.orders-hold-table--autofit th.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--autofit td.orders-hold-col-what,
+        .orders-hold-table.orders-hold-table--autofit th.dispatch-what-col,
+        .orders-hold-table.orders-hold-table--autofit td.dispatch-what-cell {
+            width: auto !important;
+            white-space: normal;
+            min-width: 4.5rem;
+            line-height: 1.25;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit th.orders-hold-col-action,
+        .orders-hold-table.orders-hold-table--autofit td.orders-hold-col-action,
+        .orders-hold-table.orders-hold-table--autofit th.dispatch-action-col,
+        .orders-hold-table.orders-hold-table--autofit td.dispatch-action-cell {
+            white-space: normal;
+            min-width: 3rem;
+            line-height: 1.25;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit .sku-cell {
+            display: inline-block;
+            max-width: 100%;
+            margin: 0 auto;
+            text-align: center;
+            vertical-align: middle;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit .created-by-combo {
+            align-items: center;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit td.qc-ctn-instr-cell,
+        .orders-hold-table.orders-hold-table--autofit th.qc-ctn-instr-cell,
+        .orders-hold-table.orders-hold-table--autofit td.qc-item-pkg-cell,
+        .orders-hold-table.orders-hold-table--autofit th.qc-item-pkg-cell,
+        .orders-hold-table.orders-hold-table--autofit td.qc-enhance-cell,
+        .orders-hold-table.orders-hold-table--autofit th.qc-enhance-cell,
+        .orders-hold-table.orders-hold-table--autofit td.orders-hold-col-root-status,
+        .orders-hold-table.orders-hold-table--autofit th.orders-hold-col-root-status {
+            width: 1% !important;
+            min-width: 0;
+            max-width: 4.25rem;
+            white-space: normal;
+            line-height: 1.15;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit .orders-hold-col-img {
+            width: 42px !important;
+            min-width: 42px;
+            max-width: 42px;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit .orders-hold-col-close {
+            width: 1% !important;
+            min-width: 3.25rem;
+            white-space: nowrap;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit .orders-hold-close-cell {
+            white-space: nowrap;
+        }
+
+        .orders-hold-table.orders-hold-table--autofit .what-cell-wrap,
+        .orders-hold-table.orders-hold-table--autofit .action-cell-wrap {
+            text-align: center !important;
+            margin: 0 auto;
+            width: 100%;
         }
 
         .sku-image-preview {
@@ -1302,7 +1403,7 @@
                 @endif
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table">
+                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}">
                             <thead class="table-light">
                                 <tr>
                                     <th class="orders-hold-col-idx">#</th>
@@ -1372,7 +1473,9 @@
                                     @endif
                                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
                                         <th class="orders-hold-col-root-status">Root Cause<br>Found</th>
-                                        <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
+                                        <th class="qc-ctn-instr-cell text-center">CTN<br>Pkg</th>
+                                        <th class="qc-item-pkg-cell text-center">item<br>pkg</th>
+                                        <th class="qc-enhance-cell text-center" title="QC Enhance">QC<br>Enhance</th>
                                         <th class="orders-hold-col-root-status">Root Cause<br>Fixed</th>
                                     @endif
                                     @if (!($hideDepartmentColumnAndFilter ?? false))
@@ -1410,7 +1513,7 @@
                             </thead>
                             <tbody id="hold_issue_table_body">
                                 <tr id="hold_issue_empty_row">
-                                    <td colspan="{{ ($showDispatchExtras ?? false ? 22 : ($showOrderIdField ?? false ? 17 : 16)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showDispatchExtras ?? false ? 24 : ($showOrderIdField ?? false ? 19 : 18)) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showClaimableColumn ?? false ? 1 : 0) + ($showClaimFiledColumn ?? false ? 1 : 0) + ($showAmpUsdColumn ?? false ? 1 : 0) + ($showAmtRecColumn ?? false ? 1 : 0) + ($showClaimReceivedColumn ?? false ? 1 : 0) + ($showCarrierColumn ?? false ? 1 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No records found.</td>
                                 </tr>
                             </tbody>
@@ -1426,7 +1529,7 @@
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table">
+                        <table class="table table-striped table-hover table-sm mb-0 orders-hold-table{{ ($autofitTableColumns ?? false) ? ' orders-hold-table--autofit' : '' }}">
                             <thead class="table-light">
                                 <tr>
                                     <th class="orders-hold-col-idx">#</th>
@@ -1463,7 +1566,9 @@
                                     @endif
                                     @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
                                         <th class="orders-hold-col-root-status">Root Cause<br>Found</th>
-                                        <th class="qc-ctn-instr-cell">Instructions<br>CTN</th>
+                                        <th class="qc-ctn-instr-cell text-center">CTN<br>Pkg</th>
+                                        <th class="qc-item-pkg-cell text-center">item<br>pkg</th>
+                                        <th class="qc-enhance-cell text-center" title="QC Enhance">QC<br>Enhance</th>
                                         <th class="orders-hold-col-root-status">Root Cause<br>Fixed</th>
                                     @endif
                                     @if (!($hideDepartmentColumnAndFilter ?? false))
@@ -1483,7 +1588,7 @@
                             </thead>
                             <tbody id="hold_issue_history_table_body">
                                 <tr id="hold_issue_history_empty_row">
-                                    <td colspan="{{ ($showOrderIdField ?? false ? 18 : 17) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 3 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
+                                    <td colspan="{{ ($showOrderIdField ?? false ? 20 : 19) + ($showDispatchExtras ?? false ? 4 : 0) - ($hideDepartmentColumnAndFilter ?? false ? 1 : 0) - ($hideRootCauseAndInstructionsCtnColumns ?? false ? 5 : 0) + ($showDepartmentColumnAfterCreatedBy ?? false ? 1 : 0) + ($showDetailsColumn ?? false ? 1 : 0) + ($showRowHistoryColumn ?? false ? 1 : 0) - ($hideCarrierTrackingMediaColumns ?? false ? ($showDispatchExtras ?? false ? 5 : 1) : 0) - ($mergeCreatedAtIntoCreatedBy ?? false ? 1 : 0) }}"
                                         class="text-center text-muted py-4">No history found.</td>
                                 </tr>
                             </tbody>
@@ -1775,11 +1880,39 @@
 
                             @if (!($hideRootCauseAndInstructionsCtnColumns ?? false))
                                 <div class="col-md-6">
-                                    <label for="hold_issue_ctn_pkg" class="form-label">CTN PKG</label>
+                                    <label for="hold_issue_ctn_pkg" class="form-label">CTN Pkg</label>
                                     <input type="hidden" id="hold_issue_product_master_id" value="">
                                     <input type="text" class="form-control" id="hold_issue_ctn_pkg"
                                         name="ctn_pkg" maxlength="100"
                                         placeholder="CTN packaging instructions (max 100)"
+                                        autocomplete="off" title="">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="hold_issue_instruction_pkg" class="form-label">Instruction PKG</label>
+                                    <textarea class="form-control" id="hold_issue_instruction_pkg"
+                                        name="instruction_pkg" rows="2" maxlength="2000"
+                                        placeholder="Item packaging instructions (max 2000)"
+                                        autocomplete="off" title=""></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="hold_issue_qc_enhance_issue" class="form-label">QC Enhance — Issue</label>
+                                    <input type="text" class="form-control" id="hold_issue_qc_enhance_issue"
+                                        name="qc_enhance_issue" maxlength="2000"
+                                        placeholder="Issue (from Quality Enhance)"
+                                        autocomplete="off" title="">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="hold_issue_qc_enhance_action_req" class="form-label">QC Enhance — Action Req</label>
+                                    <input type="text" class="form-control" id="hold_issue_qc_enhance_action_req"
+                                        name="qc_enhance_action_req" maxlength="2000"
+                                        placeholder="Action required"
+                                        autocomplete="off" title="">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="hold_issue_qc_enhance_status_remark" class="form-label">QC Enhance — Status Remark</label>
+                                    <input type="text" class="form-control" id="hold_issue_qc_enhance_status_remark"
+                                        name="qc_enhance_status_remark" maxlength="2000"
+                                        placeholder="Status / remark"
                                         autocomplete="off" title="">
                                 </div>
                             @endif
@@ -2060,6 +2193,10 @@
             const issueLinkInput = document.getElementById('hold_issue_issue_link');
             const replacementTrackingInput = document.getElementById('hold_issue_replacement_tracking');
             const ctnPkgInput = document.getElementById('hold_issue_ctn_pkg');
+            const instructionPkgInput = document.getElementById('hold_issue_instruction_pkg');
+            const qcEnhanceIssueInput = document.getElementById('hold_issue_qc_enhance_issue');
+            const qcEnhanceActionReqInput = document.getElementById('hold_issue_qc_enhance_action_req');
+            const qcEnhanceStatusRemarkInput = document.getElementById('hold_issue_qc_enhance_status_remark');
             const productMasterIdInput = document.getElementById('hold_issue_product_master_id');
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
@@ -2988,38 +3125,51 @@
                 const titleVal = tip || (!isAvailable ? 'No data' : '');
                 const titleAttr = titleVal ? ' title="' + escAttr(titleVal) + '"' : '';
                 const aria = isAvailable ? 'Has data' : 'No data';
-                return '<span class="status-dot-indicator ' + cls + '"' + titleAttr + ' role="img" aria-label="' +
-                    escAttr(aria) + '"></span>';
+                return '<i class="bi bi-search status-dot-indicator ' + cls + '"' + titleAttr +
+                    ' role="img" aria-label="' + escAttr(aria) + '"></i>';
             }
 
+            /** CTN Pkg — magnifying glass only; edit via modal CTN Pkg field. */
             function qcCtnInstrCell(row, listKind) {
                 const pid = row.product_master_id;
                 const instrRaw = String(row.ctn_instructions || '');
                 const instr = instrRaw.trim();
-                let dotHtml;
+                let tip;
                 if (!pid) {
-                    dotHtml = statusDotCellHtml(false, 'No matching product_master row');
+                    tip = 'No matching product_master row';
                 } else {
-                    const has = instr.length > 0;
-                    dotHtml = statusDotCellHtml(has, has ? instrRaw : 'No instructions');
+                    tip = instr.length > 0 ? instrRaw : 'No instructions';
                 }
-                if (!pid) {
-                    return '<td class="qc-ctn-instr-cell text-center">' + dotHtml + '</td>';
-                }
-                const valEsc = escAttr(instrRaw);
-                const tip = instr.length > 0 ? instrRaw : 'No instructions';
-                const tipEsc = escAttr(tip);
-                const rowId = String(row.id);
-                return '<td class="qc-ctn-instr-cell">' +
-                    '<div class="qc-ctn-instr-wrap d-flex align-items-center justify-content-center gap-1 flex-nowrap">' +
-                    dotHtml +
-                    '<input type="text" class="form-control form-control-sm qc-ctn-instructions-input" maxlength="100" value="' +
-                    valEsc + '" title="' + tipEsc + '" ' +
-                    'data-product-id="' + escAttr(String(pid)) + '" data-sku="' + escAttr(row.sku || '') +
-                    '" data-parent="' + escAttr(row.parent || '') + '" ' +
-                    'data-ctn-list="' + escAttr(listKind) + '" data-ctn-row-id="' + escAttr(rowId) + '">' +
-                    '<button type="button" class="qc-copy-ctn-instr" title="Copy Instructions CTN" aria-label="Copy Instructions CTN"><i class="bi bi-clipboard"></i></button>' +
-                    '</div></td>';
+                const has = !!(pid && instr.length > 0);
+                const iconHtml = statusDotCellHtml(has, tip);
+                return '<td class="qc-ctn-instr-cell text-center">' + iconHtml + '</td>';
+            }
+
+            /** item pkg — same source as /dim-wt-master (instructions_item_pkg table). */
+            function qcItemPkgCell(row) {
+                const raw = row.instructions_item_pkg != null ? String(row.instructions_item_pkg).trim() : '';
+                const has = raw !== '';
+                const iconHtml = statusDotCellHtml(has, has ? raw : 'No instructions available');
+                return '<td class="qc-item-pkg-cell text-center">' + iconHtml + '</td>';
+            }
+
+            /** QC Enhance — same source as /quality-enhance/list (quality_enhance.values). */
+            function qcEnhanceTooltip(row) {
+                const issue = row.qc_enhance_issue != null ? String(row.qc_enhance_issue).trim() : '';
+                const actionReq = row.qc_enhance_action_req != null ? String(row.qc_enhance_action_req).trim() : '';
+                const statusRemark = row.qc_enhance_status_remark != null ? String(row.qc_enhance_status_remark).trim() : '';
+                const parts = [];
+                if (issue) parts.push('Issue: ' + issue);
+                if (actionReq) parts.push('Action Req: ' + actionReq);
+                if (statusRemark) parts.push('Status Remark: ' + statusRemark);
+                return parts.join('\n');
+            }
+
+            function qcEnhanceCell(row) {
+                const tip = qcEnhanceTooltip(row);
+                const has = tip !== '';
+                const iconHtml = statusDotCellHtml(has, has ? tip : 'No QC Enhance data');
+                return '<td class="qc-enhance-cell text-center">' + iconHtml + '</td>';
             }
 
             async function saveCtnPkgFromModal() {
@@ -3052,6 +3202,77 @@
                 } catch (e) {
                     console.error(e);
                     showAlert(e.message || 'Issue saved, but CTN PKG could not be updated.');
+                }
+            }
+
+            async function saveInstructionPkgFromModal() {
+                if (!instructionPkgInput) return;
+                const productId = productMasterIdInput ? parseInt(productMasterIdInput.value, 10) : NaN;
+                const sku = (skuInput?.value || '').trim();
+                const newV = (instructionPkgInput.value || '').trim().slice(0, 2000);
+                if (!sku || Number.isNaN(productId) || productId <= 0) return;
+                try {
+                    const res = await fetch('/instructions-item-pkg/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            product_id: productId,
+                            sku: sku,
+                            instructions: newV,
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to save Instruction PKG');
+                    }
+                    instructionPkgInput.title = newV.length ? newV : 'No instructions';
+                } catch (e) {
+                    console.error(e);
+                    showAlert(e.message || 'Issue saved, but Instruction PKG could not be updated.');
+                }
+            }
+
+            async function saveQcEnhanceFromModal() {
+                if (!qcEnhanceIssueInput && !qcEnhanceActionReqInput && !qcEnhanceStatusRemarkInput) return;
+                const sku = (skuInput?.value || '').trim();
+                if (!sku) return;
+                const issue = (qcEnhanceIssueInput?.value || '').trim().slice(0, 2000);
+                const actionReq = (qcEnhanceActionReqInput?.value || '').trim().slice(0, 2000);
+                const statusRemark = (qcEnhanceStatusRemarkInput?.value || '').trim().slice(0, 2000);
+                try {
+                    const res = await fetch('/quality-enhance/upsert-by-sku', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            issue: issue,
+                            action_req: actionReq,
+                            status_remark: statusRemark,
+                        }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to save QC Enhance');
+                    }
+                    const tipParts = [];
+                    if (issue) tipParts.push('Issue: ' + issue);
+                    if (actionReq) tipParts.push('Action Req: ' + actionReq);
+                    if (statusRemark) tipParts.push('Status Remark: ' + statusRemark);
+                    const tip = tipParts.join('\n') || 'No QC Enhance data';
+                    if (qcEnhanceIssueInput) qcEnhanceIssueInput.title = tip;
+                    if (qcEnhanceActionReqInput) qcEnhanceActionReqInput.title = tip;
+                    if (qcEnhanceStatusRemarkInput) qcEnhanceStatusRemarkInput.title = tip;
+                } catch (e) {
+                    console.error(e);
+                    showAlert(e.message || 'Issue saved, but QC Enhance could not be updated.');
                 }
             }
 
@@ -3545,7 +3766,11 @@
                     qcDetailsRowHtml('Action', escapeHtml(actionDisplay), actionDisplay === '') +
                     qcDetailsStatusRow('Root Cause Found', d.issue, d.issue_remark) +
                     qcDetailsStatusRow('Root Cause Fixed', d.c_action_1, d.c_action_1_remark) +
-                    qcDetailsTextRow('Instructions CTN', d.ctn_instructions) +
+                    qcDetailsTextRow('CTN Pkg', d.ctn_instructions) +
+                    qcDetailsTextRow('item pkg', d.instructions_item_pkg) +
+                    qcDetailsTextRow('QC Enhance — Issue', d.qc_enhance_issue) +
+                    qcDetailsTextRow('QC Enhance — Action Req', d.qc_enhance_action_req) +
+                    qcDetailsTextRow('QC Enhance — Status Remark', d.qc_enhance_status_remark) +
                     '</div>'
                 );
 
@@ -3828,7 +4053,7 @@
                                 .image_url) + '" class="sku-thumb" alt="">' :
                             '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') +
                         '</td>' +
-                        '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) +
+                        '<td class="orders-hold-col-sku" title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) +
                         '</span>' + groupBadge + '</td>' +
                         @if ($showDispatchExtras ?? false)
                             '<td class="order-num-cell">' + (row.order_number ?
@@ -3852,13 +4077,13 @@
                             '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
                                 (row.what_happened) + '</span></td>' +
                         @else
-                            '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
+                            '<td class="orders-hold-col-what">' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
                     @if ($showDispatchExtras ?? false)
                         '<td class="dispatch-action-cell"><span class="action-cell-wrap">' + action1DisplayHtml(
                                 row.action_1, hideActionRemark ? '' : row.action_1_remark) + '</span></td>' +
                     @else
-                        '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
+                        '<td class="orders-hold-col-action">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                             '</td>' +
                     @endif
                     @if (($showCarrierColumn ?? false) && ($carrierColumnAfterAction ?? false))
@@ -3907,6 +4132,8 @@
                         '<td class="orders-hold-col-root-status text-center">' +
                         rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                             qcCtnInstrCell(row, 'main') +
+                            qcItemPkgCell(row) +
+                            qcEnhanceCell(row) +
                             '<td class="orders-hold-col-root-status text-center">' +
                             rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                     @endif
@@ -3973,7 +4200,7 @@
                                 .image_url) + '" class="sku-thumb" alt="">' :
                             '<span class="sku-thumb-placeholder"><i class="bi bi-image"></i></span>') +
                         '</td>' +
-                        '<td title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) +
+                        '<td class="orders-hold-col-sku" title="' + escAttr(row.sku) + '"><span class="sku-cell">' + escapeHtml(row.sku) +
                         '</span></td>' +
                         @if ($showOrderIdField ?? false)
                             '<td class="order-num-cell">' + (row.order_number ?
@@ -3989,9 +4216,9 @@
                             '<td class="dispatch-what-cell"><span class="what-cell-wrap">' + whatHappenedDotHtml
                                 (row.what_happened) + '</span></td>' +
                         @else
-                            '<td>' + whatHappenedDotHtml(row.what_happened) + '</td>' +
+                            '<td class="orders-hold-col-what">' + whatHappenedDotHtml(row.what_happened) + '</td>' +
                         @endif
-                    '<td>' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
+                    '<td class="orders-hold-col-action">' + action1DisplayHtml(row.action_1, hideActionRemark ? '' : row.action_1_remark) +
                         '</td>' +
                         @if ($showDetailsColumn ?? false)
                             qcDetailsCellHtml(row) +
@@ -4015,6 +4242,8 @@
                         '<td class="orders-hold-col-root-status text-center">' +
                         rootCauseDisplayHtml(row.issue, row.issue_remark) + '</td>' +
                             qcCtnInstrCell(row, 'history') +
+                            qcItemPkgCell(row) +
+                            qcEnhanceCell(row) +
                             '<td class="orders-hold-col-root-status text-center">' +
                             rootCauseFixedDisplayHtml(row.c_action_1, row.c_action_1_remark) + '</td>' +
                     @endif
@@ -4077,6 +4306,10 @@
                     amz_loss: row?.amz_loss ?? null,
                     product_master_id: row?.product_master_id ?? null,
                     ctn_instructions: row?.ctn_instructions ?? '',
+                    instructions_item_pkg: row?.instructions_item_pkg ?? '',
+                    qc_enhance_issue: row?.qc_enhance_issue ?? '',
+                    qc_enhance_action_req: row?.qc_enhance_action_req ?? '',
+                    qc_enhance_status_remark: row?.qc_enhance_status_remark ?? '',
                     claim_filed: !!row?.claim_filed,
                     claimable: row?.claimable === undefined || row?.claimable === null ? true : !!row.claimable,
                     amp_usd: row?.amp_usd != null && row?.amp_usd !== '' ? String(row.amp_usd).slice(0, 6) : '',
@@ -4121,6 +4354,10 @@
                     order_number: row?.order_number ?? '',
                     product_master_id: row?.product_master_id ?? null,
                     ctn_instructions: row?.ctn_instructions ?? '',
+                    instructions_item_pkg: row?.instructions_item_pkg ?? '',
+                    qc_enhance_issue: row?.qc_enhance_issue ?? '',
+                    qc_enhance_action_req: row?.qc_enhance_action_req ?? '',
+                    qc_enhance_status_remark: row?.qc_enhance_status_remark ?? '',
                 };
             }
 
@@ -4197,6 +4434,22 @@
                 if (ctnPkgInput) {
                     ctnPkgInput.value = '';
                     ctnPkgInput.title = 'No instructions';
+                }
+                if (instructionPkgInput) {
+                    instructionPkgInput.value = '';
+                    instructionPkgInput.title = 'No instructions';
+                }
+                if (qcEnhanceIssueInput) {
+                    qcEnhanceIssueInput.value = '';
+                    qcEnhanceIssueInput.title = 'No QC Enhance data';
+                }
+                if (qcEnhanceActionReqInput) {
+                    qcEnhanceActionReqInput.value = '';
+                    qcEnhanceActionReqInput.title = 'No QC Enhance data';
+                }
+                if (qcEnhanceStatusRemarkInput) {
+                    qcEnhanceStatusRemarkInput.value = '';
+                    qcEnhanceStatusRemarkInput.title = 'No QC Enhance data';
                 }
                 if (productMasterIdInput) productMasterIdInput.value = '';
                 {
@@ -4278,6 +4531,33 @@
                     const ctnVal = record.ctn_instructions != null ? String(record.ctn_instructions) : '';
                     ctnPkgInput.value = ctnVal;
                     ctnPkgInput.title = ctnVal.trim() ? ctnVal : 'No instructions';
+                }
+                if (instructionPkgInput) {
+                    const pkgVal = record.instructions_item_pkg != null ? String(record.instructions_item_pkg) : '';
+                    instructionPkgInput.value = pkgVal;
+                    instructionPkgInput.title = pkgVal.trim() ? pkgVal : 'No instructions';
+                }
+                {
+                    const qeIssue = record.qc_enhance_issue != null ? String(record.qc_enhance_issue) : '';
+                    const qeAction = record.qc_enhance_action_req != null ? String(record.qc_enhance_action_req) : '';
+                    const qeRemark = record.qc_enhance_status_remark != null ? String(record.qc_enhance_status_remark) : '';
+                    const tipParts = [];
+                    if (qeIssue.trim()) tipParts.push('Issue: ' + qeIssue.trim());
+                    if (qeAction.trim()) tipParts.push('Action Req: ' + qeAction.trim());
+                    if (qeRemark.trim()) tipParts.push('Status Remark: ' + qeRemark.trim());
+                    const tip = tipParts.join('\n') || 'No QC Enhance data';
+                    if (qcEnhanceIssueInput) {
+                        qcEnhanceIssueInput.value = qeIssue;
+                        qcEnhanceIssueInput.title = tip;
+                    }
+                    if (qcEnhanceActionReqInput) {
+                        qcEnhanceActionReqInput.value = qeAction;
+                        qcEnhanceActionReqInput.title = tip;
+                    }
+                    if (qcEnhanceStatusRemarkInput) {
+                        qcEnhanceStatusRemarkInput.value = qeRemark;
+                        qcEnhanceStatusRemarkInput.title = tip;
+                    }
                 }
                 {
                     const carrierSel = document.getElementById('hold_issue_issue_carrier');
@@ -4414,6 +4694,22 @@
                     ctnPkgInput.value = '';
                     ctnPkgInput.title = 'No instructions';
                 }
+                if (instructionPkgInput) {
+                    instructionPkgInput.value = '';
+                    instructionPkgInput.title = 'No instructions';
+                }
+                if (qcEnhanceIssueInput) {
+                    qcEnhanceIssueInput.value = '';
+                    qcEnhanceIssueInput.title = 'No QC Enhance data';
+                }
+                if (qcEnhanceActionReqInput) {
+                    qcEnhanceActionReqInput.value = '';
+                    qcEnhanceActionReqInput.title = 'No QC Enhance data';
+                }
+                if (qcEnhanceStatusRemarkInput) {
+                    qcEnhanceStatusRemarkInput.value = '';
+                    qcEnhanceStatusRemarkInput.title = 'No QC Enhance data';
+                }
                 if (productMasterIdInput) productMasterIdInput.value = '';
 
                 if (!sku) return;
@@ -4441,6 +4737,33 @@
                         const ctnVal = data.ctn_instructions != null ? String(data.ctn_instructions) : '';
                         ctnPkgInput.value = ctnVal;
                         ctnPkgInput.title = ctnVal.trim() ? ctnVal : 'No instructions';
+                    }
+                    if (instructionPkgInput) {
+                        const pkgVal = data.instructions_item_pkg != null ? String(data.instructions_item_pkg) : '';
+                        instructionPkgInput.value = pkgVal;
+                        instructionPkgInput.title = pkgVal.trim() ? pkgVal : 'No instructions';
+                    }
+                    {
+                        const qeIssue = data.qc_enhance_issue != null ? String(data.qc_enhance_issue) : '';
+                        const qeAction = data.qc_enhance_action_req != null ? String(data.qc_enhance_action_req) : '';
+                        const qeRemark = data.qc_enhance_status_remark != null ? String(data.qc_enhance_status_remark) : '';
+                        const tipParts = [];
+                        if (qeIssue.trim()) tipParts.push('Issue: ' + qeIssue.trim());
+                        if (qeAction.trim()) tipParts.push('Action Req: ' + qeAction.trim());
+                        if (qeRemark.trim()) tipParts.push('Status Remark: ' + qeRemark.trim());
+                        const tip = tipParts.join('\n') || 'No QC Enhance data';
+                        if (qcEnhanceIssueInput) {
+                            qcEnhanceIssueInput.value = qeIssue;
+                            qcEnhanceIssueInput.title = tip;
+                        }
+                        if (qcEnhanceActionReqInput) {
+                            qcEnhanceActionReqInput.value = qeAction;
+                            qcEnhanceActionReqInput.title = tip;
+                        }
+                        if (qcEnhanceStatusRemarkInput) {
+                            qcEnhanceStatusRemarkInput.value = qeRemark;
+                            qcEnhanceStatusRemarkInput.title = tip;
+                        }
                     }
                 } catch (e) {
                     // Keep inputs blank on request errors.
@@ -4662,10 +4985,12 @@
                         return;
                     }
 
-                    // Persist CTN PKG to product_master Values.ctn_instructions (same source as table column)
+                    // Persist CTN PKG + Instruction PKG + QC Enhance (same sources as table columns)
                     await saveCtnPkgFromModal();
+                    await saveInstructionPkgFromModal();
+                    await saveQcEnhanceFromModal();
 
-                    // Reload so Instructions CTN column reflects saved CTN PKG
+                    // Reload so instruction columns reflect saved values
                     await loadHoldIssueRows();
                     loadHoldIssueHistoryRows();
                     showAlert(data?.message || (isEdit ? 'Hold issue updated successfully.' :

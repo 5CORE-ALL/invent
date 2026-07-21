@@ -214,6 +214,130 @@ class ReverbManagerApiService
         return ['success' => true, 'data' => $response->json() ?? []];
     }
 
+    /**
+     * Valid shipping providers — GET /shipping/providers
+     *
+     * @return array{success: bool, message?: string, providers?: list<string>}
+     */
+    public function listShippingProviders(): array
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'REVERB token missing.', 'providers' => []];
+        }
+
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(30)
+                ->withHeaders($this->headers($token))
+                ->get($apiBase.'/shipping/providers');
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage(), 'providers' => []];
+        }
+
+        if (! $response->successful()) {
+            return [
+                'success' => false,
+                'message' => 'Reverb shipping providers HTTP '.$response->status().': '.mb_substr($response->body(), 0, 240),
+                'providers' => [],
+            ];
+        }
+
+        $json = $response->json() ?? [];
+        $list = $json['shipping_providers']
+            ?? $json['providers']
+            ?? $json['_embedded']['shipping_providers']
+            ?? $json['_embedded']['providers']
+            ?? $json;
+
+        if (! is_array($list)) {
+            $list = [];
+        }
+
+        $providers = [];
+        foreach ($list as $row) {
+            if (is_string($row) && trim($row) !== '') {
+                $providers[] = trim($row);
+                continue;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            $name = trim((string) ($row['name'] ?? $row['code'] ?? $row['provider'] ?? $row['slug'] ?? ''));
+            if ($name !== '') {
+                $providers[] = $name;
+            }
+        }
+
+        return [
+            'success' => true,
+            'providers' => array_values(array_unique($providers)),
+        ];
+    }
+
+    /**
+     * Mark order shipped with tracking — POST /my/orders/selling/{order_number}/ship
+     *
+     * @return array{success: bool, message?: string, data?: mixed}
+     */
+    public function shipOrder(
+        string $orderNumber,
+        string $provider,
+        string $trackingNumber,
+        bool $sendNotification = false
+    ): array {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            return ['success' => false, 'message' => 'REVERB token missing.'];
+        }
+
+        $orderNumber = trim($orderNumber);
+        $provider = trim($provider);
+        $trackingNumber = trim($trackingNumber);
+        if ($orderNumber === '' || $provider === '' || $trackingNumber === '') {
+            return ['success' => false, 'message' => 'order_number, provider, and tracking_number are required.'];
+        }
+
+        $apiBase = rtrim((string) config('services.reverb.api_url', 'https://api.reverb.com/api'), '/');
+        $url = $apiBase.'/my/orders/selling/'.rawurlencode($orderNumber).'/ship';
+        $body = [
+            'provider' => $provider,
+            'tracking_number' => $trackingNumber,
+            'send_notification' => $sendNotification,
+        ];
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders($this->headers($token))
+                ->post($url, $body);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            Log::warning('ReverbManagerApiService: shipOrder failed', [
+                'order_number' => $orderNumber,
+                'status' => $response->status(),
+                'body' => mb_substr($response->body(), 0, 500),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Reverb ship HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300),
+                'data' => $response->json(),
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Order marked shipped on Reverb.',
+            'data' => $response->json() ?? [],
+        ];
+    }
+
     public function getOrderReceiptInfo(string $orderId): array
     {
         return ['success' => false, 'message' => 'Not applicable for Reverb.'];

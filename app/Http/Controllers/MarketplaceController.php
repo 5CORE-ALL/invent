@@ -127,6 +127,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->pushTrackingToAliexpress($order);
         }
+        if ($marketplace === 'reverb') {
+            return app(ReverbSyncController::class)->pushTrackingToReverb($order);
+        }
 
         return response()->json(['success' => false, 'message' => 'Tracking push not supported for this marketplace.'], 404);
     }

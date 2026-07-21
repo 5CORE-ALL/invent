@@ -42,7 +42,7 @@
                         @endif
                     </div>
                     <div class="card-body">
-                        <p class="text-muted mb-3">Credentials are read from <code>.env</code>. Shopify B2C is the source shop. API calls use the dropshipping <code>/sync</code> endpoint.</p>
+                        <p class="text-muted mb-3">Credentials are read from <code>.env</code>. Shopify B2C is the source shop. OAuth uses <strong>Alibaba.com ICBU</strong> (<code>oauth.alibaba.com</code>), not AliExpress.</p>
 
                         <table class="table table-sm table-bordered mb-4">
                             <tbody>
@@ -138,9 +138,9 @@
                         <div class="card-body">
                             <ol class="mb-0">
                                 <li class="mb-2">Add <code>ALIBABA_APP_KEY</code> and <code>ALIBABA_APP_SECRET</code> to <code>.env</code>.</li>
-                                <li class="mb-2">Click <strong>Re-authorize</strong>, log in as seller, then run:<br>
-                                    <code>php artisan alibaba:auth-url --exchange=CODE_FROM_REDIRECT</code><br>
-                                    Copy the new token into <code>ALIBABA_ACCESS_TOKEN</code>.</li>
+                                <li class="mb-2">In the Alibaba.com developer portal, set Callback URL to exactly <code>{{ $redirectUri ?? 'https://inventory.5coremanagement.com' }}</code>.</li>
+                                <li class="mb-2">Click <strong>Re-authorize</strong>, log in on <strong>Alibaba.com</strong>, then run:<br>
+                                    <code>php artisan alibaba:auth-url --exchange=CODE_FROM_REDIRECT --write-env</code></li>
                                 <li class="mb-2">Click <strong>Test connection</strong>.</li>
                             </ol>
                         </div>
