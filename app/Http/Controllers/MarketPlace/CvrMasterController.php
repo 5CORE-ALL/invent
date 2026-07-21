@@ -151,8 +151,10 @@ class CvrMasterController extends Controller
     public function getCvrDataJson(Request $request)
     {
         try {
-            // Fetch all product master records
-            $productMasterRows = ProductMaster::all();
+            // Fetch product master (only columns needed for CVR table — avoid hydrating unused wide columns)
+            $productMasterRows = ProductMaster::query()
+                ->select(['id', 'sku', 'parent', 'Values'])
+                ->get();
 
             // Get all unique SKUs from product master (excluding PARENT rows)
             $skus = $productMasterRows
@@ -166,7 +168,10 @@ class CvrMasterController extends Controller
             $shopifyData = ShopifySku::mapByProductSkus($skus);
 
             // Fetch Amazon data for GPFT/AD/PFT calculations
-            $amazonDatasheets = AmazonDatasheet::whereIn("sku", $skus)->get()->keyBy("sku");
+            $amazonDatasheets = AmazonDatasheet::whereIn("sku", $skus)
+                ->select(['sku', 'asin', 'price', 'units_ordered_l30', 'sessions_l30'])
+                ->get()
+                ->keyBy("sku");
             
             // Fetch Amazon SP Campaign Reports for ad spend (L30)
             $amazonSpCampaigns = DB::table('amazon_sp_campaign_reports')
@@ -542,60 +547,81 @@ class CvrMasterController extends Controller
             $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
             $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
 
-            // Fetch Amazon LMP data from amazon_sku_competitors
+            // Amazon / Google LMP — slim columns only (never full Eloquent + details collections)
             $amazonLmpLookup = collect();
             $amazonLmpCountLookup = collect();
             $googleLmpLookup = collect();
             $googleLmpCountLookup = collect();
             try {
-                $amazonLmpLookups = AmazonSkuCompetitor::buildGroupedLookup('amazon');
-                $amazonLmpRecords = $amazonLmpLookups['details'];
-                $amazonLmpLookup = $amazonLmpLookups['lowest'];
-                $amazonLmpCountLookup = $amazonLmpRecords->map(fn ($items) => $items->count());
+                if (Schema::hasTable('amazon_sku_competitors')) {
+                    $amazonGrouped = DB::table('amazon_sku_competitors')
+                        ->select(['sku', 'price', 'product_link', 'ignored'])
+                        ->where('marketplace', 'amazon')
+                        ->whereRaw('CAST(price AS DECIMAL(10,2)) > 0')
+                        ->get()
+                        ->groupBy(fn ($item) => AmazonSkuCompetitor::normalizeSkuKey($item->sku));
+                    $amazonLmpLookup = $amazonGrouped->map(fn ($items) => AmazonSkuCompetitor::lowestFromCollection($items));
+                    $amazonLmpCountLookup = $amazonGrouped->map(fn ($items) => $items->count());
+                    unset($amazonGrouped);
+                }
 
-                $googleLmpLookups = GoogleSkuCompetitor::buildGroupedLookup('google');
-                $googleLmpRecords = $googleLmpLookups['details'];
-                $googleLmpLookup = $googleLmpLookups['lowest'];
-                $googleLmpCountLookup = $googleLmpRecords->map(fn ($items) => $items->count());
+                if (Schema::hasTable('google_sku_competitors')) {
+                    $googleGrouped = DB::table('google_sku_competitors')
+                        ->select(['sku', 'price', 'product_link', 'ignored'])
+                        ->where('marketplace', 'google')
+                        ->where('price', '>', 0)
+                        ->get()
+                        ->groupBy(fn ($item) => GoogleSkuCompetitor::normalizeSkuKey($item->sku));
+                    $googleLmpLookup = $googleGrouped->map(fn ($items) => GoogleSkuCompetitor::lowestFromCollection($items));
+                    $googleLmpCountLookup = $googleGrouped->map(fn ($items) => $items->count());
+                    unset($googleGrouped);
+                }
             } catch (\Exception $e) {
                 Log::warning('Could not fetch Amazon LMP: ' . $e->getMessage());
             }
 
-            // Fetch eBay LMP data from ebay_sku_competitors
+            // eBay LMP — slim columns only
             $ebayLmpLookup = collect();
             $ebayLmpCountLookup = collect();
             try {
-                $ebayLmpRecords = EbaySkuCompetitor::where('marketplace', 'ebay')
-                    ->where(function ($q) {
-                        $q->where('total_price', '>', 0)
-                          ->orWhere('price', '>', 0);
-                    })
-                    ->orderByRaw('COALESCE(total_price, price + COALESCE(shipping_cost, 0)) ASC')
-                    ->get()
-                    ->groupBy(function ($item) {
-                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                if (Schema::hasTable('ebay_sku_competitors')) {
+                    $ebayGrouped = DB::table('ebay_sku_competitors')
+                        ->select(['sku', 'price', 'shipping_cost', 'total_price', 'product_link', 'ignored'])
+                        ->where('marketplace', 'ebay')
+                        ->where(function ($q) {
+                            $q->where('total_price', '>', 0)
+                              ->orWhere('price', '>', 0);
+                        })
+                        ->get()
+                        ->groupBy(fn ($item) => EbaySkuCompetitor::normalizeSkuKey($item->sku));
+                    $ebayLmpLookup = $ebayGrouped->map(function ($items) {
+                        $active = $items->filter(fn ($i) => empty($i->ignored));
+                        $pool = $active->isNotEmpty() ? $active : $items;
+                        return $pool->sortBy(function ($i) {
+                            $total = floatval($i->total_price ?? 0);
+                            if ($total <= 0) {
+                                $total = floatval($i->price ?? 0) + floatval($i->shipping_cost ?? 0);
+                            }
+                            return $total;
+                        })->first();
                     });
-                $ebayLmpLookup = $ebayLmpRecords->map(function ($items) {
-                    $lowest = $items->sortBy(function ($i) {
-                        $total = floatval($i->total_price ?? 0);
-                        if ($total <= 0) {
-                            $total = floatval($i->price ?? 0) + floatval($i->shipping_cost ?? 0);
-                        }
-                        return $total;
-                    })->first();
-                    return $lowest;
-                });
-                $ebayLmpCountLookup = $ebayLmpRecords->map(fn ($items) => $items->count());
+                    $ebayLmpCountLookup = $ebayGrouped->map(fn ($items) => $items->count());
+                    unset($ebayGrouped);
+                }
             } catch (\Exception $e) {
                 Log::warning('Could not fetch eBay LMP: ' . $e->getMessage());
             }
 
-            // Temu / Temu 2 LMP — same source as /temu-decrease and /temu2-decrease (temu_lmp)
+            // Temu / Temu 2 LMP — slim columns only (never TemuLmp::all() full hydrate)
             $temuLmpByNormalizedSku = [];
             $temuLmpSkuGroupService = null;
             try {
                 if (Schema::hasTable('temu_lmp')) {
-                    foreach (TemuLmp::all() as $temuLmpRow) {
+                    foreach (
+                        TemuLmp::query()
+                            ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
+                            ->get() as $temuLmpRow
+                    ) {
                         $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
                     }
                     $temuLmpSkuGroupService = app(LmpSkuGroupService::class);
@@ -619,39 +645,96 @@ class CvrMasterController extends Controller
                 'total_remarks' => $latestRemarks->count()
             ]);
 
-            // Jungle Scout data for rating/reviews (SKU and ASIN lookup)
-            // Order by updated_at DESC so the most recently synced record is checked first
-            $allJungleScoutData = JungleScoutProductData::orderBy('updated_at', 'desc')->get();
-            $jungleScoutBySku = $allJungleScoutData
-                ->filter(fn ($item) => !empty($item->sku))
-                ->groupBy(fn ($item) => strtoupper(trim($item->sku)))
-                ->map(function ($group) {
-                    return [
-                        'all_data' => $group->map(function ($item) {
-                            $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                            return is_array($data) ? $data : [];
-                        })->values()->toArray()
-                    ];
-                });
-            $jungleScoutByAsin = $allJungleScoutData
-                ->filter(fn ($item) => !empty($item->asin))
-                ->groupBy(fn ($item) => strtoupper(trim($item->asin)))
-                ->map(function ($group) {
-                    return [
-                        'all_data' => $group->map(function ($item) {
-                            $data = is_array($item->data) ? $item->data : json_decode($item->data, true);
-                            return is_array($data) ? $data : [];
-                        })->values()->toArray()
-                    ];
-                });
+            // Jungle Scout — only rows for our SKUs / ASINs (never full-table get of JSON blobs)
+            $jungleScoutBySku = collect();
+            $jungleScoutByAsin = collect();
+            try {
+                if (Schema::hasTable((new JungleScoutProductData)->getTable())) {
+                    $asinList = $amazonDatasheets
+                        ->pluck('asin')
+                        ->filter(fn ($a) => !empty($a))
+                        ->map(fn ($a) => strtoupper(trim((string) $a)))
+                        ->unique()
+                        ->values()
+                        ->all();
+
+                    $jsRows = collect();
+                    $jsSeenIds = [];
+                    $pullJsChunk = function (array $chunk, string $column) use (&$jsRows, &$jsSeenIds) {
+                        if ($chunk === []) {
+                            return;
+                        }
+                        foreach (
+                            JungleScoutProductData::query()
+                                ->select(['id', 'sku', 'asin', 'data', 'updated_at'])
+                                ->whereIn($column, $chunk)
+                                ->orderByDesc('updated_at')
+                                ->get() as $row
+                        ) {
+                            $id = $row->id ?? null;
+                            if ($id !== null) {
+                                if (isset($jsSeenIds[$id])) {
+                                    continue;
+                                }
+                                $jsSeenIds[$id] = true;
+                            }
+                            $jsRows->push($row);
+                        }
+                    };
+                    foreach (array_chunk($skus, 400) as $chunk) {
+                        $pullJsChunk($chunk, 'sku');
+                    }
+                    foreach (array_chunk($asinList, 400) as $chunk) {
+                        $pullJsChunk($chunk, 'asin');
+                    }
+
+                    $mapJsGroup = function ($group) {
+                        $sorted = $group->sortByDesc(function ($item) {
+                            $ts = $item->updated_at ?? null;
+                            return $ts ? strtotime((string) $ts) : 0;
+                        });
+                        return [
+                            'all_data' => $sorted->map(function ($item) {
+                                $data = is_array($item->data) ? $item->data : json_decode($item->data ?? '[]', true);
+                                if (!is_array($data)) {
+                                    return [];
+                                }
+                                // Keep only fields used by CVR (drop bulky Jungle Scout payload)
+                                return [
+                                    'rating' => $data['rating'] ?? null,
+                                    'reviews' => $data['reviews'] ?? null,
+                                    'listing_quality_score' => $data['listing_quality_score'] ?? null,
+                                ];
+                            })->values()->toArray(),
+                        ];
+                    };
+
+                    $jungleScoutBySku = $jsRows
+                        ->filter(fn ($item) => !empty($item->sku))
+                        ->groupBy(fn ($item) => strtoupper(trim($item->sku)))
+                        ->map($mapJsGroup);
+                    $jungleScoutByAsin = $jsRows
+                        ->filter(fn ($item) => !empty($item->asin))
+                        ->groupBy(fn ($item) => strtoupper(trim($item->asin)))
+                        ->map($mapJsGroup);
+                    unset($jsRows, $jsSeenIds);
+                }
+            } catch (\Exception $e) {
+                Log::warning('CVR Master - Jungle Scout scoped load failed: ' . $e->getMessage());
+            }
 
             // FBA L30: same as FBA Dispatch — resolve ProductMaster SKU → fba_table row, then fba_monthly_sales.l30_units by listing analytics key
             $fbaInventoryResolver = null;
             $fbaMonthlyByListingKey = collect();
             try {
-                $fbaTableFbaRows = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")->get();
+                $fbaTableFbaRows = FbaTable::query()
+                    ->select(['id', 'seller_sku', 'quantity_available'])
+                    ->whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                    ->get();
                 $fbaInventoryResolver = FbaInventoryService::fromFbaRows($fbaTableFbaRows);
-                $fbaMonthlyByListingKey = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                $fbaMonthlyByListingKey = FbaMonthlySale::query()
+                    ->select(['seller_sku', 'l30_units'])
+                    ->whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
                     ->get()
                     ->keyBy(function ($item) {
                         return FbaInventoryService::sellerSkuToAnalyticsListingKey($item->seller_sku ?? '');
@@ -5641,28 +5724,112 @@ class CvrMasterController extends Controller
     /**
      * Temu LMP entries from a temu_lmp row — same logic as TemuController::extractTemuLmpEntries.
      *
+     * @param  TemuLmp|object|null  $temuLmpRow
      * @return list<array{price: mixed, link: mixed}>
      */
-    private function extractTemuLmpEntriesFromRow(?TemuLmp $temuLmpRow): array
+    private function extractTemuLmpEntriesFromRow($temuLmpRow): array
     {
         if (!$temuLmpRow) {
             return [];
         }
 
-        $entries = $temuLmpRow->lmp_entries;
+        $entries = $temuLmpRow->lmp_entries ?? null;
+        if (is_string($entries)) {
+            $entries = json_decode($entries, true);
+        }
         if (is_array($entries) && count($entries) > 0) {
             return $entries;
         }
 
         $lmpEntries = [];
-        if ($temuLmpRow->lmp !== null || $temuLmpRow->lmp_link) {
-            $lmpEntries[] = ['price' => $temuLmpRow->lmp, 'link' => $temuLmpRow->lmp_link];
+        if (($temuLmpRow->lmp ?? null) !== null || !empty($temuLmpRow->lmp_link)) {
+            $lmpEntries[] = ['price' => $temuLmpRow->lmp, 'link' => $temuLmpRow->lmp_link ?? null];
         }
-        if ($temuLmpRow->lmp_2 !== null || $temuLmpRow->lmp_link_2) {
-            $lmpEntries[] = ['price' => $temuLmpRow->lmp_2, 'link' => $temuLmpRow->lmp_link_2];
+        if (($temuLmpRow->lmp_2 ?? null) !== null || !empty($temuLmpRow->lmp_link_2)) {
+            $lmpEntries[] = ['price' => $temuLmpRow->lmp_2, 'link' => $temuLmpRow->lmp_link_2 ?? null];
         }
 
         return $lmpEntries;
+    }
+
+    /**
+     * Load temu_lmp rows for a SKU (and its LMP Sku Link group). Never TemuLmp::all().
+     *
+     * @param  list<string>  $seedSkus
+     * @return array{0: array<string, TemuLmp>, 1: LmpSkuGroupService|null}
+     */
+    private function loadTemuLmpMapForSkus(array $seedSkus): array
+    {
+        $map = [];
+        $groupService = null;
+        $seedSkus = array_values(array_unique(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            $seedSkus
+        ))));
+        if ($seedSkus === [] || !Schema::hasTable('temu_lmp')) {
+            return [$map, $groupService];
+        }
+
+        try {
+            $groupService = app(LmpSkuGroupService::class);
+            $groupService->prepareForSkus($seedSkus);
+        } catch (\Throwable $e) {
+            $groupService = null;
+        }
+
+        $memberSkus = $seedSkus;
+        if ($groupService) {
+            foreach ($seedSkus as $s) {
+                try {
+                    $group = $groupService->groupContaining($s);
+                    if (!empty($group)) {
+                        $memberSkus = array_merge($memberSkus, $group);
+                    }
+                } catch (\Throwable $e) {
+                    // keep seed SKUs
+                }
+            }
+        }
+        $memberSkus = array_values(array_unique(array_filter(array_map(
+            fn ($s) => trim((string) $s),
+            $memberSkus
+        ))));
+
+        foreach (array_chunk($memberSkus, 400) as $chunk) {
+            foreach (
+                TemuLmp::query()
+                    ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
+                    ->whereIn('sku', $chunk)
+                    ->get() as $temuLmpRow
+            ) {
+                $map[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+            }
+        }
+
+        // Normalized fallback only for missing members (bounded OR, not full table)
+        $missingNorms = [];
+        foreach ($memberSkus as $memberSku) {
+            $n = self::normalizeTemuSkuForCvr($memberSku);
+            if ($n !== '' && !isset($map[$n])) {
+                $missingNorms[$n] = true;
+            }
+        }
+        if ($missingNorms !== []) {
+            $q = TemuLmp::query()->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries']);
+            $q->where(function ($qq) use ($missingNorms) {
+                foreach (array_keys($missingNorms) as $n) {
+                    $qq->orWhereRaw(
+                        'UPPER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(sku), CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?',
+                        [$n]
+                    );
+                }
+            });
+            foreach ($q->limit(50)->get() as $temuLmpRow) {
+                $map[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
+            }
+        }
+
+        return [$map, $groupService];
     }
 
     /**
@@ -5694,7 +5861,7 @@ class CvrMasterController extends Controller
     /**
      * Resolve Temu/Temu2 LMP for a SKU from temu_lmp (same source as /temu-decrease).
      *
-     * @param  array<string, TemuLmp>  $temuLmpByNormalizedSku
+     * @param  array<string, TemuLmp|object>  $temuLmpByNormalizedSku
      * @return array{price: float|null, link: string|null, count: int, entries: list<array{price: mixed, link: mixed}>}
      */
     private function resolveTemuLmpForSku(
@@ -5783,20 +5950,7 @@ class CvrMasterController extends Controller
                 return response()->json(['success' => false, 'error' => 'SKU required'], 400);
             }
 
-            $temuLmpByNormalizedSku = [];
-            if (Schema::hasTable('temu_lmp')) {
-                foreach (TemuLmp::all() as $temuLmpRow) {
-                    $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
-                }
-            }
-
-            $groupService = null;
-            try {
-                $groupService = app(LmpSkuGroupService::class);
-                $groupService->prepareForSkus([$sku]);
-            } catch (\Throwable $e) {
-                $groupService = null;
-            }
+            [$temuLmpByNormalizedSku, $groupService] = $this->loadTemuLmpMapForSkus([$sku]);
 
             $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
             $competitors = [];
@@ -5853,19 +6007,7 @@ class CvrMasterController extends Controller
                     return response()->json(['success' => false, 'error' => 'Invalid Temu LMP id'], 400);
                 }
 
-                $temuLmpByNormalizedSku = [];
-                if (Schema::hasTable('temu_lmp')) {
-                    foreach (TemuLmp::all() as $temuLmpRow) {
-                        $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
-                    }
-                }
-                $groupService = null;
-                try {
-                    $groupService = app(LmpSkuGroupService::class);
-                    $groupService->prepareForSkus([$sku]);
-                } catch (\Throwable $e) {
-                    $groupService = null;
-                }
+                [$temuLmpByNormalizedSku, $groupService] = $this->loadTemuLmpMapForSkus([$sku]);
                 $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
                 $entries = $resolved['entries'];
                 if ($idx >= count($entries)) {
