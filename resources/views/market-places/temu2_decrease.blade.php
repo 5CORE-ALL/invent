@@ -114,7 +114,7 @@
             z-index: 11;
         }
 
-        /* Autofit table to viewport; Parent/SKU stay left, everything else centered */
+        /* Full-width table; allow horizontal scroll so columns can show full values */
         #temu-table {
             width: 100% !important;
         }
@@ -123,8 +123,6 @@
         }
         #temu-table .tabulator-cell {
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
         #temu-table .tabulator-cell[tabulator-field="parent"],
         #temu-table .tabulator-cell[tabulator-field="sku"],
@@ -324,8 +322,8 @@
                     <select id="parent-filter" class="form-select form-select-sm pricing-filter-item"
                         style="width: auto; display: inline-block;"
                         title="Filter by row type: All Rows, Parents only, or SKUs only">
-                        <option value="all" selected>All Rows</option>
-                        <option value="parents">Parents</option>
+                        <option value="all">All Rows</option>
+                        <option value="parents" selected>Parents</option>
                         <option value="skus">SKUs</option>
                     </select>
 
@@ -570,10 +568,16 @@
                         <span class="badge bg-danger fs-6 p-2 temu-badge-history" id="avg-cvr-badge"
                             data-badge-metric="avg_cvr_pct" data-badge-label="CVR %"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="CVR = (Qty / Views) × 100">CVR: 0%</span>
+                            title="CVR = (Sold / T Clicks) × 100">CVR: 0%</span>
                         <span class="badge bg-info fs-6 p-2 temu-badge-history" id="total-views-badge"
                             data-badge-metric="total_views" data-badge-label="Views"
                             style="color: black; font-weight: bold; cursor: pointer;">Views: 0</span>
+                        <span class="badge fs-6 p-2" id="total-t-clicks-badge"
+                            style="background-color: #0d6efd; color: white; font-weight: bold;"
+                            title="Sum of T Clicks from parent rows only (goods_id totals; SKUs excluded)">T Clicks: 0</span>
+                        <span class="badge fs-6 p-2" id="total-t-clicks-7-badge"
+                            style="background-color: #0a58ca; color: white; font-weight: bold;"
+                            title="((T Clicks / 30) × 7) ÷ parent count — weekly pace per parent">T Clicks 7: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing L (INV&gt;0, not listed, REQ)">M L: 0</span>
@@ -1148,7 +1152,7 @@
                                 if (v == null) return '';
                                 if (currentSkuChartMetric === 'price') return 'Price: $' + Number(v).toFixed(2);
                                 if (currentSkuChartMetric === 'cvr' || ['profit_percent', 'ads_percent', 'roi_percent', 'npft_percent', 'nroi_percent'].indexOf(currentSkuChartMetric) >= 0) return (context.dataset.label || '') + ': ' + Number(v).toFixed(1) + '%';
-                                return (currentSkuChartMetric === 'views' || currentSkuChartMetric === 'temu_l30') ? (context.dataset.label + ': ' + Math.round(v)) : (context.dataset.label + ': ' + v);
+                                return (currentSkuChartMetric === 'views' || currentSkuChartMetric === 't_clicks' || currentSkuChartMetric === 'temu_l30') ? (context.dataset.label + ': ' + Math.round(v)) : (context.dataset.label + ': ' + v);
                             }
                         }
                     }
@@ -1412,12 +1416,23 @@
                 const metric = chartMetric;
                 const isCvr = metric === 'cvr';
                 const isViews = metric === 'views';
+                const isTClicks = metric === 't_clicks';
                 const isTemuL30 = metric === 'temu_l30';
                 const isPct = ['profit_percent', 'ads_percent', 'roi_percent', 'npft_percent', 'nroi_percent'].indexOf(metric) >= 0;
-                const values = isCvr ? data.map(d => Number(d.cvr_percent) || 0) : isViews ? data.map(d => Number(d.views) || 0) : isTemuL30 ? data.map(d => Number(d.temu_l30) || 0) : isPct ? data.map(d => Number(d[metric]) || 0) : data.map(d => Number(d.price) || 0);
-                const temuChartMetricLabels = { price: 'Price', views: 'Views', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
-                const temuChartMetricColors = { price: '#adb5bd', views: '#0000FF', cvr: '#008000', temu_l30: '#fd7e14', profit_percent: '#ff1493', ads_percent: '#ffc107', roi_percent: '#6f42c1', npft_percent: '#28a745', nroi_percent: '#17a2b8' };
-                const bgColors = { price: 'rgba(108,117,125,0.08)', views: 'rgba(0,0,255,0.1)', cvr: 'rgba(0,128,0,0.1)', temu_l30: 'rgba(253,126,20,0.1)', profit_percent: 'rgba(255,20,147,0.1)', ads_percent: 'rgba(255,193,7,0.1)', roi_percent: 'rgba(111,66,193,0.1)', npft_percent: 'rgba(40,167,69,0.1)', nroi_percent: 'rgba(23,162,184,0.1)' };
+                const values = isCvr
+                    ? data.map(d => Number(d.cvr_percent) || 0)
+                    : isTClicks
+                        ? data.map(d => Number(d.t_clicks != null ? d.t_clicks : ((Number(d.views) || 0) + (Number(d.ad_clicks) || 0))) || 0)
+                        : isViews
+                            ? data.map(d => Number(d.views) || 0)
+                            : isTemuL30
+                                ? data.map(d => Number(d.temu_l30) || 0)
+                                : isPct
+                                    ? data.map(d => Number(d[metric]) || 0)
+                                    : data.map(d => Number(d.price) || 0);
+                const temuChartMetricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
+                const temuChartMetricColors = { price: '#adb5bd', views: '#0000FF', t_clicks: '#6610f2', cvr: '#008000', temu_l30: '#fd7e14', profit_percent: '#ff1493', ads_percent: '#ffc107', roi_percent: '#6f42c1', npft_percent: '#28a745', nroi_percent: '#17a2b8' };
+                const bgColors = { price: 'rgba(108,117,125,0.08)', views: 'rgba(0,0,255,0.1)', t_clicks: 'rgba(102,16,242,0.1)', cvr: 'rgba(0,128,0,0.1)', temu_l30: 'rgba(253,126,20,0.1)', profit_percent: 'rgba(255,20,147,0.1)', ads_percent: 'rgba(255,193,7,0.1)', roi_percent: 'rgba(111,66,193,0.1)', npft_percent: 'rgba(40,167,69,0.1)', nroi_percent: 'rgba(23,162,184,0.1)' };
                 const labelText = temuChartMetricLabels[metric] || 'Price';
                 const color = temuChartMetricColors[metric] || '#adb5bd';
                 const refLabelEl = document.getElementById('temuChartRefLabel');
@@ -1428,7 +1443,7 @@
                 if (refDotEl) refDotEl.style.background = color;
                 const cvrFmt = v => (Number(v) === v ? v.toFixed(1) : v) + '%';
                 const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
-                const refFmt = (isCvr || isPct) ? cvrFmt : (isViews || isTemuL30) ? intFmt : temuChartFmtVal;
+                const refFmt = (isCvr || isPct) ? cvrFmt : (isViews || isTClicks || isTemuL30) ? intFmt : temuChartFmtVal;
                 skuMetricsChart.data.labels = labels;
                 skuMetricsChart.data.datasets[0].data = values;
                 skuMetricsChart.data.datasets[0].label = labelText + (metric === 'price' ? ' (USD)' : '');
@@ -1790,7 +1805,7 @@
             currentSkuChartMetric = (el.getAttribute ? el.getAttribute('data-metric') : $(el).data('metric')) || 'price';
             currentSku = sku;
             $('#modalSkuName').text(sku);
-            const metricLabels = { price: 'Price', views: 'Views', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
+            const metricLabels = { price: 'Price', views: 'O Clicks', t_clicks: 'T Clicks', cvr: 'CVR%', temu_l30: 'Temu L30', profit_percent: 'GPRFT%', ads_percent: 'ADS%', roi_percent: 'GROI%', npft_percent: 'NPFT%', nroi_percent: 'NROI%' };
             $('#temuChartRefLabel').text(metricLabels[currentSkuChartMetric] || 'Price');
             $('#temuChartModalSuffix').text('(Rolling L30)');
             $('#sku-chart-days-filter').val('30');
@@ -2121,6 +2136,35 @@
             const diff = Math.abs(invNum - stockNum);
             if (invNum * 0.03 < 3) return diff <= 3;
             return Math.round((diff / invNum) * 100) <= 3;
+        }
+
+        /**
+         * Temu Recovery (same as /pricing-master-cvr Temu 2 LMP):
+         * price ≤ $27 → (Price × 0.85) + 2.99
+         * price > $27 → Price × 0.85
+         */
+        function temuLmpRecovery(price) {
+            const p = parseFloat(price);
+            if (!(p > 0)) return null;
+            if (p <= 27) return +((p * 0.85) + 2.99).toFixed(2);
+            return +(p * 0.85).toFixed(2);
+        }
+
+        /** Lowest non-ignored raw LMP from entries / lmp_raw (before Temu Recovery). */
+        function getTemu2RawLmp(row) {
+            if (!row) return null;
+            const rawField = parseFloat(row.lmp_raw);
+            if (Number.isFinite(rawField) && rawField > 0) return rawField;
+            const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+            const prices = entries
+                .filter(function(e) { return !e || !e.ignored; })
+                .map(function(e) {
+                    const p = e && e.price;
+                    return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null;
+                })
+                .filter(function(p) { return p !== null && p > 0; });
+            if (prices.length > 0) return Math.min.apply(null, prices);
+            return null;
         }
 
         $('#zero-sold-count-badge').on('click', function() {
@@ -2700,6 +2744,9 @@
             let totalSpend = 0;
             let totalSpendL30 = 0;
             let totalViews = 0;
+            let totalTClicks = 0;
+            let totalParentTClicks = 0;
+            let totalParentCount = 0;
             let totalTemuL30 = 0;
             let zeroSoldCount = 0;
             let moreSoldCount = 0;
@@ -2718,6 +2765,16 @@
                 const inventory = parseFloat(row.inventory) || 0;
                 if (inventory > 0 && temuL30 === 0) zeroSoldCount++;
                 if (inventory > 0 && temuL30 > 0) moreSoldCount++;
+            });
+
+            // Parent-only T Clicks badge (goods_id totals on parent rows — never sum SKUs)
+            allData.forEach(row => {
+                if (!isTemu2ParentRow(row)) return;
+                totalParentCount++;
+                const parentT = parseInt(row.t_clicks, 10);
+                totalParentTClicks += Number.isFinite(parentT)
+                    ? parentT
+                    : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
             });
 
             // Financials + M L / M M from full dataset (ebay pattern for missing) — SKUs only
@@ -2744,6 +2801,10 @@
                 totalSpend += parseFloat(row.spend) || 0;
                 totalSpendL30 += parseFloat(row.spend_l30 || 0);
                 totalViews += parseInt(row.product_clicks, 10) || 0;
+                const rowTClicks = parseInt(row.t_clicks, 10);
+                totalTClicks += Number.isFinite(rowTClicks)
+                    ? rowTClicks
+                    : ((parseInt(row.product_clicks, 10) || 0) + (parseInt(row.ad_clicks, 10) || 0));
                 totalTemuL30 += temuL30;
 
                 const missing = row.missing;
@@ -2800,9 +2861,8 @@
             const adsPercentForNpft = (badgeAvgAds != null && badgeAvgAds !== undefined)
                 ? badgeAvgAds
                 : computedAggregateAdsPercent;
-            const cvrTotalViews = totalViews;
             const cvrTotalSold = totalTemuL30;
-            const qtyPerViews = cvrTotalViews > 0 ? (cvrTotalSold / cvrTotalViews) * 100 : 0;
+            const qtyPerViews = totalTClicks > 0 ? (cvrTotalSold / totalTClicks) * 100 : 0;
 
             $('#rows-count-badge').text('Rows: ' + rowsCount.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
@@ -2825,6 +2885,15 @@
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+            $('#total-t-clicks-badge').text('T Clicks: ' + totalParentTClicks.toLocaleString());
+            // T Clicks 7 = ((T Clicks / 30) × 7) / total parents
+            const tClicks7 = totalParentCount > 0
+                ? ((totalParentTClicks / 30) * 7) / totalParentCount
+                : 0;
+            $('#total-t-clicks-7-badge').text('T Clicks 7: ' + tClicks7.toLocaleString(undefined, {
+                maximumFractionDigits: 1,
+                minimumFractionDigits: 0
+            }));
             $('#missing-l-count-badge').text('M L: ' + missingCount.toLocaleString());
             $('#missing-m-count-badge').text('M M: ' + notMappedCount.toLocaleString());
 
@@ -2874,12 +2943,12 @@
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu2-decrease-data",
             ajaxSorting: false,
-            layout: "fitColumns",
+            layout: "fitDataStretch",
             columnDefaults: {
                 hozAlign: "center",
                 headerHozAlign: "center",
                 resizable: true,
-                minWidth: 36,
+                minWidth: 55,
             },
             pagination: true,
             paginationSize: 100,
@@ -2942,8 +3011,8 @@
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
                     frozen: true,
-                    width: 110,
-                    minWidth: 80,
+                    width: 130,
+                    minWidth: 110,
                     hozAlign: "left",
                     headerHozAlign: "left",
                     tooltip: true,
@@ -2968,8 +3037,8 @@
                     field: "sku",
                     headerFilter: "input",
                     frozen: true,
-                    width: 130,
-                    minWidth: 90,
+                    width: 180,
+                    minWidth: 150,
                     hozAlign: "left",
                     headerHozAlign: "left",
                     formatter: function(cell) {
@@ -3014,12 +3083,16 @@
                 {
                     title: "INV",
                     field: "inventory",
+                    width: 60,
+                    minWidth: 55,
                     hozAlign: "center",
                     sorter: "number"
                 },
                 {
                     title: "Temu Stock",
                     field: "temu_stock",
+                    width: 70,
+                    minWidth: 65,
                     hozAlign: "center",
                     sorter: "number",
                     visible: true
@@ -3027,12 +3100,16 @@
                 {
                     title: "OVL30",
                     field: "ovl30",
+                    width: 65,
+                    minWidth: 60,
                     hozAlign: "center",
                     sorter: "number"
                 },
                     {
                     title: "Dil%",
                     field: "dil_percent",
+                    width: 60,
+                    minWidth: 55,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -3078,7 +3155,8 @@
                     field: "cvr_30",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 65,
+                    width: 100,
+                    minWidth: 95,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const val = parseFloat(cell.getValue()) || 0;
@@ -3124,6 +3202,8 @@
                 {
                     title: "Temu L30",
                     field: "temu_l30",
+                    width: 80,
+                    minWidth: 75,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -3213,16 +3293,62 @@
                     width: 60
                 },
                  {
-                    title: "Views",
+                    title: "O Clicks",
                     field: "product_clicks",
+                    width: 85,
+                    minWidth: 80,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const sku = row.sku || '';
                         const value = parseInt(cell.getValue()) || 0;
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View Views chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
+                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="views" title="View O Clicks chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0000FF;"></span></button>` : '';
                         return `${value.toLocaleString()} ${dotBtn}`.trim();
+                    }
+                },
+                {
+                    title: "T Clicks",
+                    field: "t_clicks",
+                    width: 90,
+                    minWidth: 85,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const sku = row.sku || '';
+                        const oClicks = parseInt(row.product_clicks, 10) || 0;
+                        const adClicks = parseInt(row.ad_clicks, 10) || 0;
+                        const value = parseInt(cell.getValue(), 10);
+                        const total = Number.isFinite(value) ? value : (oClicks + adClicks);
+                        const chartBtn = sku
+                            ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="t_clicks" title="Open T Clicks chart" style="border:none;background:none;cursor:pointer;padding:0 2px;line-height:1;vertical-align:middle;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#6610f2;"></span></button>`
+                            : '';
+                        return `${total.toLocaleString()} ${chartBtn}`.trim();
+                    }
+                },
+                {
+                    title: "T Click Growth",
+                    field: "t_clicks_growth",
+                    width: 90,
+                    minWidth: 85,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "T Click Growth % = ((T7÷7) ÷ (T30÷30) − 1) × 100. 0% = same daily pace; needs L7 + L30 clicks.",
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === null || raw === undefined || raw === '') {
+                            return '<span style="color:#999;">-</span>';
+                        }
+                        const n = parseFloat(raw);
+                        if (!Number.isFinite(n)) return '<span style="color:#999;">-</span>';
+                        const rounded = Math.round(n);
+                        let color = '#6c757d';
+                        let icon = 'fa-minus';
+                        if (rounded > 0) { color = '#28a745'; icon = 'fa-arrow-up'; }
+                        else if (rounded < 0) { color = '#dc3545'; icon = 'fa-arrow-down'; }
+                        const sign = rounded > 0 ? '+' : '';
+                        return `<span style="color:${color};font-weight:600;">${sign}${rounded}% <i class="fas ${icon}" style="font-size:11px;"></i></span>`;
                     }
                 },
                
@@ -3345,15 +3471,21 @@
                     hozAlign: "center",
                     sorter: "number",
                     headerSort: true,
+                    headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — same as /pricing-master-cvr; raw LMP stays in the modal",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        const entries = row.lmp_entries || [];
-                        const prices = entries.map(function(e) { const p = e.price; return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null; }).filter(function(p) { return p !== null; });
-                        const lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
-                        const display = lowest !== null ? (lowest % 1 === 0 ? lowest.toLocaleString() : lowest.toFixed(2)) : '-';
-                        const count = entries.length;
-                        const title = count > 0 ? (display + ' (' + count + ' entries) - click eye to edit') : 'Click eye to add LMP';
-                        return '<span class="lmp-display">' + (display !== '-' ? display : '<span style="color: #999;">-</span>') + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + (row.sku || '').replace(/"/g, '&quot;') + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
+                        const rawLowest = getTemu2RawLmp(row);
+                        const recovery = temuLmpRecovery(rawLowest);
+                        const displayVal = recovery != null ? recovery : (parseFloat(cell.getValue()) || null);
+                        const display = displayVal != null
+                            ? (displayVal % 1 === 0 ? displayVal.toLocaleString() : displayVal.toFixed(2))
+                            : '-';
+                        const count = (row.lmp_entries || []).length;
+                        const rawTip = rawLowest != null ? (' from raw $' + Number(rawLowest).toFixed(2)) : '';
+                        const title = count > 0
+                            ? ('Temu Recovery $' + (displayVal != null ? Number(displayVal).toFixed(2) : '-') + rawTip + ' (' + count + ' entries) - click to edit')
+                            : 'Click eye to add LMP';
+                        return '<span class="lmp-display" title="' + title.replace(/"/g, '&quot;') + '">' + (display !== '-' ? display : '<span style="color: #999;">-</span>') + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + (row.sku || '').replace(/"/g, '&quot;') + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
                     },
                     cellClick: function(e, cell) {
                         if (e.target.closest('.lmp-eye-btn')) {
@@ -3367,14 +3499,12 @@
                     title: "(LMP - 15%)",
                     field: "lmp_minus_15",
                     hozAlign: "center",
-                  
+                    headerTooltip: "Raw LMP × 0.85 (before Temu Recovery +$2.99 adjustment)",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        const lmp = row['lmp'];
-                        if (lmp === null || lmp === undefined || lmp === '') return '<span style="color: #999;">-</span>';
-                        const num = parseFloat(lmp);
-                        if (Number.isNaN(num)) return '-';
-                        const val = num * 0.85;
+                        const raw = getTemu2RawLmp(row);
+                        if (raw == null) return '<span style="color: #999;">-</span>';
+                        const val = raw * 0.85;
                         return (val % 1 === 0) ? val.toLocaleString() : val.toFixed(2);
                     }
                 },
@@ -3544,68 +3674,47 @@
                 {
                     title: "Spend",
                     field: "spend",
+                    width: 75,
+                    minWidth: 70,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        return value > 0 ? '$' + value.toFixed(2) : '0.00';
+                        return String(Math.round(value));
                     },
                     visible: true
                 },
                 {
-                    title: "L60 Spend",
-                    field: "spend_l60",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        const disp = value > 0 ? '$' + value.toFixed(2) : '<span style="color: #999;">-</span>';
-                        return `<div class="d-flex align-items-center justify-content-center gap-1"><span>${disp}</span><i class="fa-solid fa-info-circle l60-spend-info-icon" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Click to show/hide L60 columns"></i></div>`;
-                    }
-                },
-                {
-                    title: "Ad Sold",
-                    field: "ad_sold_l60",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false,
-                    formatter: function(cell) {
-                        const value = parseInt(cell.getValue(), 10) || 0;
-                        return value > 0 ? value.toLocaleString() : '<span style="color: #999;">-</span>';
-                    }
-                },
-                {
                     title: "ACOS%",
                     field: "acos_ad",
+                    width: 65,
+                    minWidth: 60,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                            <span>${Math.round(value)}%</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS%"></i>
-                        </div>`;
+                        return `${Math.round(value)}%`;
                     },
                     visible: false
                 },
                 {
                     title: "Ad Clicks",
                     field: "ad_clicks",
+                    width: 75,
+                    minWidth: 70,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
-                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                            <span>${value.toLocaleString()}</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
-                        </div>`;
+                        return value.toLocaleString();
                     },
                     visible: false
                 },
                 {
                     title: "Impressions",
                     field: "impressions",
+                    width: 90,
+                    minWidth: 85,
                     hozAlign: "center",
                     sorter: "number",
                     visible: false,
@@ -3617,67 +3726,32 @@
                 {
                     title: "OUT ROAS",
                     field: "out_roas_l30",
+                    width: 80,
+                    minWidth: 75,
                     hozAlign: "center",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         // Use net_roas as OUT ROAS if out_roas_l30 is not available
                         const value = parseFloat(cell.getValue() || rowData.net_roas || 0);
-                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                            <span>${value.toFixed(2)}</span>
-                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="OUT ROAS"></i>
-                        </div>`;
+                        return value.toFixed(2);
                     },
                     visible: false
                 },
                 {
                     title: "IN ROAS",
                     field: "in_roas_l30",
+                    width: 75,
+                    minWidth: 70,
                     hozAlign: "center",
                     editor: "number",
                     editorParams: {
                         min: 0,
                         step: 0.01
                     },
-                    editable: function(cell) {
-                        return !window.iconClicked;
-                    },
                     formatter: function(cell) {
-                        // Default to 0 if field doesn't exist
                         const cellValue = cell.getValue();
                         const value = (cellValue !== null && cellValue !== undefined) ? parseFloat(cellValue) : 0;
-                        const cellElement = cell.getElement();
-                        
-                        if (cellElement) {
-                            setTimeout(function() {
-                                const icon = cellElement.querySelector('.toggle-in-roas-info');
-                                if (icon) {
-                                    $(icon).off('mousedown click');
-                                    $(icon).on('mousedown', function(e) {
-                                        window.iconClicked = true;
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        setTimeout(function() {
-                                            window.iconClicked = false;
-                                        }, 100);
-                                        return false;
-                                    });
-                                }
-                            }, 0);
-                        }
-                        
-                        return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
-                            <span>${value.toFixed(2)}</span>
-                            <i class="fa-solid fa-info-circle toggle-in-roas-info" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="IN ROAS"></i>
-                        </div>`;
-                    },
-                    cellClick: function(e, cell) {
-                        if (e.target.classList.contains('toggle-in-roas-info') || 
-                            e.target.classList.contains('fa-info-circle') ||
-                            e.target.closest('.toggle-in-roas-info')) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            return false;
-                        }
+                        return value.toFixed(2);
                     },
                     cellEdited: function(cell) {
                         const row = cell.getRow();
@@ -3725,49 +3799,10 @@
                     visible: false
                 },
                 {
-                    title: "Status",
-                    field: "campaign_status",
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const row = cell.getRow();
-                        const sku = row.getData().sku;
-                        const rowData = row.getData();
-                        const goodsId = rowData.goods_id || '';
-                        const hasCampaign = goodsId && (rowData.spend > 0 || rowData.ad_clicks > 0);
-                        
-                        // Default to "Not Created" if no campaign exists, otherwise "Active"
-                        let defaultValue = hasCampaign ? "Active" : "Not Created";
-                        // Try to get value from cell, if not available use default
-                        let cellValue = cell.getValue();
-                        const value = (cellValue && cellValue.trim()) ? cellValue.trim() : defaultValue;
-                        
-                        const statusColors = {
-                            "Active": "#10b981",
-                            "Inactive": "#ef4444",
-                            "Not Created": "#eab308"
-                        };
-                        const selectedColor = statusColors[value] || "#6b7280";
-                        
-                        return `
-                            <select class="form-select form-select-sm editable-select campaign-status-select" 
-                                    data-sku="${sku}" 
-                                    data-field="status"
-                                    style="width: 120px; border: 1px solid #d1d5db; padding: 4px 8px; font-size: 0.875rem; color: ${selectedColor}; font-weight: 500;">
-                                <option value="Active" ${value === 'Active' ? 'selected' : ''} style="color: #10b981; font-weight: 500;">Active</option>
-                                <option value="Inactive" ${value === 'Inactive' ? 'selected' : ''} style="color: #ef4444; font-weight: 500;">Inactive</option>
-                                <option value="Not Created" ${value === 'Not Created' ? 'selected' : ''} style="color: #eab308; font-weight: 500;">Not Created</option>
-                            </select>
-                        `;
-                    },
-                    cellClick: function(e, cell) {
-                        e.stopPropagation();
-                    },
-                    visible: false,
-                    width: 130
-                },
-                {
                     title: "Target",
                     field: "target",
+                    width: 75,
+                    minWidth: 70,
                     hozAlign: "center",
                     sorter: "number",
                     visible: false,
@@ -3809,13 +3844,26 @@
                     field: "goods_id",
                     hozAlign: "center",
                     sorter: "string",
-                    minWidth: 70,
+                    width: 150,
+                    minWidth: 140,
                     accessorDownload: function(value, data) {
+                        if (data && data.goods_id_mismatch) {
+                            const ids = Array.isArray(data.child_goods_ids) ? data.child_goods_ids.join(' | ') : '';
+                            return ids ? ('\t' + ids) : 'MISMATCH';
+                        }
                         const g = (data && data.goods_id != null && data.goods_id !== '') ? String(data.goods_id) : '';
                         // Leading tab forces Excel to treat as text (avoids scientific notation)
                         return g ? ('\t' + g) : '';
                     },
                     formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        if (row.goods_id_mismatch) {
+                            const ids = Array.isArray(row.child_goods_ids) ? row.child_goods_ids.join(', ') : '';
+                            const tip = ids
+                                ? ('Child Goods IDs do not match: ' + ids)
+                                : 'Child Goods IDs do not match';
+                            return `<i class="fas fa-exclamation-triangle" style="color:#dc3545;cursor:help;" title="${tip.replace(/"/g, '&quot;')}"></i>`;
+                        }
                         const goodsId = (cell.getValue() || '').toString().trim();
                         if (!goodsId) return '';
                         return `${goodsId} <button type="button" class="btn btn-sm p-0 ms-1 copy-goods-id" data-goods-id="${goodsId}" title="Copy Goods ID" style="border:none;background:none;color:#6c757d;"><i class="fa fa-copy"></i></button>`;
@@ -3855,20 +3903,6 @@
             });
         }
 
-        let l60ColumnsVisible = false;
-        const l60ColumnFields = ['ad_sold_l60'];
-        function toggleL60Columns(show) {
-            if (!table) return;
-            l60ColumnsVisible = show;
-            const cols = table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField()));
-            cols.forEach(c => { show ? c.show() : c.hide(); });
-        }
-        $(document).on('click', '.l60-spend-info-icon', function(e) {
-            e.stopPropagation();
-            l60ColumnsVisible = !l60ColumnsVisible;
-            toggleL60Columns(l60ColumnsVisible);
-        });
-
         $('#sku-search, #parent-search').on('keyup', function() {
             applyFilters();
         });
@@ -3888,7 +3922,7 @@
                 return;
             }
 
-            const parentFilter = $('#parent-filter').val() || 'all';
+            const parentFilter = $('#parent-filter').val() || 'parents';
             const inventoryFilter = $('#inventory-filter').val();
             const tl30Filter = $('#tl30-filter').val();
             const growthSignFilter = $('#growth-sign-filter').val();
@@ -3911,7 +3945,7 @@
 
             table.clearFilter(true);
 
-            // Row type: All Rows / Parents / SKUs (default All Rows — show parents with SKUs)
+            // Row type: All Rows / Parents / SKUs (default Parents)
             if (parentFilter === 'parents') {
                 table.addFilter(function(data) {
                     return isTemu2ParentRow(data);
@@ -4529,54 +4563,6 @@
             });
         });
 
-        // Status dropdown change handler
-        $(document).on('change', '.campaign-status-select', function() {
-            const $select = $(this);
-            const value = $select.val();
-            const sku = $select.data('sku');
-
-            if (!sku) {
-                console.error('SKU not found in status select');
-                showToast('Error: SKU not found', 'error');
-                return;
-            }
-
-            // Update the select color based on value
-            const statusColors = {
-                "Active": "#10b981",
-                "Inactive": "#ef4444",
-                "Not Created": "#eab308"
-            };
-            $select.css('color', statusColors[value] || "#6b7280");
-
-            // Save to database via temu/ads/update endpoint
-            $.ajax({
-                url: '/temu/ads/update',
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                },
-                data: {
-                    sku: sku,
-                    field: 'status',
-                    value: value
-                },
-                success: function(response) {
-                    if (response.success) {
-                        showToast('Status updated successfully', 'success');
-                    } else {
-                        showToast('Failed to update status: ' + (response.message || 'Unknown error'), 'error');
-                    }
-                },
-                error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Unknown error';
-                    console.error('Error updating status:', xhr);
-                    showToast('Failed to update status: ' + errorMsg, 'error');
-                }
-            });
-        });
-
         // Initialize iconClicked flag for IN ROAS
         window.iconClicked = false;
 
@@ -4602,8 +4588,8 @@
 
             // Advertisement
             if (
-                /^(spend|spend_l30|spend_l60|ad_sold_l30|ad_sold_l60|acos_ad|ad_clicks|impressions|out_roas_l30|in_roas_l30|net_roas|campaign_status|target|ads_percent)$/i.test(f) ||
-                /\b(spend|ad\s*sold|acos|ad\s*clicks|impressions|roas|campaign|target|ads\s*%)\b/i.test(tl)
+                /^(spend|spend_l30|ad_sold_l30|acos_ad|ad_clicks|t_clicks|t_clicks_l7|t_clicks_growth|impressions|out_roas_l30|in_roas_l30|net_roas|target|ads_percent)$/i.test(f) ||
+                /\b(spend|ad\s*sold|acos|ad\s*clicks|t\s*clicks?|t\s*click\s*growth|impressions|roas|target|ads\s*%)\b/i.test(tl)
             ) {
                 return 'advertisement';
             }
@@ -4611,7 +4597,7 @@
             // Basics — identity / inventory / listing status (incl. Dil%)
             if (
                 /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|temu_l45|missing|MAP|nr_req|nrp|product_clicks)$/i.test(f) ||
-                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|map|nrl|req|views)\b/i.test(tl)
+                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|map|nrl|req|views|o\s*clicks)\b/i.test(tl)
             ) {
                 return 'basics';
             }

@@ -57,7 +57,7 @@
                             </select>
                             <input type="text" id="search-input" class="form-control form-control-sm pricing-filter-item"
                                    placeholder="Search Goods ID / SKU / name" style="width: 220px;">
-                        </div>
+                                                    </div>
                         <div class="d-flex flex-wrap gap-2 align-items-center">
                             <button type="button" id="export-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export CSV">
                                 <i class="fa fa-download"></i>
@@ -74,9 +74,9 @@
                                         </a>
                                     </li>
                                 </ul>
-                            </div>
-                        </div>
-                    </div>
+                                                    </div>
+                                                    </div>
+                                                </div>
 
                     <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
@@ -86,18 +86,18 @@
                             <span class="badge fs-6 p-2" id="spend-sum"
                                 style="background-color: #6f42c1; color: white; font-weight: bold;"
                                 title="Sum of Spend for the loaded range">Spend: $0.00</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                                            </div>
+                                                    </div>
+                                                    </div>
+                                            </div>
 
             <div class="card shadow-sm border-0">
                 <div class="card-body p-0">
                     <div id="temu2-ads-table"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+                                            </div>
+                                            </div>
+                                                </div>
+                                            </div>
 
     {{-- Upload Ads Report Modal (same pattern as Temu 2 Analytics uploads) --}}
     <div class="modal fade" id="uploadTemu2AdsModal" tabindex="-1" aria-labelledby="uploadTemu2AdsModalLabel" aria-hidden="true">
@@ -108,7 +108,7 @@
                         <i class="fa fa-chart-line me-2"></i>Upload Temu 2 Ads Report
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
+                                                    </div>
                 <div class="modal-body">
                     <div id="temu2-upload-status" class="mb-2"></div>
                     <form id="uploadTemu2AdsForm" enctype="multipart/form-data">
@@ -119,32 +119,32 @@
                                 <option value="L30" selected>L30</option>
                                 <option value="L7">L7</option>
                                 <option value="L60">L60</option>
-                            </select>
-                        </div>
+                                    </select>
+                                </div>
                         <div class="mb-3">
                             <label for="upload-file" class="form-label fw-bold">
                                 <i class="fa fa-file-excel text-success me-1"></i>Choose File
-                            </label>
+                                        </label>
                             <input type="file" class="form-control" id="upload-file" name="file"
                                    accept=".xlsx,.xls,.csv,.txt,.tsv" required>
                             <div class="form-text">
                                 Accepts .xlsx, .xls, .csv, .txt, .tsv (Temu ads export). Max 10MB.
-                            </div>
-                        </div>
+                                </div>
+                                </div>
                         <div class="alert alert-warning mb-0">
                             <i class="fa fa-exclamation-triangle me-2"></i>
                             <strong>Note:</strong> This replaces existing rows for the selected range only
                             (<code>temu2_campaign_reports</code>).
-                        </div>
+                                </div>
                     </form>
-                </div>
+                                    </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" id="upload-btn" class="btn btn-primary">
                         <i class="fa fa-upload me-1"></i>Upload
-                    </button>
-                </div>
-            </div>
+                                    </button>
+                                </div>
+                                        </div>
         </div>
     </div>
 @endsection
@@ -294,8 +294,8 @@
 
                 if (!file) {
                     status.innerHTML = '<div class="alert alert-danger py-2 mb-0">Please select a file.</div>';
-                    return;
-                }
+                        return;
+                    }
 
                 const formData = new FormData();
                 formData.append('file', file);
@@ -325,7 +325,7 @@
                                 if (modal) modal.hide();
                                 status.innerHTML = '';
                             }, 1200);
-                        } else {
+                                                } else {
                             status.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + (response.message || 'Upload failed') + '</div>';
                         }
                     },

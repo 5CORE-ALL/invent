@@ -3367,6 +3367,21 @@ class TemuController extends Controller
                 ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
                 ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
 
+            // L7 ad clicks — used for Temu 2 "T Click Growth" (L7 pace vs L30 pace)
+            $campaignReportL7Raw = $campaignReportModel::where('report_range', 'L7')
+                ->selectRaw('goods_id, sku, SUM(clicks) as clicks_l7')
+                ->groupBy('goods_id', 'sku')
+                ->get();
+            $campaignReportL7 = $campaignReportL7Raw
+                ->filter(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
+            $campaignReportL7BySku = $campaignReportL7Raw
+                ->filter(fn ($r) => ! empty(trim((string) ($r->sku ?? ''))))
+                ->keyBy(fn ($r) => $normalizeSku($r->sku));
+            $campaignReportL7BySkuLoose = $campaignReportL7Raw
+                ->filter(fn ($r) => $normalizeSkuLoose($r->sku ?? '') !== '')
+                ->keyBy(fn ($r) => $normalizeSkuLoose($r->sku));
+
             // Fetch saved SPRICE values (Temu 2 uses temu2_data_view)
             $temuDataViewData = ($isTemu2Pricing ? Temu2DataView::query() : TemuDataView::query())
                 ->whereIn('sku', $skus)
@@ -3436,7 +3451,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3526,6 +3541,10 @@ class TemuController extends Controller
 
                 $spend         = $campaignReportItem ? round((float) ($campaignReportItem->spend_l30 ?? 0), 2)        : 0.0;
                 $adClicks      = $campaignReportItem ? (int) ($campaignReportItem->clicks_l30 ?? 0)                   : 0;
+                $l7CampaignItem = ($goodsIdKey ? $campaignReportL7->get($goodsIdKey) : null)
+                    ?? $campaignReportL7BySku->get($normalizeSku($sku))
+                    ?? $campaignReportL7BySkuLoose->get($normalizeSkuLoose($sku));
+                $adClicksL7 = $l7CampaignItem ? (int) ($l7CampaignItem->clicks_l7 ?? 0) : 0;
                 $acosAd        = $campaignReportItem ? round((float) ($campaignReportItem->acos_ad_l30 ?? 0), 2)      : 0.0;
                 $netRoas       = $campaignReportItem ? round((float) ($campaignReportItem->net_roas_l30 ?? $campaignReportItem->roas_l30 ?? 0), 2) : 0.0;
                 $impressionsVal= $campaignReportItem ? (int) ($campaignReportItem->impressions_l30 ?? 0)              : 0;
@@ -3587,15 +3606,24 @@ class TemuController extends Controller
                 $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
                 $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
                 
-                // Calculate CVR% (Conversion Rate: Temu L30 / Product Clicks * 100)
-                $cvrPercent = $productClicks > 0 ? ($temuL30 / $productClicks) * 100 : 0;
+                // CVR% = Sold / clicks × 100.
+                // Temu 2: T Clicks (O Clicks + Ad Clicks); Temu 1: Product Clicks only.
+                $tClicks = (int) $productClicks + (int) $adClicks;
+                $tClicksL7 = (int) $productClicksL7 + (int) $adClicksL7;
+                // T Click Growth % = ((T7 daily pace / T30 daily pace) − 1) × 100
+                // 0 = flat, >0 growing, <0 declining. Needs both windows > 0.
+                $tClicksGrowth = ($tClicks > 0 && $tClicksL7 > 0)
+                    ? round(((($tClicksL7 / 7) / ($tClicks / 30)) - 1) * 100, 1)
+                    : null;
+                $cvrDenom = $isTemu2Pricing ? $tClicks : (int) $productClicks;
+                $cvrPercent = $cvrDenom > 0 ? ($temuL30 / $cvrDenom) * 100 : 0;
                 // Temu L60 = from L60 sales upload table; Temu 2: sales only (no ad fallback)
                 $temuL60 = $temuL60FromSales > 0
                     ? $temuL60FromSales
                     : ($isTemu2Pricing ? 0 : $adSoldL60);
                 $temuL45 = round(($temuL30 + $temuL60) / 2, 2);
-                $cvr45 = $productClicks > 0 ? round(($temuL45 / $productClicks) * 100, 2) : 0;
-                $cvr60 = $productClicks > 0 ? round(($temuL60 / $productClicks) * 100, 2) : 0;
+                $cvr45 = $cvrDenom > 0 ? round(($temuL45 / $cvrDenom) * 100, 2) : 0;
+                $cvr60 = $cvrDenom > 0 ? round(($temuL60 / $cvrDenom) * 100, 2) : 0;
 
                 // Calculate ADS% (Advertising Cost of Sale: Spend / Revenue * 100)
                 // If spend > 0 but no sales (temuL30 = 0), show 100%
@@ -3732,6 +3760,13 @@ class TemuController extends Controller
                     $lmp_link = $temuLmpRow->lmp_link;
                 }
 
+                // Temu 2 (same as /pricing-master-cvr): expose Temu Recovery as LMP
+                // ≤$27 → (Price × 0.85) + 2.99; >$27 → Price × 0.85. Keep raw for modal / LMP-15%.
+                $lmpRaw = $lmp !== null && $lmp !== '' && is_numeric($lmp) ? (float) $lmp : null;
+                if ($isTemu2Pricing) {
+                    $lmp = $this->temuLmpRecoveryPrice($lmpRaw);
+                }
+
                 $isParentRow = stripos((string) $sku, 'PARENT') !== false;
 
                 return [
@@ -3793,6 +3828,9 @@ class TemuController extends Controller
                     'net_roas' => round($netRoas, 2),
                     'acos_ad' => round($acosAd, 2),
                     'ad_clicks' => (int) $adClicks,
+                    't_clicks' => $tClicks,
+                    't_clicks_l7' => $tClicksL7,
+                    't_clicks_growth' => $tClicksGrowth,
                     'impressions' => (int) $impressionsVal,
                     'add_to_cart_number' => (int) $addToCartVal,
                     'target' => round($target, 2),
@@ -3819,17 +3857,90 @@ class TemuController extends Controller
                     'ad_sales_l60' => $adSalesL60,
                     'l60_vs_l30' => $l60VsL30,
                     'lmp' => $lmp,
+                    'lmp_raw' => $lmpRaw,
                     'lmp_link' => $lmp_link,
                     'lmp_entries' => $lmpEntries,
                     'linked_lmp_skus' => $linkedLmpSkus,
                 ];
             });
 
-            // Temu 2: roll child INV / sales / views onto PARENT rows so they show with All Rows
+            // Temu 2: O/Ad/T clicks, Spend, and Impressions are goods_id-level (already listing totals).
+            // Split those totals evenly across child SKUs that share the goods_id so
+            // each child isn't given the full amount. Parent rows then show the
+            // goods_id total once (not a sum of children).
             if ($isTemu2Pricing) {
                 $normalizeParentKey = static function ($value): string {
                     return strtoupper(trim((string) $value));
                 };
+
+                // Capture undivided goods_id totals (first row per goods_id).
+                $goodsIdMetricTotals = [];
+                $skuIndexesByGoodsId = [];
+                foreach ($processedData as $idx => $row) {
+                    if (! empty($row['is_parent'])) {
+                        continue;
+                    }
+                    $gid = trim((string) ($row['goods_id'] ?? ''));
+                    if ($gid === '') {
+                        continue;
+                    }
+                    if (! isset($goodsIdMetricTotals[$gid])) {
+                        $goodsIdMetricTotals[$gid] = [
+                            'product_clicks' => (int) ($row['product_clicks'] ?? 0),
+                            'ad_clicks' => (int) ($row['ad_clicks'] ?? 0),
+                            'impressions' => (int) ($row['impressions'] ?? 0),
+                            'spend' => round((float) ($row['spend'] ?? 0), 2),
+                            'spend_l30' => round((float) ($row['spend_l30'] ?? 0), 2),
+                            't_clicks_l7' => (int) ($row['t_clicks_l7'] ?? 0),
+                            't_clicks_growth' => $row['t_clicks_growth'] ?? null,
+                        ];
+                    }
+                    $skuIndexesByGoodsId[$gid][] = $idx;
+                }
+
+                // Divide each goods_id total across its child SKUs (integer/cents + remainder).
+                foreach ($skuIndexesByGoodsId as $gid => $indexes) {
+                    $n = count($indexes);
+                    if ($n <= 0) {
+                        continue;
+                    }
+                    $fullO = (int) ($goodsIdMetricTotals[$gid]['product_clicks'] ?? 0);
+                    $fullAd = (int) ($goodsIdMetricTotals[$gid]['ad_clicks'] ?? 0);
+                    $fullImp = (int) ($goodsIdMetricTotals[$gid]['impressions'] ?? 0);
+                    $spendCents = (int) round(((float) ($goodsIdMetricTotals[$gid]['spend'] ?? 0)) * 100);
+                    $spendL30Cents = (int) round(((float) ($goodsIdMetricTotals[$gid]['spend_l30'] ?? 0)) * 100);
+
+                    $baseO = intdiv($fullO, $n);
+                    $remO = $fullO % $n;
+                    $baseAd = intdiv($fullAd, $n);
+                    $remAd = $fullAd % $n;
+                    $baseImp = intdiv($fullImp, $n);
+                    $remImp = $fullImp % $n;
+                    $baseSpend = intdiv($spendCents, $n);
+                    $remSpend = $spendCents % $n;
+                    $baseSpendL30 = intdiv($spendL30Cents, $n);
+                    $remSpendL30 = $spendL30Cents % $n;
+
+                    foreach ($indexes as $i => $idx) {
+                        $row = $processedData[$idx];
+                        $o = $baseO + ($i < $remO ? 1 : 0);
+                        $ad = $baseAd + ($i < $remAd ? 1 : 0);
+                        $imp = $baseImp + ($i < $remImp ? 1 : 0);
+                        $t = $o + $ad;
+                        $spendShare = ($baseSpend + ($i < $remSpend ? 1 : 0)) / 100;
+                        $spendL30Share = ($baseSpendL30 + ($i < $remSpendL30 ? 1 : 0)) / 100;
+                        $row['product_clicks'] = $o;
+                        $row['ad_clicks'] = $ad;
+                        $row['t_clicks'] = $t;
+                        $row['impressions'] = $imp;
+                        $row['spend'] = round($spendShare, 2);
+                        $row['spend_l30'] = round($spendL30Share, 2);
+                        $sold = (int) ($row['temu_l30'] ?? 0);
+                        $row['cvr_percent'] = $t > 0 ? round(($sold / $t) * 100, 2) : 0;
+                        $row['cvr_30'] = $row['cvr_percent'];
+                        $processedData[$idx] = $row;
+                    }
+                }
 
                 $childrenByParent = [];
                 foreach ($processedData as $row) {
@@ -3843,7 +3954,7 @@ class TemuController extends Controller
                     $childrenByParent[$pk][] = $row;
                 }
 
-                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey) {
+                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey, $goodsIdMetricTotals) {
                     if (empty($row['is_parent'])) {
                         return $row;
                     }
@@ -3861,33 +3972,81 @@ class TemuController extends Controller
                     $ovl30 = 0.0;
                     $temuL30 = 0;
                     $temuL60 = 0;
-                    $views = 0;
-                    $spendL30 = 0.0;
-                    $spend = 0.0;
                     $hasReq = false;
+                    $childGoodsIds = [];
                     foreach ($children as $c) {
                         $inv += (float) ($c['inventory'] ?? 0);
                         $ovl30 += (float) ($c['ovl30'] ?? 0);
                         $temuL30 += (int) ($c['temu_l30'] ?? 0);
                         $temuL60 += (int) ($c['temu_l60'] ?? 0);
-                        $views += (int) ($c['product_clicks'] ?? 0);
-                        $spendL30 += (float) ($c['spend_l30'] ?? 0);
-                        $spend += (float) ($c['spend'] ?? 0);
                         $nr = strtoupper(trim((string) ($c['nr_req'] ?? 'REQ')));
                         if ($nr !== 'NR' && $nr !== 'NRL') {
                             $hasReq = true;
                         }
+                        $gid = trim((string) ($c['goods_id'] ?? ''));
+                        if ($gid !== '') {
+                            $childGoodsIds[$gid] = true;
+                        }
+                    }
+
+                    $uniqueChildGoodsIds = array_keys($childGoodsIds);
+                    if (count($uniqueChildGoodsIds) === 1) {
+                        $row['goods_id'] = $uniqueChildGoodsIds[0];
+                        $row['goods_id_mismatch'] = false;
+                        $row['child_goods_ids'] = $uniqueChildGoodsIds;
+                    } elseif (count($uniqueChildGoodsIds) > 1) {
+                        // Children disagree — keep blank goods_id; UI shows red triangle
+                        $row['goods_id'] = '';
+                        $row['goods_id_mismatch'] = true;
+                        $row['child_goods_ids'] = $uniqueChildGoodsIds;
+                    } else {
+                        $row['goods_id_mismatch'] = false;
+                        $row['child_goods_ids'] = [];
+                    }
+
+                    // Parent clicks/spend/impressions = goods_id totals (once per unique goods_id), not sum of children
+                    $parentO = 0;
+                    $parentAd = 0;
+                    $parentImp = 0;
+                    $parentT7 = 0;
+                    $parentSpend = 0.0;
+                    $parentSpendL30 = 0.0;
+                    $parentGrowth = null;
+                    foreach ($uniqueChildGoodsIds as $gid) {
+                        $parentO += (int) ($goodsIdMetricTotals[$gid]['product_clicks'] ?? 0);
+                        $parentAd += (int) ($goodsIdMetricTotals[$gid]['ad_clicks'] ?? 0);
+                        $parentImp += (int) ($goodsIdMetricTotals[$gid]['impressions'] ?? 0);
+                        $parentT7 += (int) ($goodsIdMetricTotals[$gid]['t_clicks_l7'] ?? 0);
+                        $parentSpend += (float) ($goodsIdMetricTotals[$gid]['spend'] ?? 0);
+                        $parentSpendL30 += (float) ($goodsIdMetricTotals[$gid]['spend_l30'] ?? 0);
+                        if ($parentGrowth === null && array_key_exists('t_clicks_growth', $goodsIdMetricTotals[$gid] ?? [])) {
+                            $parentGrowth = $goodsIdMetricTotals[$gid]['t_clicks_growth'];
+                        }
+                    }
+                    $parentT = $parentO + $parentAd;
+                    if (count($uniqueChildGoodsIds) === 1) {
+                        // keep single-goods_id growth from child
+                    } elseif ($parentT > 0 && $parentT7 > 0) {
+                        $parentGrowth = round(((($parentT7 / 7) / ($parentT / 30)) - 1) * 100, 1);
+                    } else {
+                        $parentGrowth = null;
                     }
 
                     $row['inventory'] = $inv;
                     $row['ovl30'] = $ovl30;
                     $row['temu_l30'] = $temuL30;
                     $row['temu_l60'] = $temuL60;
-                    $row['product_clicks'] = $views;
-                    $row['spend_l30'] = round($spendL30, 2);
-                    $row['spend'] = round($spend, 2);
+                    $row['product_clicks'] = $parentO;
+                    $row['ad_clicks'] = $parentAd;
+                    $row['t_clicks'] = $parentT;
+                    $row['t_clicks_l7'] = $parentT7;
+                    $row['t_clicks_growth'] = $parentGrowth;
+                    $row['impressions'] = $parentImp;
+                    $row['spend'] = round($parentSpend, 2);
+                    $row['spend_l30'] = round($parentSpendL30, 2);
                     $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
-                    $row['cvr_percent'] = $views > 0 ? round(($temuL30 / $views) * 100, 2) : 0;
+                    // Temu 2 parent CVR = Sold / T Clicks (goods_id-level clicks)
+                    $row['cvr_percent'] = $parentT > 0 ? round(($temuL30 / $parentT) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
 
@@ -5833,11 +5992,17 @@ class TemuController extends Controller
                 $npftPercent = $adsPercent == 100 ? $profitPercent : $profitPercent - $adsPercent;
                 $nroiPercent = $adsPercent == 100 ? $roiPercent : $roiPercent - $adsPercent;
 
+                $productClicks = intval($record->product_clicks ?? 0);
+                // ad_clicks may be absent on older temu_sku_daily_data rows
+                $adClicksHist = isset($record->ad_clicks) ? intval($record->ad_clicks) : 0;
+
                 return [
                     'date' => $record->record_date,
                     'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
                     'price' => $basePrice,
-                    'views' => intval($record->product_clicks ?? 0),
+                    'views' => $productClicks,
+                    'ad_clicks' => $adClicksHist,
+                    't_clicks' => $productClicks + $adClicksHist,
                     'cvr_percent' => floatval($record->cvr_percent ?? 0),
                     'temu_l30' => $temuL30,
                     'spend' => $spend,
@@ -6230,6 +6395,27 @@ class TemuController extends Controller
         }
 
         return $normalized;
+    }
+
+    /**
+     * Temu LMP Recovery (same rule as /pricing-master-cvr Temu 2 LMP):
+     * price ≤ $27 → (Price × 0.85) + 2.99
+     * price > $27 → Price × 0.85
+     */
+    private function temuLmpRecoveryPrice($price): ?float
+    {
+        if ($price === null || $price === '' || ! is_numeric($price)) {
+            return null;
+        }
+        $p = (float) $price;
+        if (! ($p > 0)) {
+            return null;
+        }
+        if ($p <= 27) {
+            return round(($p * 0.85) + 2.99, 2);
+        }
+
+        return round($p * 0.85, 2);
     }
 
     /**
