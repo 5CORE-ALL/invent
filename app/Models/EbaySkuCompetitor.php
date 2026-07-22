@@ -182,7 +182,9 @@ class EbaySkuCompetitor extends Model
         }
 
         $lmpEntries = self::dedupeByItemId($lmpEntries);
-        self::attachLmpFieldsToRow($row, $lmpEntries, $lmpEntries->first());
+        // L1 = lowest non-ignored (same as Temu)
+        $lowest = $lmpEntries->first(fn ($e) => empty($e->ignored));
+        self::attachLmpFieldsToRow($row, $lmpEntries, $lowest);
     }
 
     /**
@@ -190,6 +192,9 @@ class EbaySkuCompetitor extends Model
      */
     private static function attachLmpFieldsToRow(array &$row, $lmpEntries, $lowestLmp = null): void
     {
+        if (! $lowestLmp || ! empty($lowestLmp->ignored)) {
+            $lowestLmp = $lmpEntries->first(fn ($e) => empty($e->ignored));
+        }
         $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price) && is_numeric($lowestLmp->total_price))
             ? floatval($lowestLmp->total_price)
             : null;
@@ -204,6 +209,7 @@ class EbaySkuCompetitor extends Model
                     'price' => floatval($entry->price ?? 0),
                     'shipping_cost' => floatval($entry->shipping_cost ?? 0),
                     'total_price' => floatval($entry->total_price ?? 0),
+                    'ignored' => (bool) ($entry->ignored ?? false),
                     'link' => $entry->product_link,
                     'title' => $entry->product_title,
                 ];

@@ -136,16 +136,47 @@ class EbayLivePriceFetcher
             return 0.0;
         }
 
-        if (!empty($shipping['options'][0]['free'])) {
-            return 0.0;
-        }
+        $option = $shipping['options'][0] ?? null;
+        if (is_array($option)) {
+            // Explicit free flag (older SerpApi shape)
+            if (!empty($option['free'])) {
+                return 0.0;
+            }
 
-        if (isset($shipping['options'][0]['cost']['amount'])) {
-            return (float) $shipping['options'][0]['cost']['amount'];
+            // Current ebay_product shape: shipping.options[0].price.amount
+            if (isset($option['price']['amount'])) {
+                return (float) $option['price']['amount'];
+            }
+
+            // Legacy shape: shipping.options[0].cost.amount
+            if (isset($option['cost']['amount'])) {
+                return (float) $option['cost']['amount'];
+            }
+
+            // String like "US $10.00" / "Free"
+            foreach (['price', 'cost', 'via'] as $key) {
+                $raw = $option[$key] ?? null;
+                if (is_string($raw)) {
+                    if (stripos($raw, 'free') !== false) {
+                        return 0.0;
+                    }
+                    if (preg_match('/[\d,.]+/', $raw, $matches)) {
+                        return (float) str_replace(',', '', $matches[0]);
+                    }
+                }
+            }
         }
 
         if (isset($shipping['cost']['value'])) {
             return (float) $shipping['cost']['value'];
+        }
+
+        if (isset($shipping['price']['amount'])) {
+            return (float) $shipping['price']['amount'];
+        }
+
+        if (isset($shipping['cost']['amount'])) {
+            return (float) $shipping['cost']['amount'];
         }
 
         return 0.0;

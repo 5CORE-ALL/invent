@@ -310,6 +310,27 @@ class EbayController extends Controller
         return response()->json(['success' => true, 'rule' => $settings]);
     }
 
+    /**
+     * LMP × factor — shared setting for SPRICE = LMP × mult and T Prc column.
+     * Stored under key `ebay1_lmp_mult` in ebay_sbid_rules.
+     */
+    public function getLmpMultRule()
+    {
+        return response()->json(\App\Support\LmpMultRule::settings());
+    }
+
+    public function saveLmpMultRule(Request $request)
+    {
+        $settings = \App\Support\LmpMultRule::sanitize($request->all());
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => \App\Support\LmpMultRule::KEY],
+            ['rule' => json_encode($settings), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $settings]);
+    }
+
        public function ebayViewData(Request $request)
     {
         return view("market-places.ebay_pricing_data");
@@ -757,8 +778,11 @@ class EbayController extends Controller
                 });
 
             $lmpDetailsLookup = $lmpRecords;
+            // L1 = lowest non-ignored (same as Temu / EbaySkuCompetitor::buildGroupedLookup)
             $lmpLowestLookup = $lmpRecords->map(function ($items) {
-                return $items->first();
+                $active = $items->filter(fn ($item) => empty($item->ignored));
+
+                return $active->isNotEmpty() ? $active->sortBy('total_price')->first() : null;
             });
         } catch (\Exception $e) {
             Log::warning('Could not fetch LMP data from ebay_sku_competitors: ' . $e->getMessage());
@@ -930,7 +954,8 @@ class EbayController extends Controller
                 ->sortBy('total_price')
                 ->values();
 
-            $lowestLmp = $lmpEntries->first();
+            // L1 ignores flagged competitors (same as Temu LMP ignore)
+            $lowestLmp = $lmpEntries->first(fn ($e) => empty($e->ignored));
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price))
                 ? (is_numeric($lowestLmp->total_price) ? floatval($lowestLmp->total_price) : null)
                 : null;
@@ -945,6 +970,7 @@ class EbayController extends Controller
                         'price' => floatval($entry->price ?? 0),
                         'shipping_cost' => floatval($entry->shipping_cost ?? 0),
                         'total_price' => floatval($entry->total_price ?? 0),
+                        'ignored' => (bool) ($entry->ignored ?? false),
                         'link' => $entry->product_link,
                         'title' => $entry->product_title,
                     ];
@@ -2346,118 +2372,205 @@ class EbayController extends Controller
 
     public function getMetricsHistory(Request $request)
     {
-        $days = $request->input('days', 30); // Default to last 30 days
+        $days = (int) $request->input('days', 30); // Default to last 30 days; 0 = lifetime
         $sku = $request->input('sku'); // Optional SKU filter
-        
-        // Ensure minimum 7 days if pulling from today
-        $minDays = 7;
-        if ($days < $minDays) {
-            $days = $minDays;
+        $skuNorm = $sku ? strtoupper(trim($sku)) : null;
+
+        // California (America/Los_Angeles) window — include today PT so live CVR 30 matches the table.
+        $endDate = Carbon::now('America/Los_Angeles')->startOfDay();
+        if ($days === 0) {
+            $startDate = null; // lifetime — no lower bound
+        } else {
+            if ($days < 7) {
+                $days = 7;
+            }
+            $startDate = $endDate->copy()->subDays($days - 1);
         }
-        
-        // Use California timezone (America/Los_Angeles) - show data up to and including today in California
-        $californiaToday = Carbon::now('America/Los_Angeles')->startOfDay();
-        $endDate = $californiaToday; // Today in California time (e.g., Dec 18 when it's Dec 18 in California)
-        $startDate = $endDate->copy()->subDays($days - 1); // Go back $days from end date
-        
-        $chartData = [];
+
         $dataByDate = []; // Store data by date for filling gaps
-        
+
         try {
             // Try to use the new table for JSON format data
-            $query = EbaySkuDailyData::where('record_date', '>=', $startDate)
-                ->where('record_date', '<=', $endDate)
+            $query = EbaySkuDailyData::where('record_date', '<=', $endDate->toDateString())
                 ->orderBy('record_date', 'asc');
-            
+            if ($startDate) {
+                $query->where('record_date', '>=', $startDate->toDateString());
+            }
+
             // If SKU is provided, return data for specific SKU
-            if ($sku) {
-                $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
-                
+            if ($skuNorm) {
+                $metricsData = $query->where('sku', $skuNorm)->get();
+
                 foreach ($metricsData as $record) {
-                    $data = $record->daily_data;
+                    $data = is_array($record->daily_data) ? $record->daily_data : (json_decode($record->daily_data ?? '{}', true) ?: []);
                     $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $views = (int) ($data['views'] ?? 0);
+                    $ebayL30 = (int) ($data['ebay_l30'] ?? 0);
+                    // Prefer recomputed SCVR (same as CVR 30 column) when views/l30 present
+                    $cvr = $views > 0
+                        ? round(($ebayL30 / $views) * 100, 2)
+                        : round((float) ($data['cvr_percent'] ?? 0), 2);
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
                         'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
-                        'price' => round($data['price'] ?? 0, 2),
-                        'views' => $data['views'] ?? 0,
-                        'l7_views' => $data['l7_views'] ?? 0,
-                        'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
-                        'ad_percent' => round($data['ad_percent'] ?? 0, 2),
+                        'price' => round((float) ($data['price'] ?? 0), 2),
+                        'views' => $views,
+                        'l7_views' => (int) ($data['l7_views'] ?? 0),
+                        'cvr_percent' => $cvr,
+                        'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
+                        'ebay_l30' => $ebayL30,
                     ];
                 }
             } else {
                 // Aggregate data for all SKUs
                 $metricsData = $query->get()->groupBy('record_date');
-                
+
                 foreach ($metricsData as $date => $records) {
                     $dateKey = Carbon::parse($date)->format('Y-m-d');
-                    
+
                     // Calculate weighted average price (same as summary badge: price * ebay_l30 / sum ebay_l30)
                     $totalWeightedPrice = 0;
                     $totalL30 = 0;
                     foreach ($records as $record) {
-                        $price = floatval($record->daily_data['price'] ?? 0);
-                        $ebayL30 = floatval($record->daily_data['ebay_l30'] ?? 0);
+                        $daily = is_array($record->daily_data) ? $record->daily_data : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                        $price = floatval($daily['price'] ?? 0);
+                        $ebayL30 = floatval($daily['ebay_l30'] ?? 0);
                         $totalWeightedPrice += $price * $ebayL30;
                         $totalL30 += $ebayL30;
                     }
                     $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
-                    
+
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
                         'date_formatted' => Carbon::parse($date)->format('M d'),
                         'avg_price' => round($avgPrice, 2),
-                        'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
-                        'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
-                        'avg_ad_percent' => round($records->avg(function($r) { return $r->daily_data['ad_percent'] ?? 0; }), 2),
+                        'total_views' => $records->sum(function ($r) {
+                            $daily = is_array($r->daily_data) ? $r->daily_data : (json_decode($r->daily_data ?? '{}', true) ?: []);
+                            return $daily['views'] ?? 0;
+                        }),
+                        'avg_cvr_percent' => round($records->avg(function ($r) {
+                            $daily = is_array($r->daily_data) ? $r->daily_data : (json_decode($r->daily_data ?? '{}', true) ?: []);
+                            $views = (float) ($daily['views'] ?? 0);
+                            $ebayL30 = (float) ($daily['ebay_l30'] ?? 0);
+                            return $views > 0 ? (($ebayL30 / $views) * 100) : (float) ($daily['cvr_percent'] ?? 0);
+                        }), 2),
+                        'avg_ad_percent' => round($records->avg(function ($r) {
+                            $daily = is_array($r->daily_data) ? $r->daily_data : (json_decode($r->daily_data ?? '{}', true) ?: []);
+                            return $daily['ad_percent'] ?? 0;
+                        }), 2),
                     ];
                 }
             }
-            
-            // If no data found in new table, try fallback to ebay_one_metrics
-            if (empty($dataByDate)) {
+
+            // If no data found in new table, try fallback
+            if (empty($dataByDate) && ! $skuNorm) {
                 throw new \Exception('No data in new table, trying fallback');
             }
-            
+
         } catch (\Exception $e) {
-            // Fallback: Since EbayMetric doesn't have historical daily data,
-            // we'll just return empty data and let the frontend handle it
+            // Fallback: historical rows missing — live overlay below can still return today's point
             Log::info('No eBay daily metrics data available. Historical data will be populated by metrics collection command.');
         }
 
-        // Fill in missing dates with zero values to ensure at least 7 days
-        $currentDate = Carbon::parse($startDate);
-        
-        while ($currentDate->lte($endDate)) {
-            $dateKey = $currentDate->format('Y-m-d');
-            
-            if (!isset($dataByDate[$dateKey])) {
-                // Fill missing date with zero values
-                if ($sku) {
-                    $dataByDate[$dateKey] = [
-                        'date' => $dateKey,
-                        'date_formatted' => $currentDate->format('M d'),
-                        'price' => 0,
-                        'views' => 0,
-                        'cvr_percent' => 0,
-                        'ad_percent' => 0,
-                    ];
-                } else {
-                    $dataByDate[$dateKey] = [
-                        'date' => $dateKey,
-                        'date_formatted' => $currentDate->format('M d'),
-                        'avg_price' => 0,
-                        'total_views' => 0,
-                        'avg_cvr_percent' => 0,
-                        'avg_ad_percent' => 0,
-                    ];
+        // Overlay live ebay_metrics for California today so the chart matches CVR 30 on the tabulator.
+        // Drop dominant stuck snapshots from the old apicentral feed (same views/l30/price
+        // repeated for weeks/months while disagreeing with live ebay_metrics).
+        if ($skuNorm) {
+            $live = EbayMetric::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                ->first();
+            if ($live) {
+                $todayKey = $endDate->toDateString();
+                $views = (int) ($live->views ?? 0);
+                $ebayL30 = (int) ($live->ebay_l30 ?? 0);
+                $price = round((float) ($live->ebay_price ?? 0), 2);
+                $cvr = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+                $liveSig = $views . '|' . $ebayL30 . '|' . $price;
+
+                $histSigCounts = [];
+                foreach ($dataByDate as $k => $row) {
+                    if ($k === $todayKey) {
+                        continue;
+                    }
+                    $sig = ((int) ($row['views'] ?? 0)) . '|' . ((int) ($row['ebay_l30'] ?? 0)) . '|' . round((float) ($row['price'] ?? 0), 2);
+                    $histSigCounts[$sig] = ($histSigCounts[$sig] ?? 0) + 1;
                 }
+                if (! empty($histSigCounts)) {
+                    arsort($histSigCounts);
+                    $topSig = (string) array_key_first($histSigCounts);
+                    $topCount = (int) $histSigCounts[$topSig];
+                    $histTotal = (int) array_sum($histSigCounts);
+                    // Stuck feed: one signature dominates the window and disagrees with live CVR 30 source
+                    if ($topSig !== $liveSig && $topCount >= max(7, (int) floor($histTotal * 0.5))) {
+                        foreach ($dataByDate as $k => $row) {
+                            if ($k === $todayKey) {
+                                continue;
+                            }
+                            $sig = ((int) ($row['views'] ?? 0)) . '|' . ((int) ($row['ebay_l30'] ?? 0)) . '|' . round((float) ($row['price'] ?? 0), 2);
+                            if ($sig === $topSig) {
+                                unset($dataByDate[$k]);
+                            }
+                        }
+                    }
+                }
+
+                $dataByDate[$todayKey] = [
+                    'date' => $todayKey,
+                    'date_formatted' => $endDate->format('M d'),
+                    'price' => $price,
+                    'views' => $views,
+                    'l7_views' => (int) ($live->l7_views ?? 0),
+                    'cvr_percent' => $cvr,
+                    'ad_percent' => round((float) ($dataByDate[$todayKey]['ad_percent'] ?? 0), 2),
+                    'ebay_l30' => $ebayL30,
+                ];
             }
-            
-            $currentDate->addDay();
         }
-        
+
+        // Fill only interior gaps between first and last real data points (Pacific dates).
+        // Do NOT invent trailing zeros after the last collected day — that caused the cliff to $0.
+        if (!empty($dataByDate) && $startDate) {
+            $realKeys = array_keys($dataByDate);
+            sort($realKeys);
+            $fillStart = Carbon::parse($realKeys[0], 'America/Los_Angeles')->startOfDay();
+            $fillEnd = Carbon::parse($realKeys[count($realKeys) - 1], 'America/Los_Angeles')->startOfDay();
+            // Also bound by the requested rolling window
+            if ($fillStart->lt($startDate)) {
+                $fillStart = $startDate->copy();
+            }
+            if ($fillEnd->gt($endDate)) {
+                $fillEnd = $endDate->copy();
+            }
+
+            $currentDate = $fillStart->copy();
+            while ($currentDate->lte($fillEnd)) {
+                $dateKey = $currentDate->format('Y-m-d');
+                if (!isset($dataByDate[$dateKey])) {
+                    if ($skuNorm) {
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => $currentDate->format('M d'),
+                            'price' => 0,
+                            'views' => 0,
+                            'l7_views' => 0,
+                            'cvr_percent' => 0,
+                            'ad_percent' => 0,
+                        ];
+                    } else {
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => $currentDate->format('M d'),
+                            'avg_price' => 0,
+                            'total_views' => 0,
+                            'avg_cvr_percent' => 0,
+                            'avg_ad_percent' => 0,
+                        ];
+                    }
+                }
+                $currentDate->addDay();
+            }
+        }
+
         // Sort by date and convert to array
         ksort($dataByDate);
         $chartData = array_values($dataByDate);
@@ -3442,50 +3555,62 @@ class EbayController extends Controller
             // We DO NOT overwrite a stored price with a degenerate SerpApi response
             // (total_price <= 0 means listing ended / sold out / no price).
             if ($request->boolean('refresh')) {
+                // Live refresh can take a while (1 SerpApi call per competitor).
+                @set_time_limit(300);
+
                 $fetcher = app(EbayLivePriceFetcher::class);
 
                 foreach ($competitors as $competitor) {
-                    $listingId = $fetcher->resolveListingId($competitor->product_link, $competitor->item_id);
-                    if (!$listingId) {
-                        continue;
+                    try {
+                        $listingId = $fetcher->resolveListingId($competitor->product_link, $competitor->item_id);
+                        if (!$listingId) {
+                            continue;
+                        }
+
+                        $live = $fetcher->fetchByListingId($listingId);
+                        if (!$live) {
+                            continue;
+                        }
+
+                        $liveTotal = isset($live['total_price']) ? (float) $live['total_price'] : 0.0;
+                        if ($liveTotal <= 0) {
+                            continue;
+                        }
+
+                        $originalItemId = $competitor->item_id;
+                        $competitor->update([
+                            'item_id' => $listingId,
+                            'price' => $live['price'],
+                            'shipping_cost' => $live['shipping_cost'],
+                            'total_price' => $liveTotal,
+                            'product_title' => $live['title'] ?? $competitor->product_title,
+                            'product_link' => $live['link'] ?? $competitor->product_link,
+                            'image' => $live['image'] ?? $competitor->image,
+                        ]);
+
+                        // Best-effort cache sync — must not abort LMP pull on unique conflicts.
+                        \App\Models\EbayCompetitorItem::syncLiveListingData(
+                            (string) $listingId,
+                            $originalItemId !== null ? (string) $originalItemId : null,
+                            $live
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('getEbayLmpData refresh skipped competitor', [
+                            'sku' => $sku,
+                            'competitor_id' => $competitor->id ?? null,
+                            'error' => $e->getMessage(),
+                        ]);
                     }
-
-                    $live = $fetcher->fetchByListingId($listingId);
-                    if (!$live) {
-                        continue;
-                    }
-
-                    $liveTotal = isset($live['total_price']) ? (float) $live['total_price'] : 0.0;
-                    if ($liveTotal <= 0) {
-                        continue;
-                    }
-
-                    $originalItemId = $competitor->item_id;
-                    $competitor->update([
-                        'item_id' => $listingId,
-                        'price' => $live['price'],
-                        'shipping_cost' => $live['shipping_cost'],
-                        'total_price' => $liveTotal,
-                        'product_title' => $live['title'] ?? $competitor->product_title,
-                        'product_link' => $live['link'] ?? $competitor->product_link,
-                        'image' => $live['image'] ?? $competitor->image,
-                    ]);
-
-                    \App\Models\EbayCompetitorItem::where(function ($query) use ($originalItemId, $listingId) {
-                        $query->where('item_id', $originalItemId)
-                            ->orWhere('link', 'like', '%/itm/' . $listingId . '%');
-                    })->update([
-                        'item_id' => $listingId,
-                        'price' => $live['price'],
-                        'shipping_cost' => $live['shipping_cost'],
-                        'link' => $live['link'],
-                        'title' => $live['title'],
-                        'image' => $live['image'],
-                    ]);
                 }
 
                 $competitors = $competitors
-                    ->map(function ($comp) { return $comp->refresh(); });
+                    ->map(function ($comp) {
+                        try {
+                            return $comp->refresh();
+                        } catch (\Throwable $e) {
+                            return $comp;
+                        }
+                    });
             }
 
             $competitors = $competitors
@@ -3494,7 +3619,8 @@ class EbayController extends Controller
                 })
                 ->sortBy(function ($comp) { return (float) $comp->total_price; })
                 ->values();
-            $lowestPrice = $competitors->first();
+            // L1 = lowest non-ignored competitor (same as Temu)
+            $lowestPrice = $competitors->first(fn ($comp) => empty($comp->ignored));
             
             return response()->json([
                 'success' => true,
@@ -3510,7 +3636,7 @@ class EbayController extends Controller
                         'link' => $comp->product_link,
                         'title' => $comp->product_title,
                         'image' => $comp->image ?? null,
-                        'created_at' => $comp->created_at->format('Y-m-d H:i:s'),
+                        'created_at' => $comp->created_at ? $comp->created_at->format('Y-m-d H:i:s') : null,
                     ];
                 }),
                 'lowest_price' => $lowestPrice ? floatval($lowestPrice->total_price) : null,

@@ -229,17 +229,17 @@ class UpdateEbaySkuCompetitorPrices extends Command
                         'image' => $newImage ?? $competitor->image,
                     ]);
 
-                    EbayCompetitorItem::where(function ($query) use ($originalItemId, $listingId) {
-                        $query->where('item_id', $originalItemId)
-                            ->orWhere('link', 'like', '%/itm/' . $listingId . '%');
-                    })->update([
-                        'item_id' => $listingId,
-                        'price' => $live['price'],
-                        'shipping_cost' => $live['shipping_cost'],
-                        'link' => $live['link'],
-                        'title' => $live['title'],
-                        'image' => $newImage,
-                    ]);
+                    EbayCompetitorItem::syncLiveListingData(
+                        (string) $listingId,
+                        $originalItemId !== null ? (string) $originalItemId : null,
+                        [
+                            'price' => $live['price'],
+                            'shipping_cost' => $live['shipping_cost'],
+                            'link' => $live['link'] ?? null,
+                            'title' => $live['title'] ?? null,
+                            'image' => $newImage,
+                        ]
+                    );
                 }
 
                 if ($priceChanged) {

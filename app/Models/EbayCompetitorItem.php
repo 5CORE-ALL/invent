@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 
 class EbayCompetitorItem extends Model
 {
@@ -26,6 +27,54 @@ class EbayCompetitorItem extends Model
         'shipping_cost',
         'location',
     ];
+
+    /**
+     * Sync live listing price/shipping into search-cache rows.
+     * Avoids unique (search_query, item_id) collisions that used to break LMP pull.
+     *
+     * @param  array{price?: mixed, shipping_cost?: mixed, link?: ?string, title?: ?string, image?: ?string}  $live
+     */
+    public static function syncLiveListingData(string $listingId, ?string $originalItemId, array $live): void
+    {
+        $ids = array_values(array_unique(array_filter([
+            (string) $listingId,
+            $originalItemId !== null && $originalItemId !== '' ? (string) $originalItemId : null,
+        ])));
+
+        if ($ids === []) {
+            return;
+        }
+
+        static::whereIn('item_id', $ids)->get()->each(function (self $row) use ($listingId, $live) {
+            $payload = [
+                'price' => $live['price'] ?? $row->price,
+                'shipping_cost' => $live['shipping_cost'] ?? $row->shipping_cost,
+                'link' => $live['link'] ?? $row->link,
+                'title' => $live['title'] ?? $row->title,
+                'image' => $live['image'] ?? $row->image,
+            ];
+
+            if ((string) $row->item_id !== (string) $listingId) {
+                $conflict = static::where('search_query', $row->search_query)
+                    ->where('item_id', $listingId)
+                    ->where('id', '!=', $row->id)
+                    ->exists();
+                if (! $conflict) {
+                    $payload['item_id'] = $listingId;
+                }
+            }
+
+            try {
+                $row->update($payload);
+            } catch (\Throwable $e) {
+                Log::warning('EbayCompetitorItem::syncLiveListingData skipped row', [
+                    'id' => $row->id,
+                    'listing_id' => $listingId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
+    }
 
     /**
      * Get the total price (price + shipping cost)
