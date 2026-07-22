@@ -321,32 +321,6 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Run inventory auto-pause: ENABLED Shopping campaigns with INV ≤ 0 → PAUSED.
-     * Same command the daily cron uses ({@see SyncGoogleShoppingStatusByInventory}).
-     */
-    public function syncPauseByInventory(): JsonResponse
-    {
-        return $this->runArtisanPush(
-            'google-shopping:sync-status-by-inventory',
-            ['--mode' => 'pause'],
-            'google-shopping:sync-status-by-inventory --mode=pause'
-        );
-    }
-
-    /**
-     * Run inventory auto-enable: PAUSED Shopping campaigns with INV > 0 → ENABLED.
-     * Same command the daily cron uses ({@see SyncGoogleShoppingStatusByInventory}).
-     */
-    public function syncEnableByInventory(): JsonResponse
-    {
-        return $this->runArtisanPush(
-            'google-shopping:sync-status-by-inventory',
-            ['--mode' => 'enable'],
-            'google-shopping:sync-status-by-inventory --mode=enable'
-        );
-    }
-
-    /**
      * @return list<string>
      */
     private function validatedPushCampaignIds(Request $request): array

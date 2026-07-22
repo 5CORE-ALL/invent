@@ -443,12 +443,6 @@
                             <i class="fa fa-cloud-upload-alt"></i> Push SBID
                         </button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
-                        <button type="button" class="btn btn-sm btn-outline-danger" id="gac-raw-pause-inv" title="Auto-pause: ENABLED campaigns with INV ≤ 0 → PAUSED. Same as daily cron google-shopping:sync-status-by-inventory --mode=pause. Uses parent-total INV for PARENT campaigns.">
-                            <i class="fa fa-pause"></i> Pause (Inv=0)
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-success" id="gac-raw-enable-inv" title="Auto-enable: PAUSED campaigns with INV &gt; 0 → ENABLED. Same as daily cron google-shopping:sync-status-by-inventory --mode=enable. Uses parent-total INV for PARENT campaigns.">
-                            <i class="fa fa-play"></i> Active (Inv&gt;0)
-                        </button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="gac-raw-verify-id" title="Filter L30 Spend = 0 and INV &gt; 0, then compare each campaign’s Google Ads Item ID to the live Merchant Center / Shopify product ID. Red triangle in the ID column = mismatch.">
                             <i class="fa fa-id-card"></i> Verify ID
                         </button>
@@ -783,8 +777,6 @@
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
-            const gacRawPauseInvUrl = @json(route('google.shopping.campaigns.sync.pause.inventory'));
-            const gacRawEnableInvUrl = @json(route('google.shopping.campaigns.sync.enable.inventory'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawSbgtHistoryUrl = @json(route('google.shopping.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
@@ -2415,86 +2407,6 @@
                         confirmMsg: 'Push SBID to ' + scope + '? Sends in chunks of 10 (' + sbidChunks + ' request(s)). Each row uses the SBID shown in the grid. Rows with SBID — are skipped.',
                         loadingTitle: 'Pushing SBID (sbid:update)…',
                         loadingDetail: 'Updating SBIDs for ' + ids.length + ' campaign id(s) in chunks of 10.',
-                    });
-                });
-            }
-
-            /** Run pause/enable-by-inventory artisan (same as daily cron). No campaign_ids — full channel scan. */
-            function gacRunInvStatusSync(opts) {
-                if (!window.confirm(opts.confirmMsg)) {
-                    return;
-                }
-                var btn = opts.btn;
-                var pauseB = document.getElementById('gac-raw-pause-inv');
-                var enableB = document.getElementById('gac-raw-enable-inv');
-                if (pauseB) pauseB.disabled = true;
-                if (enableB) enableB.disabled = true;
-                var origHtml = btn.innerHTML;
-                btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Running…';
-                gacShowPushLoading(opts.loadingTitle, opts.loadingDetail || 'Waiting for Google Ads API — do not close this tab.');
-
-                var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                fetch(opts.url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                        'X-CSRF-TOKEN': token,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({}),
-                })
-                    .then(function(res) {
-                        return res.json().then(function(body) {
-                            return { ok: res.ok, body: body };
-                        });
-                    })
-                    .then(function(out) {
-                        var b = out.body || {};
-                        var cmd = b.command || opts.commandLabel || 'sync-status-by-inventory';
-                        var success = out.ok && b.ok !== false;
-                        var title = cmd + ' — ' + (success ? 'finished' : 'failed');
-                        if (b.exit_code != null) title += ' (exit ' + b.exit_code + ')';
-                        var text = (b.message ? b.message + '\n\n' : '') + (b.output || '');
-                        gacShowPushResult(title, text, success ? 'success' : 'error');
-                        if (success && table) {
-                            Promise.resolve(table.setData(dataUrl)).finally(gacRawRefreshTableUiSoon);
-                        }
-                    })
-                    .catch(function(err) {
-                        gacShowPushResult('Request failed', String(err && err.message ? err.message : err), 'error');
-                    })
-                    .finally(function() {
-                        btn.innerHTML = origHtml;
-                        if (pauseB) pauseB.disabled = false;
-                        if (enableB) enableB.disabled = false;
-                    });
-            }
-
-            var pauseInvBtn = document.getElementById('gac-raw-pause-inv');
-            if (pauseInvBtn) {
-                pauseInvBtn.addEventListener('click', function() {
-                    gacRunInvStatusSync({
-                        url: gacRawPauseInvUrl,
-                        btn: pauseInvBtn,
-                        commandLabel: 'google-shopping:sync-status-by-inventory --mode=pause',
-                        confirmMsg: 'Pause all ENABLED Shopping campaigns with INV ≤ 0?\n\nUses parent-total INV for PARENT campaigns (same as the INV column). Same job as the daily 18:00 IST cron.',
-                        loadingTitle: 'Pausing campaigns with INV = 0…',
-                        loadingDetail: 'Running google-shopping:sync-status-by-inventory --mode=pause against Google Ads.',
-                    });
-                });
-            }
-            var enableInvBtn = document.getElementById('gac-raw-enable-inv');
-            if (enableInvBtn) {
-                enableInvBtn.addEventListener('click', function() {
-                    gacRunInvStatusSync({
-                        url: gacRawEnableInvUrl,
-                        btn: enableInvBtn,
-                        commandLabel: 'google-shopping:sync-status-by-inventory --mode=enable',
-                        confirmMsg: 'Enable all PAUSED Shopping campaigns with INV > 0?\n\nUses parent-total INV for PARENT campaigns (same as the INV column). Same job as the daily 18:00 IST cron.',
-                        loadingTitle: 'Enabling campaigns with INV > 0…',
-                        loadingDetail: 'Running google-shopping:sync-status-by-inventory --mode=enable against Google Ads.',
                     });
                 });
             }

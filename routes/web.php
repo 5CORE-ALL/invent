@@ -5849,8 +5849,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
-        Route::post('/google/shopping/google-shopping/sync-pause-by-inventory', 'syncPauseByInventory')->name('google.shopping.campaigns.sync.pause.inventory');
-        Route::post('/google/shopping/google-shopping/sync-enable-by-inventory', 'syncEnableByInventory')->name('google.shopping.campaigns.sync.enable.inventory');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');

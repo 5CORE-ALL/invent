@@ -842,16 +842,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pause ENABLED Shopping campaigns with INV≤0; enable PAUSED ones with INV>0
-        // (PARENT … uses child Shopify inv total — same as /google/shopping/google-shopping).
-        $ist($schedule->command('google-shopping:sync-status-by-inventory --mode=both')
-            ->dailyAt('18:00')
-            ->timezone('Asia/Kolkata')
-            ->name('google-shopping-sync-status-by-inventory')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         // Reset SBID status daily — must complete before sbid:update at 17:48 IST.
         // withoutOverlapping(2) keeps the daily reset single-fire even if a tick is delayed.
         $schedule->call(function () {
