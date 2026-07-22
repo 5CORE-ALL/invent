@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Campaigns\Concerns\ProvidesEbayCampaignAdsBadgeSummary;
 use App\Http\Controllers\Controller;
-use App\Services\CronMonitor\DuplicateLockService;
+use App\Services\CronMonitor\ManualActionService;
 use App\Services\EbayChannelMetricsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -339,11 +339,11 @@ class Ebay2CampaignAdsController extends Controller
         ]);
     }
 
-    public function pushSbid(DuplicateLockService $locks)
+    public function pushSbid(ManualActionService $manual)
     {
         try {
-            // Manual UI push must always be able to run — clear a stuck/prior lock first.
-            $locks->forceRelease('ebay2:update-suggestedbid');
+            // Clear stuck lock + running cron markers so the UI button can always start a push.
+            $manual->unlock('ebay2:update-suggestedbid');
 
             $exitCode = Artisan::call('ebay2:update-suggestedbid');
             $output = Artisan::output();

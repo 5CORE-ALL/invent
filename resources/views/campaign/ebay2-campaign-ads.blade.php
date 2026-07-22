@@ -292,6 +292,27 @@
 <script src="https://unpkg.com/tabulator-tables@6.2.1/dist/js/tabulator.min.js"></script>
 <script>
 let table;
+let allLoadedListingIds = [];
+const selectedIds = new Set();
+
+function selectAllListings(checked) {
+    if (checked) {
+        allLoadedListingIds.forEach(lid => selectedIds.add(lid));
+    } else {
+        allLoadedListingIds.forEach(lid => selectedIds.delete(lid));
+    }
+    document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = !!checked; });
+    const headerCb = document.getElementById('select-all-cb');
+    if (headerCb) headerCb.checked = !!checked;
+    updateSelectedCount();
+}
+
+function syncSelectAllHeader() {
+    const headerCb = document.getElementById('select-all-cb');
+    if (!headerCb) return;
+    headerCb.checked = allLoadedListingIds.length > 0
+        && allLoadedListingIds.every(lid => selectedIds.has(lid));
+}
 
 function loadData() {
     const search  = $('#search-input').val();
@@ -305,7 +326,16 @@ function loadData() {
                 $('#total-count').text(resp.total.toLocaleString() + ' rows');
                 $('#last-updated').text('Updated: ' + new Date().toLocaleTimeString());
                 recomputeAvgL7Views(resp.data);
+                allLoadedListingIds = (resp.data || [])
+                    .map(d => d && d.listing_id)
+                    .filter(lid => lid != null)
+                    .map(String);
+                Array.from(selectedIds).forEach(lid => {
+                    if (!allLoadedListingIds.includes(lid)) selectedIds.delete(lid);
+                });
                 table.replaceData(resp.data);
+                updateSelectedCount();
+                syncSelectAllHeader();
             } else {
                 $('#total-count').text('Error');
                 console.error('Unexpected response:', resp);
@@ -345,10 +375,19 @@ $(document).ready(function () {
                 field: '_select', width: 40, hozAlign: 'center',
                 headerSort: false, frozen: true,
                 titleFormatter: function() {
-                    const allData = table ? (table.getData() || []) : [];
-                    const lids = allData.map(d => d && d.listing_id).filter(lid => lid != null).map(String);
-                    const allSelected = lids.length > 0 && lids.every(lid => selectedIds.has(lid));
-                    return `<input type="checkbox" id="select-all-cb" style="cursor:pointer;" ${allSelected ? 'checked' : ''}>`;
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.id = 'select-all-cb';
+                    cb.style.cursor = 'pointer';
+                    cb.title = 'Select all rows across every page';
+                    cb.checked = allLoadedListingIds.length > 0
+                        && allLoadedListingIds.every(lid => selectedIds.has(lid));
+                    cb.addEventListener('click', function(e) { e.stopPropagation(); });
+                    cb.addEventListener('change', function(e) {
+                        e.stopPropagation();
+                        selectAllListings(cb.checked);
+                    });
+                    return cb;
                 },
                 formatter: function(cell) {
                     const lid = String(cell.getRow().getData().listing_id);
@@ -356,20 +395,14 @@ $(document).ready(function () {
                     return `<input type="checkbox" class="row-cb" data-lid="${lid}" ${checked} style="cursor:pointer;">`;
                 },
                 cellClick: function(e, cell) {
+                    e.stopPropagation();
                     const lid = String(cell.getRow().getData().listing_id);
                     const cb  = cell.getElement().querySelector('.row-cb');
-                    if (cb) {
-                        if (selectedIds.has(lid)) { selectedIds.delete(lid); cb.checked = false; }
-                        else                       { selectedIds.add(lid);    cb.checked = true;  }
-                        updateSelectedCount();
-                        // Keep header checkbox in sync with full-table selection.
-                        const headerCb = document.getElementById('select-all-cb');
-                        if (headerCb) {
-                            const allData = table ? (table.getData() || []) : [];
-                            const lids = allData.map(d => d && d.listing_id).filter(x => x != null).map(String);
-                            headerCb.checked = lids.length > 0 && lids.every(x => selectedIds.has(x));
-                        }
-                    }
+                    if (!cb || !lid || lid === 'undefined' || lid === 'null') return;
+                    if (selectedIds.has(lid)) { selectedIds.delete(lid); cb.checked = false; }
+                    else                       { selectedIds.add(lid);    cb.checked = true;  }
+                    updateSelectedCount();
+                    syncSelectAllHeader();
                 }
             },
             {
@@ -557,8 +590,6 @@ $(document).ready(function () {
 });
 
 // ── Checkbox selection ─────────────────────────────
-const selectedIds = new Set();
-
 function updateSelectedCount() {
     const count = selectedIds.size;
     $('#selected-count, #enroll-count').text(count);
@@ -643,29 +674,6 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
             errEl.classList.remove('d-none');
         }
     });
-});
-
-// Select All — use getData() (full in-memory set across every page), not getRows('active')
-// which can be page-scoped depending on Tabulator version/pipeline.
-document.addEventListener('change', function(e) {
-    if (e.target && e.target.id === 'select-all-cb') {
-        const checked = e.target.checked;
-        const data = table ? (table.getData() || []) : [];
-
-        if (checked) {
-            data.forEach(d => {
-                if (d && d.listing_id != null) selectedIds.add(String(d.listing_id));
-            });
-        } else {
-            data.forEach(d => {
-                if (d && d.listing_id != null) selectedIds.delete(String(d.listing_id));
-            });
-        }
-
-        // Sync currently rendered checkboxes; other pages pick up state via the formatter.
-        document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = checked; });
-        updateSelectedCount();
-    }
 });
 
 // Push Selected button
