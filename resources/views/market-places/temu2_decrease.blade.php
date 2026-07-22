@@ -549,7 +549,7 @@
                             title="L30 sales from Temu 2 orders (same source as sales summary)">Sales: $0</span>
                         <span class="badge fs-6 p-2" id="total-spend-badge"
                             style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; font-weight: bold;"
-                            title="Sum of Spend from Temu 2 Ads upload">Spend: $0.00</span>
+                            title="Sum of Spend from Temu 2 Ads upload">Spend: $0</span>
                         <span class="badge fs-6 p-2 temu-badge-history" id="qty-sold-badge"
                             data-badge-metric="total_quantity" data-badge-label="QTY"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -2874,13 +2874,10 @@
             const spendSum = Number.isFinite(backendSpend)
                 ? backendSpend
                 : (totalSpendL30 > 0 ? totalSpendL30 : totalSpend);
-            $('#total-spend-badge').text('Spend: $' + Number(spendSum).toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }));
+            $('#total-spend-badge').text('Spend: $' + Math.round(spendSum).toLocaleString());
             $('#qty-sold-badge').text('Qty: ' + Number(qtyAmt).toLocaleString());
-            $('#avg-gpft-badge').text('GPFT: ' + avgGprft.toFixed(1) + '%');
-            $('#groi-percent-badge').text('GROI: ' + avgGroi.toFixed(1) + '%');
+            $('#avg-gpft-badge').text('GPFT: ' + Math.round(avgGprft) + '%');
+            $('#groi-percent-badge').text('GROI: ' + Math.round(avgGroi) + '%');
             $('#ads-percent-badge').text('Ads: ' + (Number(adsPercentForNpft) || 0).toFixed(1) + '%');
             $('#avg-price-badge').text('Prc: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('CVR: ' + qtyPerViews.toFixed(1) + '%');
@@ -3420,7 +3417,7 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         const color = value < 0 ? '#dc3545' : (value > 0 ? '#28a745' : '#6c757d');
-                        return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">$${Math.round(value).toLocaleString()}</span>`;
                     },
                     visible: false
                 },
