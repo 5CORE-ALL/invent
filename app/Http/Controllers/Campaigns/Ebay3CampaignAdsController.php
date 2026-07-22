@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * eBay 3 mirror of {@see EbayCampaignAdsController} / {@see Ebay2CampaignAdsController}
@@ -210,12 +212,44 @@ class Ebay3CampaignAdsController extends Controller
 
                 if ($response->successful()) {
                     foreach ($requests as $r) {
+                        DB::table('ebay3_campaign_ads')
+                            ->where('listing_id', (string) $r['listingId'])
+                            ->where('campaign_id', (string) $campaignId)
+                            ->update([
+                                'bid_percentage' => round((float) $r['bidPercentage'], 2),
+                                'updated_at' => now(),
+                            ]);
                         $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => $r['bidPercentage'] . '%'];
                         $success++;
                     }
                 } else {
+                    // Surface eBay's real error (e.g. seller-level / SYSTEM_PAUSED) instead of bare HTTP code.
+                    $body = $response->json();
+                    $ebayMsg = $body['errors'][0]['message']
+                        ?? $body['errors'][0]['longMessage']
+                        ?? $body['message']
+                        ?? null;
+                    $reason = $ebayMsg
+                        ? ($response->status() . ': ' . $ebayMsg)
+                        : (string) $response->status();
+
+                    // Keep local campaign_status in sync when eBay has paused the campaign.
+                    if ($response->status() === 409 && is_string($ebayMsg)
+                        && (str_contains(strtolower($ebayMsg), 'seller level')
+                            || str_contains(strtolower($ebayMsg), 'promoted listings'))) {
+                        DB::table('ebay3_campaign_ads')
+                            ->where('campaign_id', (string) $campaignId)
+                            ->update(['campaign_status' => 'SYSTEM_PAUSED', 'updated_at' => now()]);
+                    }
+
+                    \Log::warning('ebay3 pushSelected bid update failed', [
+                        'campaign_id' => $campaignId,
+                        'http' => $response->status(),
+                        'body' => $body,
+                    ]);
+
                     foreach ($requests as $r) {
-                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $response->status()];
+                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'failed', 'reason' => $reason];
                         $failed++;
                     }
                 }
@@ -337,6 +371,8 @@ class Ebay3CampaignAdsController extends Controller
         $success = 0;
         $failed  = 0;
         $skipped = 0;
+        // Use live campaign status — do not assume RUNNING (eBay may SYSTEM_PAUSE).
+        $liveStatus = $this->fetchCampaignStatus($token, (string) $campaignId) ?: 'RUNNING';
 
         foreach ($listingIds as $lid) {
             $lid    = (string)$lid;
@@ -367,7 +403,7 @@ class Ebay3CampaignAdsController extends Controller
                         ->update([
                             'campaign_id'      => $campaignId,
                             'funding_strategy' => 'COST_PER_SALE',
-                            'campaign_status'  => 'RUNNING',
+                            'campaign_status'  => $liveStatus,
                             'bid_percentage'   => $bid,
                             'promote_with_ad'  => 'AD_ALREADY_CREATED',
                             'ad_id'            => $adData['adId'] ?? null,
@@ -435,6 +471,10 @@ class Ebay3CampaignAdsController extends Controller
 
     public function getData(Request $request)
     {
+        // Local campaign_status goes stale between daily syncs (eBay can SYSTEM_PAUSE
+        // mid-day). Refresh from Marketing API so the Status column matches eBay.
+        $this->refreshCampaignStatusesFromEbay();
+
         $query = DB::table('ebay3_campaign_ads as ca')
             ->leftJoin('ebay_3_metrics as em', 'em.item_id', '=', 'ca.listing_id')
             ->select(
@@ -646,5 +686,84 @@ class Ebay3CampaignAdsController extends Controller
             'is_sub_row'  => $isSubRow,
             'marketplace' => 'ebay3',
         ];
+    }
+
+    /**
+     * Pull live campaignStatus from eBay and write it onto local ebay3_campaign_ads rows.
+     * Cached briefly so table reloads don't hit Marketing API every time.
+     */
+    private function refreshCampaignStatusesFromEbay(): void
+    {
+        $cacheKey = 'ebay3_campaign_ads_status_refreshed';
+        if (Cache::has($cacheKey)) {
+            return;
+        }
+
+        try {
+            $service = new \App\Services\EbayThreeApiService();
+            $token   = $service->generateBearerToken();
+
+            $all    = [];
+            $offset = 0;
+            $limit  = 200;
+            do {
+                $resp  = Http::withToken($token)
+                    ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
+                        'limit'  => $limit,
+                        'offset' => $offset,
+                    ]);
+                if (!$resp->successful()) {
+                    break;
+                }
+                $data  = $resp->json();
+                $batch = $data['campaigns'] ?? [];
+                $total = (int) ($data['total'] ?? 0);
+                $all   = array_merge($all, $batch);
+                $offset += $limit;
+            } while (count($all) < $total && !empty($batch));
+
+            foreach ($all as $c) {
+                $cid    = (string) ($c['campaignId'] ?? '');
+                $status = (string) ($c['campaignStatus'] ?? '');
+                $name   = $c['campaignName'] ?? null;
+                if ($cid === '' || $status === '') {
+                    continue;
+                }
+                $update = ['campaign_status' => $status, 'updated_at' => now()];
+                if (is_string($name) && $name !== '') {
+                    $update['campaign_name'] = $name;
+                }
+                DB::table('ebay3_campaign_ads')
+                    ->where('campaign_id', $cid)
+                    ->where(function ($q) use ($status, $name) {
+                        $q->where('campaign_status', '!=', $status)
+                          ->orWhereNull('campaign_status');
+                        if (is_string($name) && $name !== '') {
+                            $q->orWhereNull('campaign_name')
+                              ->orWhere('campaign_name', '!=', $name);
+                        }
+                    })
+                    ->update($update);
+            }
+
+            Cache::put($cacheKey, true, now()->addMinutes(5));
+        } catch (\Throwable $e) {
+            Log::warning('ebay3 campaign status refresh failed: '.$e->getMessage());
+        }
+    }
+
+    private function fetchCampaignStatus(string $token, string $campaignId): ?string
+    {
+        try {
+            $resp = Http::withToken($token)
+                ->get("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}");
+            if (!$resp->successful()) {
+                return null;
+            }
+            $status = $resp->json()['campaignStatus'] ?? null;
+            return is_string($status) && $status !== '' ? $status : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 }

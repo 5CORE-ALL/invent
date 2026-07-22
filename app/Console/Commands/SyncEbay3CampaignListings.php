@@ -66,10 +66,25 @@ class SyncEbay3CampaignListings extends Command
 
             $this->line("📋 {$campaignName} | {$funding} | {$campaignStatus}");
 
+            // Always sync campaign_status even when the campaign has no ads —
+            // otherwise a RUNNING → SYSTEM_PAUSED flip leaves stale "RUNNING" in the UI.
+            if (!$dryRun) {
+                $statusUpdate = [
+                    'campaign_status' => $campaignStatus,
+                    'updated_at'      => now(),
+                ];
+                if ($campaignName !== '') {
+                    $statusUpdate['campaign_name'] = $campaignName;
+                }
+                DB::table('ebay3_campaign_ads')
+                    ->where('campaign_id', (string) $campaignId)
+                    ->update($statusUpdate);
+            }
+
             $ads = $this->fetchAllAds($token, $campaignId);
 
             if (empty($ads)) {
-                $this->line('   → No ads.');
+                $this->line('   → No ads (status synced).');
                 continue;
             }
 

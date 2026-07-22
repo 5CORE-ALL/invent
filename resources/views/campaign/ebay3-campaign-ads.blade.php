@@ -60,6 +60,7 @@
                         <option value="">All Status</option>
                         <option value="RUNNING">RUNNING</option>
                         <option value="PAUSED">PAUSED</option>
+                        <option value="SYSTEM_PAUSED">SYSTEM_PAUSED</option>
                         <option value="ENDED">ENDED</option>
                     </select>
                 </div>
@@ -286,6 +287,7 @@
     .badge-cpc  { background: #0d6efd; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-run  { background: #198754; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-paus { background: #ffc107; color:#000; padding:2px 7px; border-radius:4px; font-size:11px; }
+    .badge-sys  { background: #dc3545; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
     .badge-end  { background: #dc3545; color:#fff; padding:2px 7px; border-radius:4px; font-size:11px; }
 </style>
 @endsection
@@ -487,6 +489,7 @@ $(document).ready(function () {
                     const v = cell.getValue();
                     if (v === 'RUNNING') return '<span class="badge-run">RUNNING</span>';
                     if (v === 'PAUSED')  return '<span class="badge-paus">PAUSED</span>';
+                    if (v === 'SYSTEM_PAUSED') return '<span class="badge-sys">SYSTEM_PAUSED</span>';
                     if (v === 'ENDED')   return '<span class="badge-end">ENDED</span>';
                     return '<span style="color:#aaa; font-size:11px;">—</span>';
                 }
