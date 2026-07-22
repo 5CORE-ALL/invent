@@ -44,4 +44,20 @@ return [
         'monthly' => (int) env('TASK_MISSED_AFTER_HOURS_MONTHLY', 720),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Missed-task deletion timezone and cutoff time
+    |--------------------------------------------------------------------------
+    |
+    | Automated tasks whose checklist was not filled by the cutoff are marked
+    | missed and soft-deleted. The cutoff is calculated in this timezone.
+    |   daily   = same calendar day as start_date at cutoff_time
+    |   weekly  = 7 days after start_date at cutoff_time
+    |   monthly = last day of start_date's month at cutoff_time
+    |
+    */
+    'missed_task_timezone' => env('TASK_MISSED_TASK_TIMEZONE', 'America/Los_Angeles'),
+
+    'missed_task_cutoff_time' => env('TASK_MISSED_TASK_CUTOFF_TIME', '23:59:00'),
+
 ];

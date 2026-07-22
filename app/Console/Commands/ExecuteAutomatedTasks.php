@@ -4,11 +4,13 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\AutomatedTaskSubtaskFirer;
 use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class ExecuteAutomatedTasks extends Command
 {
@@ -28,17 +30,24 @@ class ExecuteAutomatedTasks extends Command
         $dayStart = TaskBusinessTime::todayStart();
         $dayEnd = TaskBusinessTime::todayEnd();
 
-        // Get all active automated tasks (weekly/monthly; daily are handled by generate-daily-automated)
-        $automatedTasks = DB::table('automate_tasks')
-            ->whereNotIn('status', ['Done', 'Archived'])
-            ->get();
-        
+        // Get active parent/root automated tasks only (weekly/monthly).
+        // Child subtask templates fire with their parent via AutomatedTaskSubtaskFirer.
+        // Daily tasks are handled by generate-daily-automated.
+        $query = DB::table('automate_tasks')
+            ->whereNotIn('status', ['Done', 'Archived']);
+        if (Schema::hasColumn('automate_tasks', 'parent_task_id')) {
+            $query->where(function ($q) {
+                $q->whereNull('parent_task_id')->orWhere('parent_task_id', 0);
+            });
+        }
+        $automatedTasks = $query->get();
+
         $executed = 0;
-        
+
         foreach ($automatedTasks as $task) {
             $shouldRun = false;
             $scheduleType = strtolower((string) ($task->schedule_type ?? ''));
-            
+
             // Check if it's time to run based on schedule_type.
             // Daily tasks are created by tasks:generate-daily-automated; skip here to avoid duplicates.
             switch ($scheduleType) {
@@ -174,8 +183,19 @@ class ExecuteAutomatedTasks extends Command
                     }
                 }
 
-                $executed++;
-                $this->info("✓ Executed: {$task->title}");
+                $childCount = AutomatedTaskSubtaskFirer::fireChildren(
+                    (int) $task->id,
+                    (int) $taskId,
+                    $now,
+                    $startDate,
+                    $dueDate,
+                    (string) $task->schedule_type,
+                    (string) $scheduleTime,
+                    $taskWhatsApp
+                );
+
+                $executed += 1 + $childCount;
+                $this->info("✓ Executed: {$task->title}" . ($childCount > 0 ? " (+{$childCount} subtask(s))" : ''));
             }
         }
         

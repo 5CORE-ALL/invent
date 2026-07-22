@@ -1291,6 +1291,8 @@ class TaskController extends Controller
             'assignee_ids' => 'nullable|array',
             'assignee_ids.*' => 'exists:users,id',
             'split_tasks' => 'nullable|boolean',
+            'parent_task_id' => 'nullable|exists:tasks,id',
+            'subtask_order' => 'nullable|integer|min:0',
             'flag_raise' => 'nullable|boolean',
             'etc_minutes' => 'nullable|integer',
             'tid' => 'nullable|date',
@@ -1374,6 +1376,8 @@ class TaskController extends Controller
             'assignor' => $assignorEmail,
             'assign_to' => $assigneeEmail,
             'split_tasks' => $request->has('split_tasks') ? 1 : 0,
+            'parent_task_id' => $validated['parent_task_id'] ?? null,
+            'subtask_order' => $validated['subtask_order'] ?? 0,
             'status' => 'Todo', // Default status
             'eta_time' => $validated['etc_minutes'] ?? 10,
             'start_date' => $startDate,
@@ -1495,6 +1499,115 @@ class TaskController extends Controller
             return response()->json(['error' => 'Unauthorized'], 403);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Task not found or error loading: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * List subtasks for a given parent task.
+     */
+    public function subtasks($id)
+    {
+        try {
+            $task = Task::findOrFail($id);
+            $this->authorize('view', $task);
+
+            $subtasks = Task::where('parent_task_id', $id)
+                ->whereNull('deleted_at')
+                ->orderBy('subtask_order')
+                ->orderBy('id')
+                ->get();
+
+            return response()->json($subtasks);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Task not found or error loading subtasks: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Create a subtask under a parent task. Each subtask is a normal task row
+     * with its own ID and full task functionality.
+     */
+    public function storeSubtask(Request $request, $id)
+    {
+        try {
+            $parent = Task::findOrFail($id);
+            $this->authorize('view', $parent);
+
+            $validated = $request->validate([
+                'title' => 'required|string|max:1000',
+                'description' => 'nullable|string',
+                'priority' => 'required|in:low,normal,high',
+                'assignee_id' => 'nullable|exists:users,id',
+                'etc_minutes' => 'nullable|integer',
+                'tid' => 'nullable|date',
+            ]);
+
+            $user = Auth::user();
+            $assignorEmail = $user->email;
+            $assigneeEmail = null;
+            if (! empty($validated['assignee_id'])) {
+                $assigneeUser = User::find($validated['assignee_id']);
+                $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+            }
+
+            $startDate = $validated['tid'] ?? now();
+            $completionDate = \Carbon\Carbon::parse($startDate)->addDays(5);
+
+            $maxOrder = (int) Task::where('parent_task_id', $id)->max('subtask_order');
+
+            $subtask = Task::create([
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'group' => $parent->group,
+                'priority' => $validated['priority'],
+                'assignor' => $assignorEmail,
+                'assign_to' => $assigneeEmail,
+                'parent_task_id' => $id,
+                'subtask_order' => $maxOrder + 1,
+                'status' => 'Todo',
+                'eta_time' => $validated['etc_minutes'] ?? 10,
+                'start_date' => $startDate,
+                'completion_date' => $completionDate,
+                'due_date' => $completionDate,
+                'completion_day' => 0,
+                'etc_done' => 0,
+                'is_missed' => 0,
+                'is_missed_track' => 0,
+                'workspace' => 0,
+                'order' => 0,
+                'task_id' => '',
+                'link1' => '',
+                'link2' => '',
+                'link3' => '',
+                'link4' => '',
+                'link5' => '',
+                'link6' => '',
+                'link7' => '',
+                'link8' => '',
+                'link9' => '',
+                'is_data_from' => 0,
+                'is_automate_task' => 0,
+                'task_type' => 'manual',
+                'rework_reason' => '',
+                'delete_rating' => 0,
+                'delete_feedback' => '',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subtask created successfully.',
+                'subtask' => $subtask,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'errors' => $e->errors()], 422);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized'], 403);
+        } catch (\Exception $e) {
+            \Log::error('storeSubtask failed', ['parent_id' => $id, 'error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'error' => 'Failed to create subtask: ' . $e->getMessage()], 500);
         }
     }
 
@@ -1710,22 +1823,33 @@ class TaskController extends Controller
     public function destroy($id)
     {
         $task = Task::findOrFail($id);
-        
+
         // Check if user can delete this task
         $this->authorize('delete', $task);
-        
+
+        // Cascade soft-delete any subtasks so they don't become orphaned.
+        $subtasks = Task::where('parent_task_id', $task->id)->get();
+
         // Delete associated image file if exists
         if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
             unlink(public_path('uploads/tasks/' . $task->image));
             \Log::info('🗑️ Image deleted for deleted task:', ['task_id' => $task->id, 'image' => $task->image]);
         }
-        
+
         // Save task to deleted_tasks before deletion
         $this->saveDeletedTask($task);
-        
         $task->delete();
 
-        return response()->json(['success' => true, 'message' => 'Task deleted successfully!']);
+        foreach ($subtasks as $subtask) {
+            $this->saveDeletedTask($subtask);
+            $subtask->delete();
+        }
+
+        $message = $subtasks->isEmpty()
+            ? 'Task deleted successfully!'
+            : 'Task and ' . $subtasks->count() . ' subtask(s) deleted successfully!';
+
+        return response()->json(['success' => true, 'message' => $message]);
     }
 
     /**
@@ -3140,13 +3264,112 @@ class TaskController extends Controller
 
     public function automatedDestroy($id)
     {
-        // Delete from automate_tasks
-        \DB::table('automate_tasks')->where('id', $id)->delete();
-        
-        // Also delete any executed instances from tasks table
-        \DB::table('tasks')->where('automate_task_id', $id)->delete();
+        // Cascade-delete child subtask templates first, then the parent.
+        $childIds = \DB::table('automate_tasks')
+            ->where('parent_task_id', $id)
+            ->pluck('id')
+            ->all();
 
-        return response()->json(['success' => true, 'message' => 'Automated task and all its instances deleted!']);
+        $allTemplateIds = array_merge([(int) $id], array_map('intval', $childIds));
+
+        \DB::table('automate_tasks')->whereIn('id', $allTemplateIds)->delete();
+
+        // Also delete any executed instances from tasks table
+        \DB::table('tasks')->whereIn('automate_task_id', $allTemplateIds)->delete();
+
+        $extra = count($childIds) > 0 ? ' (including ' . count($childIds) . ' subtask template(s))' : '';
+
+        return response()->json(['success' => true, 'message' => 'Automated task and all its instances deleted!' . $extra]);
+    }
+
+    /**
+     * List subtask templates under an automated parent template.
+     */
+    public function automatedSubtasks($id)
+    {
+        $parent = \DB::table('automate_tasks')->where('id', $id)->first();
+        if (! $parent) {
+            return response()->json(['error' => 'Automated task not found.'], 404);
+        }
+
+        $subtasks = \DB::table('automate_tasks')
+            ->where('parent_task_id', $id)
+            ->orderBy('subtask_order')
+            ->orderBy('id')
+            ->get();
+
+        return response()->json($subtasks);
+    }
+
+    /**
+     * Create a subtask template under an automated parent. When the parent fires,
+     * child templates are also fired as normal task instances.
+     */
+    public function storeAutomatedSubtask(Request $request, $id)
+    {
+        $parent = \DB::table('automate_tasks')->where('id', $id)->first();
+        if (! $parent) {
+            return response()->json(['success' => false, 'error' => 'Automated task not found.'], 404);
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:1000',
+            'description' => 'nullable|string',
+            'priority' => 'required|in:low,normal,high',
+            'assignee_id' => 'nullable|exists:users,id',
+            'etc_minutes' => 'nullable|integer',
+        ]);
+
+        $user = Auth::user();
+        $assignorEmail = $user->email;
+        $assigneeEmail = null;
+        if (! empty($validated['assignee_id'])) {
+            $assigneeUser = User::find($validated['assignee_id']);
+            $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+        }
+
+        $maxOrder = (int) \DB::table('automate_tasks')->where('parent_task_id', $id)->max('subtask_order');
+
+        $subtaskId = \DB::table('automate_tasks')->insertGetId([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'group' => $parent->group,
+            'priority' => $validated['priority'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
+            'parent_task_id' => $id,
+            'subtask_order' => $maxOrder + 1,
+            'eta_time' => $validated['etc_minutes'] ?? 10,
+            'schedule_type' => $parent->schedule_type,
+            'schedule_time' => $parent->schedule_time,
+            'schedule_days' => $parent->schedule_days,
+            'status' => 'Todo',
+            'split_tasks' => 0,
+            'start_date' => $parent->start_date,
+            'due_date' => $parent->due_date,
+            'link1' => $parent->link1 ?? null,
+            'link2' => $parent->link2 ?? null,
+            'link3' => $parent->link3 ?? null,
+            'link4' => $parent->link4 ?? null,
+            'link5' => $parent->link5 ?? null,
+            'link6' => $parent->link6 ?? null,
+            'link7' => $parent->link7 ?? null,
+            'link8' => $parent->link8 ?? null,
+            'link9' => $parent->link9 ?? null,
+            'image' => null,
+            'order' => $parent->order ?? 0,
+            'workspace' => $parent->workspace ?? 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $subtask = \DB::table('automate_tasks')->where('id', $subtaskId)->first();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Automated subtask created successfully.',
+            'subtask' => $subtask,
+        ]);
     }
 
     /**
@@ -3420,6 +3643,8 @@ class TaskController extends Controller
                     'image' => $deletedTask->image,
                     'task_type' => $deletedTask->task_type ?: 'manual',
                     'rework_reason' => $deletedTask->rework_reason,
+                    'report' => $deletedTask->report,
+                    'parent_task_id' => $deletedTask->parent_task_id,
                     'workspace' => 0,
                     'order' => 0,
                     'is_data_from' => 0,
@@ -3447,8 +3672,8 @@ class TaskController extends Controller
     }
 
     /**
-     * Manually run the "expire daily automated tasks" cleanup (admin-only).
-     * Mirrors the nightly {@see \App\Console\Commands\ExpireDailyAutomatedTasks} schedule so admins
+     * Manually run the missed automated tasks cleanup (admin-only).
+     * Mirrors the scheduled {@see \App\Console\Commands\ExpireMissedAutomatedTasks} job so admins
      * can force a sweep without waiting for the scheduler.
      */
     public function expireDailyAutomatedTasks(Request $request)
@@ -3462,7 +3687,7 @@ class TaskController extends Controller
         }
 
         try {
-            \Illuminate\Support\Facades\Artisan::call('tasks:expire-daily-automated');
+            \Illuminate\Support\Facades\Artisan::call('tasks:expire-missed-automated');
             $output = \Illuminate\Support\Facades\Artisan::output();
 
             $expired = 0;
@@ -3474,8 +3699,8 @@ class TaskController extends Controller
                 'success' => true,
                 'expired' => $expired,
                 'message' => $expired > 0
-                    ? "Auto-deleted {$expired} incomplete daily task(s) and counted them as Missed."
-                    : 'No incomplete daily automated tasks from earlier days.',
+                    ? "Auto-deleted {$expired} incomplete automated task(s) and counted them as Missed."
+                    : 'No incomplete automated tasks from earlier days.',
                 'output' => trim($output),
             ]);
         } catch (\Throwable $e) {
@@ -3565,6 +3790,8 @@ class TaskController extends Controller
                 'image' => $str($task->image),
                 'task_type' => $str($task->task_type),
                 'rework_reason' => $task->rework_reason !== null ? $str((string) $task->rework_reason, 65535) : null,
+                'report' => $task->report !== null ? $str((string) $task->report, 65535) : null,
+                'parent_task_id' => $task->parent_task_id ? (int) $task->parent_task_id : null,
                 'deleted_by_email' => $str($user->email ?? ''),
                 'deleted_by_name' => $str($user->name ?? ''),
                 'deleted_at' => $now,
@@ -3928,6 +4155,8 @@ class TaskController extends Controller
                     'image' => $deletedTask->image,
                     'task_type' => $deletedTask->task_type ?: 'manual',
                     'rework_reason' => $deletedTask->rework_reason,
+                    'report' => $deletedTask->report,
+                    'parent_task_id' => $deletedTask->parent_task_id,
                     'workspace' => 0,
                     'order' => 0,
                     'is_data_from' => 0,

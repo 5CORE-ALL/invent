@@ -446,6 +446,15 @@
             background-color: #e0a800;
         }
 
+        .action-btn-subtasks {
+            background-color: #4facfe;
+            color: white;
+        }
+
+        .action-btn-subtasks:hover {
+            background-color: #3b9de8;
+        }
+
         .action-btn-delete {
             background-color: #dc3545;
             color: white;
@@ -1226,6 +1235,75 @@
     </div>
 </div>
 
+<!-- Subtasks Modal — manage and add subtasks under an automated parent task -->
+<div class="modal fade" id="subtasksModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-subdirectory-arrow-right me-2"></i>Subtasks
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="subtasks-parent-id">
+                <div class="mb-2">
+                    <strong>Parent task:</strong> <span id="subtasks-parent-title" class="text-muted">—</span>
+                </div>
+                <div class="alert alert-info py-2 small mb-3">
+                    When this parent automated task fires, its subtasks are created as normal task instances the same way.
+                </div>
+
+                <div id="subtasks-existing" class="mb-4">
+                    <h6 class="fw-semibold mb-2">Existing subtasks</h6>
+                    <div id="subtasks-list" class="list-group list-group-flush border rounded"></div>
+                </div>
+
+                <div class="border-top pt-3">
+                    <h6 class="fw-semibold mb-2">Add new subtask</h6>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Title <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" id="subtask-title" placeholder="Subtask title">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Assignee</label>
+                            <select class="form-select form-select-sm" id="subtask-assignee">
+                                <option value="">Unassigned</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Priority</label>
+                            <select class="form-select form-select-sm" id="subtask-priority">
+                                <option value="low">Low</option>
+                                <option value="normal" selected>Normal</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">ETC (minutes)</label>
+                            <input type="number" class="form-control form-control-sm" id="subtask-etc" value="10" min="1">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">Description</label>
+                            <textarea class="form-control form-control-sm" id="subtask-description" rows="2" placeholder="Optional description"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-end">
+                        <button type="button" class="btn btn-sm btn-primary" id="subtask-add-btn">
+                            <i class="mdi mdi-plus me-1"></i>Add Subtask
+                        </button>
+                    </div>
+                    <div id="subtask-error" class="alert alert-danger d-none mt-2 py-2 small"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- CSV Upload Modal -->
 <div class="modal fade" id="csvUploadModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
@@ -1640,6 +1718,54 @@
                 return '<span style="color:#adb5bd;" title="' + escAttr(v) + '">-</span>';
             }
 
+            function escapeHtmlAt(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            }
+
+            // Transform a flat list into a Tabulator dataTree (parent + nested subtasks).
+            function buildTaskTree(flatData) {
+                if (!Array.isArray(flatData)) return flatData;
+                var map = {};
+                var roots = [];
+                var childrenByParent = {};
+
+                flatData.forEach(function(task) {
+                    map[task.id] = task;
+                    childrenByParent[task.id] = [];
+                });
+
+                flatData.forEach(function(task) {
+                    var parentId = task.parent_task_id ? Number(task.parent_task_id) : null;
+                    if (parentId && map[parentId]) {
+                        childrenByParent[parentId].push(task);
+                    } else {
+                        roots.push(task);
+                    }
+                });
+
+                Object.keys(childrenByParent).forEach(function(parentId) {
+                    childrenByParent[parentId].sort(function(a, b) {
+                        var oa = Number(a.subtask_order || 0);
+                        var ob = Number(b.subtask_order || 0);
+                        if (oa !== ob) return oa - ob;
+                        return Number(a.id) - Number(b.id);
+                    });
+                });
+
+                roots.forEach(function(root) {
+                    var children = childrenByParent[root.id] || [];
+                    if (children.length > 0) {
+                        root._children = children;
+                    } else {
+                        delete root._children;
+                    }
+                });
+
+                return roots;
+            }
+
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
                 index: "id",
@@ -1649,6 +1775,10 @@
                     // Only allow selection of visible/filtered rows
                     return true;
                 },
+                dataTree: true,
+                dataTreeElementColumn: "title",
+                dataTreeStartExpanded: true,
+                dataTreeChildIndent: 18,
                 defaultColumn: {
                     headerHozAlign: "center",
                 },
@@ -1661,6 +1791,9 @@
                     console.log('Current User ID:', currentUserId);
                     console.log('Is Admin:', isAdmin);
                     console.log('==============================');
+                    if (Array.isArray(response)) {
+                        response = buildTaskTree(response);
+                    }
                     return response;
                 },
                 rowFormatter: function(row) {
@@ -1752,11 +1885,15 @@
                         minWidth: 200,
                         maxWidth: taskColMaxWidth,
                         formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                            var subtaskBadge = rowData.parent_task_id
+                                ? '<span class="badge bg-secondary ms-1" style="font-size:9px; vertical-align:middle;">Subtask</span>'
+                                : '';
 
                             // Single line, ellipsis when too long; full text shown on hover (title attribute).
-                            return '<div class="title-cell-content" title="' + htmlTitle + '"><strong>' + htmlTitle + '</strong></div>';
+                            return '<div class="title-cell-content" title="' + htmlTitle + '"><strong>' + htmlTitle + '</strong>' + subtaskBadge + '</div>';
                         }
                     });
                     
@@ -2201,7 +2338,7 @@
                     cols.push({
                         title: "ACTION", 
                         field: "id", 
-                        width: 120,
+                        width: 176,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var id = cell.getValue();
@@ -2211,6 +2348,9 @@
                                 </button>
                                 <button class="action-btn-icon action-btn-delete delete-automated-task" data-id="${id}" title="Delete" style="background: #fd7e14; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
                                     <i class="mdi mdi-delete"></i>
+                                </button>
+                                <button class="action-btn-icon action-btn-subtasks manage-subtasks" data-id="${id}" title="Manage subtasks" style="background: #4facfe; color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; margin: 0 2px;">
+                                    <i class="mdi mdi-subdirectory-arrow-right"></i>
                                 </button>
                             `;
                         }
@@ -3359,6 +3499,121 @@
                         `;
                         $('.task-card .card-body .alert').remove();
                         $('.task-card .card-body').prepend(alertHtml);
+                    }
+                });
+            });
+
+            // Subtasks management (same logic as Task Manager index)
+            var subtaskUsersLoaded = false;
+
+            function populateSubtaskAssigneeDropdown() {
+                if (subtaskUsersLoaded) return;
+                $.ajax({
+                    url: '{{ route("tasks.usersList") }}',
+                    type: 'GET',
+                    success: function(response) {
+                        var $select = $('#subtask-assignee').empty().append('<option value="">Unassigned</option>');
+                        (response || []).forEach(function(u) {
+                            $select.append('<option value="' + escapeHtmlAt(String(u.id)) + '">' + escapeHtmlAt(u.name) + '</option>');
+                        });
+                        subtaskUsersLoaded = true;
+                    },
+                    error: function() {
+                        $('#subtask-assignee').empty().append('<option value="">Unassigned</option>');
+                    }
+                });
+            }
+
+            function renderSubtasksList(subtasks) {
+                var $list = $('#subtasks-list').empty();
+                if (!subtasks || subtasks.length === 0) {
+                    $list.html('<div class="list-group-item text-muted small py-2">No subtasks yet.</div>');
+                    return;
+                }
+                subtasks.forEach(function(s) {
+                    var statusBadge = '<span class="badge rounded-pill" style="background:#6c757d; font-size:10px;">' + escapeHtmlAt(s.status || 'Todo') + '</span>';
+                    var title = escapeHtmlAt(s.title || 'Untitled');
+                    var assignee = escapeHtmlAt(s.assign_to || 'Unassigned');
+                    $list.append(
+                        '<div class="list-group-item d-flex justify-content-between align-items-center py-2">' +
+                        '<div class="small"><strong>#' + escapeHtmlAt(String(s.id)) + '</strong> ' + title + '</div>' +
+                        '<div class="d-flex align-items-center gap-2">' +
+                        '<span class="text-muted small">' + assignee + '</span>' + statusBadge +
+                        '</div></div>'
+                    );
+                });
+            }
+
+            function loadSubtasks(parentId) {
+                $('#subtasks-list').html('<div class="list-group-item text-muted small py-2"><i class="mdi mdi-loading mdi-spin me-1"></i>Loading…</div>');
+                $.ajax({
+                    url: '/tasks/automated/' + parentId + '/subtasks',
+                    type: 'GET',
+                    success: function(response) {
+                        renderSubtasksList(response);
+                    },
+                    error: function() {
+                        $('#subtasks-list').html('<div class="list-group-item text-danger small py-2">Failed to load subtasks.</div>');
+                    }
+                });
+            }
+
+            $(document).on('click', '.manage-subtasks', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var taskId = String($(this).data('id'));
+                var row = table.getRow(taskId);
+                var data = row ? row.getData() : null;
+                $('#subtasks-parent-id').val(taskId);
+                $('#subtasks-parent-title').text(data && data.title ? data.title : 'Task #' + taskId);
+                $('#subtask-title').val('');
+                $('#subtask-description').val('');
+                $('#subtask-priority').val('normal');
+                $('#subtask-etc').val(10);
+                $('#subtask-error').addClass('d-none').text('');
+                populateSubtaskAssigneeDropdown();
+                loadSubtasks(taskId);
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('subtasksModal')).show();
+            });
+
+            $('#subtask-add-btn').on('click', function() {
+                var parentId = $('#subtasks-parent-id').val();
+                var title = $('#subtask-title').val().trim();
+                if (!title) {
+                    $('#subtask-error').removeClass('d-none').text('Title is required.');
+                    return;
+                }
+                var payload = {
+                    _token: '{{ csrf_token() }}',
+                    title: title,
+                    description: $('#subtask-description').val().trim(),
+                    priority: $('#subtask-priority').val(),
+                    assignee_id: $('#subtask-assignee').val(),
+                    etc_minutes: $('#subtask-etc').val()
+                };
+                $('#subtask-add-btn').prop('disabled', true).html('<i class="mdi mdi-loading mdi-spin me-1"></i>Adding…');
+                $.ajax({
+                    url: '/tasks/automated/' + parentId + '/subtasks',
+                    type: 'POST',
+                    data: payload,
+                    success: function(response) {
+                        $('#subtask-add-btn').prop('disabled', false).html('<i class="mdi mdi-plus me-1"></i>Add Subtask');
+                        if (response.success) {
+                            $('#subtask-title').val('');
+                            $('#subtask-description').val('');
+                            $('#subtask-error').addClass('d-none').text('');
+                            loadSubtasks(parentId);
+                            table.replaceData();
+                        } else {
+                            $('#subtask-error').removeClass('d-none').text(response.error || 'Failed to add subtask.');
+                        }
+                    },
+                    error: function(xhr) {
+                        $('#subtask-add-btn').prop('disabled', false).html('<i class="mdi mdi-plus me-1"></i>Add Subtask');
+                        var msg = (xhr.responseJSON && (xhr.responseJSON.error || (xhr.responseJSON.errors && xhr.responseJSON.errors.title && xhr.responseJSON.errors.title[0])))
+                            ? (xhr.responseJSON.error || xhr.responseJSON.errors.title[0])
+                            : 'Failed to add subtask.';
+                        $('#subtask-error').removeClass('d-none').text(msg);
                     }
                 });
             });

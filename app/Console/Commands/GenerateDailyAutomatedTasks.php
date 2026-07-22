@@ -4,11 +4,13 @@ namespace App\Console\Commands;
 
 use App\Models\Task;
 use App\Services\TaskWhatsAppNotificationService;
+use App\Support\AutomatedTaskSubtaskFirer;
 use App\Support\TaskBusinessTime;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Exception;
 
 class GenerateDailyAutomatedTasks extends Command
@@ -46,11 +48,18 @@ class GenerateDailyAutomatedTasks extends Command
             $generated = 0;
             $skipped = 0;
 
-            // Fetch automated tasks in chunks for better performance
-            DB::table('automate_tasks')
+            // Fetch parent/root automated tasks only. Child subtask templates
+            // fire with their parent via AutomatedTaskSubtaskFirer.
+            $query = DB::table('automate_tasks')
                 ->whereRaw('LOWER(schedule_type) = ?', ['daily'])
-                ->whereNotIn('status', ['Done', 'Archived'])
-                ->orderBy('id')
+                ->whereNotIn('status', ['Done', 'Archived']);
+            if (Schema::hasColumn('automate_tasks', 'parent_task_id')) {
+                $query->where(function ($q) {
+                    $q->whereNull('parent_task_id')->orWhere('parent_task_id', 0);
+                });
+            }
+
+            $query->orderBy('id')
                 ->chunk(100, function ($automatedTasks) use ($now, $today, $taskWhatsApp, &$generated, &$skipped) {
                     foreach ($automatedTasks as $autoTask) {
                         try {
@@ -179,8 +188,19 @@ class GenerateDailyAutomatedTasks extends Command
                                 }
                             }
 
-                            $generated++;
-                            $this->info("✓ Generated: {$autoTask->title}" . ($assignTo ? " → assigned to {$assignTo}" : " (no assignee)"));
+                            $childCount = AutomatedTaskSubtaskFirer::fireChildren(
+                                (int) $autoTask->id,
+                                (int) $taskId,
+                                $now,
+                                $startDate,
+                                $dueDate,
+                                'daily',
+                                $scheduleTime,
+                                $taskWhatsApp
+                            );
+
+                            $generated += 1 + $childCount;
+                            $this->info("✓ Generated: {$autoTask->title}" . ($assignTo ? " → assigned to {$assignTo}" : " (no assignee)") . ($childCount > 0 ? " (+{$childCount} subtask(s))" : ''));
 
                             } finally {
                                 if ($lockHeld) {

@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Task extends Model
@@ -15,6 +17,8 @@ class Task extends Model
 
     protected $fillable = [
         'task_id',
+        'parent_task_id',
+        'subtask_order',
         'title',
         'group',
         'priority',
@@ -65,6 +69,8 @@ class Task extends Model
         'is_missed_track' => 'boolean',
         'is_automate_task' => 'boolean',
         'split_tasks' => 'boolean',
+        'parent_task_id' => 'integer',
+        'subtask_order' => 'integer',
     ];
 
     // Helper methods to maintain compatibility with new code
@@ -105,15 +111,28 @@ class Task extends Model
     }
 
     // Relationships for backwards compatibility
-    public function assignorUser()
+    public function assignorUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assignor', 'name');
     }
 
-    public function assigneeUser()
+    public function assigneeUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assign_to', 'name');
     }
 
-   
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Task::class, 'parent_task_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(Task::class, 'parent_task_id')->orderBy('subtask_order')->orderBy('id');
+    }
+
+    public function isSubtask(): bool
+    {
+        return $this->parent_task_id !== null && $this->parent_task_id > 0;
+    }
 }

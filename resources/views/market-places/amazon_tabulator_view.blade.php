@@ -4669,6 +4669,31 @@
                     },
 
                     {
+                        title: "Ship",
+                        field: "Ship_productmaster",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const val = cell.getValue();
+                            if (val == null || val === '') return '';
+                            const value = parseFloat(val);
+                            if (!Number.isFinite(value)) return '';
+                            const labelQty = parseInt(rowData.label_qty, 10);
+                            const ownShip = parseFloat(rowData.Ship_own_productmaster);
+                            let tip = '';
+                            if (Number.isFinite(labelQty) && labelQty >= 2) {
+                                tip = Number.isFinite(ownShip)
+                                    ? ` title="Label QTY ${labelQty}: total ship (sum of package costs). Own ship $${ownShip.toFixed(2)}"`
+                                    : ` title="Label QTY ${labelQty}: total ship (sum of package costs)"`;
+                            }
+                            return `<span${tip}>$${value.toFixed(2)}</span>`;
+                        },
+                        width: 60
+                    },
+
+                    {
                         title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",

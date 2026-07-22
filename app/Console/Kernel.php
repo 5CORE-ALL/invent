@@ -238,11 +238,11 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
        
-        $schedule->command('tasks:mark-missed-automated')
-            ->hourly()
+        $schedule->command('tasks:expire-missed-automated')
+            ->everyMinute()
             ->timezone($taskTz)
-            ->name('mark-missed-automated-tasks')
-            ->withoutOverlapping()
+            ->name('expire-missed-automated-tasks')
+            ->withoutOverlapping(15)
             ->runInBackground()
             ->appendOutputTo($log);
 

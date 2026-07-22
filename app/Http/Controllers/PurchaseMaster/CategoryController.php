@@ -809,6 +809,9 @@ class CategoryController extends Controller
                 'l' => 'nullable|numeric',
                 'w' => 'nullable|numeric',
                 'h' => 'nullable|numeric',
+                'l_decl' => 'nullable|numeric',
+                'w_decl' => 'nullable|numeric',
+                'h_decl' => 'nullable|numeric',
                 'l_cm' => 'nullable|numeric',
                 'w_cm' => 'nullable|numeric',
                 'h_cm' => 'nullable|numeric',
@@ -856,6 +859,15 @@ class CategoryController extends Controller
             }
             if (isset($validated['h']) && $validated['h'] !== null) {
                 $values['h'] = $validated['h'];
+            }
+            if (isset($validated['l_decl']) && $validated['l_decl'] !== null) {
+                $values['l_decl'] = $validated['l_decl'];
+            }
+            if (isset($validated['w_decl']) && $validated['w_decl'] !== null) {
+                $values['w_decl'] = $validated['w_decl'];
+            }
+            if (isset($validated['h_decl']) && $validated['h_decl'] !== null) {
+                $values['h_decl'] = $validated['h_decl'];
             }
             if (isset($validated['l_cm']) && $validated['l_cm'] !== null) {
                 $values['l_cm'] = $validated['l_cm'];
@@ -963,6 +975,9 @@ class CategoryController extends Controller
                 'l' => 'nullable|numeric',
                 'w' => 'nullable|numeric',
                 'h' => 'nullable|numeric',
+                'l_decl' => 'nullable|numeric',
+                'w_decl' => 'nullable|numeric',
+                'h_decl' => 'nullable|numeric',
                 'l_cm' => 'nullable|numeric',
                 'w_cm' => 'nullable|numeric',
                 'h_cm' => 'nullable|numeric',
@@ -1031,6 +1046,15 @@ class CategoryController extends Controller
             }
             if (isset($validated['h'])) {
                 $values['h'] = $validated['h'];
+            }
+            if (isset($validated['l_decl'])) {
+                $values['l_decl'] = $validated['l_decl'];
+            }
+            if (isset($validated['w_decl'])) {
+                $values['w_decl'] = $validated['w_decl'];
+            }
+            if (isset($validated['h_decl'])) {
+                $values['h_decl'] = $validated['h_decl'];
             }
             if (isset($validated['l_cm'])) {
                 $values['l_cm'] = $validated['l_cm'];
@@ -1190,10 +1214,13 @@ class CategoryController extends Controller
             'fba_manual_ship' => 'FBA manual ship',
             'wt_act' => 'Item WT ACT (LB)',
             'wt_act_kg' => 'Item Weight ACT (Kg)',
-            'wt_decl' => 'Item WT DECL (LB)',
+            'wt_decl' => 'Item WT ACT Decl (OZ / LB)',
             'l' => 'Item Length (inch)',
             'w' => 'Item Width (inch)',
             'h' => 'Item Height (inch)',
+            'l_decl' => 'Item Length Decl (inch)',
+            'w_decl' => 'Item Width Decl (inch)',
+            'h_decl' => 'Item Height Decl (inch)',
             'l_cm' => 'Item Length (CM)',
             'w_cm' => 'Item Width (CM)',
             'h_cm' => 'Item Height (CM)',
@@ -1233,7 +1260,7 @@ class CategoryController extends Controller
     ): void {
         $trackedValueFields = [
             'wt_act', 'wt_act_kg', 'wt_decl',
-            'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm',
+            'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm',
             'cbm', 'cbm_e', 'ctn_gwt',
             'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
             'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
@@ -7160,6 +7187,12 @@ PROMPT;
                 'l' => 'l',
                 'w' => 'w',
                 'h' => 'h',
+                'l_decl' => 'l_decl',
+                'w_decl' => 'w_decl',
+                'h_decl' => 'h_decl',
+                'length_decl__inch_' => 'l_decl',
+                'width_decl__inch_' => 'w_decl',
+                'height_decl__inch_' => 'h_decl',
                 'l_cm' => 'l_cm',
                 'w_cm' => 'w_cm',
                 'h_cm' => 'h_cm',
@@ -7244,7 +7277,7 @@ PROMPT;
                         $value = trim($row[$colIndex]);
                         if ($value !== '') {
                             // Convert to float for numeric fields
-                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
+                            if (in_array($field, ['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'cbm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'cbm_e', 'ctn_gwt', 'ctn_weight_kg', 'ctn_weight_lb', 'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'])) {
                                 $value = is_numeric($value) ? (float) $value : null;
                                 // Treat 0 (or blank) as "no change" — keep the old value
                                 if ($value === null || $value == 0) {
@@ -7307,7 +7340,7 @@ PROMPT;
                     $historyNow = Carbon::now();
                     $trackedImportFields = [
                         'wt_act', 'wt_act_kg', 'wt_decl',
-                        'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm',
+                        'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm',
                         'cbm', 'cbm_e', 'ctn_gwt',
                         'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each',
                         'ctn_weight_kg', 'ctn_weight_lb', 'ctn_instructions',
@@ -7435,6 +7468,18 @@ PROMPT;
                 }
                 if (isset($skuData['h']) && $skuData['h'] !== null) {
                     $values['h'] = (float) $skuData['h'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['l_decl']) && $skuData['l_decl'] !== null) {
+                    $values['l_decl'] = (float) $skuData['l_decl'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['w_decl']) && $skuData['w_decl'] !== null) {
+                    $values['w_decl'] = (float) $skuData['w_decl'];
+                    $hasChanges = true;
+                }
+                if (isset($skuData['h_decl']) && $skuData['h_decl'] !== null) {
+                    $values['h_decl'] = (float) $skuData['h_decl'];
                     $hasChanges = true;
                 }
                 if (isset($skuData['cbm']) && $skuData['cbm'] !== null) {

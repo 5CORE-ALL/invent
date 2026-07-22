@@ -378,6 +378,24 @@ class OverallAmazonController extends Controller
             ->groupBy('parent')
             ->map->count();
 
+        // SKU → own ship cost (for summing multi-package / Combo Label QTY ≥ 2)
+        $shipBySkuKey = [];
+        foreach ($productMasters as $pmShipRow) {
+            $shipVals = is_array($pmShipRow->Values)
+                ? $pmShipRow->Values
+                : (is_string($pmShipRow->Values) ? json_decode($pmShipRow->Values, true) : []);
+            if (! is_array($shipVals)) {
+                $shipVals = [];
+            }
+            $ownShip = isset($shipVals['ship'])
+                ? floatval($shipVals['ship'])
+                : (isset($pmShipRow->ship) ? floatval($pmShipRow->ship) : 0.0);
+            $shipKey = $this->normalizeSkuKeyForShipLookup($pmShipRow->sku);
+            if ($shipKey !== '') {
+                $shipBySkuKey[$shipKey] = $ownShip;
+            }
+        }
+
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -490,7 +508,10 @@ class OverallAmazonController extends Controller
             if ($lp === 0 && isset($pm->lp)) {
                 $lp = floatval($pm->lp);
             }
-            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            $ownShip = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            $labelQty = $this->extractLabelQtyFromValues($values);
+            // Label QTY ≥ 2 ⇒ total ship = sum of package ship costs (Combo components, else ship × qty)
+            $ship = $this->resolveMultiPackageShipCost((string) $pm->sku, $ownShip, $labelQty, $shipBySkuKey);
 
             $price = isset($row['price']) ? floatval($row['price']) : 0;
             $units_ordered_l30 = isset($row['A_L30']) ? floatval($row['A_L30']) : 0;
@@ -512,6 +533,8 @@ class OverallAmazonController extends Controller
             $row['percentage'] = $percentage;
             $row['LP_productmaster'] = $lp;
             $row['Ship_productmaster'] = $ship;
+            $row['label_qty'] = $labelQty > 0 ? $labelQty : null;
+            $row['Ship_own_productmaster'] = $ownShip;
 
             // Default values
             $row['NRL'] = '';
@@ -1216,8 +1239,11 @@ class OverallAmazonController extends Controller
             $lp = floatval($pm->lp);
         }
 
-        $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
-        Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship]);
+        $ownShip = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+        $labelQty = $this->extractLabelQtyFromValues($values);
+        $shipBySkuKey = $this->buildShipBySkuKeyLookupForSku($pm->sku, $ownShip);
+        $ship = $this->resolveMultiPackageShipCost((string) $pm->sku, $ownShip, $labelQty, $shipBySkuKey);
+        Log::info('LP and Ship', ['lp' => $lp, 'ship' => $ship, 'own_ship' => $ownShip, 'label_qty' => $labelQty]);
 
         // Calculate SGPFT first (using 0.80 for Amazon)
         $spriceFloat = floatval($sprice);
@@ -4349,5 +4375,103 @@ class OverallAmazonController extends Controller
         if (isset($row['hl_campaign_status']) && (string) $row['hl_campaign_status'] !== '') {
             $row['hl_campaign_status'] = 'PAUSED';
         }
+    }
+
+    private function normalizeSkuKeyForShipLookup(?string $sku): string
+    {
+        if ($sku === null) {
+            return '';
+        }
+
+        return strtoupper(str_replace(' ', '', str_replace("\xC2\xA0", ' ', trim($sku))));
+    }
+
+    private function extractLabelQtyFromValues(array $values): int
+    {
+        $raw = $values['label_qty'] ?? $values['Label QTY'] ?? $values['Label_QTY'] ?? null;
+        if ($raw === null || $raw === '') {
+            return 0;
+        }
+
+        return is_numeric($raw) ? (int) $raw : 0;
+    }
+
+    /**
+     * When Label QTY ≥ 2, shipping cost is the sum of package ship costs:
+     * - Combo SKUs ("A + B"): sum of each component SKU's own ship
+     * - Otherwise: own ship × Label QTY
+     *
+     * @param  array<string, float>  $shipBySkuKey
+     */
+    private function resolveMultiPackageShipCost(string $sku, float $ownShip, int $labelQty, array $shipBySkuKey): float
+    {
+        if ($labelQty < 2) {
+            return round($ownShip, 2);
+        }
+
+        $components = preg_split('/\s*\+\s*/', trim(str_replace("\xC2\xA0", ' ', $sku))) ?: [];
+        $components = array_values(array_filter(array_map(static function ($part) {
+            return trim((string) $part);
+        }, $components)));
+
+        if (count($components) >= 2) {
+            $parts = array_slice($components, 0, $labelQty);
+            $sum = 0.0;
+            $found = 0;
+            foreach ($parts as $comp) {
+                $key = $this->normalizeSkuKeyForShipLookup($comp);
+                if ($key !== '' && array_key_exists($key, $shipBySkuKey)) {
+                    $sum += (float) $shipBySkuKey[$key];
+                    $found++;
+                }
+            }
+            if ($found > 0) {
+                return round($sum, 2);
+            }
+        }
+
+        return round($ownShip * $labelQty, 2);
+    }
+
+    /**
+     * Small lookup of own-ship for a SKU and its "+" components (used when saving SPRICE).
+     *
+     * @return array<string, float>
+     */
+    private function buildShipBySkuKeyLookupForSku(string $sku, float $ownShip): array
+    {
+        $map = [];
+        $selfKey = $this->normalizeSkuKeyForShipLookup($sku);
+        if ($selfKey !== '') {
+            $map[$selfKey] = $ownShip;
+        }
+
+        $components = preg_split('/\s*\+\s*/', trim(str_replace("\xC2\xA0", ' ', $sku))) ?: [];
+        $components = array_values(array_filter(array_map(static function ($part) {
+            return trim((string) $part);
+        }, $components)));
+
+        if (count($components) < 2) {
+            return $map;
+        }
+
+        $componentRows = ProductMaster::whereIn('sku', $components)->get(['sku', 'Values', 'ship']);
+        foreach ($componentRows as $row) {
+            $vals = is_array($row->Values)
+                ? $row->Values
+                : (is_string($row->Values) ? json_decode($row->Values, true) : []);
+            if (! is_array($vals)) {
+                $vals = [];
+            }
+            $compShip = isset($vals['ship'])
+                ? floatval($vals['ship'])
+                : (isset($row->ship) ? floatval($row->ship) : 0.0);
+            $key = $this->normalizeSkuKeyForShipLookup($row->sku);
+            if ($key !== '') {
+                $map[$key] = $compShip;
+            }
+        }
+
+        return $map;
     }
 }

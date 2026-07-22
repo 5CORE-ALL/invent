@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'CC Returns', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Report', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -394,13 +394,13 @@
     <div class="row">
         <div class="col-12">
             <div class="page-title-box d-flex align-items-center justify-content-between">
-                <h4 class="page-title mb-0">
-                    <i class="ri-rotate-lock-line me-2 text-primary"></i>CC Returns
-                </h4>
+                    <h4 class="page-title mb-0">
+                        <i class="ri-rotate-lock-line me-2 text-primary"></i>Report
+                    </h4>
                 <div class="page-title-right">
                     <ol class="breadcrumb m-0">
                         <li class="breadcrumb-item"><a href="javascript:void(0);">Customer Care</a></li>
-                        <li class="breadcrumb-item active">CC Returns</li>
+                        <li class="breadcrumb-item active">Report</li>
                     </ol>
                 </div>
             </div>
@@ -517,7 +517,7 @@
                 <div class="modal-header py-2">
                     <h6 class="modal-title fw-semibold mb-0" id="ccmrHistoryLabel">
                         <i class="fa-solid fa-clock-rotate-left me-1 text-primary"></i>
-                        <span id="ccmrHistoryKind">CC Messages</span> Checklist History
+                        Reports For Returns
                         <span class="badge bg-info-subtle text-info ms-2" id="ccmrHistoryChannel">—</span>
                     </h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -962,7 +962,6 @@
             const historyChannelEl = document.getElementById('ccmrHistoryChannel');
             const historyBodyEl    = document.getElementById('ccmrHistoryBody');
             const historyEmptyEl   = document.getElementById('ccmrHistoryEmpty');
-            const historyKindEl    = document.getElementById('ccmrHistoryKind');
 
             function fmtDateTime(iso) {
                 if (!iso) return '—';
@@ -1013,7 +1012,6 @@
                 if (!historyModalEl || typeof bootstrap === 'undefined') return;
                 const k = CHECKLIST_KINDS[kind] ? kind : 'returns';
                 const cfg = CHECKLIST_KINDS[k];
-                if (historyKindEl)    historyKindEl.textContent = cfg.historyLabel;
                 if (historyChannelEl) historyChannelEl.textContent = channelName || '';
                 applyHistoryHeaderTooltips(k);
                 if (historyBodyEl)    historyBodyEl.innerHTML =
@@ -1378,7 +1376,7 @@
                         formatter: returnsStatusFormatter,
                     },
                     {
-                        title: 'R History',
+                        title: 'Report History',
                         field: '_returns_history',
                         minWidth: 220,
                         widthGrow: 1,
@@ -1478,7 +1476,7 @@
                     const d = r.getData() || {};
                     if (d.latest_checklist || d.latest_returns_checklist) {
                         // Covers Status expiry + relative time in both the
-                        // History and R History cells.
+                        // History and Report History cells.
                         r.reformat();
                     }
                 });

@@ -244,6 +244,56 @@
             background-color: #fca5a5 !important;
             color: #7f1d1d !important;
         }
+
+        /* Multi-package rows (Label QTY >= 2): distinct package backgrounds */
+        .table-responsive tbody tr.shipping-package-row-2 td {
+            background-color: #fff7ed !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-3 td {
+            background-color: #eff6ff !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-4 td {
+            background-color: #f5f3ff !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-extra td {
+            background-color: #f0fdf4 !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-2:hover td {
+            background-color: #ffedd5 !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-3:hover td {
+            background-color: #dbeafe !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-4:hover td {
+            background-color: #ede9fe !important;
+        }
+        .table-responsive tbody tr.shipping-package-row-extra:hover td {
+            background-color: #dcfce7 !important;
+        }
+        .shipping-package-badge {
+            display: inline-block;
+            margin-top: 2px;
+            padding: 0 5px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1.4;
+            color: #9a3412;
+            background: #ffedd5;
+            white-space: nowrap;
+        }
+        .shipping-package-component {
+            display: block;
+            margin-top: 2px;
+            font-size: 9px;
+            font-weight: 600;
+            color: #0369a1;
+            line-height: 1.2;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .table-responsive tbody td.shipping-rate-cell.shipping-rate-high {
             color: #dc3545 !important;
         }
@@ -362,6 +412,10 @@
         .table-responsive thead th.item-dim-header {
             background-color: #fff9c4 !important; /* light yellow */
         }
+        /* Declared dimension headers — distinct from ACT yellow */
+        .table-responsive thead th.item-dim-decl-header {
+            background-color: #d4edda !important; /* light green */
+        }
         /* Always hide CTN L/W/H (CM) columns from view */
         .table-responsive thead th.ctn-cm-col,
         .table-responsive tbody td.ctn-cm-col {
@@ -387,10 +441,101 @@
         .table-responsive tbody td.hide-fba-sku-col {
             display: none;
         }
-        /* Hide Fedex / UPS / USPS / UNI ship columns */
+        /* Hide Fedex / UPS / USPS / UNI ship columns (overridden by col-user-visible) */
         .table-responsive thead th.hide-carrier-col,
         .table-responsive tbody td.hide-carrier-col {
             display: none;
+        }
+
+        /* User column visibility (Columns dropdown → channel_tabulator_column_settings) */
+        #dim-wt-master-datatable th.col-user-hidden,
+        #dim-wt-master-datatable td.col-user-hidden {
+            display: none !important;
+        }
+        #dim-wt-master-datatable th.col-user-visible,
+        #dim-wt-master-datatable td.col-user-visible {
+            display: table-cell !important;
+        }
+
+        #shipping-column-dropdown-menu {
+            min-width: min(920px, 96vw);
+            max-width: 96vw;
+            padding: 10px 12px;
+        }
+        #shipping-column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #shipping-column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #shipping-column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #shipping-column-dropdown-menu .col-vis-group-title input {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #shipping-column-dropdown-menu .col-vis-group-title.col-vis-group-empty {
+            opacity: 0.55;
+            cursor: default;
+        }
+        #shipping-column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #shipping-column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #shipping-column-dropdown-menu .col-vis-item > label {
+            display: block;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #shipping-column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        #shipping-column-dropdown-menu .col-vis-item > label.col-vis-locked {
+            opacity: 0.65;
+            cursor: default;
         }
 
         .table {
@@ -479,27 +624,6 @@
             outline: none;
         }
 
-        .status-badges-full {
-            width: 100%;
-            flex-wrap: wrap;
-        }
-        .status-badges-full .status-badge-item {
-            flex: 1;
-            min-width: 80px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 700;
-            color: #000;
-            text-align: center;
-            white-space: nowrap;
-        }
-        .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
-        .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
-        .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
-
         /* Ensure table fits container - auto layout so columns fit content */
         #dim-wt-master-datatable {
             width: 100% !important;
@@ -511,38 +635,44 @@
             overflow-x: hidden;
         }
 
+        /* Action column buttons — half of default btn-sm size */
+        #dim-wt-master-datatable .action-btns {
+            gap: 0.15rem !important;
+            align-items: center;
+        }
+        #dim-wt-master-datatable .action-btns .btn {
+            padding: 0.1rem 0.25rem !important;
+            font-size: 0.55rem !important;
+            line-height: 1 !important;
+            border-radius: 2px !important;
+            min-width: 0;
+        }
+        #dim-wt-master-datatable .action-btns .btn i {
+            font-size: 0.7rem;
+            line-height: 1;
+            vertical-align: middle;
+        }
+
         .edit-btn {
-            border-radius: 4px;
-            padding: 3px 6px;
+            border-radius: 2px;
             transition: all 0.2s;
             background: #fff;
-            border: 1px solid #1a56b7;
-            color: #1a56b7;
-            font-size: 11px;
         }
 
         .edit-btn:hover {
-            background: #1a56b7;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(26, 86, 183, 0.2);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(26, 86, 183, 0.2);
         }
 
         .delete-btn {
-            border-radius: 4px;
-            padding: 3px 6px;
+            border-radius: 2px;
             transition: all 0.2s;
             background: #fff;
-            border: 1px solid #dc3545;
-            color: #dc3545;
-            font-size: 11px;
         }
 
         .delete-btn:hover {
-            background: #dc3545;
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 3px 8px rgba(220, 53, 69, 0.2);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
         }
 
         .rainbow-loader {
@@ -789,13 +919,6 @@
                                     </button>
                                 </div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <label class="form-label mb-0">Section:</label>
-                                    <select id="dimWtSectionFilter" class="form-select form-select-sm" style="width: auto; min-width: 140px;">
-                                        <option value="item_data">Item Data</option>
-                                        <option value="carton_data">Carton Data</option>
-                                    </select>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
                                     <label class="form-label mb-0" for="shippingRowTypeFilter">Rows:</label>
                                     <select id="shippingRowTypeFilter" class="form-select form-select-sm" style="width: auto; min-width: 118px;" title="Show parent SKUs, child SKUs, or both">
                                         <option value="all">All</option>
@@ -807,28 +930,31 @@
                         </div>
                         <div class="col-md-6">
                             <div class="d-flex justify-content-end flex-wrap gap-2">
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-outline-secondary" id="shippingColumnVisibilityDropdown"
+                                        data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Columns" aria-label="Columns">
+                                        <i class="fas fa-columns"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="shippingColumnVisibilityDropdown" id="shipping-column-dropdown-menu">
+                                        <!-- Populated by JS -->
+                                    </ul>
+                                </div>
                                 <button type="button" class="btn btn-primary" id="pushDataBtn" disabled>
                                     <i class="fas fa-cloud-upload-alt me-1"></i> Push Data
                                 </button>
                                 <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
                                     <i class="fas fa-edit me-1"></i> Bulk Edit
                                 </button>
-                                <button type="button" class="btn btn-dark" id="slabRatesBtn" title="Apply GOFO rate to every SKU in a weight slab">
-                                    <i class="fas fa-layer-group me-1"></i> Slab Rates
+                                <button type="button" class="btn btn-dark" id="slabRatesBtn" title="Slab — apply rates by weight slab">
+                                    <i class="fas fa-layer-group me-1"></i> Slab
                                 </button>
                                 <button type="button" class="btn btn-info" data-bs-toggle="modal" data-bs-target="#importExcelModal">
                                     <i class="fas fa-file-upload me-1"></i> Import
                                 </button>
-                                <button type="button" class="btn btn-success" id="downloadExcel">
-                                    <i class="fas fa-file-excel me-1"></i> Download
+                                <button type="button" class="btn btn-success" id="downloadExcel" title="Download" aria-label="Download">
+                                    <i class="fas fa-download"></i>
                                 </button>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="row mb-2">
-                        <div class="col-12">
-                            <div id="statusBadgesBar" class="status-badges-full d-flex align-items-center justify-content-between gap-2"></div>
                         </div>
                     </div>
 
@@ -836,21 +962,21 @@
                         <table id="dim-wt-master-datatable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
-                                    <th class="text-center th-checkbox-col">
+                                    <th data-col-key="select" data-col-label="Select" class="text-center th-checkbox-col">
                                         <input type="checkbox" id="selectAll" title="Select All" style="width: 16px; height: 16px;">
                                     </th>
-                                    <th><span class="th-vertical-label">Img</span></th>
-                                    <th class="th-has-filter th-parent-sku-col">
+                                    <th data-col-key="image" data-col-label="Img"><span class="th-vertical-label">Img</span></th>
+                                    <th data-col-key="parent" data-col-label="Parent" class="th-has-filter th-parent-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 9px;">Parent</div>
                                         <input type="text" id="parentSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
-                                    <th class="th-has-filter th-parent-sku-col">
+                                    <th data-col-key="sku" data-col-label="SKU" class="th-has-filter th-parent-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 9px;">SKU</div>
                                         <input type="text" id="skuSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
-                                    <th class="th-has-filter">
+                                    <th data-col-key="status" data-col-label="STATUS" class="th-has-filter">
                                         <div class="th-vertical-label" style="font-size: 9px;">STATUS</div>
                                         <select id="filterSTATUS" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="STATUS">
                                             <option value="all">All</option>
@@ -862,7 +988,7 @@
                                             <option value="2BDC">🔵 2BDC</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header">
+                                    <th data-col-key="label_qty" data-col-label="Label Qty" class="th-has-filter shipping-rate-header">
                                         <div class="th-vertical-label">Label<br>Qty</div>
                                         <select id="filterLabelQty" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Label Qty column">
                                             <option value="all">All</option>
@@ -872,7 +998,7 @@
                                             <option value="has">Has value</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" title="Label Type">
+                                    <th data-col-key="label_type" data-col-label="Type" class="th-has-filter shipping-rate-header" title="Label Type">
                                         <div class="th-vertical-label">Type</div>
                                         <select id="filterLabelType" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Label Type">
                                             <option value="all">All</option>
@@ -882,8 +1008,8 @@
                                             <option value="Pallet">Pallet</option>
                                         </select>
                                     </th>
-                                    <th class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
-                                    <th class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship">
+                                    <th data-col-key="inv" data-col-label="INV" class="shipping-rate-header"><span class="th-vertical-label">INV</span></th>
+                                    <th data-col-key="ship" data-col-label="Ship" class="th-has-filter shipping-rate-header shipping-ship-col" data-pm-ship-col="ship">
                                         <div class="th-vertical-label">Ship</div>
                                         <select id="filterShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship column">
                                             <option value="all">All</option>
@@ -892,7 +1018,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb">
+                                    <th data-col-key="ship_bb" data-col-label="Ship BB" class="th-has-filter shipping-rate-header" data-pm-ship-col="ship_bb">
                                         <div class="th-vertical-label">Ship<br>BB</div>
                                         <select id="filterShipBbCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ship BB column">
                                             <option value="all">All</option>
@@ -901,7 +1027,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="tt">
+                                    <th data-col-key="tt_ship" data-col-label="TT 1 Ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="tt">
                                         <div class="th-vertical-label">TT 1<br>Ship</div>
                                         <select id="filterTtShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter TT 1 Ship">
                                             <option value="all">All</option>
@@ -910,7 +1036,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="temu">
+                                    <th data-col-key="temu_ship" data-col-label="Temu ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu">
                                         <div class="th-vertical-label">Temu<br>ship</div>
                                         <select id="filterTemuShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu ship">
                                             <option value="all">All</option>
@@ -919,7 +1045,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="temu_gofo">
+                                    <th data-col-key="temu_gofo" data-col-label="Temu GOFO" class="th-has-filter shipping-rate-header" data-pm-ship-col="temu_gofo">
                                         <div class="th-vertical-label">Temu<br>GOFO</div>
                                         <select id="filterTemuGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Temu GOFO">
                                             <option value="all">All</option>
@@ -928,7 +1054,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="ebay2">
+                                    <th data-col-key="ebay2_ship" data-col-label="Ebay2 ship" class="th-has-filter shipping-rate-header" data-pm-ship-col="ebay2">
                                         <div class="th-vertical-label">Ebay2<br>ship</div>
                                         <select id="filterEbay2ShipCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Ebay2 ship">
                                             <option value="all">All</option>
@@ -937,7 +1063,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header" data-pm-ship-col="gofo">
+                                    <th data-col-key="gofo" data-col-label="GOFO" class="th-has-filter shipping-rate-header" data-pm-ship-col="gofo">
                                         <div class="th-vertical-label">GOFO</div>
                                         <select id="filterGofoCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter GOFO">
                                             <option value="all">All</option>
@@ -946,7 +1072,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="fedex">
+                                    <th data-col-key="fedex" data-col-label="Fedex" class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="fedex">
                                         <div class="th-vertical-label">Fedex</div>
                                         <select id="filterFedexCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter Fedex">
                                             <option value="all">All</option>
@@ -955,7 +1081,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="ups">
+                                    <th data-col-key="ups" data-col-label="UPS" class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="ups">
                                         <div class="th-vertical-label">UPS</div>
                                         <select id="filterUpsCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter UPS">
                                             <option value="all">All</option>
@@ -964,7 +1090,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="usps">
+                                    <th data-col-key="usps" data-col-label="USPS" class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="usps">
                                         <div class="th-vertical-label">USPS</div>
                                         <select id="filterUspsCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter USPS">
                                             <option value="all">All</option>
@@ -973,7 +1099,7 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="uni">
+                                    <th data-col-key="uni" data-col-label="UNI" class="th-has-filter shipping-rate-header hide-carrier-col" data-pm-ship-col="uni">
                                         <div class="th-vertical-label">UNI</div>
                                         <select id="filterUniCol" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 100%;" title="Filter UNI">
                                             <option value="all">All</option>
@@ -982,75 +1108,87 @@
                                             <option value="zero">0</option>
                                         </select>
                                     </th>
-                                    <th class="shipping-rate-header pick-pack-col" title="Pick &amp; pack fee ($1 per SKU)">
-                                        <span class="th-vertical-label">Pick<br>Pack</span>
-                                    </th>
-                                    <th class="shipping-rate-header" title="Average of TT 1 Ship, Temu, GOFO, Fedex, UPS, USPS, UNI (excludes Pick Pack and Ebay2)">
-                                        <span class="th-vertical-label">Avg</span>
-                                    </th>
-                                    <th class="th-has-filter th-parent-sku-col shipping-rate-header hide-fba-sku-col">
+                                    <th data-col-key="fba_sku" data-col-label="FBA SKU" class="th-has-filter th-parent-sku-col shipping-rate-header hide-fba-sku-col">
                                         <div class="th-horizontal-label" style="font-size: 9px;">FBA SKU</div>
                                         <input type="text" id="fbaSkuSearch" class="form-control-sm header-search-120"
                                             placeholder="Search" style="font-size: 9px; padding: 2px 4px;">
                                     </th>
-                                    <th class="shipping-rate-header"><span class="th-vertical-label">FBA<br>ship</span></th>
-                                    <th class="shipping-rate-header"><span class="th-vertical-label">FBA manual<br>ship</span></th>
-                                    <th class="th-has-filter item-dim-header hide-item-wt-act">
+                                    <th data-col-key="fba_ship" data-col-label="FBA ship" class="shipping-rate-header"><span class="th-vertical-label">FBA<br>ship</span></th>
+                                    <th data-col-key="fba_manual_ship" data-col-label="FBA manual ship" class="shipping-rate-header"><span class="th-vertical-label">FBA manual<br>ship</span></th>
+                                    <th data-col-key="wt_act_kg" data-col-label="Item Weight ACT (Kg)" class="th-has-filter item-dim-header hide-item-wt-act">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item Weight ACT<br>(Kg)</div>
                                         <select id="filterWtActKg" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter item-dim-header th-wt-act-lb-filter">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT<br>(LB)</div>
+                                    <th data-col-key="wt_act" data-col-label="Item WT ACT (OZ / LB)" class="th-has-filter item-dim-header th-wt-act-lb-filter" title="Below 1 lb shown in OZ; 1 lb and above shown in LB">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT<br>(OZ / LB)</div>
                                         <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Item WT ACT (oz / lb)">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="item-dim-header" title="Item Weight ACT (lb) converted to ounces — 16 oz = 1 lb">
-                                        <span class="th-vertical-label" style="font-size: 9px;">Item Weight<br>(OZ)</span>
-                                    </th>
-                                    <th class="th-has-filter item-dim-header hide-item-wt-decl">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT DECL<br>(LB)</div>
-                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
-                                            <option value="all">All</option>
-                                            <option value="missing">Missing</option>
-                                        </select>
-                                    </th>
-                                    <th class="th-has-filter item-dim-header">
+                                    <th data-col-key="l" data-col-label="Item Length (inch)" class="th-has-filter item-dim-header">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item Length<br>(inch)</div>
                                         <select id="filterL" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
+                                    <th data-col-key="w" data-col-label="Item Width (inch)" class="th-has-filter item-dim-header">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item Width<br>(inch)</div>
                                         <select id="filterW" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="th-has-filter item-dim-header">
+                                    <th data-col-key="h" data-col-label="Item Height (Inch)" class="th-has-filter item-dim-header">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item Height<br>(Inch)</div>
                                         <select id="filterH" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
-                                    <th class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
-                                    <th class="item-cm-col"><span class="th-vertical-label">Item Height<br>(CM)</span></th>
-                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN L<br>(CM)</span></th>
-                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN W<br>(CM)</span></th>
-                                    <th class="ctn-cm-col"><span class="th-vertical-label">CTN H<br>(CM)</span></th>
-                                    <th><span class="th-vertical-label">Carton<br>CBM</span></th>
-                                    <th><span class="th-vertical-label">CTN<br>QTY</span></th>
-                                    <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
-                                    <th class="text-center"><span class="th-vertical-label">Verified</span></th>
-                                    <th><span class="th-vertical-label">Action</span></th>
+                                    <th data-col-key="wt_decl" data-col-label="Item WT ACT Decl (OZ / LB)" class="th-has-filter item-dim-decl-header" title="Below 1 lb shown in OZ; 1 lb and above shown in LB. Copies ACT when Decl is empty.">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT Decl<br>(OZ / LB)</div>
+                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Item WT ACT Decl">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th data-col-key="l_decl" data-col-label="Item Length Decl (inch)" class="th-has-filter item-dim-decl-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Length Decl<br>(inch)</div>
+                                        <select id="filterLDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th data-col-key="w_decl" data-col-label="Item Width Decl (inch)" class="th-has-filter item-dim-decl-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Width Decl<br>(inch)</div>
+                                        <select id="filterWDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th data-col-key="h_decl" data-col-label="Item Height Decl (Inch)" class="th-has-filter item-dim-decl-header">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item Height Decl<br>(Inch)</div>
+                                        <select id="filterHDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
+                                    <th data-col-key="l_cm" data-col-label="Item Length (CM)" class="item-cm-col"><span class="th-vertical-label">Item Length<br>(CM)</span></th>
+                                    <th data-col-key="w_cm" data-col-label="Item Width (CM)" class="item-cm-col"><span class="th-vertical-label">Item Width<br>(CM)</span></th>
+                                    <th data-col-key="h_cm" data-col-label="Item Height (CM)" class="item-cm-col"><span class="th-vertical-label">Item Height<br>(CM)</span></th>
+                                    <th data-col-key="ctn_l" data-col-label="CTN L (CM)" class="ctn-cm-col"><span class="th-vertical-label">CTN L<br>(CM)</span></th>
+                                    <th data-col-key="ctn_w" data-col-label="CTN W (CM)" class="ctn-cm-col"><span class="th-vertical-label">CTN W<br>(CM)</span></th>
+                                    <th data-col-key="ctn_h" data-col-label="CTN H (CM)" class="ctn-cm-col"><span class="th-vertical-label">CTN H<br>(CM)</span></th>
+                                    <th data-col-key="ctn_cbm" data-col-label="Carton CBM"><span class="th-vertical-label">Carton<br>CBM</span></th>
+                                    <th data-col-key="ctn_qty" data-col-label="CTN QTY"><span class="th-vertical-label">CTN<br>QTY</span></th>
+                                    <th data-col-key="ctn_cbm_each" data-col-label="Carton CBM each"><span class="th-vertical-label">Carton CBM<br>each</span></th>
+                                    <th data-col-key="verified" data-col-label="Verified" class="text-center"><span class="th-vertical-label">Verified</span></th>
+                                    <th data-col-key="action" data-col-label="Action"><span class="th-vertical-label">Action</span></th>
                                 </tr>
                             </thead>
                             <tbody id="table-body"></tbody>
@@ -1115,8 +1253,8 @@
                                 <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter Item WT ACT (LB)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWtDecl" class="form-label">Item WT DECL (LB)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Item WT DECL (LB)">
+                                <label for="editWtDecl" class="form-label">Item WT ACT Decl (LB)</label>
+                                <input type="number" step="0.01" min="0" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Rounds up to next slab (e.g. 1.1 → 2, 14.5 → 20)">
                             </div>
                         </div>
                         
@@ -1132,6 +1270,20 @@
                             <div class="col-md-4">
                                 <label for="editH" class="form-label">Item Height (Inch)</label>
                                 <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter Item Height (Inch)">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editLDecl" class="form-label">Item Length Decl (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editLDecl" name="l_decl" placeholder="Enter Item Length Decl (inch)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editWDecl" class="form-label">Item Width Decl (inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editWDecl" name="w_decl" placeholder="Enter Item Width Decl (inch)">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editHDecl" class="form-label">Item Height Decl (Inch)</label>
+                                <input type="number" step="0.01" class="form-control" id="editHDecl" name="h_decl" placeholder="Enter Item Height Decl (Inch)">
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1618,7 +1770,6 @@
                             tableData = response.data;
                             applyFilters();
                             updateCounts();
-                            updateStatusBadgesBar();
                             refreshProductPlaybackState();
                         } else {
                             console.error('Invalid data format received from server');
@@ -1653,6 +1804,99 @@
                 if (colorCls) dropdown.classList.add(colorCls);
             }
 
+            /** Shipping fields copied from Combo component SKUs onto package rows. */
+            const COMBO_PACKAGE_AUTOFILL_FIELDS = [
+                'wt_act_kg', 'wt_act', 'wt_decl',
+                'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm',
+                'ctn_l', 'ctn_w', 'ctn_h', 'ctn_qty',
+                'ship', 'ship_bb', 'tt_ship', 'temu_ship', 'temu_gofo', 'ebay2_ship',
+                'gofo', 'fedex', 'ups', 'usps', 'uni',
+                'fba_ship', 'fba_manual_ship', 'fba_sku', 'label_type',
+                'image_path'
+            ];
+
+            function getLabelQtyNumber(item) {
+                const labelQtyRaw = item?.label_qty ?? item?.['Label QTY'] ?? item?.Label_QTY;
+                if (labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '') return NaN;
+                if (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '') return NaN;
+                return parseInt(labelQtyRaw, 10);
+            }
+
+            /** Combo when SKU/Parent contains COMBO or SKU is a "+" join of components. */
+            function isComboSkuItem(item) {
+                const sku = String(item?.SKU || '');
+                const parent = String(item?.Parent || '');
+                return /combo/i.test(sku) || /combo/i.test(parent) || sku.includes('+');
+            }
+
+            /** Split "A + B" / "A+B" Combo SKUs into component SKU strings. */
+            function parseComboComponentSkus(sku) {
+                if (sku == null || String(sku).trim() === '') return [];
+                return String(sku)
+                    .split('+')
+                    .map(part => part.replace(/\u00a0/g, ' ').trim())
+                    .filter(Boolean);
+            }
+
+            function findProductBySkuKey(sku) {
+                const key = normalizeSkuKey(sku);
+                if (!key) return null;
+                return tableData.find(d => normalizeSkuKey(d.SKU) === key) || null;
+            }
+
+            function packageRowBgClass(packageIndex, packageCount) {
+                if (packageCount < 2) return '';
+                if (packageIndex === 2) return 'shipping-package-row-2';
+                if (packageIndex === 3) return 'shipping-package-row-3';
+                if (packageIndex === 4) return 'shipping-package-row-4';
+                if (packageIndex > 4) return 'shipping-package-row-extra';
+                return 'shipping-package-row-1';
+            }
+
+            /**
+             * Label QTY >= 2 ⇒ one visual row per package.
+             * Combo SKUs autopopulate dims/weight/ship fields from each "+" component SKU.
+             */
+            function buildShippingPackageRows(sourceItem) {
+                const isParentRow = !!(sourceItem.SKU && String(sourceItem.SKU).toUpperCase().includes('PARENT'));
+                const labelQtyNum = getLabelQtyNumber(sourceItem);
+                const packageCount = (!isParentRow && Number.isFinite(labelQtyNum) && labelQtyNum >= 2)
+                    ? labelQtyNum
+                    : 1;
+                const isCombo = !isParentRow && isComboSkuItem(sourceItem);
+                const components = isCombo ? parseComboComponentSkus(sourceItem.SKU) : [];
+
+                const rows = [];
+                for (let i = 0; i < packageCount; i++) {
+                    const packageIndex = i + 1;
+                    const componentSku = components[i] || null;
+                    const componentItem = componentSku ? findProductBySkuKey(componentSku) : null;
+                    let displayItem = sourceItem;
+
+                    if (componentItem) {
+                        displayItem = Object.assign({}, sourceItem);
+                        COMBO_PACKAGE_AUTOFILL_FIELDS.forEach(field => {
+                            if (Object.prototype.hasOwnProperty.call(componentItem, field)) {
+                                displayItem[field] = componentItem[field];
+                            }
+                        });
+                    }
+
+                    rows.push({
+                        sourceItem,
+                        displayItem,
+                        packageIndex,
+                        packageCount,
+                        isExtraPackage: i > 0,
+                        isCombo,
+                        componentSku,
+                        componentItem,
+                        bgClass: packageRowBgClass(packageIndex, packageCount)
+                    });
+                }
+                return rows;
+            }
+
             // Render table
             function renderTable(data) {
                 const tbody = document.getElementById('table-body');
@@ -1663,10 +1907,26 @@
                     return;
                 }
 
-                data.forEach(item => {
+                data.forEach(sourceItem => {
+                    const packageRows = buildShippingPackageRows(sourceItem);
+                    packageRows.forEach(pkg => {
+                    const item = pkg.displayItem;
                     const row = document.createElement('tr');
                     const isParentRow = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
                     if (isParentRow) row.classList.add('shipping-parent-row');
+                    if (pkg.bgClass) row.classList.add(pkg.bgClass);
+                    if (pkg.isExtraPackage) row.classList.add('shipping-package-extra');
+                    row.setAttribute('data-package-index', String(pkg.packageIndex));
+                    row.setAttribute('data-package-count', String(pkg.packageCount));
+                    // Resolve product for missing-M clicks / edits on this visual package row
+                    const rowProductRef = (pkg.isExtraPackage && pkg.componentItem)
+                        ? pkg.componentItem
+                        : sourceItem;
+                    row.setAttribute('data-id', rowProductRef.id != null ? String(rowProductRef.id) : '');
+                    row.setAttribute('data-sku', rowProductRef.SKU != null ? String(rowProductRef.SKU) : '');
+                    if (pkg.componentSku) {
+                        row.setAttribute('data-component-sku', pkg.componentSku);
+                    }
                     // Returns:
                     //   '--' for parent rows (aggregate placeholder)
                     //   '-'  for missing values on child rows (post-pass turns
@@ -1684,19 +1944,23 @@
                         return formatNumber(n, decimals);
                     };
 
-                    // Checkbox column
+                    // Checkbox column (primary package row only — avoid double-selecting combos)
                     const checkboxCell = document.createElement('td');
                     checkboxCell.className = 'text-center';
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.className = 'row-checkbox';
-                    checkbox.value = item.SKU != null ? String(item.SKU) : '';
-                    checkbox.setAttribute('data-sku', item.SKU != null ? String(item.SKU) : '');
-                    checkbox.setAttribute('data-id', item.id != null ? String(item.id) : '');
-                    checkbox.addEventListener('change', function() {
-                        updatePushButtonState();
-                    });
-                    checkboxCell.appendChild(checkbox);
+                    if (!pkg.isExtraPackage) {
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'row-checkbox';
+                        checkbox.value = sourceItem.SKU != null ? String(sourceItem.SKU) : '';
+                        checkbox.setAttribute('data-sku', sourceItem.SKU != null ? String(sourceItem.SKU) : '');
+                        checkbox.setAttribute('data-id', sourceItem.id != null ? String(sourceItem.id) : '');
+                        checkbox.addEventListener('change', function() {
+                            updatePushButtonState();
+                        });
+                        checkboxCell.appendChild(checkbox);
+                    } else {
+                        checkboxCell.innerHTML = '<span class="text-muted" style="font-size:10px;">↳</span>';
+                    }
                     row.appendChild(checkboxCell);
 
                     // Image column
@@ -1715,12 +1979,27 @@
                     parentCell.textContent = parentDisplay ? escapeHtml(parentDisplay) : '-';
                     row.appendChild(parentCell);
 
-                    // SKU column – display with spaces, limited characters; full name in tooltip
+                    // SKU column – Combo package rows also show the component SKU used for autofill
                     const skuCell = document.createElement('td');
                     skuCell.className = 'td-sku-col';
-                    skuCell.title = escapeHtml(item.SKU) || '';
-                    const skuDisplay = formatSkuDisplayLimited(item.SKU);
-                    skuCell.textContent = skuDisplay ? escapeHtml(skuDisplay) : '-';
+                    const comboSkuFull = sourceItem.SKU != null ? String(sourceItem.SKU) : '';
+                    const componentSkuFull = pkg.componentSku ? String(pkg.componentSku) : '';
+                    skuCell.title = componentSkuFull
+                        ? `${comboSkuFull} — Package ${pkg.packageIndex}/${pkg.packageCount}: ${componentSkuFull}`
+                        : (pkg.packageCount >= 2
+                            ? `${comboSkuFull} — Package ${pkg.packageIndex}/${pkg.packageCount}`
+                            : comboSkuFull);
+                    const skuDisplay = formatSkuDisplayLimited(sourceItem.SKU);
+                    const skuMain = document.createElement('span');
+                    skuMain.textContent = skuDisplay ? skuDisplay : '-';
+                    skuCell.appendChild(skuMain);
+                    if (componentSkuFull) {
+                        const compEl = document.createElement('span');
+                        compEl.className = 'shipping-package-component';
+                        compEl.textContent = formatSkuDisplayLimited(componentSkuFull) || componentSkuFull;
+                        compEl.title = componentSkuFull;
+                        skuCell.appendChild(compEl);
+                    }
                     row.appendChild(skuCell);
 
                     // Status column – colored dot (same as product master)
@@ -1731,40 +2010,55 @@
 
                     // Label Qty column (from Product Master Values.label_qty)
                     // Blank or 0 → missing ("-"/M badge); otherwise show the number.
+                    // Multi-package rows also show Pkg i/n.
                     const labelQtyCell = document.createElement('td');
                     labelQtyCell.className = 'text-center shipping-rate-cell';
-                    const labelQtyRaw = item.label_qty ?? item['Label QTY'] ?? item.Label_QTY;
+                    const labelQtyRaw = sourceItem.label_qty ?? sourceItem['Label QTY'] ?? sourceItem.Label_QTY;
                     const labelQtyBlank = labelQtyRaw === null || labelQtyRaw === undefined || labelQtyRaw === '' ||
                         (typeof labelQtyRaw === 'string' && labelQtyRaw.trim() === '');
                     const labelQtyNum = labelQtyBlank ? NaN : parseInt(labelQtyRaw, 10);
                     if (labelQtyBlank || (Number.isFinite(labelQtyNum) && labelQtyNum === 0)) {
                         labelQtyCell.textContent = '-';
                     } else {
-                        labelQtyCell.textContent = Number.isFinite(labelQtyNum) ? String(labelQtyNum) : String(labelQtyRaw);
+                        const qtyLabel = document.createElement('div');
+                        qtyLabel.textContent = Number.isFinite(labelQtyNum) ? String(labelQtyNum) : String(labelQtyRaw);
+                        labelQtyCell.appendChild(qtyLabel);
                         if (labelQtyNum === 1) {
                             labelQtyCell.classList.add('label-qty-ok');
-                        } else if (labelQtyNum === 2 || labelQtyNum === 3) {
+                        } else if (Number.isFinite(labelQtyNum) && labelQtyNum >= 2) {
                             labelQtyCell.classList.add('label-qty-alert');
+                            const badge = document.createElement('span');
+                            badge.className = 'shipping-package-badge';
+                            badge.textContent = `Pkg ${pkg.packageIndex}/${pkg.packageCount}`;
+                            labelQtyCell.appendChild(badge);
                         }
                     }
                     row.appendChild(labelQtyCell);
 
                     // Type column (Label Type) — ENV / STD / O-Size / Pallet; default STD
+                    // Extra package rows show the component's type as read-only.
                     const labelTypeCell = document.createElement('td');
                     labelTypeCell.className = 'text-center shipping-rate-cell';
                     const labelTypeVal = normalizeLabelType(item.label_type);
                     const labelTypeColorCls = LABEL_TYPE_COLOR_CLASS[labelTypeVal] || 'label-type-std';
-                    labelTypeCell.innerHTML = `
-                        <select class="label-type-dropdown ${labelTypeColorCls}"
-                            data-sku="${escapeHtml(item.SKU || '')}"
-                            data-id="${escapeHtml(String(item.id || ''))}"
-                            data-prev="${escapeHtml(labelTypeVal)}"
-                            title="Label Type">
-                            ${LABEL_TYPE_OPTIONS.map(opt =>
-                                `<option value="${opt}"${opt === labelTypeVal ? ' selected' : ''}>${opt}</option>`
-                            ).join('')}
-                        </select>
-                    `;
+                    if (pkg.isExtraPackage) {
+                        labelTypeCell.innerHTML = `<span class="label-type-dropdown ${labelTypeColorCls}" style="display:inline-block;pointer-events:none;" title="Label Type (from component)">${escapeHtml(labelTypeVal)}</span>`;
+                    } else {
+                        // Primary row edits the Combo/source SKU's own Label Type
+                        const sourceLabelTypeVal = normalizeLabelType(sourceItem.label_type);
+                        const sourceLabelTypeColorCls = LABEL_TYPE_COLOR_CLASS[sourceLabelTypeVal] || 'label-type-std';
+                        labelTypeCell.innerHTML = `
+                            <select class="label-type-dropdown ${sourceLabelTypeColorCls}"
+                                data-sku="${escapeHtml(sourceItem.SKU || '')}"
+                                data-id="${escapeHtml(String(sourceItem.id || ''))}"
+                                data-prev="${escapeHtml(sourceLabelTypeVal)}"
+                                title="Label Type">
+                                ${LABEL_TYPE_OPTIONS.map(opt =>
+                                    `<option value="${opt}"${opt === sourceLabelTypeVal ? ' selected' : ''}>${opt}</option>`
+                                ).join('')}
+                            </select>
+                        `;
+                    }
                     row.appendChild(labelTypeCell);
 
                     // INV column (bold; child 0 / missing = red)
@@ -1848,17 +2142,6 @@
                     appendCarrierShipCell(item.uni, 'hide-carrier-col');
                     highlightCarrierShipMinMax(carrierShipHighlight);
 
-                    const pickPackCell = document.createElement('td');
-                    pickPackCell.className = 'text-center shipping-rate-cell pick-pack-col';
-                    pickPackCell.textContent = formatNumber(PICK_PACK_RATE, 2);
-                    row.appendChild(pickPackCell);
-
-                    const uniAvgCell = document.createElement('td');
-                    uniAvgCell.className = 'text-center shipping-rate-cell';
-                    const uniAvg = avgUniShipCarrierRates(item);
-                    uniAvgCell.textContent = uniAvg === null ? '-' : formatNumber(uniAvg, 2);
-                    row.appendChild(uniAvgCell);
-
                     const fbaSkuCell = document.createElement('td');
                     fbaSkuCell.className = 'td-sku-col shipping-rate-cell hide-fba-sku-col';
                     const fbaSkuVal = item.fba_sku != null && String(item.fba_sku).trim() !== '' ? String(item.fba_sku).trim() : '';
@@ -1890,22 +2173,11 @@
                     wtActKgCell.textContent = cellVal(item.wt_act_kg, 1);
                     row.appendChild(wtActKgCell);
 
-                    // WT ACT (LB) — actual weight converted to lb when only Kg is stored
+                    // WT ACT — below 1 lb shown as OZ, otherwise LB
                     const wtActCell = document.createElement('td');
                     wtActCell.className = 'text-center';
-                    wtActCell.textContent = itemWeightActLbDisplay(item, isParentRow);
+                    wtActCell.textContent = itemWeightActDisplay(item, isParentRow);
                     row.appendChild(wtActCell);
-
-                    const wtActOzCell = document.createElement('td');
-                    wtActOzCell.className = 'text-center item-weight-oz-col';
-                    wtActOzCell.textContent = itemWeightActOzDisplay(item, isParentRow);
-                    row.appendChild(wtActOzCell);
-
-                    // WT DECL column
-                    const wtDeclCell = document.createElement('td');
-                    wtDeclCell.className = 'text-center hide-item-wt-decl';
-                    wtDeclCell.textContent = cellVal(item.wt_decl, 2);
-                    row.appendChild(wtDeclCell);
 
                     // L column (inch) - round to whole number
                     const lCell = document.createElement('td');
@@ -1924,6 +2196,27 @@
                     hCell.className = 'text-center';
                     hCell.textContent = cellVal(item.h, 0);
                     row.appendChild(hCell);
+
+                    // Decl columns — fall back to ACT values when Decl is empty
+                    const wtDeclCell = document.createElement('td');
+                    wtDeclCell.className = 'text-center';
+                    wtDeclCell.textContent = itemWeightDeclDisplay(item, isParentRow);
+                    row.appendChild(wtDeclCell);
+
+                    const lDeclCell = document.createElement('td');
+                    lDeclCell.className = 'text-center';
+                    lDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'l_decl', 'l'), 0);
+                    row.appendChild(lDeclCell);
+
+                    const wDeclCell = document.createElement('td');
+                    wDeclCell.className = 'text-center';
+                    wDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'w_decl', 'w'), 0);
+                    row.appendChild(wDeclCell);
+
+                    const hDeclCell = document.createElement('td');
+                    hDeclCell.className = 'text-center';
+                    hDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'h_decl', 'h'), 0);
+                    row.appendChild(hDeclCell);
 
                     // Length (CM) column (use stored value or convert from inch) - hidden
                     const lCmCell = document.createElement('td');
@@ -1991,37 +2284,45 @@
                     ctnCbmEachCell.textContent = cellVal(ctnCbmEachCalculated, 1);
                     row.appendChild(ctnCbmEachCell);
 
-                    // Verified column – red/green dot toggle
-                    const isVerified = item.verified_data === 1 || item.verified_data === true ||
-                        (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
+                    // Verified column – red/green dot toggle (primary package row only)
+                    const verifiedSource = pkg.isExtraPackage && pkg.componentItem ? pkg.componentItem : sourceItem;
+                    const isVerified = verifiedSource.verified_data === 1 || verifiedSource.verified_data === true ||
+                        (verifiedSource.Values && (verifiedSource.Values.verified_data === 1 || verifiedSource.Values.verified_data === true));
                     const verifiedClass = isVerified ? 'verified' : 'not-verified';
-                    const verifiedValue = isVerified ? '1' : '0';
                     const verifiedCell = document.createElement('td');
                     verifiedCell.className = 'text-center';
-                    verifiedCell.innerHTML = `
-                        <select class="verified-data-dropdown ${verifiedClass}"
-                            data-sku="${escapeHtml(item.SKU)}" data-id="${escapeHtml(item.id)}"
-                            title="${isVerified ? 'Verified' : 'Not verified'}">
-                            <option value="0" ${!isVerified ? 'selected' : ''}>🔴</option>
-                            <option value="1" ${isVerified ? 'selected' : ''}>🟢</option>
-                        </select>
-                    `;
+                    if (pkg.isExtraPackage) {
+                        verifiedCell.innerHTML = `<span title="${isVerified ? 'Verified' : 'Not verified'}">${isVerified ? '🟢' : '🔴'}</span>`;
+                    } else {
+                        verifiedCell.innerHTML = `
+                            <select class="verified-data-dropdown ${verifiedClass}"
+                                data-sku="${escapeHtml(sourceItem.SKU)}" data-id="${escapeHtml(sourceItem.id)}"
+                                title="${isVerified ? 'Verified' : 'Not verified'}">
+                                <option value="0" ${!isVerified ? 'selected' : ''}>🔴</option>
+                                <option value="1" ${isVerified ? 'selected' : ''}>🟢</option>
+                            </select>
+                        `;
+                    }
                     row.appendChild(verifiedCell);
 
                     // Action column
+                    // Primary row edits the Combo/source SKU; extra Combo package rows edit the component SKU.
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
+                    const editTarget = (pkg.isExtraPackage && pkg.componentItem) ? pkg.componentItem : sourceItem;
+                    const showDelete = !pkg.isExtraPackage;
                     actionCell.innerHTML = `
-                        <div class="d-inline-flex gap-1">
-                            <button type="button" class="btn btn-sm btn-outline-warning edit-btn" data-id="${item.id != null ? String(item.id) : ''}" data-sku="${escapeHtml(item.SKU)}" title="Edit">
+                        <div class="d-inline-flex action-btns">
+                            <button type="button" class="btn btn-sm btn-outline-warning edit-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="${pkg.isExtraPackage ? 'Edit component package' : 'Edit'}">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-info history-btn" data-id="${item.id != null ? String(item.id) : ''}" data-sku="${escapeHtml(item.SKU)}" title="History — see who changed what">
+                            <button type="button" class="btn btn-sm btn-outline-info history-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="History — see who changed what">
                                 <i class="bi bi-clock-history"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(item.id)}" data-sku="${escapeHtml(item.SKU)}" title="Delete">
+                            ${showDelete ? `
+                            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${escapeHtml(sourceItem.id)}" data-sku="${escapeHtml(sourceItem.SKU)}" title="Delete">
                                 <i class="bi bi-archive"></i>
-                            </button>
+                            </button>` : ''}
                         </div>
                     `;
                     row.appendChild(actionCell);
@@ -2057,8 +2358,10 @@
 
                     if (!isParentRow) convertMissingDashesToIndicator(row);
                     tbody.appendChild(row);
+                    }); // end packageRows.forEach
                 });
                 applyDimWtSectionFilter();
+                applyShippingColumnVisibility();
             }
 
             /** Cell column index → field key on `item` (and on the
@@ -2079,16 +2382,18 @@
                 16: 'ups',
                 17: 'usps',
                 18: 'uni',
-                21: 'fba_sku',
-                22: 'fba_ship',
-                23: 'fba_manual_ship',
-                24: 'wt_act_kg',
-                25: 'wt_act',
-                26: 'wt_act',          // Item Weight (OZ) is derived from wt_act — focus the LB input
+                19: 'fba_sku',
+                20: 'fba_ship',
+                21: 'fba_manual_ship',
+                22: 'wt_act_kg',
+                23: 'wt_act',
+                24: 'l',
+                25: 'w',
+                26: 'h',
                 27: 'wt_decl',
-                28: 'l',
-                29: 'w',
-                30: 'h',
+                28: 'l_decl',
+                29: 'w_decl',
+                30: 'h_decl',
                 31: 'l_cm',
                 32: 'w_cm',
                 33: 'h_cm',
@@ -2105,10 +2410,13 @@
                 label_type:      'Label Type',
                 wt_act_kg:       'Item Weight ACT (Kg)',
                 wt_act:          'Item WT ACT (LB)',
-                wt_decl:         'Item WT DECL (LB)',
+                wt_decl:         'Item WT ACT Decl (LB)',
                 l:               'Item Length (inch)',
                 w:               'Item Width (inch)',
                 h:               'Item Height (inch)',
+                l_decl:          'Item Length Decl (inch)',
+                w_decl:          'Item Width Decl (inch)',
+                h_decl:          'Item Height Decl (inch)',
                 l_cm:            'Item Length (CM)',
                 w_cm:            'Item Width (CM)',
                 h_cm:            'Item Height (CM)',
@@ -2193,9 +2501,21 @@
 
                     const row = indicator.closest('tr');
                     if (!row) return;
+                    let product = null;
                     const checkbox = row.querySelector('.row-checkbox');
-                    if (!checkbox) return;
-                    const product = findProductByRowRef(checkbox);
+                    if (checkbox) {
+                        product = findProductByRowRef(checkbox);
+                    }
+                    if (!product) {
+                        const rowId = row.getAttribute('data-id');
+                        const rowSku = row.getAttribute('data-sku');
+                        if (rowId) {
+                            product = tableData.find(d => String(d.id) === String(rowId)) || null;
+                        }
+                        if (!product && rowSku) {
+                            product = findProductBySkuKey(rowSku);
+                        }
+                    }
                     if (!product) {
                         showToast('warning', 'Could not find the matching SKU for that row.');
                         return;
@@ -2207,7 +2527,7 @@
                         return;
                     }
                     if (!fieldKey || !SHIPPING_FIELD_LABELS[fieldKey]) {
-                        // Calculated columns (avg, ctn_cbm, ctn_cbm_each) — no
+                        // Calculated columns (ctn_cbm, ctn_cbm_each) — no
                         // single field to edit. Fall back to the full modal.
                         bulkEditList = null;
                         editDimWt(product);
@@ -2388,51 +2708,290 @@
                 }
             }
 
-            // Section filter: controls visibility of item vs carton metrics
             function applyDimWtSectionFilter() {
+                applyShippingColumnVisibility();
+            }
+
+            // ── Column visibility (channel_tabulator_column_settings) ──
+            const SHIPPING_COLUMN_CHANNEL = 'shipping_master';
+            const SHIPPING_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+            const SHIPPING_COL_LOCKED = { select: true, action: true };
+            const SHIPPING_COL_CATEGORY_KEYS = ['basic', 'ship_rates', 'wt', 'dimensions', 'other'];
+            const SHIPPING_COL_CATEGORY_LABELS = {
+                basic: 'Basic',
+                ship_rates: 'Ship Rates',
+                wt: 'Wt',
+                dimensions: 'Dimensions',
+                other: 'Other',
+            };
+            /** Default show/hide — matches previous CSS-hidden + removed Carton Data columns. */
+            const SHIPPING_COL_DEFAULT_VISIBILITY = {
+                wt_act_kg: false,
+                l_cm: false,
+                w_cm: false,
+                h_cm: false,
+                ctn_l: false,
+                ctn_w: false,
+                ctn_h: false,
+                ctn_cbm: false,
+                ctn_qty: false,
+                ctn_cbm_each: false,
+                fba_sku: false,
+                fedex: false,
+                ups: false,
+                usps: false,
+                uni: false,
+            };
+            const SHIPPING_COL_CATEGORIES = {
+                basic: ['select', 'image', 'parent', 'sku', 'status', 'label_qty', 'label_type', 'inv', 'verified', 'action'],
+                ship_rates: ['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'temu_gofo', 'ebay2_ship', 'gofo', 'fedex', 'ups', 'usps', 'uni', 'fba_sku', 'fba_ship', 'fba_manual_ship'],
+                wt: ['wt_act_kg', 'wt_act', 'wt_decl'],
+                dimensions: ['l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each'],
+                other: [],
+            };
+
+            let shippingColVisMap = {};
+
+            function shippingColCategoryForKey(key) {
+                for (const cat of SHIPPING_COL_CATEGORY_KEYS) {
+                    if ((SHIPPING_COL_CATEGORIES[cat] || []).includes(key)) return cat;
+                }
+                return 'other';
+            }
+
+            function isShippingColumnUserVisible(key) {
+                if (!key) return true;
+                if (SHIPPING_COL_LOCKED[key]) return true;
+                if (Object.prototype.hasOwnProperty.call(shippingColVisMap, key)) {
+                    return shippingColVisMap[key] !== false;
+                }
+                if (Object.prototype.hasOwnProperty.call(SHIPPING_COL_DEFAULT_VISIBILITY, key)) {
+                    return SHIPPING_COL_DEFAULT_VISIBILITY[key] !== false;
+                }
+                return true;
+            }
+
+            function applyShippingColumnVisibility() {
                 const table = document.getElementById('dim-wt-master-datatable');
-                const sectionEl = document.getElementById('dimWtSectionFilter');
-                if (!table || !sectionEl) return;
+                if (!table) return;
                 const theadRow = table.querySelector('thead tr');
                 const tbody = document.getElementById('table-body');
                 if (!theadRow || !tbody) return;
                 const ths = theadRow.querySelectorAll('th');
-                const section = sectionEl.value;
 
                 for (let i = 0; i < ths.length; i++) {
                     const th = ths[i];
-                    const headerText = (th.textContent || '').toLowerCase();
+                    const key = th.getAttribute('data-col-key') || '';
+                    const show = isShippingColumnUserVisible(key);
 
-                    const isCtnDim =
-                        headerText.includes('ctn l') ||
-                        headerText.includes('ctn w') ||
-                        headerText.includes('ctn h');
-
-                    const isCartonMetric =
-                        (!isCtnDim && headerText.includes('carton')) ||
-                        headerText.includes('ctn cbm') ||
-                        (headerText.includes('ctn') && headerText.includes('qty'));
-
-                    let visible = true;
-
-                    if (section === 'item_data') {
-                        // Show all item columns + CTN dimensions; hide only carton summary metrics
-                        visible = !isCartonMetric;
-                    } else if (section === 'carton_data') {
-                        // Focus on CTN dimensions and carton metrics; hide most pure item-only metrics
-                        const hNorm = headerText.replace(/\s+/g, ' ').trim();
-                        const pmAttr = th.getAttribute('data-pm-ship-col');
-                        const isPmShipCol = pmAttr === 'ship' || pmAttr === 'ship_bb' || pmAttr === 'tt' || pmAttr === 'temu' || pmAttr === 'ebay2';
-                        const isFbaShipCol = hNorm.includes('fba sku') || hNorm.includes('fba ship') || hNorm.includes('fba manual');
-                        visible = isCtnDim || isCartonMetric || headerText.includes('status') || headerText === 'inv' || isPmShipCol || isFbaShipCol;
-                    }
-
-                    th.style.display = visible ? '' : 'none';
+                    th.classList.toggle('col-user-hidden', !show);
+                    th.classList.toggle('col-user-visible', show);
+                    th.style.display = '';
                     tbody.querySelectorAll('tr').forEach(tr => {
                         const cell = tr.cells[i];
-                        if (cell) cell.style.display = visible ? '' : 'none';
+                        if (!cell) return;
+                        cell.classList.toggle('col-user-hidden', !show);
+                        cell.classList.toggle('col-user-visible', show);
+                        cell.style.display = '';
                     });
                 }
+            }
+
+            function collectShippingColumnVisibilityMap() {
+                const table = document.getElementById('dim-wt-master-datatable');
+                const map = {};
+                if (!table) return map;
+                table.querySelectorAll('thead th[data-col-key]').forEach(th => {
+                    const key = th.getAttribute('data-col-key');
+                    if (!key || SHIPPING_COL_LOCKED[key]) return;
+                    map[key] = isShippingColumnUserVisible(key);
+                });
+                return map;
+            }
+
+            function saveShippingColumnVisibility() {
+                const visibility = collectShippingColumnVisibilityMap();
+                shippingColVisMap = { ...visibility };
+                return fetch(SHIPPING_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        channel: SHIPPING_COLUMN_CHANNEL,
+                        visibility,
+                    }),
+                }).catch(err => console.warn('shipping column visibility save failed:', err));
+            }
+
+            function fetchShippingColumnVisibility() {
+                return fetch(
+                    SHIPPING_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(SHIPPING_COLUMN_CHANNEL),
+                    { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+                )
+                    .then(r => r.json())
+                    .then(map => {
+                        shippingColVisMap = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+                        // Removed Carton Data section — keep those columns hidden
+                        let cleared = false;
+                        ['ctn_cbm', 'ctn_qty', 'ctn_cbm_each'].forEach(k => {
+                            if (shippingColVisMap[k] !== false) {
+                                shippingColVisMap[k] = false;
+                                cleared = true;
+                            }
+                        });
+                        if (cleared) saveShippingColumnVisibility();
+                        return shippingColVisMap;
+                    })
+                    .catch(() => {
+                        shippingColVisMap = {};
+                        return {};
+                    });
+            }
+
+            function getShippingCategoryToggleKeys(cat) {
+                return (SHIPPING_COL_CATEGORIES[cat] || []).filter(key => key && !SHIPPING_COL_LOCKED[key]);
+            }
+
+            function syncShippingCategoryHeaderCheckbox(catCb, cat) {
+                if (!catCb) return;
+                const keys = getShippingCategoryToggleKeys(cat);
+                if (keys.length === 0) {
+                    catCb.checked = false;
+                    catCb.indeterminate = false;
+                    catCb.disabled = true;
+                    return;
+                }
+                catCb.disabled = false;
+                const checkedCount = keys.filter(key => isShippingColumnUserVisible(key)).length;
+                catCb.checked = checkedCount === keys.length;
+                catCb.indeterminate = checkedCount > 0 && checkedCount < keys.length;
+            }
+
+            function setShippingCategoryVisibility(cat, visible) {
+                getShippingCategoryToggleKeys(cat).forEach(key => {
+                    shippingColVisMap[key] = !!visible;
+                });
+                applyShippingColumnVisibility();
+                saveShippingColumnVisibility();
+            }
+
+            function buildShippingColumnDropdown() {
+                const menu = document.getElementById('shipping-column-dropdown-menu');
+                const table = document.getElementById('dim-wt-master-datatable');
+                if (!menu || !table) return;
+                menu.innerHTML = '';
+
+                const showAllLi = document.createElement('li');
+                showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="shipping-show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                menu.appendChild(showAllLi);
+
+                const hintLi = document.createElement('li');
+                hintLi.innerHTML = '<div class="px-2 pb-1 text-muted" style="font-size:0.7rem;">Use group checkboxes to select / deselect all</div>';
+                menu.appendChild(hintLi);
+
+                const groupsLi = document.createElement('li');
+                const groupsWrap = document.createElement('div');
+                groupsWrap.className = 'col-vis-groups';
+
+                const lists = {};
+                const categoryHeaderCbs = {};
+                SHIPPING_COL_CATEGORY_KEYS.forEach(cat => {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.category = cat;
+
+                    const titleEl = document.createElement('label');
+                    titleEl.className = 'col-vis-group-title';
+                    const catCb = document.createElement('input');
+                    catCb.type = 'checkbox';
+                    catCb.className = 'col-vis-group-check';
+                    catCb.dataset.category = cat;
+                    catCb.title = 'Select / deselect all in ' + SHIPPING_COL_CATEGORY_LABELS[cat];
+                    catCb.addEventListener('change', () => {
+                        setShippingCategoryVisibility(cat, catCb.checked);
+                        buildShippingColumnDropdown();
+                    });
+                    titleEl.appendChild(catCb);
+                    titleEl.appendChild(document.createTextNode(SHIPPING_COL_CATEGORY_LABELS[cat]));
+                    group.appendChild(titleEl);
+
+                    const list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                    categoryHeaderCbs[cat] = catCb;
+                });
+
+                const ths = table.querySelectorAll('thead th[data-col-key]');
+                ths.forEach(th => {
+                    const key = th.getAttribute('data-col-key');
+                    const label = th.getAttribute('data-col-label') || key;
+                    const cat = shippingColCategoryForKey(key);
+                    const locked = !!SHIPPING_COL_LOCKED[key];
+
+                    const li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    const lab = document.createElement('label');
+                    if (locked) lab.className = 'col-vis-locked';
+
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = key;
+                    cb.checked = isShippingColumnUserVisible(key);
+                    cb.disabled = locked;
+                    cb.style.marginRight = '6px';
+                    if (!locked) {
+                        cb.addEventListener('change', () => {
+                            shippingColVisMap[key] = !!cb.checked;
+                            applyShippingColumnVisibility();
+                            saveShippingColumnVisibility();
+                            syncShippingCategoryHeaderCheckbox(categoryHeaderCbs[cat], cat);
+                        });
+                    }
+
+                    lab.appendChild(cb);
+                    lab.appendChild(document.createTextNode(label));
+                    li.appendChild(lab);
+                    (lists[cat] || lists.other).appendChild(li);
+                });
+
+                SHIPPING_COL_CATEGORY_KEYS.forEach(cat => {
+                    const catCb = categoryHeaderCbs[cat];
+                    const titleEl = catCb ? catCb.closest('.col-vis-group-title') : null;
+                    if (getShippingCategoryToggleKeys(cat).length === 0 && titleEl) {
+                        titleEl.classList.add('col-vis-group-empty');
+                    }
+                    syncShippingCategoryHeaderCheckbox(catCb, cat);
+                });
+
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
+
+                const showAllBtn = document.getElementById('shipping-show-all-columns-btn');
+                if (showAllBtn) {
+                    showAllBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        table.querySelectorAll('thead th[data-col-key]').forEach(th => {
+                            const key = th.getAttribute('data-col-key');
+                            if (!key || SHIPPING_COL_LOCKED[key]) return;
+                            shippingColVisMap[key] = true;
+                        });
+                        applyShippingColumnVisibility();
+                        saveShippingColumnVisibility().then(() => buildShippingColumnDropdown());
+                    });
+                }
+            }
+
+            function setupShippingColumnVisibility() {
+                fetchShippingColumnVisibility().then(() => {
+                    applyShippingColumnVisibility();
+                    buildShippingColumnDropdown();
+                });
             }
 
             // Update counts
@@ -2474,35 +3033,6 @@
                 setHeaderCount('lMissingCount', lMissingCount);
                 setHeaderCount('wMissingCount', wMissingCount);
                 setHeaderCount('hMissingCount', hMissingCount);
-            }
-
-            function updateStatusBadgesBar() {
-                const bar = document.getElementById('statusBadgesBar');
-                if (!bar) return;
-                const statusCounts = { active: 0, inactive: 0, DC: 0, upcoming: 0, '2BDC': 0 };
-                (tableData || []).forEach(item => {
-                    const sku = String(item.SKU || item.sku || '').toUpperCase();
-                    if (sku.includes('PARENT')) return;
-                    let raw = item.status;
-                    if ((raw == null || raw === '') && item.Values) {
-                        const V = typeof item.Values === 'string' ? (function(){ try { return JSON.parse(item.Values); } catch(e) { return {}; } })() : item.Values;
-                        raw = V && V.status;
-                    }
-                    const s = String(raw || '').trim();
-                    const lower = s.toLowerCase();
-                    if (lower === 'active') statusCounts.active++;
-                    else if (lower === 'inactive') statusCounts.inactive++;
-                    else if (s.toUpperCase() === 'DC') statusCounts.DC++;
-                    else if (lower === 'upcoming') statusCounts.upcoming++;
-                    else if (s.toUpperCase() === '2BDC') statusCounts['2BDC']++;
-                });
-                bar.innerHTML = `
-                    <span class="status-badge-item bg-active">Active ${statusCounts.active}</span>
-                    <span class="status-badge-item bg-inactive">Inactive ${statusCounts.inactive}</span>
-                    <span class="status-badge-item bg-dc">DC ${statusCounts.DC}</span>
-                    <span class="status-badge-item bg-upcoming">Upcoming ${statusCounts.upcoming}</span>
-                    <span class="status-badge-item bg-2bdc">2BDC ${statusCounts['2BDC']}</span>
-                `;
             }
 
             function refreshProductPlaybackState() {
@@ -2624,12 +3154,6 @@
                 return v === null || v === undefined || v === '' || (typeof v === 'string' && v.trim() === '');
             }
 
-            /** Fixed pick &amp; pack fee per row (display only; not included in Avg). */
-            const PICK_PACK_RATE = 1;
-
-            /** Fields averaged for the Avg column (excludes Pick Pack and Ebay2). */
-            const UNI_AVG_SHIP_FIELDS = ['tt_ship', 'temu_ship', 'temu_gofo', 'gofo', 'fedex', 'ups', 'usps', 'uni'];
-
             function roundCarrierShipValue(n) {
                 return Math.round(n * 100) / 100;
             }
@@ -2686,16 +3210,6 @@
                 }
             }
 
-            function avgUniShipCarrierRates(item) {
-                const nums = [];
-                for (const key of UNI_AVG_SHIP_FIELDS) {
-                    const n = parseComparableCarrierShipValue(item[key]);
-                    if (n !== null && n > 0) nums.push(n);
-                }
-                if (nums.length === 0) return null;
-                return nums.reduce((a, b) => a + b, 0) / nums.length;
-            }
-
             /** Same rules as setShippingNumericCell: parent shows "-" when empty/0; child "-" when blank/invalid, "0.00" when zero. */
             function marketplaceShipDisplayKind(raw, isParent) {
                 const blank = marketplaceShipFieldStrictBlank(raw);
@@ -2750,18 +3264,31 @@
                 return isMissing(item.wt_act) && isMissing(item.wt_act_kg);
             }
 
-            function itemWeightActLbDisplay(item, isParentRow) {
+            /** Below 1 lb → ounces with OZ; 1 lb and above → pounds with LB. */
+            function itemWeightActDisplay(item, isParentRow) {
                 if (isParentRow) return '--';
                 if (itemWeightActMissing(item)) return '-';
                 const lb = itemWeightActLbResolved(item);
-                return lb === null ? '-' : formatNumber(lb, 2);
+                if (lb === null) return '-';
+                if (lb < 1) {
+                    const oz = itemWeightActOzFromLb(lb);
+                    return oz === null ? '-' : `${formatNumber(oz, 1)} OZ`;
+                }
+                return `${formatNumber(lb, 1)} LB`;
             }
 
-            function itemWeightActOzDisplay(item, isParentRow) {
-                if (isParentRow) return '--';
-                if (itemWeightActMissing(item)) return '-';
-                const oz = itemWeightActOzFromLb(itemWeightActLbResolved(item));
-                return oz === null ? '-' : formatNumber(oz, 2);
+            /** Decl field value, falling back to ACT when Decl is empty (first-time copy). */
+            function itemDeclValue(item, declKey, actKey) {
+                if (!isMissing(item[declKey])) return item[declKey];
+                return item[actKey];
+            }
+
+            function itemWeightDeclLbResolved(item) {
+                const declLb = parseFloat(item.wt_decl);
+                if (Number.isFinite(declLb) && declLb > 0) {
+                    return Math.round(declLb * 100) / 100;
+                }
+                return itemWeightActLbResolved(item);
             }
 
             /** 1–15 oz upper limits (lb) from conversion table. */
@@ -2779,6 +3306,9 @@
             };
 
             const WT_ACT_OZ_1599_SLAB = { ozMin: 12.01, ozMax: 15.99, label: '12.01–15.99 oz (0.751 – 1 lb)' };
+
+            /** Oz slab ceilings used when rounding Declared Weight up to the next slab. */
+            const WT_ACT_DECL_OZ_SLAB_CAPS = [2, 4, 8, 12, 15.99];
 
             function wtActOzFilterSlabBounds(oz) {
                 const custom = WT_ACT_OZ_FILTER_SLABS[oz];
@@ -2833,6 +3363,45 @@
                 { key: 'lb_40_50', lbMin: 40.01, lbMax: 50, label: '40.01 lb – 50 lb' },
                 { key: 'lb_gt50', lbMin: 50.01, lbMax: null, label: '> 50.01 lb' }
             ];
+
+            /**
+             * Round ACT weight UP for Declared display.
+             * ≥ 1 lb → next whole lb (2.4 → 3, 2.0 → 2).
+             * < 1 lb → next oz slab cap.
+             */
+            function roundWeightLbUpToSlab(lb) {
+                if (lb === null || !Number.isFinite(lb) || lb <= 0) return null;
+
+                if (lb < 1) {
+                    const oz = itemWeightActOzFromLb(lb);
+                    if (oz === null) return null;
+                    for (let i = 0; i < WT_ACT_DECL_OZ_SLAB_CAPS.length; i++) {
+                        const cap = WT_ACT_DECL_OZ_SLAB_CAPS[i];
+                        if (oz <= cap + 1e-9) {
+                            return Math.round((cap / 16) * 100) / 100;
+                        }
+                    }
+                    return 1;
+                }
+
+                return Math.ceil(lb - 1e-9);
+            }
+
+            /** Declared = ACT weight rounded up (always derived from ACT). */
+            function itemWeightDeclLbRounded(item) {
+                return roundWeightLbUpToSlab(itemWeightActLbResolved(item));
+            }
+
+            function itemWeightDeclDisplay(item, isParentRow) {
+                if (isParentRow) return '--';
+                const lb = itemWeightDeclLbRounded(item);
+                if (lb === null) return '-';
+                if (lb < 1) {
+                    const oz = itemWeightActOzFromLb(lb);
+                    return oz === null ? '-' : `${formatNumber(oz, 1)} OZ`;
+                }
+                return `${formatNumber(lb, 1)} LB`;
+            }
 
             function wtActLbBandOzMin(lb) {
                 return Math.ceil(lb * 16 - 1e-9);
@@ -2940,6 +3509,9 @@
                 const filterL = document.getElementById('filterL').value;
                 const filterW = document.getElementById('filterW').value;
                 const filterH = document.getElementById('filterH').value;
+                const filterLDecl = document.getElementById('filterLDecl')?.value || 'all';
+                const filterWDecl = document.getElementById('filterWDecl')?.value || 'all';
+                const filterHDecl = document.getElementById('filterHDecl')?.value || 'all';
                 const filterLabelQty = document.getElementById('filterLabelQty')?.value || 'all';
                 const filterLabelType = document.getElementById('filterLabelType')?.value || 'all';
                 const filterShipCol = document.getElementById('filterShipCol')?.value || 'all';
@@ -2955,7 +3527,7 @@
                 const filterUniCol = document.getElementById('filterUniCol')?.value || 'all';
                 const hasMissingDataFilter = filterStatusValue === 'missing' || filterLabelQty === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtAct === 'lb_0' || filterWtDecl === 'missing' ||
                                             filterL === 'missing' || filterW === 'missing' ||
-                                            filterH === 'missing';
+                                            filterH === 'missing' || filterLDecl === 'missing' || filterWDecl === 'missing' || filterHDecl === 'missing';
 
                 const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
                 const skuSearchVal = (document.getElementById('skuSearch')?.value || '').toLowerCase();
@@ -3017,8 +3589,8 @@
                         return false;
                     }
 
-                    // WT DECL filter
-                    if (filterWtDecl === 'missing' && !isMissing(item.wt_decl)) {
+                    // WT DECL filter (missing only when no Decl and no ACT fallback)
+                    if (filterWtDecl === 'missing' && itemWeightDeclLbResolved(item) !== null) {
                         return false;
                     }
 
@@ -3034,6 +3606,18 @@
 
                     // H filter
                     if (filterH === 'missing' && !isMissing(item.h)) {
+                        return false;
+                    }
+
+                    if (filterLDecl === 'missing' && !isMissing(itemDeclValue(item, 'l_decl', 'l'))) {
+                        return false;
+                    }
+
+                    if (filterWDecl === 'missing' && !isMissing(itemDeclValue(item, 'w_decl', 'w'))) {
+                        return false;
+                    }
+
+                    if (filterHDecl === 'missing' && !isMissing(itemDeclValue(item, 'h_decl', 'h'))) {
                         return false;
                     }
 
@@ -3083,14 +3667,20 @@
                 if (key === 'shopify_inv') {
                     return item.shopify_inv;
                 }
-                if (key === 'avg') {
-                    return avgUniShipCarrierRates(item);
-                }
                 if (key === 'wt_act_lb') {
                     return itemWeightActLbResolved(item);
                 }
-                if (key === 'wt_act_oz') {
-                    return itemWeightActOzFromLb(itemWeightActLbResolved(item));
+                if (key === 'wt_decl_lb') {
+                    return itemWeightDeclLbRounded(item);
+                }
+                if (key === 'l_decl') {
+                    return itemDeclValue(item, 'l_decl', 'l');
+                }
+                if (key === 'w_decl') {
+                    return itemDeclValue(item, 'w_decl', 'w');
+                }
+                if (key === 'h_decl') {
+                    return itemDeclValue(item, 'h_decl', 'h');
                 }
                 if (key === 'l_cm') {
                     if (item.l_cm != null && item.l_cm !== '') return item.l_cm;
@@ -3167,17 +3757,18 @@
                     16: { key: 'ups', type: 'num' },
                     17: { key: 'usps', type: 'num' },
                     18: { key: 'uni', type: 'num' },
-                    20: { key: 'avg', type: 'num' },
-                    21: { key: 'fba_sku', type: 'text' },
-                    22: { key: 'fba_ship', type: 'num' },
-                    23: { key: 'fba_manual_ship', type: 'num' },
-                    24: { key: 'wt_act_kg', type: 'num' },
-                    25: { key: 'wt_act_lb', type: 'num' },
-                    26: { key: 'wt_act_oz', type: 'num' },
-                    27: { key: 'wt_decl', type: 'num' },
-                    28: { key: 'l', type: 'num' },
-                    29: { key: 'w', type: 'num' },
-                    30: { key: 'h', type: 'num' },
+                    19: { key: 'fba_sku', type: 'text' },
+                    20: { key: 'fba_ship', type: 'num' },
+                    21: { key: 'fba_manual_ship', type: 'num' },
+                    22: { key: 'wt_act_kg', type: 'num' },
+                    23: { key: 'wt_act_lb', type: 'num' },
+                    24: { key: 'l', type: 'num' },
+                    25: { key: 'w', type: 'num' },
+                    26: { key: 'h', type: 'num' },
+                    27: { key: 'wt_decl_lb', type: 'num' },
+                    28: { key: 'l_decl', type: 'num' },
+                    29: { key: 'w_decl', type: 'num' },
+                    30: { key: 'h_decl', type: 'num' },
                     31: { key: 'l_cm', type: 'num' },
                     32: { key: 'w_cm', type: 'num' },
                     33: { key: 'h_cm', type: 'num' },
@@ -3223,7 +3814,7 @@
 
                 const filterSTATUSEl = document.getElementById('filterSTATUS');
                 if (filterSTATUSEl) filterSTATUSEl.addEventListener('change', applyFilters);
-                const filterIds = ['filterLabelQty', 'filterLabelType', 'filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH'];
+                const filterIds = ['filterLabelQty', 'filterLabelType', 'filterWtActKg', 'filterWtAct', 'filterWtDecl', 'filterL', 'filterW', 'filterH', 'filterLDecl', 'filterWDecl', 'filterHDecl'];
                 filterIds.forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
@@ -3232,8 +3823,6 @@
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('change', applyFilters);
                 });
-                const sectionFilterEl = document.getElementById('dimWtSectionFilter');
-                if (sectionFilterEl) sectionFilterEl.addEventListener('change', applyDimWtSectionFilter);
                 const rowTypeFilterEl = document.getElementById('shippingRowTypeFilter');
                 if (rowTypeFilterEl) rowTypeFilterEl.addEventListener('change', function() {
                     if (isProductNavigationActive) {
@@ -3278,7 +3867,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "Type", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Item WT ACT Decl (OZ / LB)", "Length Decl (inch)", "Width Decl (inch)", "Height Decl (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -3330,12 +3919,6 @@
                         "UNI": {
                             key: "uni"
                         },
-                        "Pick Pack": {
-                            computed: "pick_pack"
-                        },
-                        "Avg": {
-                            computed: "uni_avg"
-                        },
                         "FBA SKU": {
                             key: "fba_sku"
                         },
@@ -3348,14 +3931,8 @@
                         "Weight ACT (Kg)": {
                             key: "wt_act_kg"
                         },
-                        "WT ACT (LB)": {
-                            computed: "item_weight_lb"
-                        },
-                        "Item Weight (OZ)": {
-                            computed: "item_weight_oz"
-                        },
-                        "WT DECL (LB)": {
-                            key: "wt_decl"
+                        "Item WT ACT (OZ / LB)": {
+                            computed: "item_weight_act"
                         },
                         "Length (inch)": {
                             key: "l"
@@ -3365,6 +3942,18 @@
                         },
                         "Height (Inch)": {
                             key: "h"
+                        },
+                        "Item WT ACT Decl (OZ / LB)": {
+                            computed: "item_weight_decl"
+                        },
+                        "Length Decl (inch)": {
+                            computed: "l_decl"
+                        },
+                        "Width Decl (inch)": {
+                            computed: "w_decl"
+                        },
+                        "Height Decl (Inch)": {
+                            computed: "h_decl"
                         },
                         "Length (CM)": {
                             key: "l_cm"
@@ -3397,7 +3986,7 @@
 
                     // Show loader or indicate download is in progress
                     document.getElementById('downloadExcel').innerHTML =
-                        '<i class="fas fa-spinner fa-spin"></i> Generating...';
+                        '<i class="fas fa-spinner fa-spin"></i>';
                     document.getElementById('downloadExcel').disabled = true;
 
                     // Use setTimeout to avoid UI freeze for large datasets
@@ -3423,23 +4012,20 @@
                                 columns.forEach(col => {
                                     const colDef = columnDefs[col];
                                     if (colDef) {
-                                        if (colDef.computed === 'pick_pack') {
-                                            row.push(PICK_PACK_RATE);
+                                        if (colDef.computed === 'item_weight_act') {
+                                            const display = itemWeightActDisplay(item, false);
+                                            row.push(display === '-' ? '' : display);
                                             return;
                                         }
-                                        if (colDef.computed === 'item_weight_lb') {
-                                            const lb = itemWeightActLbResolved(item);
-                                            row.push(lb === null ? '' : parseFloat(lb.toFixed(2)));
+                                        if (colDef.computed === 'item_weight_decl') {
+                                            const display = itemWeightDeclDisplay(item, false);
+                                            row.push(display === '-' ? '' : display);
                                             return;
                                         }
-                                        if (colDef.computed === 'item_weight_oz') {
-                                            const oz = itemWeightActOzFromLb(itemWeightActLbResolved(item));
-                                            row.push(oz === null ? '' : parseFloat(oz.toFixed(2)));
-                                            return;
-                                        }
-                                        if (colDef.computed === 'uni_avg') {
-                                            const avg = avgUniShipCarrierRates(item);
-                                            row.push(avg === null ? '' : parseFloat(avg.toFixed(2)));
+                                        if (colDef.computed === 'l_decl' || colDef.computed === 'w_decl' || colDef.computed === 'h_decl') {
+                                            const actKey = colDef.computed === 'l_decl' ? 'l' : (colDef.computed === 'w_decl' ? 'w' : 'h');
+                                            const v = itemDeclValue(item, colDef.computed, actKey);
+                                            row.push(v === null || v === undefined || v === '' ? '' : (parseFloat(v) || 0));
                                             return;
                                         }
                                         const key = colDef.key;
@@ -3498,7 +4084,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "WT ACT (LB)", "Item Weight (OZ)", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "Pick Pack", "Avg", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Item WT ACT Decl (OZ / LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length Decl (inch)", "Width Decl (inch)", "Height Decl (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "Ebay2 ship", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -3548,7 +4134,7 @@
                         } finally {
                             // Reset button state
                             document.getElementById('downloadExcel').innerHTML =
-                                '<i class="fas fa-file-excel me-1"></i> Download';
+                                '<i class="fas fa-download"></i>';
                             document.getElementById('downloadExcel').disabled = false;
                         }
                     }, 100); // Small timeout to allow UI to update
@@ -3838,10 +4424,16 @@
                                 id: item.id,
                                 wt_act_kg: item.wt_act_kg || null,
                                 wt_act: item.wt_act || null,
-                                wt_decl: item.wt_decl || null,
+                                wt_decl: (() => {
+                                    const d = itemWeightDeclLbRounded(item);
+                                    return d != null ? d : null;
+                                })(),
                                 l: item.l || null,
                                 w: item.w || null,
                                 h: item.h || null,
+                                l_decl: item.l_decl || item.l || null,
+                                w_decl: item.w_decl || item.w || null,
+                                h_decl: item.h_decl || item.h || null,
                                 l_cm: item.l_cm || null,
                                 w_cm: item.w_cm || null,
                                 h_cm: item.h_cm || null
@@ -4011,10 +4603,16 @@
                 document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
-                document.getElementById('editWtDecl').value = product.wt_decl || '';
+                // Decl: copy ACT on first open when Decl is empty
+                // Decl weight: round UP to next whole lb when ≥ 1 (e.g. 1.1 → 2)
+                const declLbForEdit = itemWeightDeclLbRounded(product);
+                document.getElementById('editWtDecl').value = declLbForEdit != null ? declLbForEdit : '';
                 document.getElementById('editL').value = product.l || '';
                 document.getElementById('editW').value = product.w || '';
                 document.getElementById('editH').value = product.h || '';
+                document.getElementById('editLDecl').value = product.l_decl || product.l || '';
+                document.getElementById('editWDecl').value = product.w_decl || product.w || '';
+                document.getElementById('editHDecl').value = product.h_decl || product.h || '';
                 document.getElementById('editLCm').value = product.l_cm || '';
                 document.getElementById('editWCm').value = product.w_cm || '';
                 document.getElementById('editHCm').value = product.h_cm || '';
@@ -4091,13 +4689,25 @@
                     const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
                     const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
 
+                    const wtDeclRaw = document.getElementById('editWtDecl').value.trim();
+                    let wtDeclSave = null;
+                    if (wtDeclRaw !== '') {
+                        const wtDeclNum = parseFloat(wtDeclRaw);
+                        if (Number.isFinite(wtDeclNum) && wtDeclNum > 0) {
+                            wtDeclSave = roundWeightLbUpToSlab(wtDeclNum);
+                        }
+                    }
+
                     const baseFormData = {
                         wt_act_kg: document.getElementById('editWtActKg').value.trim() || null,
                         wt_act: document.getElementById('editWtAct').value.trim() || null,
-                        wt_decl: document.getElementById('editWtDecl').value.trim() || null,
+                        wt_decl: wtDeclSave,
                         l: document.getElementById('editL').value.trim() || null,
                         w: document.getElementById('editW').value.trim() || null,
                         h: document.getElementById('editH').value.trim() || null,
+                        l_decl: document.getElementById('editLDecl').value.trim() || null,
+                        w_decl: document.getElementById('editWDecl').value.trim() || null,
+                        h_decl: document.getElementById('editHDecl').value.trim() || null,
                         l_cm: document.getElementById('editLCm').value.trim() || null,
                         w_cm: document.getElementById('editWCm').value.trim() || null,
                         h_cm: document.getElementById('editHCm').value.trim() || null,
@@ -4430,6 +5040,7 @@
             // Initialize (search and playback listeners once to avoid duplicates on reload)
             setupSearch();
             setupSort();
+            setupShippingColumnVisibility();
             setupProductPlaybackListeners();
             loadData();
             setupExcelExport();

@@ -833,10 +833,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/customer-care/cc-messages-returns/r-link', [AuditMasterController::class, 'storeCcRLink'])
         ->name('customer.care.cc.messages.returns.r.link.store');
 
-    // CC Returns — Returns columns only from /customer-care/cc-messages-returns
+    // Report — Returns columns only from /customer-care/cc-messages-returns
     // (reuses the same returns checklist / R Next / R link endpoints + tables).
-    Route::get('/customer-care/cc-returns', [AuditMasterController::class, 'ccReturns'])
-        ->name('customer.care.cc.returns');
+    Route::get('/customer-care/report', [AuditMasterController::class, 'report'])
+        ->name('customer.care.report');
 
     // CC Shipping — duplicate of /customer-care/cc-messages-returns
     // backed by entirely separate cc_shipping_* tables.
@@ -6206,6 +6206,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tasks/automated/{automateTaskId}/checklist', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'save'])->name('tasks.automatedChecklist.save');
     Route::post('/tasks/automated/{automateTaskId}/checklist/submit', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'submit'])->name('tasks.automatedChecklist.submit');
     Route::get('/tasks/automated/{automateTaskId}/checklist/history', [\App\Http\Controllers\AutomatedTaskChecklistController::class, 'history'])->name('tasks.automatedChecklist.history');
+    Route::get('/tasks/automated/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'automatedSubtasks'])->name('tasks.automatedSubtasks');
+    Route::post('/tasks/automated/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'storeAutomatedSubtask'])->name('tasks.automatedSubtasks.store');
     Route::get('/tasks/today-deleted/data', [\App\Http\Controllers\TaskController::class, 'todayDeletedData'])->name('tasks.todayDeleted.data');
     Route::post('/tasks/today-deleted/{id}/revert', [\App\Http\Controllers\TaskController::class, 'revertTodayDeletedTask'])->name('tasks.todayDeleted.revert');
     Route::post('/tasks/today-deleted/bulk-revert', [\App\Http\Controllers\TaskController::class, 'bulkRevertTodayDeleted'])->name('tasks.todayDeleted.bulkRevert');
@@ -6277,6 +6279,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tasks/bulk-create', [\App\Http\Controllers\TaskController::class, 'bulkCreate'])->name('tasks.bulkCreate');
     Route::post('/tasks/bulk-store', [\App\Http\Controllers\TaskController::class, 'bulkStore'])->name('tasks.bulkStore');
     Route::post('/tasks/bulk-update', [\App\Http\Controllers\TaskController::class, 'bulkUpdate'])->name('tasks.bulkUpdate');
+    Route::get('/tasks/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'subtasks'])->name('tasks.subtasks');
+    Route::post('/tasks/{id}/subtasks', [\App\Http\Controllers\TaskController::class, 'storeSubtask'])->name('tasks.subtasks.store');
     Route::get('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'show'])->name('tasks.show');
     Route::get('/tasks/{id}/edit', [\App\Http\Controllers\TaskController::class, 'edit'])->name('tasks.edit');
     Route::put('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'update'])->name('tasks.update');

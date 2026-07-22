@@ -100,7 +100,7 @@ class AuditMasterController extends Controller
             // Returns-only view of the same Messages/Returns data tables
             // (same R link / returns checklist / R Next as messages_returns).
             'returns' => [
-                'view'        => 'customer-care.cc-returns',
+                'view'        => 'customer-care.report',
                 'msg_table'   => 'cc_message_checklists',
                 'msg_model'   => CcMessageChecklist::class,
                 'ret_table'   => 'cc_returns_checklists',
@@ -276,7 +276,7 @@ class AuditMasterController extends Controller
      *
      * Tabulator listing of active channels from channel_master with their
      * logo + the shared M link / H link from the Account Health Master
-     * metric field definitions. Returns columns live on /customer-care/cc-returns.
+     * metric field definitions. Returns columns live on /customer-care/report.
      * Reuses AccountHealthMasterController::definitionScopeForChannel() and the
      * `account.health.master.scope.link.save` endpoint so M/H links stay
      * in sync with the /account-health-master/tabulator page.
@@ -287,11 +287,11 @@ class AuditMasterController extends Controller
     }
 
     /**
-     * Display the "CC Returns" page — same Returns columns / data as
+     * Display the "Report" page — same Returns columns / data as
      * /customer-care/cc-messages-returns (R link, R Status, R History,
      * R TAT, R Next), without the Messages-side columns.
      */
-    public function ccReturns()
+    public function report()
     {
         return $this->renderChecklistPage('returns');
     }
