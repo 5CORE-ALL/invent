@@ -328,16 +328,21 @@ class EbayController extends Controller
 
     /**
      * SBID Rule (slab builder) — a list of rules that decide the S Bid column on
-     * /ebay-tabulator-view. Each rule is a set of min/max ranges on four factors
-     * (CVR, Dil, Esold, Views L30) plus the S Bid to apply. Rules are evaluated
-     * top to bottom — the first rule whose ranges all match a row wins.
+     * /ebay-tabulator-view. Each rule is a set of min/max ranges on For L7 Views
+     * and CVR % plus the S Bid to apply. Rules are evaluated top to bottom —
+     * the first rule whose ranges all match a row wins.
      *
      * Stored (shared across users) under key `ebay1_sbid_slabs` in ebay_sbid_rules.
      */
     public function getSbidSlabRule()
     {
         $row = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        return response()->json($row ? json_decode($row->rule, true) : ['rules' => []]);
+        $decoded = $row ? json_decode($row->rule, true) : null;
+        $rules = is_array($decoded['rules'] ?? null) ? $decoded['rules'] : [];
+
+        return response()->json([
+            'rules' => $rules !== [] ? $rules : $this->defaultSbidSlabRules(),
+        ]);
     }
 
     public function saveSbidSlabRule(Request $request)
@@ -361,6 +366,11 @@ class EbayController extends Controller
             ];
         }
 
+        // Empty save → restore built-in defaults (same as get when no row).
+        if ($clean === []) {
+            $clean = $this->defaultSbidSlabRules();
+        }
+
         $rule = ['rules' => $clean];
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
@@ -369,6 +379,41 @@ class EbayController extends Controller
         );
 
         return response()->json(['success' => true, 'rule' => $rule]);
+    }
+
+    /**
+     * Default Sbid Rule slabs (For L7 Views + CVR → S Bid).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function defaultSbidSlabRules(): array
+    {
+        return [
+            [
+                'label' => 'Rule 1',
+                'l7_views_min' => null,
+                'l7_views_max' => null,
+                'cvr_min' => 0,
+                'cvr_max' => 0,
+                'sbid' => 15,
+            ],
+            [
+                'label' => 'Rule 2',
+                'l7_views_min' => 0,
+                'l7_views_max' => 36,
+                'cvr_min' => 0.01,
+                'cvr_max' => 1000,
+                'sbid' => 10,
+            ],
+            [
+                'label' => 'Rule 3',
+                'l7_views_min' => 36,
+                'l7_views_max' => null,
+                'cvr_min' => 7,
+                'cvr_max' => 1000,
+                'sbid' => 5,
+            ],
+        ];
     }
 
     /**

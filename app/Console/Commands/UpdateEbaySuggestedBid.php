@@ -184,11 +184,19 @@ class UpdateEbaySuggestedBid extends Command
                 ->get()
                 ->keyBy('listing_id');
             
-        // Load Sbid Rule slabs (ebay1_sbid_slabs) — CVR / Dil / Esold / Views L30 → S Bid.
+        // Load Sbid Rule slabs (ebay1_sbid_slabs) — For L7 Views / CVR → S Bid.
         // Rules are evaluated top to bottom; the first rule whose filled ranges all match wins.
         $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
         $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (CVR / Dil / Esold / Views L30 → S Bid)');
+        if (! is_array($sbidSlabs) || $sbidSlabs === []) {
+            // Same built-in defaults as EbayController::defaultSbidSlabRules().
+            $sbidSlabs = [
+                ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
+                ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
+                ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
+            ];
+        }
+        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (For L7 Views / CVR → S Bid)');
 
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');

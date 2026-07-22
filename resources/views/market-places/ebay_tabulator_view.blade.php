@@ -8246,12 +8246,17 @@
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
 
+                const csrf = $('meta[name="csrf-token"]').attr('content') || '';
                 $.ajax({
                     url: saveUrl,
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    headers: {
+                        'X-CSRF-TOKEN': csrf,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
                     contentType: 'application/json',
-                    data: JSON.stringify({ rules: currentSbidSlabRules || [] }),
+                    data: JSON.stringify({ rules: currentSbidSlabRules || [], _token: csrf }),
                     success: function(resp) {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
@@ -8263,7 +8268,10 @@
                     error: function(xhr) {
                         btn.disabled = false;
                         btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-                        errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                            || xhr.responseText
+                            || ('HTTP ' + xhr.status);
+                        errEl.textContent = 'Error: ' + msg;
                         errEl.classList.remove('d-none');
                     }
                 });

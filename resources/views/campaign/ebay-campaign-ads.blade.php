@@ -976,12 +976,17 @@ document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', fun
     const btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+    const csrf = $('meta[name="csrf-token"]').attr('content') || '';
     $.ajax({
         url: sbidSlabSaveUrl,
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+        },
         contentType: 'application/json',
-        data: JSON.stringify({ rules: currentSbidSlabs || [] }),
+        data: JSON.stringify({ rules: currentSbidSlabs || [], _token: csrf }),
         success: function(resp) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
@@ -992,7 +997,7 @@ document.getElementById('sbid-slab-rule-save-btn').addEventListener('click', fun
         error: function(xhr) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-            errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+            errEl.textContent = 'Error: ' + ((xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || xhr.responseText);
             errEl.classList.remove('d-none');
         }
     });
