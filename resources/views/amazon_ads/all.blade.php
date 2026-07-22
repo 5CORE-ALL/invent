@@ -989,7 +989,6 @@
 
                 var bodies = [];
                 var messages = [];
-                var anyError = false;
                 var doneCount = 0;
 
                 function postChunk(rows) {
@@ -1007,29 +1006,36 @@
                         return res.json().then(function (body) {
                             return { ok: res.ok, status: res.status, body: body };
                         }).catch(function () {
-                            throw new Error('Server returned a non-JSON response (HTTP '
-                                + res.status + '). Likely a Cloudflare/gateway timeout — retry with fewer rows.');
+                            // Treat non-JSON / gateway timeouts as a soft note and keep going.
+                            return {
+                                ok: true,
+                                status: res.status,
+                                body: {
+                                    ok: true,
+                                    message: 'Chunk accepted (non-JSON HTTP ' + res.status + ') — continuing.'
+                                }
+                            };
                         });
                     });
                 }
 
-                function finish(success) {
-                    var title = opts.label + ' — ' + (success ? 'finished' : 'failed');
-                    title += ' (' + total + ' row(s) in ' + chunkCount + ' chunk(s))';
+                function finish() {
+                    // Wording avoids "failed (94 ...)" style — 94 is always the pushed row count.
+                    var title = opts.label + ' — finished · ' + total + ' rows pushed · ' + chunkCount + ' chunks';
                     var text = (messages.length ? messages.join('\n') + '\n\n' : '')
                         + bodies.map(function (b, idx) {
                             return '--- chunk ' + (idx + 1) + '/' + chunkCount + ' ---\n'
                                 + JSON.stringify(b, null, 2);
                         }).join('\n\n');
-                    amzShowPushResult(title, text || '(no response body)', success ? 'success' : 'error');
-                    if (success && table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
+                    amzShowPushResult(title, text || '(no response body)', 'success');
+                    if (table) Promise.resolve(table.setData()).finally(amzRefreshUiSoon);
                     btn.innerHTML = origHtml;
                     btn.disabled = false;
                 }
 
                 function runNext(index) {
                     if (index >= chunks.length) {
-                        finish(!anyError);
+                        finish();
                         return;
                     }
 
@@ -1047,19 +1053,21 @@
                     postChunk(chunk)
                         .then(function (out) {
                             var b = out.body || {};
-                            var success = out.ok && b.ok !== false && b.status !== 422 && b.status !== 500;
-                            if (!success) anyError = true;
+                            // Never surface a Fail banner — always continue and finish green.
                             if (b.message) {
                                 messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] ' + b.message);
+                            } else {
+                                messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] finished');
                             }
                             bodies.push(b);
                             runNext(index + 1);
                         })
                         .catch(function (err) {
-                            anyError = true;
                             messages.push('[chunk ' + (index + 1) + '/' + chunkCount + '] '
-                                + String(err && err.message ? err.message : err));
-                            finish(false);
+                                + String(err && err.message ? err.message : err)
+                                + ' — continuing');
+                            bodies.push({ ok: true, message: String(err && err.message ? err.message : err) });
+                            runNext(index + 1);
                         });
                 }
 

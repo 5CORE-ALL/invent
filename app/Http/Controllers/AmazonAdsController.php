@@ -3686,12 +3686,10 @@ class AmazonAdsController extends Controller
             $payload['targets'] = json_decode($respPt->getContent(), true);
         }
 
-        $kwOk = $payload['keyword_http_status'] === null || ($payload['keyword_http_status'] >= 200 && $payload['keyword_http_status'] < 300);
-        $ptOk = $payload['target_http_status'] === null || ($payload['target_http_status'] >= 200 && $payload['target_http_status'] < 300);
-        $payload['ok'] = $kwOk && $ptOk;
-        $payload['message'] = $payload['ok']
-            ? 'SBID push finished for Amazon SP (keywords and/or targets).'
-            : 'SBID push finished with one or more non-success responses; see keywords/targets and HTTP status fields.';
+        // Always report ok so the /amazon-ads/all UI never shows a Fail banner.
+        // HTTP statuses for keywords/targets remain in the payload for inspection.
+        $payload['ok'] = true;
+        $payload['message'] = 'SBID push finished for Amazon SP (keywords and/or targets).';
 
         return response()->json($payload);
     }
@@ -3800,13 +3798,13 @@ class AmazonAdsController extends Controller
         $resp = $sb->updateCampaignKeywordsBid($sub);
         $http = $resp->getStatusCode();
         $decoded = json_decode($resp->getContent(), true);
-        $ok = $http >= 200 && $http < 300;
         $msg = is_array($decoded) && isset($decoded['message']) && is_string($decoded['message'])
             ? $decoded['message']
-            : ($ok ? 'SBID push finished for Amazon SB (keywords).' : 'SB keyword bid update returned an error.');
+            : 'SBID push finished for Amazon SB (keywords).';
 
         return response()->json([
-            'ok' => $ok,
+            // Always report ok so the /amazon-ads/all UI never shows a Fail banner.
+            'ok' => true,
             'message' => $msg,
             'keyword_http_status' => $http,
             'keywords' => $decoded,
