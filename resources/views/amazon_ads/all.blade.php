@@ -1020,8 +1020,8 @@
                 }
 
                 function finish() {
-                    // Wording avoids "failed (94 ...)" style — 94 is always the pushed row count.
-                    var title = opts.label + ' — finished · ' + total + ' rows pushed · ' + chunkCount + ' chunks';
+                    var title = opts.label + ' — finished';
+                    title += ' (' + total + ' row(s) in ' + chunkCount + ' chunk(s))';
                     var text = (messages.length ? messages.join('\n') + '\n\n' : '')
                         + bodies.map(function (b, idx) {
                             return '--- chunk ' + (idx + 1) + '/' + chunkCount + ' ---\n'
