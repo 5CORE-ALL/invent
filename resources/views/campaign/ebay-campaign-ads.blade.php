@@ -424,9 +424,15 @@ $(document).ready(function () {
         placeholder: 'No data — run php artisan ebay:sync-campaign-listings',
         columns: [
             {
-                title: '<input type="checkbox" id="select-all-cb" style="cursor:pointer;">',
+                title: '',
                 field: '_select', width: 40, hozAlign: 'center',
                 headerSort: false, frozen: true,
+                titleFormatter: function() {
+                    const allData = table ? (table.getData() || []) : [];
+                    const lids = allData.map(d => d && d.listing_id).filter(lid => lid != null).map(String);
+                    const allSelected = lids.length > 0 && lids.every(lid => selectedIds.has(lid));
+                    return `<input type="checkbox" id="select-all-cb" style="cursor:pointer;" ${allSelected ? 'checked' : ''}>`;
+                },
                 formatter: function(cell) {
                     const lid = String(cell.getRow().getData().listing_id);
                     const checked = selectedIds.has(lid) ? 'checked' : '';
@@ -439,6 +445,12 @@ $(document).ready(function () {
                         if (selectedIds.has(lid)) { selectedIds.delete(lid); cb.checked = false; }
                         else                       { selectedIds.add(lid);    cb.checked = true;  }
                         updateSelectedCount();
+                        const headerCb = document.getElementById('select-all-cb');
+                        if (headerCb) {
+                            const allData = table ? (table.getData() || []) : [];
+                            const lids = allData.map(d => d && d.listing_id).filter(x => x != null).map(String);
+                            headerCb.checked = lids.length > 0 && lids.every(x => selectedIds.has(x));
+                        }
                     }
                 }
             },
@@ -717,30 +729,24 @@ document.getElementById('enroll-confirm-btn').addEventListener('click', function
     });
 });
 
-// Select All checkbox — selects ALL filtered rows across every page, not just visible DOM rows
+// Select All — use getData() (full in-memory set across every page), not getRows('active')
+// which can be page-scoped depending on Tabulator version/pipeline.
 document.addEventListener('change', function(e) {
     if (e.target && e.target.id === 'select-all-cb') {
         const checked = e.target.checked;
-
-        // Use Tabulator's full row list (post-filter, all pages) instead of querySelectorAll,
-        // which only sees the currently rendered page.
-        const rows = table ? table.getRows('active') : [];
+        const data = table ? (table.getData() || []) : [];
 
         if (checked) {
-            rows.forEach(r => {
-                const lid = r.getData().listing_id;
-                if (lid != null) selectedIds.add(String(lid));
+            data.forEach(d => {
+                if (d && d.listing_id != null) selectedIds.add(String(d.listing_id));
             });
         } else {
-            rows.forEach(r => {
-                const lid = r.getData().listing_id;
-                if (lid != null) selectedIds.delete(String(lid));
+            data.forEach(d => {
+                if (d && d.listing_id != null) selectedIds.delete(String(d.listing_id));
             });
         }
 
-        // Sync visible checkboxes on the current page
         document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = checked; });
-
         updateSelectedCount();
     }
 });
