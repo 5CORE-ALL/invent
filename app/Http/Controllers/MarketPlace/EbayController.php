@@ -417,7 +417,7 @@ class EbayController extends Controller
     }
 
     /**
-     * LMP × factor — shared setting for SPRICE = LMP × mult and T Prc column.
+     * LMP × factor — shared setting for SPRICE = LMP × mult.
      * Stored under key `ebay1_lmp_mult` in ebay_sbid_rules.
      */
     public function getLmpMultRule()

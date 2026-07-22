@@ -678,10 +678,10 @@
                         </button>
                     </div>
 
-                    {{-- Target Price ($) — set SPRICE to an absolute dollar amount for selected SKUs. Table column shows LMP × factor. --}}
+                    {{-- Target Price ($) — set SPRICE to an absolute dollar amount for selected SKUs. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-price-controls"
-                        title="Target Price ($) — sets SPRICE to this dollar amount on every selected row. The T Prc column shows LMP × the LMP× factor.">
+                        title="Target Price ($) — sets SPRICE to this dollar amount on every selected row.">
                         <label for="target-price-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> Target $:
                         </label>
@@ -1352,8 +1352,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="text-muted small mb-3 mb-md-2">
-                        Used for <strong>SPRICE = LMP × factor</strong> (Apply button) and the
-                        <strong>T Prc</strong> column. Saved for all users.
+                        Used for <strong>SPRICE = LMP × factor</strong> (Apply button). Saved for all users.
                     </p>
                     <label class="form-label fw-bold" for="lmp-mult-modal-input">Multiplier</label>
                     <div class="input-group input-group-sm">
@@ -2862,16 +2861,6 @@
                 return String(+n.toFixed(4));
             }
 
-            function refreshTargetPriceColumn() {
-                if (typeof table === 'undefined' || !table || !table.getRows) return;
-                try {
-                    table.getRows().forEach(function(row) {
-                        const cell = row.getCell('target_price');
-                        if (cell && typeof cell.reformat === 'function') cell.reformat();
-                    });
-                } catch (e) { /* ignore */ }
-            }
-
             function refreshLmpMultUi() {
                 const m = getLmpMult();
                 const label = 'LMP×' + formatLmpMult(m);
@@ -2882,7 +2871,6 @@
                 if (typeof window.updateSpriceLmpMultLabels === 'function') {
                     window.updateSpriceLmpMultLabels(m);
                 }
-                refreshTargetPriceColumn();
             }
 
             function loadLmpMultRule() {
@@ -5028,31 +5016,6 @@
                         width: 78
                     },
                     {
-                        title: "T Prc",
-                        field: "target_price",
-                        hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const mult = (typeof getLmpMult === 'function') ? getLmpMult() : 0.98;
-                            const av = (parseFloat(aRow.getData().lmp_price) || 0) * mult;
-                            const bv = (parseFloat(bRow.getData().lmp_price) || 0) * mult;
-                            return av - bv;
-                        },
-                        headerTooltip: "Target Price = LMP × LMP× factor (same factor as the yellow LMP× control). Empty when no LMP.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const lmp = parseFloat(rowData.lmp_price) || 0;
-                            if (lmp <= 0) return '<span class="text-muted">—</span>';
-                            const mult = (typeof getLmpMult === 'function') ? getLmpMult() : 0.98;
-                            const tp = +Number(lmp * mult).toFixed(2);
-                            if (!isFinite(tp) || tp <= 0) return '<span class="text-muted">—</span>';
-                            const price = parseFloat(rowData['eBay Price']) || 0;
-                            // Red if our live price is still above this target
-                            const color = (price > 0 && price > tp) ? '#dc3545' : '#0d6efd';
-                            return `<span style="color:${color};font-weight:600;" title="LMP $${lmp.toFixed(2)} × ${mult}">$${tp.toFixed(2)}</span>`;
-                        },
-                        width: 72
-                    },
-                    {
                         title: "Sku Link LMP",
                         field: "linked_lmp_skus",
                         hozAlign: "left",
@@ -6337,7 +6300,7 @@
 
                 // Pricing
                 if (
-                    /^(eBay Price|GPFT%|PFT %|ROI%|NROI|lmp_price|target_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60)$/i.test(f) ||
+                    /^(eBay Price|GPFT%|PFT %|ROI%|NROI|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|_accept|SGPFT|SPFT|SGROI|SROI|E Dil%|SCVR|CVR_45|CVR_60)$/i.test(f) ||
                     /\b(prc|price|gpft|npft|groi|nroi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*pft|s\s*groi|sroi|dil|cvr)\b/i.test(tl) ||
                     /^(_accept|\+)$/i.test(t)
                 ) {
@@ -6828,7 +6791,6 @@
                 'MAP': 'MAP',
                 'eBay Price': 'eBay Price',
                 'lmp_price': 'LMP',
-                'target_price': 'Target Price',
                 'T_Sale_l30': 'Total Sales L30',
                 'Total_pft': 'Total Profit',
                 'PFT %': 'PFT %',

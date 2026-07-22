@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\DB;
 /**
  * LMP × factor used on /ebay-tabulator-view:
  *   SPRICE = LMP × mult
- *   T Prc column = LMP × mult
  *
  * Stored (shared across users) in ebay_sbid_rules under key ebay1_lmp_mult.
  */
