@@ -234,6 +234,93 @@ class EbayController extends Controller
         return (float) $v;
     }
 
+    /**
+     * Previous same 7-day period for L7 Views.
+     * Uses the rolling `l7_views` snapshot from ~7 days ago in ebay_sku_daily_data
+     * (that snapshot = views in what is now days 8–14). California calendar.
+     *
+     * @param  array<int, string>  $skus
+     * @return array<string, int|null>  normalized SKU => prior L7 (null = no snapshot yet)
+     */
+    private function previousPeriodL7ViewsBySku(array $skus): array
+    {
+        $out = [];
+        $normalize = static fn ($s) => ShopifySku::normalizeSkuForShopifyLookup((string) $s);
+        foreach ($skus as $s) {
+            $k = $normalize($s);
+            if ($k !== '') {
+                $out[$k] = null;
+            }
+        }
+        if ($out === []) {
+            return $out;
+        }
+
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        // Prefer exact day-7 snapshot; allow nearby days if that date is missing.
+        $targetDate = $today->copy()->subDays(7)->toDateString();
+        $loadStart = $today->copy()->subDays(10)->toDateString();
+        $loadEnd = $today->copy()->subDays(5)->toDateString();
+
+        $skuCandidates = array_values(array_unique(array_filter(array_merge(
+            array_map('strval', $skus),
+            array_keys($out)
+        ))));
+
+        /** @var array<string, array<string, int>> $bySku date => l7_views */
+        $bySku = [];
+        foreach (array_chunk($skuCandidates, 400) as $chunk) {
+            $rows = DB::table('ebay_sku_daily_data')
+                ->where('record_date', '>=', $loadStart)
+                ->where('record_date', '<=', $loadEnd)
+                ->whereIn('sku', $chunk)
+                ->get(['sku', 'record_date', 'daily_data']);
+
+            foreach ($rows as $r) {
+                $canon = $normalize($r->sku);
+                if ($canon === '' || ! array_key_exists($canon, $out)) {
+                    continue;
+                }
+                $data = is_string($r->daily_data)
+                    ? (json_decode($r->daily_data, true) ?: [])
+                    : (array) ($r->daily_data ?? []);
+                if (! array_key_exists('l7_views', $data)) {
+                    continue; // older snapshots without L7 — ignore
+                }
+                $d = Carbon::parse($r->record_date)->toDateString();
+                $bySku[$canon][$d] = (int) ($data['l7_views'] ?? 0);
+            }
+        }
+
+        foreach ($bySku as $canon => $dates) {
+            // All-zero window usually means l7_views was not collected yet — treat as no snapshot.
+            $windowMax = max(array_values($dates));
+            if ($windowMax <= 0) {
+                continue;
+            }
+
+            if (isset($dates[$targetDate])) {
+                $out[$canon] = $dates[$targetDate];
+                continue;
+            }
+            // Nearest snapshot to day-7 (prefer earlier dates when tied).
+            $bestDate = null;
+            $bestDist = PHP_INT_MAX;
+            foreach ($dates as $d => $_) {
+                $dist = abs(Carbon::parse($d)->diffInDays(Carbon::parse($targetDate)));
+                if ($dist < $bestDist || ($dist === $bestDist && ($bestDate === null || $d < $bestDate))) {
+                    $bestDist = $dist;
+                    $bestDate = $d;
+                }
+            }
+            if ($bestDate !== null) {
+                $out[$canon] = $dates[$bestDate];
+            }
+        }
+
+        return $out;
+    }
+
     private function defaultSpriceRule(): array
     {
         return ['rules' => []];
@@ -268,12 +355,8 @@ class EbayController extends Controller
                 'label'      => isset($r['label']) ? (string) $r['label'] : '',
                 'cvr_min'    => $this->numOrNull($r['cvr_min']    ?? null),
                 'cvr_max'    => $this->numOrNull($r['cvr_max']    ?? null),
-                'dil_min'    => $this->numOrNull($r['dil_min']    ?? null),
-                'dil_max'    => $this->numOrNull($r['dil_max']    ?? null),
-                'esold_min'  => $this->numOrNull($r['esold_min']  ?? null),
-                'esold_max'  => $this->numOrNull($r['esold_max']  ?? null),
-                'views_min'  => $this->numOrNull($r['views_min']  ?? null),
-                'views_max'  => $this->numOrNull($r['views_max']  ?? null),
+                'l7_views_min' => $this->numOrNull($r['l7_views_min'] ?? null),
+                'l7_views_max' => $this->numOrNull($r['l7_views_max'] ?? null),
                 'sbid'       => $this->numOrNull($r['sbid'] ?? null) ?? 0,
             ];
         }
@@ -286,28 +369,6 @@ class EbayController extends Controller
         );
 
         return response()->json(['success' => true, 'rule' => $rule]);
-    }
-
-    /**
-     * Sbid (Views) settings — Min/Max caps + per-colour daily direction/step used
-     * by the Sbid (Views) column and applied on push (button + ebay:update-suggestedbid
-     * cron). Shared across users under key `ebay1_sbid_views` in ebay_sbid_rules.
-     */
-    public function getSbidViewsRule()
-    {
-        return response()->json(\App\Support\SbidViewsRule::settings());
-    }
-
-    public function saveSbidViewsRule(Request $request)
-    {
-        $settings = \App\Support\SbidViewsRule::sanitize($request->all());
-
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => \App\Support\SbidViewsRule::KEY],
-            ['rule' => json_encode($settings), 'updated_at' => now()]
-        );
-
-        return response()->json(['success' => true, 'rule' => $settings]);
     }
 
     /**
@@ -563,6 +624,9 @@ class EbayController extends Controller
             ->keyBy(function ($metric) {
                 return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
             });
+
+        // Prior same period for L7 Views (days 8–14) — for L7 % change column.
+        $prevL7ViewsBySku = $this->previousPeriodL7ViewsBySku($skus);
 
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
@@ -1041,6 +1105,14 @@ class EbayController extends Controller
 
             // === KW Ads section data ===
             $row['l7_views'] = $ebayMetric->l7_views ?? 0;
+            // L7 % vs previous same period (days 8–14) — snapshot of l7_views from ~7 days ago.
+            $skuNormKey = ShopifySku::normalizeSkuForShopifyLookup($pm->sku);
+            $l7Cur = (int) ($row['l7_views'] ?? 0);
+            $l7Prev = $prevL7ViewsBySku[$skuNormKey] ?? null;
+            $row['l7_views_prev'] = $l7Prev; // null = no prior snapshot yet
+            $row['l7_views_chg_pct'] = ($l7Prev !== null && (int) $l7Prev > 0)
+                ? round((($l7Cur - (int) $l7Prev) / (int) $l7Prev) * 100, 1)
+                : null;
 
             // Match L7 and L1 campaign reports
             $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
@@ -1370,6 +1442,21 @@ class EbayController extends Controller
             $parentRow->pmt_sales_l30 = 0;
             $parentRow->pmt_spend_l7 = 0;
             $parentRow->l7_views = array_sum(array_map(function ($c) { return (int) ($c->l7_views ?? 0); }, $children));
+            $parentPrevVals = array_map(function ($c) {
+                return $c->l7_views_prev;
+            }, $children);
+            $parentHasPrev = false;
+            $parentL7Prev = 0;
+            foreach ($parentPrevVals as $pv) {
+                if ($pv !== null && $pv !== '') {
+                    $parentHasPrev = true;
+                    $parentL7Prev += (int) $pv;
+                }
+            }
+            $parentRow->l7_views_prev = $parentHasPrev ? $parentL7Prev : null;
+            $parentRow->l7_views_chg_pct = ($parentHasPrev && $parentL7Prev > 0)
+                ? round((((int) $parentRow->l7_views - $parentL7Prev) / $parentL7Prev) * 100, 1)
+                : null;
             $parentRow->kw_campaignBudgetAmount = 0;
             $parentRow->kw_campaignStatus = '';
             $parentRow->kw_campaign_id = '';

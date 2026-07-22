@@ -190,25 +190,6 @@ class UpdateEbaySuggestedBid extends Command
         $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
         $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (CVR / Dil / Esold / Views L30 → S Bid)');
 
-        // Sbid (Views) — daily ±%/day adjustment of the base S Bid by L7 View colour
-        // band, clamped to Min/Max caps (same rule the UI shows). The colour band
-        // needs the average l7_views across the listings this command processes.
-        $sbidViewsSettings = \App\Support\SbidViewsRule::settings();
-        $l7Sum = 0.0; $l7Count = 0;
-        foreach ($ebayMetricsNormalized as $m) {
-            if ($m && $m->item_id && $campaignListings->has($m->item_id)) {
-                $l7Sum += (float) ($m->l7_views ?? 0);
-                $l7Count++;
-            }
-        }
-        $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
-        $this->info("Sbid (Views): avg L7 across {$l7Count} processed listing(s) = " . round($avgL7Views, 2)
-            . " | caps [{$sbidViewsSettings['min_cap']}, {$sbidViewsSettings['max_cap']}]"
-            . " | no-dec when E L30 ≤ {$sbidViewsSettings['no_dec_max_el30']}"
-            . " | pink {$sbidViewsSettings['pink_dir']} {$sbidViewsSettings['pink_step']}"
-            . " | green {$sbidViewsSettings['green_dir']} {$sbidViewsSettings['green_step']}"
-            . " | red {$sbidViewsSettings['red_dir']} {$sbidViewsSettings['red_step']}");
-
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');
         $updatedListings = 0;
@@ -223,8 +204,6 @@ class UpdateEbaySuggestedBid extends Command
                 $ebayMetricsNormalized, 
                 $campaignListings,
                 $sbidSlabs,
-                $sbidViewsSettings,
-                $avgL7Views,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 &$bidProcessedCount,
@@ -241,6 +220,7 @@ class UpdateEbaySuggestedBid extends Command
 
                         $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);   // Esold
                         $views    = (float) ($ebayMetric->views ?? 0);      // Views L30
+                        $l7Views  = (float) ($ebayMetric->l7_views ?? 0);   // For L7 Views
                         $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0; // CVR
 
                         // DIL = (L30 sold / inventory) * 100, from Shopify data
@@ -248,28 +228,16 @@ class UpdateEbaySuggestedBid extends Command
                         $qty = (float) ($shopify->quantity ?? 0);
                         $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-                        // Sbid (Views): adjust the CURRENT C Bid (bid_percentage) by the
-                        // row's L7 View colour band (direction + step), clamped to the
-                        // Min/Max caps. Green = no change (keep current C Bid). No current
-                        // C Bid → skip (nothing to adjust). If E L30 sold ≤ no_dec_max_el30,
-                        // Decrease steps are skipped.
-                        $baseBid = (float) ($listing->bid_percentage ?? 0);
-                        $l7views = (float) ($ebayMetric->l7_views ?? 0);
-                        $newBid  = \App\Support\SbidViewsRule::apply(
-                            $baseBid,
-                            $l7views,
-                            $avgL7Views,
-                            $sbidViewsSettings,
-                            $soldL30
-                        );
+                        // S Bid from Sbid Rule slabs (same as /ebay-tabulator-view S BID column).
+                        $newBid = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $sbidSlabs);
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
                         if ($newBid <= 0) {
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | E L30: {$soldL30} | C Bid: {$baseBid} → No current C Bid (skipped)");
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | E L30: {$soldL30} | CVR: " . round($scvr, 2) . " | Dil: " . round($dil, 2) . " → No matching Sbid Rule slab (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | E L30: {$soldL30} | C Bid: {$baseBid} | SBID (Views): {$newBid}");
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | E L30: {$soldL30} | CVR: " . round($scvr, 2) . " | Dil: " . round($dil, 2) . " | SBID: {$newBid}");
                             $updatedListings++;
                         }
                     }
@@ -554,17 +522,15 @@ class UpdateEbaySuggestedBid extends Command
      */
     /**
      * Resolve S Bid from the Sbid Rule slabs. Each slab carries optional min/max
-     * ranges on CVR, Dil, Esold and Views L30 plus an sbid value. The first slab
-     * whose filled ranges all contain the row's values wins. Returns 0 when no
-     * slab matches (caller treats 0 as "skip").
+     * ranges on CVR and For L7 Views plus an sbid value.
+     * The first slab whose filled ranges all contain the row's values wins.
+     * Returns 0 when no slab matches (caller treats 0 as "skip").
      */
-    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, array $slabs): float
+    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
     {
         foreach ($slabs as $s) {
             if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
-                && $this->slabInRange($dil,   $s['dil_min']   ?? null, $s['dil_max']   ?? null)
-                && $this->slabInRange($esold, $s['esold_min'] ?? null, $s['esold_max'] ?? null)
-                && $this->slabInRange($views, $s['views_min'] ?? null, $s['views_max'] ?? null)) {
+                && $this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
                 return (float) ($s['sbid'] ?? 0);
             }
         }
