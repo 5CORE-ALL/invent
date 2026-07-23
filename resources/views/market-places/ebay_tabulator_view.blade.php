@@ -4480,8 +4480,8 @@
                         title: "CVR 30",
                         field: "SCVR",
                         hozAlign: "center",
-                        // No fixed width — fitDataStretch sizes to value + arrow + chart dot
-                        minWidth: 88,
+                        // No fixed width — fitDataStretch sizes to value + trend arrow
+                        minWidth: 72,
                         resizable: true,
                         sorter: function(a, b, aRow, bRow) {
                             const aData = aRow.getData();
@@ -4496,7 +4496,6 @@
                             const cvr60 = parseFloat(rowData.CVR_60) || 0;
                             const tol = 0.1;
                             let arrowHtml = '';
-                            let dotColor = '#008000'; // green by default
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase()
                                 .startsWith('PARENT');
                             if (!isParent) {
@@ -4506,15 +4505,10 @@
                                     // CVR 30 > CVR 60 (improving)
                                     arrowColor = '#28a745';
                                     arrowIcon = 'fa-arrow-up';
-                                    dotColor = '#28a745'; // green
                                 } else if (val < cvr60 - tol) {
                                     // CVR 60 > CVR 30 (declining)
                                     arrowColor = '#a00211';
                                     arrowIcon = 'fa-arrow-down';
-                                    dotColor = '#a00211'; // red
-                                } else {
-                                    // CVR 30 equals CVR 60 (within tolerance)
-                                    dotColor = '#ffc107'; // yellow
                                 }
                                 arrowHtml =
                                     ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
@@ -4522,8 +4516,11 @@
                             const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' :
                                 (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             const sku = rowData['(Child) sku'] || '';
-                            const dotBtn = (sku && !isParent) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>` : '';
-                            return `<span style="color: ${color}; font-weight: 600; white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${val.toFixed(1)}%${arrowHtml}${dotBtn ? ' ' + dotBtn : ''}</span>`;
+                            // Click the % value to open CVR chart (dot removed)
+                            const valueHtml = (sku && !isParent)
+                                ? `<span class="view-sku-chart" data-sku="${sku}" data-metric="cvr" title="View CVR chart" style="color: ${color}; font-weight: 600; cursor: pointer;">${val.toFixed(1)}%</span>`
+                                : `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${valueHtml}${arrowHtml}</span>`;
                         },
                     },
                     {
