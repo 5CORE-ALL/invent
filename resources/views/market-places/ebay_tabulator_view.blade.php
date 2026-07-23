@@ -644,19 +644,19 @@
                         <option value="red">Red (No LMP)</option>
                     </select>
 
-                    {{-- Target ROI% bulk control — back-solves SPRICE so SNROI (Amazon NROI formula) = Target. --}}
-                    {{-- Formula: sprice = (LP × (1 + Target/100) + Ship) / (margin − Ads%) --}}
+                    {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target. --}}
+                    {{-- Formula: sprice = (LP × (1 + Target/100) + Ship) / margin --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
-                        title="Target SNROI% — sets SPRICE so net SROI = Target (same Amazon NROI formula: accounts for fees, shipping, and Ads%)">
+                        title="Target SGROI% — sets SPRICE so S GROI column = Target (gross ROI: fees + shipping, no Ads%)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target SNROI% applied to all selected rows when you click 'Apply SPRICE'">
+                            title="Target SGROI% applied to all selected rows when you click 'Apply SPRICE'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE = (LP \u00d7 (1 + Target/100) + Ship) / (margin \u2212 Ads%) for every selected row">
+                            title="Compute & save SPRICE = (LP \u00d7 (1 + Target/100) + Ship) / margin for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -2753,20 +2753,19 @@
                 });
             }
 
-            // Target ROI% — targets displayed SNROI (Amazon NROI shape), not gross SGROI:
-            //   ((sprice×margin − ship − lp) − sprice×Ads%/100) / lp × 100 = Target
-            //   -> sprice = (lp × (1 + Target/100) + ship) / (margin − Ads%/100)
+            // Target ROI% — targets displayed SGROI (gross), not SNROI:
+            //   (sprice×margin − ship − lp) / lp × 100 = Target
+            //   -> sprice = (lp × (1 + Target/100) + ship) / margin
             $('#apply-target-roi-btn').on('click', function() {
                 const $btn = $(this);
                 const raw = $('#target-roi-input').val();
                 const targetRoiPct = parseFloat(String(raw).replace(',', '.'));
                 if (raw === '' || raw == null) { showToast('error', 'Please enter a Target ROI%'); return; }
                 if (!isFinite(targetRoiPct)) { showToast('error', 'Target ROI% must be a number'); return; }
-                const adsFrac = (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) / 100;
                 const roiMultiplier = 1 + (targetRoiPct / 100);
                 ebayApplyTargetSpriceBatch({
                     targetPct: targetRoiPct,
-                    label: `Target SNROI ${targetRoiPct}%`,
+                    label: `Target SGROI ${targetRoiPct}%`,
                     $btn: $btn,
                     btnHtml: '<i class="fas fa-calculator"></i> Apply SPRICE',
                     computeSprice: function(rd) {
@@ -2775,11 +2774,10 @@
                         const ship = parseFloat(rd.Ship_productmaster) || 0;
                         const marginRaw = parseFloat(rd.percentage);
                         const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
-                        const netMargin = margin - adsFrac;
-                        if (netMargin <= 0) {
-                            return { skipReason: `Ads% ≥ eBay take-home margin (~${Math.round(margin * 100)}%)` };
+                        if (margin <= 0) {
+                            return { skipReason: 'Invalid eBay take-home margin' };
                         }
-                        return { sprice: (lp * roiMultiplier + ship) / netMargin };
+                        return { sprice: (lp * roiMultiplier + ship) / margin };
                     }
                 });
             });
@@ -6656,7 +6654,8 @@
                 }, 100);
             });
 
-            // Toggle column from dropdown — save visibility, then close the menu
+            // Toggle column from dropdown — save visibility; keep menu open so multiple
+            // columns can be checked/unchecked without it closing each time.
             (function() {
                 var colMenu = document.getElementById("column-dropdown-menu");
                 function closeColumnDropdown() {
@@ -6671,6 +6670,14 @@
                     }
                 }
                 if (colMenu) {
+                    // Prevent Bootstrap from treating checkbox/label clicks as "outside"
+                    // and closing the dropdown (data-bs-auto-close="outside" can still
+                    // misfire when the table reflows after show/hide).
+                    colMenu.addEventListener("click", function(e) {
+                        if (e.target.closest('input[type="checkbox"], label, .col-vis-item, .col-vis-group-title')) {
+                            e.stopPropagation();
+                        }
+                    });
                     colMenu.addEventListener("change", function(e) {
                         if (e.target.type !== 'checkbox') return;
 
@@ -6694,10 +6701,10 @@
                                 enforceAlwaysHiddenColumns();
                             }
                             saveColumnVisibilityToServer();
-                            return; // keep menu open for bulk edits
+                            return;
                         }
 
-                        // Individual column checkbox
+                        // Individual column checkbox — keep menu open for multi-toggle
                         const field = e.target.value;
                         const col = table.getColumn(field);
                         if (!col) return;
@@ -6708,7 +6715,6 @@
                         }
                         syncColVisGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
                         saveColumnVisibilityToServer();
-                        closeColumnDropdown();
                     });
                     // "Show All" — show every column, save, then close
                     colMenu.addEventListener("click", function(e) {
