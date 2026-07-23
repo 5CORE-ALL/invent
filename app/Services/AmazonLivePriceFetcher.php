@@ -79,55 +79,14 @@ class AmazonLivePriceFetcher
         $amazonDomain = $this->resolveAmazonDomain($marketplace);
 
         try {
-            $response = Http::timeout(30)->get('https://serpapi.com/search', [
+            $response = Http::timeout(15)->get('https://serpapi.com/search', [
                 'engine' => 'amazon_product',
                 'amazon_domain' => $amazonDomain,
                 'asin' => $asin,
                 'api_key' => $apiKey,
             ]);
 
-            if (!$response->successful()) {
-                Log::warning('AmazonLivePriceFetcher: SerpApi HTTP error', [
-                    'asin' => $asin,
-                    'status' => $response->status(),
-                ]);
-
-                return null;
-            }
-
-            $data = $response->json();
-            if (!empty($data['error'])) {
-                return null;
-            }
-
-            $product = $data['product_results'] ?? null;
-            if (!$product || !is_array($product)) {
-                return null;
-            }
-
-            $price = $this->extractPrice($product);
-            if ($price === null) {
-                return null;
-            }
-
-            $title = $product['title'] ?? null;
-            $link = $product['link'] ?? "https://www.{$amazonDomain}/dp/{$asin}";
-            $image = $this->extractImage($product);
-
-            return [
-                'asin' => $asin,
-                'price' => round($price, 2),
-                'title' => $title,
-                'link' => $link,
-                'image' => $image,
-                'rating' => isset($product['rating']) && is_numeric($product['rating']) ? (float) $product['rating'] : null,
-                'reviews' => isset($product['reviews']) && is_numeric($product['reviews']) ? (int) $product['reviews'] : null,
-                'extracted_old_price' => $this->extractOldPrice($data, $product),
-                'delivery' => isset($product['delivery']) && is_array($product['delivery'])
-                    ? array_values(array_filter(array_map('strval', $product['delivery'])))
-                    : null,
-                'seller_name' => $this->extractSellerFromTitle($title),
-            ];
+            return $this->parseProductResponse($response, $asin, $amazonDomain);
         } catch (\Throwable $e) {
             Log::warning('AmazonLivePriceFetcher: fetch failed', [
                 'asin' => $asin,
@@ -136,6 +95,144 @@ class AmazonLivePriceFetcher
 
             return null;
         }
+    }
+
+    /**
+     * Fetch many ASINs in parallel (Http::pool), keyed by ASIN.
+     * Duplicate ASINs are requested once. Use for LMP Pull so N competitors
+     * finish in ~1–2 SerpApi round-trips instead of N sequential calls.
+     *
+     * @param  array<int, array{asin: string, marketplace?: string|null}>  $requests
+     * @return array<string, array|null>
+     */
+    public function fetchManyByAsin(array $requests, int $parallelBatchSize = 8): array
+    {
+        $apiKey = $this->getApiKey();
+        if (!$apiKey || $requests === []) {
+            return [];
+        }
+
+        // Dedupe by ASIN (first marketplace wins)
+        $unique = [];
+        foreach ($requests as $req) {
+            $asin = strtoupper(trim((string) ($req['asin'] ?? '')));
+            if ($asin === '' || isset($unique[$asin])) {
+                continue;
+            }
+            $unique[$asin] = [
+                'asin' => $asin,
+                'marketplace' => $req['marketplace'] ?? null,
+                'domain' => $this->resolveAmazonDomain($req['marketplace'] ?? null),
+            ];
+        }
+
+        $results = [];
+        $chunks = array_chunk(array_values($unique), max(1, $parallelBatchSize));
+
+        foreach ($chunks as $chunk) {
+            try {
+                $responses = Http::pool(function ($pool) use ($chunk, $apiKey) {
+                    foreach ($chunk as $item) {
+                        $pool->as($item['asin'])->timeout(15)->get('https://serpapi.com/search', [
+                            'engine' => 'amazon_product',
+                            'amazon_domain' => $item['domain'],
+                            'asin' => $item['asin'],
+                            'api_key' => $apiKey,
+                        ]);
+                    }
+                });
+            } catch (\Throwable $e) {
+                Log::warning('AmazonLivePriceFetcher: pool fetch failed', [
+                    'message' => $e->getMessage(),
+                    'asins' => array_column($chunk, 'asin'),
+                ]);
+                foreach ($chunk as $item) {
+                    $results[$item['asin']] = null;
+                }
+                continue;
+            }
+
+            foreach ($chunk as $item) {
+                $asin = $item['asin'];
+                $response = $responses[$asin] ?? null;
+                if (!$response) {
+                    $results[$asin] = null;
+                    continue;
+                }
+                try {
+                    $results[$asin] = $this->parseProductResponse($response, $asin, $item['domain']);
+                } catch (\Throwable $e) {
+                    Log::warning('AmazonLivePriceFetcher: parse failed', [
+                        'asin' => $asin,
+                        'message' => $e->getMessage(),
+                    ]);
+                    $results[$asin] = null;
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param  \Illuminate\Http\Client\Response  $response
+     * @return array{
+     *     asin: string,
+     *     price: float,
+     *     title: ?string,
+     *     link: ?string,
+     *     image: ?string,
+     *     rating: ?float,
+     *     reviews: ?int,
+     *     extracted_old_price: ?float,
+     *     delivery: ?array,
+     *     seller_name: ?string
+     * }|null
+     */
+    private function parseProductResponse($response, string $asin, string $amazonDomain): ?array
+    {
+        if (!$response->successful()) {
+            Log::warning('AmazonLivePriceFetcher: SerpApi HTTP error', [
+                'asin' => $asin,
+                'status' => method_exists($response, 'status') ? $response->status() : null,
+            ]);
+
+            return null;
+        }
+
+        $data = $response->json();
+        if (! is_array($data) || ! empty($data['error'])) {
+            return null;
+        }
+
+        $product = $data['product_results'] ?? null;
+        if (!$product || ! is_array($product)) {
+            return null;
+        }
+
+        $price = $this->extractPrice($product);
+        if ($price === null) {
+            return null;
+        }
+
+        $title = $product['title'] ?? null;
+        $link = $product['link'] ?? "https://www.{$amazonDomain}/dp/{$asin}";
+        $image = $this->extractImage($product);
+
+        return [
+            'asin' => $asin,
+            'price' => round($price, 2),
+            'title' => $title,
+            'link' => $link,
+            'image' => $image,
+            'rating' => isset($product['rating']) && is_numeric($product['rating']) ? (float) $product['rating'] : null,
+            'reviews' => isset($product['reviews']) && is_numeric($product['reviews']) ? (int) $product['reviews'] : null,
+            'extracted_old_price' => $this->extractOldPrice($data, $product),
+            'delivery' => isset($product['delivery']) && is_array($product['delivery'])
+                ? array_values(array_filter(array_map('strval', $product['delivery'])))
+                : null,
+            'seller_name' => $this->extractSellerFromTitle($title),
+        ];
     }
 
     private function extractPrice(array $product): ?float

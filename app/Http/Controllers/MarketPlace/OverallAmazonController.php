@@ -3124,65 +3124,80 @@ class OverallAmazonController extends Controller
 
             // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so the modal
             // opens quickly. Background `amazon:update-sku-prices` also keeps prices fresh.
-            // Skip overwrite when live price <= 0 (ended / unavailable listing).
+            // Parallel ASIN fetch (Http::pool) — much faster than 1 SerpApi call per row.
             if ($request->boolean('refresh')) {
-                @set_time_limit(300);
+                @set_time_limit(120);
 
                 $fetcher = app(AmazonLivePriceFetcher::class);
 
+                // Group competitor rows by resolved ASIN (one live fetch per unique ASIN)
+                $asinToCompetitors = [];
+                $fetchRequests = [];
                 foreach ($competitors as $competitor) {
-                    try {
-                        $asin = $fetcher->resolveAsin($competitor->product_link, $competitor->asin);
-                        if (!$asin) {
-                            continue;
-                        }
-
-                        $live = $fetcher->fetchByAsin($asin, $competitor->marketplace);
-                        if (!$live) {
-                            continue;
-                        }
-
-                        $livePrice = isset($live['price']) ? (float) $live['price'] : 0.0;
-                        if ($livePrice <= 0) {
-                            continue;
-                        }
-
-                        $competitor->update([
+                    $asin = $fetcher->resolveAsin($competitor->product_link, $competitor->asin);
+                    if (!$asin) {
+                        continue;
+                    }
+                    if (! isset($asinToCompetitors[$asin])) {
+                        $asinToCompetitors[$asin] = [];
+                        $fetchRequests[] = [
                             'asin' => $asin,
-                            'price' => $live['price'],
-                            'product_title' => $live['title'] ?? $competitor->product_title,
-                            'product_link' => $live['link'] ?? $competitor->product_link,
-                            'image' => $live['image'] ?? $competitor->image,
-                            'rating' => $live['rating'] ?? $competitor->rating,
-                            'reviews' => $live['reviews'] ?? $competitor->reviews,
-                            'extracted_old_price' => $live['extracted_old_price'] ?? $competitor->extracted_old_price,
-                            // Ship / delivery text from SerpApi (FREE or "$X.XX delivery")
-                            'delivery' => $live['delivery'] ?? $competitor->delivery,
-                            'seller_name' => $live['seller_name'] ?? $competitor->seller_name,
-                        ]);
+                            'marketplace' => $competitor->marketplace,
+                        ];
+                    }
+                    $asinToCompetitors[$asin][] = $competitor;
+                }
 
-                        // Best-effort cache sync — must not abort LMP pull.
+                $liveByAsin = $fetcher->fetchManyByAsin($fetchRequests, 8);
+
+                foreach ($liveByAsin as $asin => $live) {
+                    if (!$live) {
+                        continue;
+                    }
+                    $livePrice = isset($live['price']) ? (float) $live['price'] : 0.0;
+                    if ($livePrice <= 0) {
+                        continue;
+                    }
+
+                    foreach ($asinToCompetitors[$asin] ?? [] as $competitor) {
                         try {
-                            AmazonCompetitorAsin::where('asin', $asin)->update([
+                            $competitor->update([
+                                'asin' => $asin,
                                 'price' => $live['price'],
-                                'title' => $live['title'] ?? null,
-                                'image' => $live['image'] ?? null,
-                                'rating' => $live['rating'] ?? null,
-                                'reviews' => $live['reviews'] ?? null,
-                                'extracted_old_price' => $live['extracted_old_price'] ?? null,
-                                'delivery' => $live['delivery'] ?? null,
-                                'seller_name' => $live['seller_name'] ?? null,
+                                'product_title' => $live['title'] ?? $competitor->product_title,
+                                'product_link' => $live['link'] ?? $competitor->product_link,
+                                'image' => $live['image'] ?? $competitor->image,
+                                'rating' => $live['rating'] ?? $competitor->rating,
+                                'reviews' => $live['reviews'] ?? $competitor->reviews,
+                                'extracted_old_price' => $live['extracted_old_price'] ?? $competitor->extracted_old_price,
+                                // Ship / delivery text from SerpApi (FREE or "$X.XX delivery")
+                                'delivery' => $live['delivery'] ?? $competitor->delivery,
+                                'seller_name' => $live['seller_name'] ?? $competitor->seller_name,
                             ]);
                         } catch (\Throwable $e) {
-                            Log::warning('getAmazonCompetitors cache sync skipped', [
-                                'asin' => $asin,
+                            Log::warning('getAmazonCompetitors refresh skipped competitor', [
+                                'sku' => $sku,
+                                'competitor_id' => $competitor->id ?? null,
                                 'error' => $e->getMessage(),
                             ]);
                         }
+                    }
+
+                    // Best-effort cache sync — must not abort LMP pull.
+                    try {
+                        AmazonCompetitorAsin::where('asin', $asin)->update([
+                            'price' => $live['price'],
+                            'title' => $live['title'] ?? null,
+                            'image' => $live['image'] ?? null,
+                            'rating' => $live['rating'] ?? null,
+                            'reviews' => $live['reviews'] ?? null,
+                            'extracted_old_price' => $live['extracted_old_price'] ?? null,
+                            'delivery' => $live['delivery'] ?? null,
+                            'seller_name' => $live['seller_name'] ?? null,
+                        ]);
                     } catch (\Throwable $e) {
-                        Log::warning('getAmazonCompetitors refresh skipped competitor', [
-                            'sku' => $sku,
-                            'competitor_id' => $competitor->id ?? null,
+                        Log::warning('getAmazonCompetitors cache sync skipped', [
+                            'asin' => $asin,
                             'error' => $e->getMessage(),
                         ]);
                     }

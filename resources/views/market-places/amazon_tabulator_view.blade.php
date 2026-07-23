@@ -7177,8 +7177,8 @@
                     method: 'GET',
                     traditional: true,
                     data: reqData,
-                    // Live SerpApi refresh can take ~2s per competitor
-                    timeout: refreshFromApi ? 300000 : 60000,
+                    // Parallel ASIN pool — usually finishes in one or two rounds
+                    timeout: refreshFromApi ? 90000 : 60000,
                     success: function(response) {
                         if (response.success && response.competitors && response.competitors.length > 0) {
                             currentLmpData.sku = sku;
@@ -7189,7 +7189,8 @@
 
                             if (refreshFromApi) {
                                 showToast('Pulled live LMP prices + shipping for ' + sku, 'success');
-                                // Patch this row's LMP + delivery immediately, then refresh table
+                                // Patch LMP on this row only — avoid full table.replaceData()
+                                // (that reload was making Pull feel much slower after SerpApi returned).
                                 if (typeof table !== 'undefined' && table && table.getRows) {
                                     const row = table.getRows().find(r => {
                                         const d = r.getData();
@@ -7203,9 +7204,6 @@
                                                 : (row.getData().lmp_delivery || null),
                                         });
                                     }
-                                }
-                                if (typeof table !== 'undefined' && table && table.replaceData) {
-                                    table.replaceData();
                                 }
                             }
                         } else {
