@@ -86,20 +86,14 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
         ];
     }
 
-    /** Sidebar Missing Listing badge — same Missing L total as /all-marketplace-master. */
+    /**
+     * Sidebar Missing Listing badge — same Missing L total as /missing-listing
+     * (sum of each channel listing page Pending / Missing L).
+     */
     public static function missingLCountForSidebar(): int
     {
         try {
-            $cached = Cache::get(self::MISSING_L_CACHE_KEY);
-            if ($cached !== null) {
-                return (int) $cached;
-            }
-        } catch (\Throwable $e) {
-            // File cache dirs may be missing mid-request after optimize:clear.
-        }
-
-        try {
-            return (int) round((float) (BadgeData::dataForPage(self::PAGE_NAME, ['missing_l' => 0])['missing_l'] ?? 0));
+            return \App\Support\Marketplace\ListingChannelCounts::totalMissingL(true);
         } catch (\Throwable $e) {
             return 0;
         }

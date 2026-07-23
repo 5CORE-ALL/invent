@@ -37,11 +37,15 @@
             color: #0d6efd;
             text-decoration: underline;
         }
-        .badge-ml-stat { font-size: 0.9rem; padding: 0.45rem 0.7rem; }
+        #stat-missing-listing.badge,
+        .badge-ml-stat {
+            font-size: 1.35rem !important;
+            line-height: 1.35;
+            padding: 0.75rem 1.25rem !important;
+            border-radius: 0.35rem !important; /* rectangular, not pill */
+            font-weight: 700;
+        }
         .badge-ml-chart { cursor: pointer; font-weight: bold; }
-        .badge-ml-history { cursor: pointer; }
-        .ml-history-empty { color: #6c757d; padding: 16px; text-align: center; }
-        .ml-history-row { white-space: pre-wrap; word-break: break-word; }
         .ml-seller-portal-cell {
             display: flex;
             align-items: center;
@@ -104,13 +108,7 @@
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from each channel listing page (REQ + not listed)" style="background-color:#a71d2a !important;">
-                        Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar()) }}</span>
-                    </span>
-                    <button type="button" class="btn btn-sm btn-primary" id="open-dar-btn" data-bs-toggle="modal" data-bs-target="#darSubmitModal">
-                        <i class="fa fa-pen-to-square me-1"></i> DAR
-                    </button>
-                    <span class="badge bg-info text-dark badge-ml-stat badge-ml-history" id="stat-history" data-bs-toggle="modal" data-bs-target="#darHistoryModal" title="View DAR history">
-                        <i class="fa fa-clock-rotate-left me-1"></i> History: 0
+                        Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                     </span>
                 </div>
             </div>
@@ -119,70 +117,6 @@
                     <input type="text" id="missing-listing-search" class="form-control form-control-sm" placeholder="Search by Channel...">
                 </div>
                 <div id="missing-listing-table" style="height: calc(100vh - 280px);"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="darSubmitModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">
-                        <i class="fa fa-pen-to-square me-2"></i> Submit Daily Activity Report
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form id="dar-submit-form">
-                    @csrf
-                    <div class="modal-body">
-                        <div class="mb-2 text-muted small">
-                            Submitted as <strong>{{ Auth::user()->name ?? 'Guest' }}</strong> at submission time.
-                        </div>
-                        <div class="mb-3">
-                            <label for="dar-report" class="form-label">Report</label>
-                            <textarea class="form-control" id="dar-report" name="report" rows="6" placeholder="Describe today's activity on Missing Listings..." required maxlength="5000"></textarea>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="dar-submit-btn">
-                            <i class="fa fa-paper-plane me-1"></i> Submit
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="darHistoryModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-dark">
-                    <h5 class="modal-title">
-                        <i class="fa fa-clock-rotate-left me-2"></i> DAR History <small class="fw-normal">(California time)</small>
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-sm align-middle mb-0" id="dar-history-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width: 60px;">#</th>
-                                    <th style="width: 200px;">User</th>
-                                    <th style="width: 200px;">Submitted At</th>
-                                    <th>Report</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="4" class="ml-history-empty">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
             </div>
         </div>
     </div>
@@ -503,32 +437,6 @@
         return '/storage/' + v.replace(/^\/+/, '');
     }
 
-    // Display timestamps in California / Pacific time (America/Los_Angeles)
-    function formatTimestamp(iso, preformatted) {
-        if (preformatted) return preformatted;
-        if (!iso) return '-';
-        const d = new Date(iso);
-        if (isNaN(d.getTime())) return iso;
-        try {
-            return new Intl.DateTimeFormat('en-US', {
-                timeZone: 'America/Los_Angeles',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true,
-                timeZoneName: 'short',
-            }).format(d);
-        } catch (e) {
-            return d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
-        }
-    }
-
-    function setHistoryBadgeCount(count) {
-        $('#stat-history').html(`<i class="fa fa-clock-rotate-left me-1"></i> History: ${Number(count || 0).toLocaleString('en-US')}`);
-    }
-
     function saveSellerPortal(cell) {
         const row = cell.getRow();
         const data = row.getData();
@@ -570,38 +478,6 @@
         });
     }
 
-    function loadDarHistory(renderTable) {
-        return $.ajax({
-            url: "{{ route('missing.listing.dar.history') }}",
-            method: 'GET',
-            dataType: 'json',
-        }).done(function(res) {
-            const rows = (res && res.success && Array.isArray(res.data)) ? res.data : [];
-            setHistoryBadgeCount(rows.length);
-
-            if (renderTable) {
-                const $tbody = $('#dar-history-table tbody');
-                if (rows.length === 0) {
-                    $tbody.html('<tr><td colspan="4" class="ml-history-empty">No DAR submissions yet.</td></tr>');
-                    return;
-                }
-                const html = rows.map((r, i) => `
-                    <tr>
-                        <td>${i + 1}</td>
-                        <td>${escapeHtml(r.user_name)}</td>
-                        <td>${escapeHtml(formatTimestamp(r.submitted_at, r.submitted_at_california))}</td>
-                        <td class="ml-history-row">${escapeHtml(r.report)}</td>
-                    </tr>
-                `).join('');
-                $tbody.html(html);
-            }
-        }).fail(function() {
-            if (renderTable) {
-                $('#dar-history-table tbody').html('<tr><td colspan="4" class="ml-history-empty text-danger">Failed to load history.</td></tr>');
-            }
-        });
-    }
-
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
@@ -620,50 +496,6 @@
                 : (mlCurrentChartDisplayChannel + ' - Missing Listing');
             $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(days)}, California)`);
             loadMlMetricChart();
-        });
-
-        loadDarHistory(false);
-
-        $('#darHistoryModal').on('show.bs.modal', function() {
-            $('#dar-history-table tbody').html('<tr><td colspan="4" class="ml-history-empty">Loading...</td></tr>');
-            loadDarHistory(true);
-        });
-
-        $('#darSubmitModal').on('hidden.bs.modal', function() {
-            $('#dar-report').val('');
-        });
-
-        $('#dar-submit-form').on('submit', function(e) {
-            e.preventDefault();
-            const report = ($('#dar-report').val() || '').trim();
-            if (!report) {
-                showToast('Please enter your DAR before submitting.', 'error');
-                return;
-            }
-
-            const $btn = $('#dar-submit-btn');
-            const original = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i> Submitting...');
-
-            $.ajax({
-                url: "{{ route('missing.listing.dar.submit') }}",
-                method: 'POST',
-                data: { report: report },
-                dataType: 'json',
-            }).done(function(res) {
-                if (res && res.success) {
-                    showToast(res.message || 'DAR submitted successfully.', 'success');
-                    bootstrap.Modal.getInstance(document.getElementById('darSubmitModal'))?.hide();
-                    loadDarHistory(false);
-                } else {
-                    showToast((res && res.message) || 'Submission failed.', 'error');
-                }
-            }).fail(function(xhr) {
-                const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Submission failed.';
-                showToast(msg, 'error');
-            }).always(function() {
-                $btn.prop('disabled', false).html(original);
-            });
         });
 
         table = new Tabulator("#missing-listing-table", {

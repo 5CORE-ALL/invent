@@ -84,6 +84,8 @@ class MissingListingController extends Controller
             $this->persistListingMissingHistory($data);
 
             $totalMissingL = (int) $data->sum('missing_listing');
+            // Keep sidebar badge in sync with this page (listing-page Missing L total)
+            ListingChannelCounts::storeTotalMissingL($totalMissingL);
 
             return response()->json([
                 'success' => true,

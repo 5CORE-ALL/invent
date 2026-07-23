@@ -39,8 +39,10 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
+use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * REQ / NRL / Listed / Pending counts from each channel's listing page
@@ -182,6 +184,83 @@ class ListingChannelCounts
         $key = self::normalize($channel);
 
         return $key !== '' && isset(self::$controllers[$key]);
+    }
+
+    /**
+     * Sum of Missing L (Pending) across active channel_master rows that have a listing page.
+     * Same total as the Missing L badge on /missing-listing.
+     */
+    public static function totalMissingL(bool $useCache = true): int
+    {
+        $cacheKey = 'listing_pages_missing_l_total_v1';
+
+        if (! $useCache) {
+            $total = self::computeTotalMissingL();
+            try {
+                Cache::put($cacheKey, $total, now()->addMinutes(30));
+            } catch (\Throwable $e) {
+                // ignore cache write failures
+            }
+
+            return $total;
+        }
+
+        try {
+            return (int) Cache::remember($cacheKey, now()->addMinutes(10), function () {
+                return self::computeTotalMissingL();
+            });
+        } catch (\Throwable $e) {
+            Log::warning('ListingChannelCounts totalMissingL cache failed: ' . $e->getMessage());
+
+            return self::computeTotalMissingL();
+        }
+    }
+
+    /**
+     * Persist a precomputed total (e.g. after /missing-listing/data loads).
+     */
+    public static function storeTotalMissingL(int $total): void
+    {
+        try {
+            Cache::put('listing_pages_missing_l_total_v1', max(0, $total), now()->addMinutes(30));
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    private static function computeTotalMissingL(): int
+    {
+        if (! Schema::hasTable('channel_master')) {
+            return 0;
+        }
+
+        $seen = [];
+        $total = 0;
+
+        $channels = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->whereNotNull('channel')
+            ->where('channel', '!=', '')
+            ->pluck('channel');
+
+        foreach ($channels as $name) {
+            if (! self::hasListingSource((string) $name)) {
+                continue;
+            }
+            $key = self::normalize((string) $name);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            try {
+                $c = self::forChannel((string) $name, false);
+                $total += (int) ($c['Pending'] ?? 0);
+            } catch (\Throwable $e) {
+                Log::warning('ListingChannelCounts totalMissingL channel failed (' . $key . '): ' . $e->getMessage());
+            }
+        }
+
+        return $total;
     }
 
     /**
