@@ -644,10 +644,16 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">
-                        <i class="fa fa-shopping-cart"></i> Competitors for SKU: <span id="lmpSku"></span>
+                    <h5 class="modal-title mb-0">
+                        <i class="fa fa-shopping-cart me-1"></i> Competitors for SKU: <span id="lmpSku"></span>
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
+                            title="Pull live prices + shipping (delivery) for this SKU from SerpApi (Amazon)">
+                            <i class="fas fa-cloud-download-alt"></i> Pull
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <!-- Add New Competitor Form -->
@@ -7128,7 +7134,11 @@
             }
 
             // Load Competitors Modal Function
-            function loadCompetitorsModal(sku, linkedLmpSkus) {
+            // Pass options.refresh = true to live-fetch price + delivery (ship) via SerpApi
+            // (same pattern as eBay #lmpPullApiBtn → GET /ebay-lmp-data?refresh=1).
+            function loadCompetitorsModal(sku, linkedLmpSkus, options) {
+                options = options || {};
+                const refreshFromApi = !!options.refresh;
                 $('#lmpSku').text(sku);
                 
                 // Pre-fill form with SKU
@@ -7149,44 +7159,100 @@
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="mt-2">Loading competitors...</p>
+                        <p class="mt-2">${refreshFromApi ? 'Pulling live prices + shipping from Amazon API...' : 'Loading competitors...'}</p>
                     </div>
                 `);
+
+                const reqData = {
+                    sku: sku,
+                    linked_lmp_skus: currentLmpData.linkedLmpSkus,
+                };
+                if (refreshFromApi) {
+                    reqData.refresh = 1;
+                }
                 
                 // Fetch competitors from backend (merged across Sku Link LMP group)
                 $.ajax({
                     url: '/amazon/competitors',
                     method: 'GET',
                     traditional: true,
-                    data: {
-                        sku: sku,
-                        linked_lmp_skus: currentLmpData.linkedLmpSkus,
-                    },
+                    data: reqData,
+                    // Live SerpApi refresh can take ~2s per competitor
+                    timeout: refreshFromApi ? 300000 : 60000,
                     success: function(response) {
-                        if (response.success) {
+                        if (response.success && response.competitors && response.competitors.length > 0) {
                             currentLmpData.sku = sku;
                             currentLmpData.competitors = response.competitors;
                             currentLmpData.lowestPrice = response.lowest_price;
                             
                             renderCompetitorsList(response.competitors, response.lowest_price);
+
+                            if (refreshFromApi) {
+                                showToast('Pulled live LMP prices + shipping for ' + sku, 'success');
+                                // Patch this row's LMP + delivery immediately, then refresh table
+                                if (typeof table !== 'undefined' && table && table.getRows) {
+                                    const row = table.getRows().find(r => {
+                                        const d = r.getData();
+                                        return d['(Child) sku'] === sku || d.SKU === sku || d.sku === sku;
+                                    });
+                                    if (row && response.lowest_price != null) {
+                                        row.update({
+                                            lmp_price: response.lowest_price,
+                                            lmp_delivery: response.lowest_delivery != null
+                                                ? response.lowest_delivery
+                                                : (row.getData().lmp_delivery || null),
+                                        });
+                                    }
+                                }
+                                if (typeof table !== 'undefined' && table && table.replaceData) {
+                                    table.replaceData();
+                                }
+                            }
                         } else {
                             $('#lmpDataList').html(`
                                 <div class="alert alert-warning">
                                     <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
                                 </div>
                             `);
+                            if (refreshFromApi) {
+                                showToast('No competitors found for ' + sku, 'warning');
+                            }
                         }
                     },
                     error: function(xhr) {
                         console.error('Error loading competitors:', xhr);
+                        const apiMsg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || '';
                         $('#lmpDataList').html(`
-                            <div class="alert alert-warning">
-                                <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                            <div class="alert alert-danger">
+                                <i class="fa fa-exclamation-triangle"></i>
+                                Could not load competitors. Please close this dialog and try again.
+                                ${apiMsg ? `<div class="small mt-1">${$('<div>').text(apiMsg).html()}</div>` : ''}
                             </div>
                         `);
+                        if (refreshFromApi) {
+                            showToast(apiMsg || 'Failed to pull Amazon LMP data', 'error');
+                        }
+                    },
+                    complete: function() {
+                        const $btn = $('#lmpPullApiBtn');
+                        if ($btn.length) {
+                            $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Pull');
+                        }
                     }
                 });
             }
+
+            // Pull live competitor prices + shipping (delivery) for the open SKU
+            $(document).on('click', '#lmpPullApiBtn', function() {
+                const sku = currentLmpData.sku || $('#lmpSku').text().trim();
+                if (!sku) {
+                    showToast('No SKU selected', 'error');
+                    return;
+                }
+                const $btn = $(this);
+                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Pulling...');
+                loadCompetitorsModal(sku, currentLmpData.linkedLmpSkus || [], { refresh: true });
+            });
 
             // Render Competitors List Function
             function renderCompetitorsList(competitors, lowestPrice) {

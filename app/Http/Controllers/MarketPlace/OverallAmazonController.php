@@ -31,8 +31,10 @@ use App\Models\AmazonListingStatus;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonSeoAuditHistory;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\AmazonCompetitorAsin;
 use App\Models\FbaPrice;
 use App\Models\FbaTable;
+use App\Services\AmazonLivePriceFetcher;
 use App\Services\FbaInventoryService;
 use App\Services\LmpSkuGroupService;
 
@@ -3095,7 +3097,9 @@ class OverallAmazonController extends Controller
     }
 
     /**
-     * Get all competitors for a SKU (for modal display)
+     * Get all competitors for a SKU (for modal display).
+     * Opt-in live SerpApi refresh via ?refresh=1 (same pattern as eBay GET /ebay-lmp-data).
+     * On refresh, updates price + delivery (ship) into amazon_sku_competitors.
      */
     public function getAmazonCompetitors(Request $request)
     {
@@ -3117,11 +3121,97 @@ class OverallAmazonController extends Controller
             ))));
 
             $competitors = AmazonSkuCompetitor::getCompetitorsForSkus($groupSkus, 'amazon');
-            
-            $lowestPrice = $competitors->first();
+
+            // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so the modal
+            // opens quickly. Background `amazon:update-sku-prices` also keeps prices fresh.
+            // Skip overwrite when live price <= 0 (ended / unavailable listing).
+            if ($request->boolean('refresh')) {
+                @set_time_limit(300);
+
+                $fetcher = app(AmazonLivePriceFetcher::class);
+
+                foreach ($competitors as $competitor) {
+                    try {
+                        $asin = $fetcher->resolveAsin($competitor->product_link, $competitor->asin);
+                        if (!$asin) {
+                            continue;
+                        }
+
+                        $live = $fetcher->fetchByAsin($asin, $competitor->marketplace);
+                        if (!$live) {
+                            continue;
+                        }
+
+                        $livePrice = isset($live['price']) ? (float) $live['price'] : 0.0;
+                        if ($livePrice <= 0) {
+                            continue;
+                        }
+
+                        $competitor->update([
+                            'asin' => $asin,
+                            'price' => $live['price'],
+                            'product_title' => $live['title'] ?? $competitor->product_title,
+                            'product_link' => $live['link'] ?? $competitor->product_link,
+                            'image' => $live['image'] ?? $competitor->image,
+                            'rating' => $live['rating'] ?? $competitor->rating,
+                            'reviews' => $live['reviews'] ?? $competitor->reviews,
+                            'extracted_old_price' => $live['extracted_old_price'] ?? $competitor->extracted_old_price,
+                            // Ship / delivery text from SerpApi (FREE or "$X.XX delivery")
+                            'delivery' => $live['delivery'] ?? $competitor->delivery,
+                            'seller_name' => $live['seller_name'] ?? $competitor->seller_name,
+                        ]);
+
+                        // Best-effort cache sync — must not abort LMP pull.
+                        try {
+                            AmazonCompetitorAsin::where('asin', $asin)->update([
+                                'price' => $live['price'],
+                                'title' => $live['title'] ?? null,
+                                'image' => $live['image'] ?? null,
+                                'rating' => $live['rating'] ?? null,
+                                'reviews' => $live['reviews'] ?? null,
+                                'extracted_old_price' => $live['extracted_old_price'] ?? null,
+                                'delivery' => $live['delivery'] ?? null,
+                                'seller_name' => $live['seller_name'] ?? null,
+                            ]);
+                        } catch (\Throwable $e) {
+                            Log::warning('getAmazonCompetitors cache sync skipped', [
+                                'asin' => $asin,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('getAmazonCompetitors refresh skipped competitor', [
+                            'sku' => $sku,
+                            'competitor_id' => $competitor->id ?? null,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                $competitors = $competitors
+                    ->map(function ($comp) {
+                        try {
+                            return $comp->refresh();
+                        } catch (\Throwable $e) {
+                            return $comp;
+                        }
+                    })
+                    ->filter(function ($comp) {
+                        return (float) ($comp->price ?? 0) > 0;
+                    })
+                    ->sortBy(function ($comp) {
+                        return (float) ($comp->price ?? 0);
+                    })
+                    ->values();
+            }
+
+            // L1 = lowest non-ignored competitor (same as eBay / Temu)
+            $lowest = $competitors->first(fn ($comp) => empty($comp->ignored))
+                ?? $competitors->first();
             
             return response()->json([
                 'success' => true,
+                'sku' => $sku,
                 'competitors' => $competitors->map(function($comp) {
                     // Use stored image or construct from ASIN (Amazon image URL pattern)
                     $image = $comp->image ?? (
@@ -3129,15 +3219,7 @@ class OverallAmazonController extends Controller
                             ? 'https://m.media-amazon.com/images/P/' . $comp->asin . '._AC_SL160_.jpg'
                             : null
                     );
-                    $delivery = $comp->delivery;
-                    if (is_array($delivery)) {
-                        $delivery = implode(', ', array_slice($delivery, 0, 2));
-                    } elseif (is_string($delivery)) {
-                        $decoded = json_decode($delivery, true);
-                        $delivery = is_array($decoded) ? implode(', ', array_slice($decoded, 0, 2)) : $delivery;
-                    } else {
-                        $delivery = null;
-                    }
+                    $delivery = $this->normalizeDeliveryText($comp->delivery);
                     return [
                         'id' => $comp->id,
                         'sku' => $comp->sku,
@@ -3164,7 +3246,8 @@ class OverallAmazonController extends Controller
                         'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
                     ];
                 }),
-                'lowest_price' => $lowestPrice ? floatval($lowestPrice->price) : null,
+                'lowest_price' => $lowest ? floatval($lowest->price) : null,
+                'lowest_delivery' => $lowest ? $this->normalizeDeliveryText($lowest->delivery ?? null) : null,
                 'total_count' => $competitors->count()
             ]);
             
