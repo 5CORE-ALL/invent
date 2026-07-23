@@ -37,11 +37,11 @@ use Illuminate\Http\Request;
 class MapIssuesController extends Controller
 {
     /**
-     * Display the Map Issues Tabulator page.
+     * Display the Missing Mapping master page (Channel | Missing Mapping).
      */
     public function index()
     {
-        return view('map-issues');
+        return app(\App\Http\Controllers\MarketPlace\MissingMappingController::class)->index();
     }
 
     /**

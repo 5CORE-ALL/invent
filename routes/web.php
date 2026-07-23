@@ -2976,8 +2976,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-transfer-store', [StockTransferController::class, 'store'])->name('stock.transfer.store');
     Route::get('/stock-transfer-data-list', [StockTransferController::class, 'list']);
 
-    // Map Issues
-    Route::get('/map-issues', [MapIssuesController::class, 'index'])->name('map.issues');
+    // Missing Mapping (master + per-channel SKU pages)
+    Route::get('/map-issues', [\App\Http\Controllers\MarketPlace\MissingMappingController::class, 'index'])->name('map.issues');
+    Route::get('/map-issues/channels-data', [\App\Http\Controllers\MarketPlace\MissingMappingController::class, 'masterData'])->name('map.issues.channels');
+    Route::get('/map-issues/channel/{channel}', [\App\Http\Controllers\MarketPlace\MissingMappingController::class, 'channel'])->name('map.issues.channel');
+    Route::get('/map-issues/channel/{channel}/data', [\App\Http\Controllers\MarketPlace\MissingMappingController::class, 'channelData'])->name('map.issues.channel.data');
     Route::get('/map-issues-data', [MapIssuesController::class, 'data'])->name('map.issues.data');
     Route::post('/map-issues-update-nr', [MapIssuesController::class, 'updateNrReq'])->name('map.issues.update.nr');
 
@@ -3616,6 +3619,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
     Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');
     Route::get('/missing-listing/chart-data',  [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'chartData'])->name('missing.listing.chart.data');
+    Route::get('/listing-catalogue/chart-data', [\App\Http\Controllers\MarketPlace\ListingCatalogueController::class, 'chartData'])->name('listing.catalogue.chart.data');
     Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');

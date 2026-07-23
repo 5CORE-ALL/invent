@@ -125,7 +125,7 @@
                         $mapIssuesNmapCount = \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::nmapCountForSidebar();
                     @endphp
                     @if($mapIssuesNmapCount > 0)
-                        <span class="badge rounded-pill ms-auto map-issues-nmap-badge" title="N Map total from All Marketplace Master">{{ number_format($mapIssuesNmapCount) }}</span>
+                        <span class="badge rounded-pill ms-auto map-issues-nmap-badge" title="N Map total from each channel pricing page (Missing Mapping)">{{ number_format($mapIssuesNmapCount) }}</span>
                     @endif
                 </a>
             </li>
@@ -267,7 +267,7 @@
                                 <ul class="side-nav-second-level">
                                     <li>
                                         <a href="{{ route('account.health.master.channel.dashboard') }}"
-                                            target="_blank">Dashboard</a>
+                                            target="_blank">Dashboard Account Health</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('account.health.master.tabulator') }}">CC Message Health</a>
@@ -348,7 +348,7 @@
                     <ul class="side-nav-second-level">
                         <li>
                             <a href="{{ route('crm.dashboard') }}">
-                                <i class="ri-dashboard-line me-2"></i>Dashboard
+                                <i class="ri-dashboard-line me-2"></i>Dashboard CRM
                             </a>
                         </li>
                         <li>
@@ -469,7 +469,7 @@
             <li class="side-nav-item">
                 <a href="{{ route('any', 'index') }}" class="side-nav-link">
                     <i class="ri-dashboard-3-line"></i>
-                    <span> Dashboard </span>
+                    <span> Dashboard Master </span>
                 </a>
             </li>
 
@@ -1092,7 +1092,7 @@
                             <div class="collapse" id="meta-ads-master">
                                 <ul class="side-nav-second-level">
                                     <li>
-                                        <a href="{{ route('meta.ads.manager.dashboard') }}">Dashboard</a>
+                                        <a href="{{ route('meta.ads.manager.dashboard') }}">Dashboard Meta Ads</a>
                                     </li>
                                     @if (Route::has('meta.ads.saved.raw'))
                                     <li>
@@ -2261,7 +2261,7 @@
                             <div class="collapse" id="sidebarMarketplaceTopDawg">
                                 <ul class="side-nav-third-level">
                                     <li><a href="{{ route('topdawg.pricing') }}">Pricing / Analytics</a></li>
-                                    <li><a href="{{ route('topdawg.sales.dashboard') }}">Sales Dashboard</a></li>
+                                    <li><a href="{{ route('topdawg.sales.dashboard') }}">Top Dawg Sales Data</a></li>
                                     <li><a href="{{ route('marketplace.products', 'topdawg') }}">Products</a></li>
                                     <li><a href="{{ route('marketplace.orders', 'topdawg') }}">Orders</a></li>
                                     <li><a href="{{ route('marketplace.settings', 'topdawg') }}">Settings</a></li>
@@ -2784,7 +2784,7 @@
                 <a data-bs-toggle="collapse" href="#salesDashboard" aria-expanded="false"
                     aria-controls="salesDashboard" class="side-nav-link">
                     <i class="ri-bar-chart-line"></i>
-                    <span>Sales Dashboard</span>
+                    <span>Sales Data</span>
                     <span class="menu-arrow"></span>
                 </a>
                 <div class="collapse" id="salesDashboard">
@@ -2966,7 +2966,7 @@
                 <div class="collapse {{ request()->routeIs('wms.*') ? 'show' : '' }}" id="sidebarWms">
                     <ul class="side-nav-second-level">
                         <li>
-                            <a href="{{ route('wms.dashboard') }}" class="{{ request()->routeIs('wms.dashboard') ? 'active' : '' }}">Dashboard</a>
+                            <a href="{{ route('wms.dashboard') }}" class="{{ request()->routeIs('wms.dashboard') ? 'active' : '' }}">Dashboard WareHouse</a>
                         </li>
                         <li>
                             <a href="{{ route('wms.structure') }}" class="{{ request()->routeIs('wms.structure') ? 'active' : '' }}">Structure</a>

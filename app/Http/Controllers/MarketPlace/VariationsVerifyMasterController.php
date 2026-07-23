@@ -152,6 +152,9 @@ class VariationsVerifyMasterController extends Controller
                 // ignore cache write failures
             }
 
+            // Daily California snapshot for Listing Catalogue rolling history
+            ListingCatalogueController::persistTodaySnapshot((int) $totalMismatch);
+
             return response()->json([
                 'success' => true,
                 'data' => $data,

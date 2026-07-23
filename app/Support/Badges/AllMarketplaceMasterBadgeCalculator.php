@@ -99,9 +99,15 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
         }
     }
 
-    /** Sidebar Missing Mapping badge — same N Map total as /all-marketplace-master. */
+    /** Sidebar Missing Mapping badge — same N Map total as /map-issues (pricing pages). */
     public static function nmapCountForSidebar(): int
     {
+        try {
+            return \App\Support\Marketplace\MappingChannelCounts::totalNmap(true);
+        } catch (\Throwable $e) {
+            // fall through
+        }
+
         try {
             $cached = Cache::get(self::NMAP_CACHE_KEY);
             if ($cached !== null) {
