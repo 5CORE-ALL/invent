@@ -18,9 +18,19 @@ class CpMasterCounts
     /**
      * @return array{SKU: int, ZeroInv: int}
      */
-    public static function counts(): array
+    public static function counts(bool $useCache = true): array
     {
         $empty = ['SKU' => 0, 'ZeroInv' => 0];
+
+        if (! $useCache) {
+            try {
+                return self::loadCounts() ?: $empty;
+            } catch (\Throwable $e) {
+                Log::warning('CpMasterCounts load failed: ' . $e->getMessage());
+
+                return $empty;
+            }
+        }
 
         try {
             return Cache::remember('cp_master_sku_zero_inv_v1', now()->addMinutes(10), function () use ($empty) {

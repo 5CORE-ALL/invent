@@ -3615,6 +3615,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Missing Listing — channel_master rows (image + channel) plus DAR submissions
     Route::get('/missing-listing',              [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'index'])->name('missing.listing');
     Route::get('/missing-listing/data',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'getData'])->name('missing.listing.data');
+    Route::get('/missing-listing/chart-data',  [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'chartData'])->name('missing.listing.chart.data');
     Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');

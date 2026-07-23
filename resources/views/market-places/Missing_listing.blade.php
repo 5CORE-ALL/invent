@@ -103,7 +103,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from All Marketplace Master" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from each channel listing page (REQ + not listed)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar()) }}</span>
                     </span>
                     <button type="button" class="btn btn-sm btn-primary" id="open-dar-btn" data-bs-toggle="modal" data-bs-target="#darSubmitModal">
@@ -159,7 +159,7 @@
             <div class="modal-content">
                 <div class="modal-header bg-info text-dark">
                     <h5 class="modal-title">
-                        <i class="fa fa-clock-rotate-left me-2"></i> DAR History
+                        <i class="fa fa-clock-rotate-left me-2"></i> DAR History <small class="fw-normal">(California time)</small>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -193,7 +193,7 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="mlChartModalTitle">Missing Listing - Rolling window</span>
+                        <span id="mlChartModalTitle">Missing Listing - Rolling window (California)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="mlChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -289,7 +289,7 @@
         const label = mlCurrentChartDisplayChannel === 'All'
             ? 'Missing Listing'
             : (mlCurrentChartDisplayChannel + ' - Missing Listing');
-        $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(mlCurrentChartDays)})`);
+        $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(mlCurrentChartDays)}, California)`);
 
         const modal = new bootstrap.Modal(document.getElementById('mlMetricChartModal'));
         modal.show();
@@ -313,7 +313,7 @@
         }
 
         mlChartAjax = $.ajax({
-            url: '/channel-metric-chart-data',
+            url: "{{ route('missing.listing.chart.data') }}",
             method: 'GET',
             data: params,
         }).done(function(response) {
@@ -503,11 +503,26 @@
         return '/storage/' + v.replace(/^\/+/, '');
     }
 
-    function formatTimestamp(iso) {
+    // Display timestamps in California / Pacific time (America/Los_Angeles)
+    function formatTimestamp(iso, preformatted) {
+        if (preformatted) return preformatted;
         if (!iso) return '-';
         const d = new Date(iso);
         if (isNaN(d.getTime())) return iso;
-        return d.toLocaleString();
+        try {
+            return new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/Los_Angeles',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+                timeZoneName: 'short',
+            }).format(d);
+        } catch (e) {
+            return d.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' });
+        }
     }
 
     function setHistoryBadgeCount(count) {
@@ -574,7 +589,7 @@
                     <tr>
                         <td>${i + 1}</td>
                         <td>${escapeHtml(r.user_name)}</td>
-                        <td>${escapeHtml(formatTimestamp(r.submitted_at))}</td>
+                        <td>${escapeHtml(formatTimestamp(r.submitted_at, r.submitted_at_california))}</td>
                         <td class="ml-history-row">${escapeHtml(r.report)}</td>
                     </tr>
                 `).join('');
@@ -603,7 +618,7 @@
             const label = mlCurrentChartDisplayChannel === 'All'
                 ? 'Missing Listing'
                 : (mlCurrentChartDisplayChannel + ' - Missing Listing');
-            $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(days)})`);
+            $('#mlChartModalTitle').text(`${label} (Rolling ${mlChartRangeLabel(days)}, California)`);
             loadMlMetricChart();
         });
 

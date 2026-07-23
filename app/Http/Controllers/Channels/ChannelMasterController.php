@@ -15362,6 +15362,17 @@ class ChannelMasterController extends Controller
                     'calculated_at' => now()->toDateTimeString(),
                 ];
                 
+                // Preserve listing-page Missing L fields written by /missing-listing
+                $existingSummary = \App\Models\ChannelMasterSummary::where('channel', $channelName)
+                    ->whereDate('snapshot_date', $today)
+                    ->first();
+                $prevSd = is_array($existingSummary?->summary_data) ? $existingSummary->summary_data : [];
+                foreach (['listing_miss_count', 'listing_req', 'listing_nrl', 'listing_listed', 'listing_captured_at'] as $listingKey) {
+                    if (array_key_exists($listingKey, $prevSd)) {
+                        $summaryData[$listingKey] = $prevSd[$listingKey];
+                    }
+                }
+
                 // Save or update
                 \App\Models\ChannelMasterSummary::updateOrCreate(
                     [

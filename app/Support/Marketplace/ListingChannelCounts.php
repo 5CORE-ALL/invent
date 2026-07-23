@@ -175,14 +175,34 @@ class ListingChannelCounts
     }
 
     /**
+     * Whether this channel has a listing-page count source (controller / helper).
+     */
+    public static function hasListingSource(string $channel): bool
+    {
+        $key = self::normalize($channel);
+
+        return $key !== '' && isset(self::$controllers[$key]);
+    }
+
+    /**
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
      */
-    public static function forChannel(string $channel): array
+    public static function forChannel(string $channel, bool $useCache = true): array
     {
         $empty = ['REQ' => 0, 'NRL' => 0, 'Listed' => 0, 'Pending' => 0];
         $key = self::normalize($channel);
         if ($key === '' || ! isset(self::$controllers[$key])) {
             return $empty;
+        }
+
+        if (! $useCache) {
+            try {
+                return self::loadCounts($key) ?: $empty;
+            } catch (\Throwable $e) {
+                Log::warning('ListingChannelCounts load failed for ' . $key . ': ' . $e->getMessage());
+
+                return $empty;
+            }
         }
 
         $cacheKey = 'listing_channel_counts_v1:' . $key;
