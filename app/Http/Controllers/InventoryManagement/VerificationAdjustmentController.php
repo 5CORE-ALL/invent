@@ -2371,7 +2371,8 @@ GQL;
                 'message' => 'Data exported to Google Sheets successfully',
                 'spreadsheetId' => $result['spreadsheetId'],
                 'spreadsheetUrl' => $result['spreadsheetUrl'],
-                'rowsWritten' => $result['rowsWritten'] ?? count($data)
+                'rowsWritten' => $result['rowsWritten'] ?? count($data),
+                'sharing' => $result['sharing'] ?? null,
             ]);
 
         } catch (\Exception $e) {

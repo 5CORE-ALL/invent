@@ -4673,6 +4673,18 @@
                         if (response.success) {
                             // Show success message with link to the spreadsheet
                             const sheetUrl = response.spreadsheetUrl;
+                            const sharing = response.sharing || null;
+                            let shareNote = '';
+                            if (sharing) {
+                                if (sharing.anyoneWithLink) {
+                                    shareNote = `<p style="color:#198754;font-size:13px;margin-top:8px;"><i class="fas fa-unlock"></i> Link is public — any email can open.</p>`;
+                                } else {
+                                    const errs = (sharing.errors || []).slice(0, 2).join('<br>');
+                                    shareNote = `<p style="color:#dc3545;font-size:13px;margin-top:8px;"><i class="fas fa-lock"></i> Sharing failed — Apps Script may need redeploy / Drive permission.<br>${errs}</p>`;
+                                }
+                            } else {
+                                shareNote = `<p style="color:#fd7e14;font-size:13px;margin-top:8px;"><i class="fas fa-exclamation-triangle"></i> Old Apps Script still live. Paste updated <code>google-apps-script-code.js</code> and Deploy → New version.</p>`;
+                            }
                             const message = `
                                 <div style="text-align: left;">
                                     <p>Data exported successfully to Google Sheets!</p>
@@ -4683,6 +4695,7 @@
                                     <p style="font-size: 12px; margin-top: 10px; word-break: break-all;">
                                         <strong>URL:</strong><br>${sheetUrl}
                                     </p>
+                                    ${shareNote}
                                 </div>
                             `;
                             
