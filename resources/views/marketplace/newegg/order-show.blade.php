@@ -60,7 +60,7 @@
         @include('marketplace.newegg._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
-            <strong>Read-only view.</strong> Shipping, buyer, payment, and fund details are pulled from Newegg and sent to Shopify when you push this order.
+            <strong>Read-only view.</strong> <strong>Pull from Newegg</strong> refreshes shipping/buyer details and, if this order is already on Shopify, updates the Shopify shipping &amp; billing address.
         </div>
 
         @if($aeLiveError ?? null)

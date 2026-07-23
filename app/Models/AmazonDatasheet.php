@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class AmazonDatasheet extends Model
 {
@@ -33,6 +34,19 @@ class AmazonDatasheet extends Model
     ];
 
     /**
+     * Collapse NBSP and runs of whitespace; uppercase. Used to prefer an exact
+     * Product Master MSKU when multiple amazon_datsheets rows share one lookup key.
+     */
+    public static function normalizeSkuSpaces(?string $sku): string
+    {
+        if ($sku === null || $sku === '') {
+            return '';
+        }
+
+        return strtoupper(preg_replace('/\s+/u', ' ', trim(str_replace("\xC2\xA0", ' ', $sku))) ?? '');
+    }
+
+    /**
      * Normalize a SKU the same way the amazon-tabulator-view page does for its
      * amazon_datsheets lookup: uppercase, NBSP -> space, trim, then remove ALL
      * spaces (so "DP 200 1 Pcs" and "DP200 1Pcs" map to the same key). Used so
@@ -52,6 +66,54 @@ class AmazonDatasheet extends Model
     }
 
     /**
+     * All datasheet rows grouped by {@see normalizeSkuForLookup}.
+     * Callers must resolve collisions with {@see pickBestForProductSku}.
+     *
+     * @return Collection<string, Collection<int, self>>
+     */
+    public static function groupedByNormalizedSku(): Collection
+    {
+        return self::query()->get()->groupBy(function ($item) {
+            return self::normalizeSkuForLookup($item->sku ?? '');
+        });
+    }
+
+    /**
+     * When several amazon_datsheets rows share one compact key (e.g. "SS ECO 2PK ORG WoB"
+     * and "SSECO2PKORGWoB"), prefer the space-normalized exact Product Master MSKU.
+     * Otherwise prefer a priced row with the newest updated_at.
+     *
+     * @param  Collection<int, self>|iterable<int, self>|null  $candidates
+     */
+    public static function pickBestForProductSku(string $productSku, $candidates): ?self
+    {
+        $candidates = collect($candidates)->filter()->values();
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+        if ($candidates->count() === 1) {
+            return $candidates->first();
+        }
+
+        $want = self::normalizeSkuSpaces($productSku);
+        if ($want !== '') {
+            $exact = $candidates->first(
+                fn ($row) => self::normalizeSkuSpaces($row->sku ?? '') === $want
+            );
+            if ($exact) {
+                return $exact;
+            }
+        }
+
+        return $candidates->sortByDesc(function ($row) {
+            $hasPrice = (is_numeric($row->price) && (float) $row->price > 0) ? 1 : 0;
+            $ts = $row->updated_at ? $row->updated_at->getTimestamp() : 0;
+
+            return sprintf('%d-%020d-%d', $hasPrice, $ts, (int) ($row->id ?? 0));
+        })->first();
+    }
+
+    /**
      * Match Product Master / grid key to `amazon_datsheets.sku` (spaces + case insensitive)
      * and return the stored seller MSKU string for SP-API Listings calls.
      *
@@ -67,12 +129,12 @@ class AmazonDatasheet extends Model
             return null;
         }
 
-        $normSpace = strtoupper(preg_replace('/\s+/u', ' ', $raw));
+        $normSpace = self::normalizeSkuSpaces($raw);
         $compact = strtoupper(str_replace([' ', "\xc2\xa0"], '', $raw));
 
         $compactExpr = 'UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), ""))';
 
-        $row = self::query()
+        $candidates = self::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->where(function ($q) use ($normSpace, $compact, $compactExpr) {
@@ -80,18 +142,20 @@ class AmazonDatasheet extends Model
                     ->orWhereRaw("{$compactExpr} = ?", [$compact]);
             })
             ->orderBy('id')
-            ->first();
+            ->get();
+
+        $row = self::pickBestForProductSku($raw, $candidates);
 
         if (! $row && strlen($compact) >= 6) {
-            $candidates = self::query()
+            $prefixCandidates = self::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
                 ->whereRaw("{$compactExpr} LIKE ?", [$compact . '%'])
                 ->orderBy('id')
                 ->get();
 
-            if ($candidates->count() === 1) {
-                $row = $candidates->first();
+            if ($prefixCandidates->count() === 1) {
+                $row = $prefixCandidates->first();
             }
         }
 

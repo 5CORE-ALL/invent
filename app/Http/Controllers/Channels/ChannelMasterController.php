@@ -260,10 +260,9 @@ class ChannelMasterController extends Controller
             $listingStatus = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
             $stockMappings = ProductStockMapping::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            // Datasheets keyed by the shared Amazon normalization (spaces removed + PCS/PC fold).
-            $datasheetsByNorm = AmazonDatasheet::query()->get()->keyBy(function ($item) {
-                return AmazonDatasheet::normalizeSkuForLookup($item->sku ?? '');
-            });
+            // Datasheets grouped by the shared Amazon normalization (spaces removed + PCS/PC fold).
+            // Collisions resolved per Product Master SKU (same as amazon-tabulator-view).
+            $datasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
 
             $map = 0;
             $miss = 0;
@@ -286,7 +285,10 @@ class ChannelMasterController extends Controller
                     continue; // RL filter: exclude NR
                 }
 
-                $sheet = $datasheetsByNorm[AmazonDatasheet::normalizeSkuForLookup($sku)] ?? null;
+                $sheet = AmazonDatasheet::pickBestForProductSku(
+                    $sku,
+                    $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($sku))
+                );
                 $isMissingAmazon = ($sheet === null);
                 $price = (float) ($sheet->price ?? 0);
 

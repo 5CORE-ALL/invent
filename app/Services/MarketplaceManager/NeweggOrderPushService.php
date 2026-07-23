@@ -35,6 +35,185 @@ class NeweggOrderPushService
         return $plan;
     }
 
+    /**
+     * Push Newegg ship-to onto an already-imported Shopify order.
+     * Used by "Pull from Newegg" so address-only refreshes update Shopify.
+     *
+     * @return array{success: bool, skipped?: bool, message: string, shopify_order_id?: string}
+     */
+    public function syncShippingAddressToShopify(NeweggOrderMetric $order): array
+    {
+        $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
+        if ($shopifyOrderId === '') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Order is not linked to Shopify yet — push the order first.',
+            ];
+        }
+
+        $orderId = (string) $order->order_id;
+        $lines = NeweggOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->orderBy('id')
+            ->get();
+
+        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
+        if ($orderRoot === []) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'No Newegg order payload available to build an address.',
+            ];
+        }
+
+        $detail = $this->formatter->formatOrder($orderRoot, $lines, $order);
+        $orderPayload = $this->formatter->buildShopifyOrderPayload($detail, $lines, ['newegg']);
+        $shipping = is_array($orderPayload['shipping_address'] ?? null)
+            ? $orderPayload['shipping_address']
+            : [];
+        $address1 = trim((string) ($shipping['address1'] ?? ''));
+
+        if ($address1 === '') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Newegg still has no shipping address for this order.',
+            ];
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return [
+                'success' => false,
+                'message' => 'Shopify store credentials are not configured.',
+            ];
+        }
+
+        $billing = is_array($orderPayload['billing_address'] ?? null)
+            ? $orderPayload['billing_address']
+            : $shipping;
+        // Shopify customer-address writes prefer an explicit country name.
+        $shipping = $this->withShopifyCountryName($shipping);
+        $billing = $this->withShopifyCountryName($billing);
+
+        $update = [
+            'id' => (int) $shopifyOrderId,
+            'shipping_address' => $shipping,
+            'billing_address' => $billing,
+        ];
+
+        $customer = is_array($orderPayload['customer'] ?? null) ? $orderPayload['customer'] : [];
+        $email = trim((string) ($customer['email'] ?? ''));
+        if ($email !== '' && ! $this->payloadUsesPlaceholderEmail($orderPayload)) {
+            $update['email'] = $email;
+        }
+
+        // Do not nest customer on order PUT — that can leave billing_address null
+        // and does not reliably rename an existing Shopify customer.
+        $ok = $this->putOrder($config, $shopifyOrderId, ['order' => $update]);
+        if (! $ok) {
+            return [
+                'success' => false,
+                'message' => $this->lastFailureReason ?: 'Shopify address update failed.',
+                'shopify_order_id' => $shopifyOrderId,
+            ];
+        }
+
+        $this->syncShopifyCustomerFromAddress($config, $shopifyOrderId, $shipping, $customer);
+
+        return [
+            'success' => true,
+            'message' => 'Shopify shipping address updated.',
+            'shopify_order_id' => $shopifyOrderId,
+        ];
+    }
+
+    /**
+     * @param  array{store_url: string, token: string}  $config
+     * @param  array<string, mixed>  $address
+     * @param  array<string, mixed>  $customer
+     */
+    protected function syncShopifyCustomerFromAddress(
+        array $config,
+        string $shopifyOrderId,
+        array $address,
+        array $customer
+    ): void {
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['token'],
+            ])->timeout(30)->get(
+                'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
+                ['fields' => 'id,customer']
+            );
+
+            if (! $response->successful()) {
+                return;
+            }
+
+            $customerId = (int) ($response->json('order.customer.id') ?? 0);
+            if ($customerId <= 0) {
+                return;
+            }
+
+            $payload = array_filter([
+                'id' => $customerId,
+                'first_name' => $customer['first_name'] ?? $address['first_name'] ?? null,
+                'last_name' => $customer['last_name'] ?? $address['last_name'] ?? null,
+                'phone' => $address['phone'] ?? null,
+            ], static fn ($v) => $v !== null && $v !== '');
+
+            $email = trim((string) ($customer['email'] ?? ''));
+            if ($email !== '') {
+                $payload['email'] = $email;
+            }
+
+            $addressPayload = array_filter(array_merge($address, ['default' => true]), static fn ($v) => $v !== null && $v !== '');
+            if (! empty($addressPayload['address1'])) {
+                $payload['addresses'] = [$addressPayload];
+            }
+
+            Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['token'],
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->put(
+                'https://'.$config['store_url'].'/admin/api/2024-01/customers/'.$customerId.'.json',
+                ['customer' => $payload]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('NeweggOrderPushService: Shopify customer address sync failed', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $address
+     * @return array<string, mixed>
+     */
+    protected function withShopifyCountryName(array $address): array
+    {
+        $code = strtoupper(trim((string) ($address['country_code'] ?? '')));
+        if ($code === '' || ! empty($address['country'])) {
+            return $address;
+        }
+
+        $names = [
+            'US' => 'United States',
+            'CA' => 'Canada',
+            'GB' => 'United Kingdom',
+            'AU' => 'Australia',
+            'MX' => 'Mexico',
+        ];
+        if (isset($names[$code])) {
+            $address['country'] = $names[$code];
+        }
+
+        return $address;
+    }
+
     public function importToShopify(NeweggOrderMetric $order): ?string
     {
         if ($order->shopify_order_id) {
@@ -402,6 +581,67 @@ class NeweggOrderPushService
         }
 
         return [$orderPayload, $meta];
+    }
+
+    /**
+     * @param  array{store_url: string, token: string}  $config
+     * @param  array<string, mixed>  $payload
+     */
+    protected function putOrder(array $config, string $shopifyOrderId, array $payload): bool
+    {
+        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json';
+        $maxAttempts = 5;
+        $backoff = [2, 4, 8, 16, 30];
+
+        try {
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $config['token'],
+                    'Content-Type' => 'application/json',
+                ])->timeout(60)->put($url, $payload);
+
+                $this->lastApiStatus = $response->status();
+
+                if ($response->successful()) {
+                    return true;
+                }
+
+                $retryable = $response->status() === 429 || $response->status() >= 500;
+                if ($retryable && $attempt < $maxAttempts) {
+                    $retryAfter = (int) ($response->header('Retry-After') ?? 0);
+                    $wait = max($retryAfter, $backoff[$attempt - 1] ?? 30);
+                    Log::warning('NeweggOrderPushService: Shopify order address update retrying', [
+                        'shopify_order_id' => $shopifyOrderId,
+                        'status' => $response->status(),
+                        'attempt' => $attempt,
+                        'wait' => $wait,
+                    ]);
+                    sleep($wait);
+
+                    continue;
+                }
+
+                $this->lastFailureReason = 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300);
+                Log::error('NeweggOrderPushService: Shopify order address update failed', [
+                    'shopify_order_id' => $shopifyOrderId,
+                    'status' => $response->status(),
+                    'body' => mb_substr($response->body(), 0, 500),
+                    'attempts' => $attempt,
+                ]);
+
+                return false;
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            $this->lastFailureReason = $e->getMessage();
+            Log::error('NeweggOrderPushService: Shopify order address update exception', [
+                'shopify_order_id' => $shopifyOrderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**
