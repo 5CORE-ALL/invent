@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
+
+
 use App\Http\Controllers\Controller;
+use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\BestbuyUSAListingStatus;
@@ -31,59 +35,9 @@ class ListingBestbuyUSAController extends Controller
 
     public function getViewListingBestbuyUSAData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        
-        // Get status data, handling duplicates by taking the most recent non-empty record
-        $statusData = BestbuyUSAListingStatus::whereIn('sku', $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->filter(function ($record) {
-                // Filter out records with empty or null values
-                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
-                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
-            })
-            ->keyBy('sku');
-
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
-            $childSku = $item->sku;
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            
-            // If status exists, fill values from JSON
-            if (isset($statusData[$childSku])) {
-                $status = $statusData[$childSku]->value;
-                if (is_string($status)) {
-                    $status = json_decode($status, true) ?? [];
-                }
-                if (is_array($status) && !empty($status)) {
-                    // Use stored values or calculate defaults based on INV
-                    $item->nr_req = $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'REQ' : 'NR');
-                    $item->listed = $status['listed'] ?? null;
-                    $item->buyer_link = $status['buyer_link'] ?? null;
-                    $item->seller_link = $status['seller_link'] ?? null;
-                } else {
-                    // Empty status - set defaults
-                    $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
-                    $item->listed = null;
-                    $item->buyer_link = null;
-                    $item->seller_link = null;
-                }
-            } else {
-                // No status record exists - set defaults based on INV
-                $item->nr_req = floatval($item->INV) > 0 ? 'REQ' : 'NR';
-                $item->listed = null;
-                $item->buyer_link = null;
-                $item->seller_link = null;
-            }
-            return $item;
-        })->values();
-
         return response()->json([
             'status' => 200,
-            'data' => $processedData
+            'data' => AutomatedListingPage::rows('bestbuyusa'),
         ]);
     }
 
@@ -138,81 +92,10 @@ class ListingBestbuyUSAController extends Controller
 
     public function getNrReqCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        
-        // Get status data, handling duplicates by taking the most recent non-empty record
-        $statusData = BestbuyUSAListingStatus::whereIn('sku', $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->filter(function ($record) {
-                // Filter out records with empty or null values
-                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
-                return !empty($value) && (isset($value['nr_req']) || isset($value['listed']) || isset($value['buyer_link']) || isset($value['seller_link']));
-            })
-            ->keyBy('sku');
-
-        $reqCount = 0;
-        $listedCount = 0;
-        $pendingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
-
-            if ($isParent || floatval($inv) <= 0) continue;
-
-            $status = null;
-            if (isset($statusData[$sku])) {
-                $status = $statusData[$sku]->value;
-                if (is_string($status)) {
-                    $status = json_decode($status, true);
-                }
-                if (is_array($status) && empty($status)) {
-                    $status = null;
-                }
-            }
-
-            // NR/REQ logic
-            $nrReq = ($status && isset($status['nr_req'])) ? $status['nr_req'] : (floatval($inv) > 0 ? 'REQ' : 'NR');
-            if ($nrReq === 'REQ') {
-                $reqCount++;
-            }
-
-            $listed = ($status && isset($status['listed'])) ? $status['listed'] : null;
-            if ($listed === 'Listed') {
-                $listedCount++;
-            }
-
-            // Row-wise pending logic to match frontend
-            if ($nrReq !== 'NR' && ($listed === 'Pending' || empty($listed))) {
-                $pendingCount++;
-            }
-            // $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
-            // if ($nrReq === 'REQ') {
-            //     $reqCount++;
-            // }
-
-            // // Listed/Pending logic
-            // $listed = $status['listed'] ?? (floatval($inv) > 0 ? 'Pending' : 'Listed');
-            // if ($listed === 'Listed') {
-            //     $listedCount++;
-            // } elseif ($listed === 'Pending') {
-            //     $pendingCount++;
-            // }
-        }
-
-        return [
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
-        ];
+        return ChannelListingRegistry::nrReqCountArray('bestbuyusa');
     }
 
-     public function import(Request $request)
+    public function import(Request $request)
     {
         try {
             Log::info('=== Bestbuy USA CSV Import Started ===');

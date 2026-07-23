@@ -3,1066 +3,495 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        /* ========== TABLE STRUCTURE ========== */
-        .table-container {
+        /* ========== TABLE SHELL ========== */
+        #ebay-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
-            position: relative;
-            max-height: 600px;
-        }
-
-        .custom-resizable-table {
             width: 100%;
-            border-collapse: collapse;
-            margin: 0;
         }
 
-        .custom-resizable-table th,
-        .custom-resizable-table td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-            position: relative;
-            white-space: nowrap;
-            overflow: visible !important;
-        }
-
-        .custom-resizable-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            user-select: none;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        /* ========== RESIZABLE COLUMNS ========== */
-        .resize-handle {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 5px;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.1);
-            cursor: col-resize;
-            z-index: 100;
-        }
-
-        .resize-handle:hover,
-        .resize-handle.resizing {
-            background: rgba(0, 0, 0, 0.3);
-        }
-
-        /* ========== TOOLTIP SYSTEM ========== */
-        .tooltip-container {
-            position: relative;
-            display: inline-block;
-            margin-left: 8px;
-        }
-
-        .tooltip-icon {
-            cursor: pointer;
-            transform: translateY(1px);
-        }
-
-        .tooltip {
-            z-index: 9999 !important;
-            pointer-events: none;
-        }
-
-        .tooltip-inner {
-            transform: translate(-5px, -5px) !important;
-            max-width: 300px;
-            padding: 6px 10px;
+        #ebay-listing-wrap .tabulator {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
             font-size: 13px;
+            background: #fff;
+            width: 100% !important;
         }
 
-        .bs-tooltip-top .tooltip-arrow {
-            bottom: 0;
+        .card-body:has(#ebay-listing-toolbar) {
+            width: 100%;
         }
 
-        .bs-tooltip-top .tooltip-arrow::before {
-            transform: translateX(5px) !important;
-            border-top-color: var(--bs-tooltip-bg);
+        #ebay-listing-wrap .tabulator .tabulator-tableholder {
+            background: #fff;
         }
 
-        /* ========== COLOR CODED CELLS ========== */
-        .dil-percent-cell {
-            padding: 8px 4px !important;
+        /* ========== HEADER ========== */
+        #ebay-listing-wrap .tabulator .tabulator-header {
+            background: #00d5d5;
+            border-bottom: 1px solid #ffffff;
         }
 
-        .dil-percent-value {
-            display: inline-block;
+        #ebay-listing-wrap .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            white-space: normal !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            white-space: normal !important;
+            height: auto !important;
+            min-height: 0 !important;
+            display: block;
+            align-items: unset;
+            justify-content: unset;
+            font-size: 12.5px;
+            font-weight: 700;
+            line-height: 1.25;
+            padding: 5px 2px;
+            text-align: center;
+            color: #000 !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            height: auto !important;
+            min-height: 34px;
+            padding: 0;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col {
+            height: auto !important;
+            min-height: 34px;
+            vertical-align: middle;
+            background: #00d5d5 !important;
+            border-right: 1px solid #ffffff;
+            color: #000 !important;
+            font-weight: bold;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+
+        /* Header filters */
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
             padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
+            font-size: 12px;
+            color: #475569;
+            background: #fff;
+            box-shadow: none;
         }
 
-        .dil-percent-value.red {
-            background-color: #dc3545;
-            color: white;
+        #ebay-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+            outline: none;
+            border-color: #4361ee;
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        .dil-percent-value.blue {
-            background-color: #3591dc;
-            color: white;
+        /* ========== ROWS / CELLS ========== */
+        #ebay-listing-wrap .tabulator .tabulator-row {
+            min-height: 36px;
+            border-bottom: 1px solid #f1f5f9;
         }
 
-        .dil-percent-value.yellow {
-            background-color: #ffc107;
-            color: #212529;
+        #ebay-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+            padding: 5px 6px !important;
+            border-right: 1px solid #f1f5f9;
+            vertical-align: middle;
         }
 
-        .dil-percent-value.green {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .dil-percent-value.pink {
-            background-color: #e83e8c;
-            color: white;
-        }
-
-        .dil-percent-value.gray {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        /* ========== TABLE CONTROLS ========== */
-        .table-controls {
-            position: sticky;
-            bottom: 0;
-            background: white;
-            padding: 10px 0;
-            border-top: 1px solid #ddd;
-        }
-
-        /* ========== SORTING ========== */
-        .sortable {
+        #ebay-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #ebay-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
             cursor: pointer;
+            accent-color: #4361ee;
+            margin: 0;
+            vertical-align: middle;
         }
 
-        .sortable:hover {
-            background-color: #f1f1f1;
+        #ebay-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+            display: none;
         }
 
-        .sort-arrow {
-            display: inline-block;
-            margin-left: 5px;
+        #ebay-listing-wrap .tabulator .tabulator-row:hover {
+            background-color: #f8fafc !important;
         }
 
-        /* ========== PARENT ROWS ========== */
-        .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
-            /* Light blue background */
-            font-weight: bold;
-            /* Optional: Make the text bold */
+        #ebay-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+            background-color: #fcfcfd;
         }
 
-        /* ========== SKU TOOLTIPS ========== */
-        .sku-tooltip-container {
-            position: relative;
-            display: inline-block;
+        #ebay-listing-wrap .tabulator-row.parent-row,
+        #ebay-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+            background-color: rgba(69, 233, 255, 0.15) !important;
+            font-weight: 700 !important;
+            color: #0f172a;
         }
 
-        .sku-tooltip {
-            visibility: hidden;
-            width: auto;
-            min-width: 120px;
-            background-color: #fff;
-            color: #333;
-            text-align: left;
+        #ebay-listing-wrap .tabulator-row.parent-row:hover,
+        #ebay-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+            background-color: rgba(69, 233, 255, 0.28) !important;
+        }
+
+        /* ========== FOOTER / PAGINATION ========== */
+        #ebay-listing-wrap .tabulator .tabulator-footer {
+            background: #f8fafc !important;
+            border-top: 1px solid #e2e8f0 !important;
+            padding: 10px 16px !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+            margin-right: 6px;
+            font-size: 12px;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 13px;
+            color: #475569;
+            background: #fff;
+            min-height: 36px;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            min-width: 36px !important;
+            height: 36px !important;
+            line-height: 36px !important;
+            padding: 0 10px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #fff !important;
+            color: #475569 !important;
+            cursor: pointer;
+            transition: all 0.15s ease !important;
+            text-align: center !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+            color: #1e293b !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #4361ee !important;
+            border-color: #4361ee !important;
+            color: #fff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+            opacity: 0.4 !important;
+            cursor: not-allowed !important;
+        }
+
+        #ebay-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+            margin: 0 0.5rem;
+            font-size: 12px;
+            color: #334155;
+        }
+
+        /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
+        #ebay-listing-toolbar {
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #ebay-listing-toolbar .ebay-listing-toolbar-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        #ebay-listing-toolbar .listing-stat-badges {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: stretch;
+            gap: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        #ebay-listing-toolbar .listing-stat-badge {
+            flex: 0 0 auto;
+            justify-content: center;
+            margin: 0 !important;
+            border-radius: 0;
+        }
+
+        #ebay-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+
+        #ebay-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+            border-radius: 0 8px 8px 0;
+        }
+
+        #ebay-listing-toolbar .filter-select {
+            flex: 0 0 auto;
+            min-width: 0;
+            width: 92px !important;
+            max-width: 92px;
+            border-radius: 5px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 16px 2px 4px;
+            height: 30px;
+            line-height: 1.2;
+        }
+
+        #ebay-listing-toolbar .filter-select:focus {
+            outline: none;
+            border-color: #4361ee;
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
+        }
+
+        #ebay-listing-toolbar .toolbar-actions {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            margin-left: 0;
+        }
+
+        #ebay-listing-toolbar .listing-io-btn {
+            border-radius: 5px;
+            font-weight: 600;
+            font-size: 14px;
+            width: 32px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        #ebay-listing-toolbar .listing-io-btn::after {
+            display: none;
+        }
+
+        #ebay-listing-toolbar .listing-io-menu {
+            min-width: 42px;
+            padding: 4px;
+        }
+
+        #ebay-listing-toolbar .listing-io-menu .dropdown-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 32px;
+            padding: 0;
             border-radius: 4px;
-            padding: 8px;
-            position: absolute;
-            z-index: 1001;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            opacity: 0;
-            transition: opacity 0.3s;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            border: 1px solid #ddd;
+            font-size: 14px;
+        }
+
+        #ebay-listing-toolbar .listing-io-menu .dropdown-item:hover {
+            background: #f1f5f9;
+        }
+
+        /* ========== STAT BADGES ========== */
+        .listing-stat-badge {
+            display: inline-flex;
+            align-items: center;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 8px 14px;
+            border-radius: 8px;
             white-space: nowrap;
+            line-height: 1.25;
+            letter-spacing: 0.2px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        .sku-tooltip-container:hover .sku-tooltip {
-            visibility: visible;
-            opacity: 1;
+        .listing-stat-badge > span {
+            margin-left: 4px;
+            font-size: 16px;
+            font-weight: 800;
         }
 
-        .sku-link {
-            padding: 4px 0;
-            white-space: nowrap;
+        .listing-stat-badge--req { background: #22c55e; color: #052e16; }
+        .listing-stat-badge--nrl { background: #ef4444; color: #fff; }
+        .listing-stat-badge--nolink { background: #f59e0b; color: #1c1917; }
+        .listing-stat-badge--listed { background: #0ea5e9; color: #fff; }
+        .listing-stat-badge--pending { background: #dc3545; color: #fff; }
+        .listing-stat-badge--rows { background: #334155; color: #fff; }
+
+        /* ========== DROPDOWNS ========== */
+        #ebay-listing-wrap select.nr-req-dropdown,
+        #ebay-listing-wrap select.listed-dropdown {
+            border: 1px solid transparent;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 13px;
+            padding: 4px 6px;
+            cursor: pointer;
+            appearance: auto;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        .sku-link a {
+        #ebay-listing-wrap select.nr-req-dropdown:focus,
+        #ebay-listing-wrap select.listed-dropdown:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
+        }
+
+        #ebay-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #ebay-listing-wrap select.nr-req-dropdown option.req-option {
+            background-color: #28a745;
+            color: #fff;
+        }
+
+        #ebay-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #ebay-listing-wrap select.nr-req-dropdown option.nr-option {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        #ebay-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #ebay-listing-wrap select.listed-dropdown option.listed-option {
+            background-color: #28a745;
+            color: #fff;
+        }
+
+        #ebay-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #ebay-listing-wrap select.listed-dropdown option.pending-option {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        .nrl-badge-btn,
+        .listing-auto-badge {
+            display: inline-block;
+            color: #fff;
+            padding: 6px 10px;
+            border: none;
+            cursor: default;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+            min-width: 72px;
+        }
+
+        .listing-auto-badge--req,
+        .listing-auto-badge--listed { background-color: #28a745; }
+        .listing-auto-badge--nrl,
+        .listing-auto-badge--not-listed { background-color: #dc3545; }
+
+        .listing-listed-tick {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background-color: #28a745;
+            color: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+
+        .listing-listed-tick > i {
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        /* ========== LINK CELL ========== */
+        #ebay-listing-wrap a.listing-item-link {
+            font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        .sku-link a:hover {
+        #ebay-listing-wrap a.listing-item-link:hover {
+            color: #1d4ed8 !important;
             text-decoration: underline;
-        }
-
-        /* ========== DROPDOWNS ========== */
-        .custom-dropdown {
-            position: relative;
-            display: inline-block;
-        }
-
-        .custom-dropdown-menu {
-            display: none;
-            position: absolute;
-            background-color: white;
-            min-width: 200px;
-            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        .custom-dropdown-menu.show {
-            display: block;
-        }
-
-        .column-toggle-item {
-            padding: 8px 16px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-        }
-
-        .column-toggle-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .column-toggle-checkbox {
-            margin-right: 8px;
         }
 
         /* ========== LOADER ========== */
         .card-loader-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.8);
-            z-index: 100;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.78);
+            z-index: 20;
             display: flex;
-            justify-content: center;
             align-items: center;
-            border-radius: 0.25rem;
+            justify-content: center;
+            border-radius: 0.375rem;
         }
 
         .loader-content {
             text-align: center;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 16px 20px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
         }
 
         .loader-text {
-            margin-top: 15px;
-            font-weight: 500;
-            color: #333;
-        }
-
-        .spinner-border {
-            width: 3rem;
-            height: 3rem;
-        }
-
-        /* ========== CARD BODY ========== */
-        .card-body {
-            position: relative;
-        }
-
-        /* ========== SEARCH DROPDOWNS ========== */
-        .dropdown-search-container {
-            position: relative;
-        }
-
-        .dropdown-search-results {
-            position: absolute;
-            width: 100%;
-            max-height: 300px;
-            overflow-y: auto;
-            z-index: 1000;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: none;
-        }
-
-        .dropdown-search-item {
-            padding: 8px 12px;
-            cursor: pointer;
-        }
-
-        .dropdown-search-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .no-results {
-            color: #6c757d;
-            font-style: italic;
-        }
-
-        /* ========== STATUS INDICATORS ========== */
-        .status-circle {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 6px;
-            vertical-align: middle;
-            border: 1px solid #fff;
-        }
-
-        .status-circle.default {
-            background-color: #6c757d;
-        }
-
-        .status-circle.red {
-            background-color: #dc3545;
-        }
-
-        .status-circle.yellow {
-            background-color: #ffc107;
-        }
-
-        .status-circle.blue {
-            background-color: #007bff;
-        }
-
-        .status-circle.green {
-            background-color: #28a745;
-        }
-
-        .status-circle.pink {
-            background-color: #e83e8c;
-        }
-
-        /* ========== FILTER CONTROLS ========== */
-        .d-flex.flex-wrap.gap-2 {
-            gap: 0.5rem !important;
-            margin-bottom: 1rem;
-        }
-
-        .btn-sm i.fas {
-            margin-right: 5px;
-        }
-
-        .manual-dropdown-container {
-            position: relative;
-            display: inline-block;
-        }
-
-        .manual-dropdown-container .dropdown-menu {
-            display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            z-index: 1000;
-            min-width: 160px;
-            padding: 5px 0;
-            margin: 2px 0 0;
-            background-color: #fff;
-            border: 1px solid rgba(0, 0, 0, .15);
-            border-radius: 4px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, .175);
-        }
-
-        .manual-dropdown-container.show .dropdown-menu {
-            display: block;
-        }
-
-        .dropdown-item {
-            display: block;
-            width: 100%;
-            padding: 8px 16px;
-            clear: both;
-            font-weight: 400;
-            color: #212529;
-            text-align: inherit;
-            white-space: nowrap;
-            background-color: transparent;
-            border: 0;
-        }
-
-        .dropdown-item:hover {
-            color: #16181b;
-            text-decoration: none;
-            background-color: #f8f9fa;
-        }
-
-        /* ========== MODAL SYSTEM ========== */
-        .custom-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1050;
-            overflow: hidden;
-            outline: 0;
-            pointer-events: none;
-        }
-
-        .custom-modal.show {
-            display: block;
-        }
-
-        .custom-modal-dialog {
-            position: fixed;
-            width: auto;
-            min-width: 850px;
-            max-width: 90vw;
-            margin: 1.75rem auto;
-            pointer-events: auto;
-            z-index: 1051;
-            transition: transform 0.3s ease-out;
-            background-color: white;
-            border-radius: 0.3rem;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-        }
-
-        .custom-modal-content {
-            pointer-events: auto;
-        }
-
-        .custom-modal-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            padding: 1rem;
-            border-bottom: 1px solid #dee2e6;
-            border-top-left-radius: 0.3rem;
-            border-top-right-radius: 0.3rem;
-            background-color: #f8f9fa;
-        }
-
-        .custom-modal-title {
-            margin-bottom: 0;
-            line-height: 1.5;
-            font-size: 1.25rem;
-        }
-
-        .custom-modal-close {
-            padding: 0;
-            background-color: transparent;
-            border: 0;
-            font-size: 1.5rem;
-            font-weight: 700;
-            line-height: 1;
-            color: #000;
-            text-shadow: 0 1px 0 #fff;
-            opacity: 0.5;
-            cursor: pointer;
-        }
-
-        .custom-modal-close:hover {
-            opacity: 0.75;
-        }
-
-        .custom-modal-body {
-            position: relative;
-            flex: 1 1 auto;
-            padding: 1rem;
-            overflow-y: auto;
-            max-height: 70vh;
-        }
-
-        /* Multiple Modal Stacking */
-        .custom-modal:nth-child(1) .custom-modal-dialog {
-            top: 20px;
-            right: 20px;
-            z-index: 1051;
-        }
-
-        .custom-modal:nth-child(2) .custom-modal-dialog {
-            top: 40px;
-            right: 40px;
-            z-index: 1052;
-        }
-
-        .custom-modal:nth-child(3) .custom-modal-dialog {
-            top: 60px;
-            right: 60px;
-            z-index: 1053;
-        }
-
-        .custom-modal:nth-child(4) .custom-modal-dialog {
-            top: 80px;
-            right: 80px;
-            z-index: 1054;
-        }
-
-        .custom-modal:nth-child(5) .custom-modal-dialog {
-            top: 100px;
-            right: 100px;
-            z-index: 1055;
-        }
-
-        /* For more than 5 modals - dynamic calculation */
-        .custom-modal:nth-child(n+6) .custom-modal-dialog {
-            top: calc(100px + (var(--modal-offset) * 20px));
-            right: calc(100px + (var(--modal-offset) * 20px));
-            z-index: calc(1055 + var(--modal-offset));
-        }
-
-        /* Animations */
-        @keyframes modalSlideIn {
-            from {
-                transform: translateX(30px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes modalFadeIn {
-            from {
-                opacity: 0;
-            }
-
-            to {
-                opacity: 1;
-            }
-        }
-
-        .custom-modal.show .custom-modal-dialog {
-            animation: modalSlideIn 0.3s ease-out;
-        }
-
-        .custom-modal-backdrop.show {
-            display: block;
-            animation: modalFadeIn 0.15s linear;
-        }
-
-        /* Body scroll lock */
-        body.custom-modal-open {
-            overflow: hidden;
-            padding-right: 15px;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .custom-modal-dialog {
-                min-width: 95vw;
-                max-width: 95vw;
-                margin: 0.5rem auto;
-            }
-
-            .custom-modal:nth-child(1) .custom-modal-dialog,
-            .custom-modal:nth-child(2) .custom-modal-dialog,
-            .custom-modal:nth-child(3) .custom-modal-dialog,
-            .custom-modal:nth-child(4) .custom-modal-dialog,
-            .custom-modal:nth-child(5) .custom-modal-dialog,
-            .custom-modal:nth-child(n+6) .custom-modal-dialog {
-                top: 10px;
-                right: 10px;
-                left: 10px;
-                margin: 0 auto;
-            }
-        }
-
-        /* Status color overlays */
-        .custom-modal .card.card-bg-red {
-            background: linear-gradient(135deg, rgba(245, 0, 20, 0.69), rgba(255, 255, 255, 0.85));
-            border-color: rgba(220, 53, 70, 0.72);
-        }
-
-        .custom-modal .card.card-bg-green {
-            background: linear-gradient(135deg, rgba(3, 255, 62, 0.424), rgba(255, 255, 255, 0.85));
-            border-color: rgba(40, 167, 69, 0.3);
-        }
-
-        .custom-modal .card.card-bg-yellow {
-            background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(255, 193, 7, 0.3);
-        }
-
-        .custom-modal .card.card-bg-blue {
-            background: linear-gradient(135deg, rgba(0, 123, 255, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(0, 123, 255, 0.3);
-        }
-
-        .custom-modal .card.card-bg-pink {
-            background: linear-gradient(135deg, rgba(232, 62, 140, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(232, 62, 141, 0.424);
-        }
-
-        .custom-modal .card.card-bg-gray {
-            background: linear-gradient(135deg, rgba(108, 117, 125, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(108, 117, 125, 0.3);
-        }
-
-        @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .custom-modal.show .custom-modal-dialog {
-            animation: slideInRight 0.3s ease-out;
-        }
-
-        /* Close All button */
-        #close-all-modals {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1060;
-        }
-
-        .custom-modal-dialog {
-            position: fixed !important;
-            top: 20px;
-            right: 20px;
-            margin: 0 !important;
-            transform: none !important;
-            cursor: move;
-        }
-
-        .custom-modal-header {
-            cursor: move;
-        }
-
-
-        /* ========== PLAY/PAUSE NAVIGATION BUTTONS ========== */
-        .time-navigation-group {
-            margin-left: 10px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            border-radius: 50px;
-            overflow: hidden;
-            padding: 2px;
-            background: #f8f9fa;
-            display: inline-flex;
-            align-items: center;
-        }
-
-        .time-navigation-group button {
-            padding: 0;
-            border-radius: 50% !important;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 3px;
-            transition: all 0.2s ease;
-            border: 1px solid #dee2e6;
-            background: white;
-            cursor: pointer;
-        }
-
-        .time-navigation-group button:hover {
-            background-color: #f1f3f5 !important;
-            transform: scale(1.05);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .time-navigation-group button:active {
-            transform: scale(0.95);
-        }
-
-        .time-navigation-group button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-
-        .time-navigation-group button i {
-            font-size: 1.1rem;
-            transition: transform 0.2s ease;
-        }
-
-        /* Play button */
-        #play-auto {
-            color: #28a745;
-        }
-
-        #play-auto:hover {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-
-        /* Pause button */
-        #play-pause {
-            color: #ffc107;
-            display: none;
-        }
-
-        #play-pause:hover {
-            background-color: #ffc107 !important;
-            color: white !important;
-        }
-
-        /* Navigation buttons */
-        #play-backward,
-        #play-forward {
-            color: #007bff;
-        }
-
-        #play-backward:hover,
-        #play-forward:hover {
-            background-color: #007bff !important;
-            color: white !important;
-        }
-
-        /* Button state colors - must come after hover styles */
-        #play-auto.btn-success,
-        #play-pause.btn-success {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-
-        #play-auto.btn-warning,
-        #play-pause.btn-warning {
-            background-color: #ffc107 !important;
-            color: #212529 !important;
-        }
-
-        #play-auto.btn-danger,
-        #play-pause.btn-danger {
-            background-color: #dc3545 !important;
-            color: white !important;
-        }
-
-        #play-auto.btn-light,
-        #play-pause.btn-light {
-            background-color: #f8f9fa !important;
-            color: #212529 !important;
-        }
-
-        /* Ensure hover doesn't override state colors */
-        #play-auto.btn-success:hover,
-        #play-pause.btn-success:hover {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-
-        #play-auto.btn-warning:hover,
-        #play-pause.btn-warning:hover {
-            background-color: #ffc107 !important;
-            color: #212529 !important;
-        }
-
-        #play-auto.btn-danger:hover,
-        #play-pause.btn-danger:hover {
-            background-color: #dc3545 !important;
-            color: white !important;
-        }
-
-        /* Active state styling */
-        .time-navigation-group button:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .time-navigation-group button {
-                width: 36px;
-                height: 36px;
-            }
-
-            .time-navigation-group button i {
-                font-size: 1rem;
-            }
-        }
-
-        /* Add to your CSS file or style section */
-        .hide-column {
-            display: none !important;
-        }
-
-        /*popup modal style*/
-
-        .choose-file {
-            background-color: #ff6b2c;
-            color: white;
-            padding: 10px;
-            border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            width: 100%;
-            display: block;
-            transition: background-color 0.3s;
-        }
-
-        .choose-file:hover {
-            background-color: #e65c1e;
-        }
-
-        .modal-content {
-            border-radius: 16px;
-            padding: 25px;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-label {
+            margin-top: 10px;
             font-weight: 600;
+            color: #475569;
         }
 
-        .form-section {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
+        /* ========== PLACEHOLDER ========== */
+        #ebay-listing-wrap .tabulator-placeholder {
+            color: #64748b;
+            font-weight: 600;
+            padding: 24px;
         }
 
-        option[value="Todo"] {
-            background-color: #2196f3;
-        }
-
-        option[value="Not Started"] {
-            background-color: #ffff00;
-            color: #000;
-        }
-
-        option[value="Working"] {
-            background-color: #ff00ff;
-        }
-
-        option[value="In Progress"] {
-            background-color: #f1c40f;
-            color: #000;
-        }
-
-        option[value="Monitor"] {
-            background-color: #5c6bc0;
-        }
-
-        option[value="Done"] {
-            background-color: #00ff00;
-            color: #000;
-        }
-
-        option[value="Need Help"] {
-            background-color: #e91e63;
-        }
-
-        option[value="Review"] {
-            background-color: #ffffff;
-            color: #000;
-        }
-
-        option[value="Need Approval"] {
-            background-color: #d4ff00;
-            color: #000;
-        }
-
-        option[value="Dependent"] {
-            background-color: #ff9999;
-        }
-
-        option[value="Approved"] {
-            background-color: #ffeb3b;
-            color: #000;
-        }
-
-        option[value="Hold"] {
-            background-color: #ffffff;
-            color: #000;
-        }
-
-        option[value="Rework"] {
-            background-color: #673ab7;
-        }
-
-        option[value="Urgent"] {
-            background-color: #f44336;
-        }
-
-        option[value="Q-Task"] {
-            background-color: #ff00ff;
-        }
-
-        /*only for scouth view*/
-        /* Add this to your CSS */
-        /* Scouth Products View Specific Styling */
-        div.custom-modal-content h5.custom-modal-title:contains("Scouth products view Details")+.custom-modal-body {
-            padding: 15px;
-            overflow: auto;
-        }
-
-        .scouth-header {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .scouth-header-item {
-            font-weight: bold;
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-        }
-
-        .scouth-table-container {
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        }
-
-        .scouth-table-header {
-            display: flex;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .scouth-table-row {
-            display: flex;
-            border-bottom: 1px solid #dee2e6;
-            background: white;
-        }
-
-        .scouth-table-row:last-child {
-            border-bottom: none;
-        }
-
-        .scouth-table-cell {
-            padding: 10px 12px;
-            min-width: 120px;
-            flex: 1;
-            border-right: 1px solid #dee2e6;
-            word-break: break-word;
-        }
-
-        .scouth-table-cell:last-child {
-            border-right: none;
-        }
-
-        .scouth-table-header .scouth-table-cell {
-            font-weight: bold;
-            color: #495057;
-        }
-
-        .scouth-table-row:hover {
-            background-color: #f1f1f1;
-        }
-
-        .image-thumbnail {
-            max-width: 100px;
-            max-height: 100px;
-            display: block;
-            margin-top: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        .scouth-product-value a {
-            color: #0d6efd;
-            text-decoration: none;
-        }
-
-        .scouth-product-value a:hover {
-            text-decoration: underline;
-        }
-
-        /* Highlight the selected dropdown option */
-        .dropdown-item.active {
-            background-color: #e9ecef;
-            color: #495057;
-            font-weight: bold;
-        }
-
-        /* Style for the filter selection text in buttons */
-        .filter-selection {
-            font-weight: bold;
-            color: #0d6efd;
-            margin-left: 4px;
-        }
-
-        /* Make dropdown buttons show their state */
-        .btn-light.active-filter {
-            background-color: #e2e6ea;
-            border-color: #dae0e5;
-        }
-
-        /* ========== NR SELECT DROPDOWN ========== */
-        .nr-select {
-            font-weight: 500;
-        }
-
-        .nr-select option[value="NRL"] {
-            background-color: #dc3545 !important;
-            color: #ffffff !important;
-        }
-
-        .nr-select option[value="REQ"] {
-            background-color: #28a745 !important;
-            color: #ffffff !important;
-        }
-
-        /* When NRL is selected, the select itself should be red */
-        .nr-select[data-value="NRL"] {
-            background-color: #dc3545 !important;
-            color: #ffffff !important;
-        }
-
-        /* When REQ is selected, the select itself should be green */
-        .nr-select[data-value="REQ"] {
-            background-color: #28a745 !important;
-            color: #ffffff !important;
-        }
-
-        .listed-dropdown {
-            width: 100%;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        .listed-dropdown option {
-            padding: 4px 8px;
-            font-weight: bold;
-        }
-
-        .listed-dropdown .listed-option {
-            background-color: #28a745;
-            /* Green */
-            color: white;
-        }
-
-        .listed-dropdown .pending-option {
-            background-color: #dc3545;
-            /* Red */
-            color: white;
-        }
-        .nr-hide{
-            display: none !important;
-        }
     </style>
 @endsection
 
@@ -1071,235 +500,90 @@
 
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="card position-relative">
                 <div class="card-body">
-                    <!-- Controls row -->
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <!-- Left side controls -->
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="row-data-type" class="mr-2">Data Type:</label>
-                                <select id="row-data-type" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="sku" selected>SKU (Child)</option>
-                                    <option value="parent">Parent</option>
-                                </select>
+                    <div id="ebay-listing-toolbar" class="mb-3">
+                        <div class="ebay-listing-toolbar-row">
+                            <div class="listing-stat-badges">
+                                <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
-                            <div class="form-group col-md-4">   
-                                <label for="combined-filter" class="mr-2">Show:</label>
-                                <select id="combined-filter" class="form-control form-control-sm">
-                                    <option value="all">All SKUs</option>
-                                    <option value="inv">INV (All SKUs with Inventory)</option>
-                                    <option value="req-nrl">RL-NRL (RL without Links)</option>
-                                    <option value="pending" selected>Pending (Listed=Pending)</option>
-                                </select>
-                            </div>
-                            <div class="form-group col-md-4">
-                                <label for="inv-filter" class="mr-2">INV:</label>
-                                <select id="inv-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="inv-only">INV Only</option>
-                                </select>
-                            </div>
-                            <div class="form-group col-md-4">
-                                <label for="nr-req-filter" class="mr-2">NRL/RL:</label>
-                                <select id="nr-req-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="REQ">RL</option>
-                                    <option value="NRL">NRL</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-4">
-                                <label for="link-filter" class="mr-2">LINK:</label>
-                                <select id="link-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="with-link">With Link</option>
-                                    <option value="without-link">Without Link</option>
-                                </select>
-                            </div>
-                            <div class="form-group col-md-4">
-                                <label for="listed-filter" class="mr-2">Listed:</label>
-                                <select id="listed-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="Listed">Listed</option>
-                                    <option value="Pending">Pending</option>
-                                </select>
-                            </div>
-                        </div>
 
-                        <div class="d-flex align-items-center mb-3 gap-2">
-
-                            <!-- Import/Export buttons -->
-                            <button type="button" class="btn btn-sm btn-primary mr-2" id="import-btn">Import</button>
-                            <!-- <button type="button" class="btn btn-sm btn-success mr-3" id="export-btn">Export</button> -->
-                            <a href="{{ route('listing_ebay.export') }}" class="btn btn-sm btn-success mr-3">Export</a>
-
-                            <!-- Search on right -->
-                            <div class="form-group mb-0 d-flex align-items-center ml-3">
-                                <label for="search-input" class="mr-2 mb-0">Search:</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm"
-                                    placeholder="Search all columns...">
+                            <select id="row-data-type" class="form-select form-select-sm filter-select" aria-label="Data Type">
+                                <option value="all" selected>Data Type</option>
+                                <option value="sku">SKU (Child)</option>
+                                <option value="parent">Parent</option>
+                            </select>
+                            <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
+                                <option value="all">INV: All</option>
+                                <option value="inv-only" selected>INV Only</option>
+                            </select>
+                            <select id="nr-req-filter" class="form-select form-select-sm filter-select" aria-label="NRL/REQ">
+                                <option value="all" selected>NRL/REQ</option>
+                                <option value="REQ">REQ</option>
+                                <option value="NR">NRL</option>
+                            </select>
+                            <select id="link-filter" class="form-select form-select-sm filter-select" aria-label="Buyer Link">
+                                <option value="all" selected>Buyer Link</option>
+                                <option value="with-link">With Link</option>
+                                <option value="without-link">Without Link</option>
+                            </select>
+                            <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
+                                <option value="all" selected>Listed</option>
+                                <option value="Listed">Listed Only</option>
+                                <option value="Pending">Missing L</option>
+                            </select>
+                            <div class="toolbar-actions dropdown">
+                                <button type="button"
+                                    class="btn btn-sm btn-primary listing-io-btn"
+                                    id="listing-io-btn"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                    title="Import / Export">
+                                    <i class="fas fa-file-import"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end listing-io-menu" aria-labelledby="listing-io-btn">
+                                    <li>
+                                        <button type="button" class="dropdown-item" id="import-btn" title="Import">
+                                            <i class="fas fa-file-import text-primary"></i>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="{{ route('listing_ebay.export') }}" title="Export">
+                                            <i class="fas fa-file-export text-success"></i>
+                                        </a>
+                                    </li>
+                                </ul>
                             </div>
                         </div>
                     </div>
 
-                     <!-- Import Modal -->
                     <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Import Editable Fields</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-
-                            <div class="modal-body">
-
-                                <a href="{{ asset('sample_excel/sample_listing_ebay_file.csv') }}" download class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
-
-                                <input type="file" id="importFile" name="file" accept=".xlsx,.xls,.csv" class="form-control" />
-                            </div>
-
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            </div>
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Import Editable Fields</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <a href="{{ asset('sample_excel/sample_listing_file.csv') }}" download class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
+                                    <input type="file" id="importFile" name="file" accept=".csv,.txt" class="form-control" />
+                                    <small class="text-muted">Only CSV or TXT files are supported</small>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="table-container">
-                        <table class="custom-resizable-table" id="listing-table">
-                            <thead>
-                                <tr>
-                                    <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                Parent <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="batch-total" 
-                                                style="display:inline-block; background:#17a2b8; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
-                                            <div class="d-flex align-items-center">
-                                                Sku <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="total-sku" 
-                                                style="display:inline-block; background:#007bff; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm sku-search"
-                                                    placeholder="Search SKU..." id="skuSearch">
-                                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap; text-align: center;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                INV <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="inv-total">0</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                RL/NRL
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div style="display: flex; gap: 5px;">
-                                                <div class="metric-total" id="rl-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:8px 12px; font-weight:600; font-size:15px;">
-                                                    0</div>
-                                                <div class="metric-total" id="nrl-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:8px 12px; font-weight:600; font-size:15px;">
-                                                    0</div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                LINK
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="without-link-total"
-                                                style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Listed/Pending
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div>
-                                                <span class="metric-total" id="listed-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px;">
-                                                    0
-                                                </span>
-                                                <span class="metric-total" id="pending-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px; margin-left:6px;">
-                                                    0
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="listing_status" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Listing Status
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div style="display: flex; gap: 5px;">
-                                                <div class="metric-total" id="active-status-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
-                                                    0</div>
-                                                <div class="metric-total" id="inactive-status-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
-                                                    0</div>
-                                                <div class="metric-total" id="missing-status-total"
-                                                    style="display:inline-block; background:#ffc107; color:#000; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
-                                                    0</div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data will be populated by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination controls -->
-                    <div class="pagination-controls mt-2">
-                        <div class="form-group">
-                            <span id="visible-rows" class="badge badge-light" style="color: #dc3545;">Showing 1-25 of
-                                150</span>
-                        </div>
-                        <button id="first-page" class="btn btn-sm btn-outline-secondary mr-1">First</button>
-                        <button id="prev-page" class="btn btn-sm btn-outline-secondary mr-1">Previous</button>
-                        <span id="page-info" class="mx-2">Page 1 of 6</span>
-                        <button id="next-page" class="btn btn-sm btn-outline-secondary ml-1">Next</button>
-                        <button id="last-page" class="btn btn-sm btn-outline-secondary ml-1">Last</button>
+                    <div id="ebay-listing-wrap">
+                        <div id="ebayListing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -1315,1065 +599,435 @@
         </div>
     </div>
 
-    <div id="linkModal" class="modal fade" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-dialog-centered" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Submit Buyer and Seller Links</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="linkForm">
-                        <div class="mb-3">
-                            <label for="buyerLink" class="form-label">Buyer Link</label>
-                            <input type="url" id="buyerLink" name="buyerLink" class="form-control"
-                                placeholder="Enter Buyer Link" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="sellerLink" class="form-label">Seller Link</label>
-                            <input type="url" id="sellerLink" name="sellerLink" class="form-control"
-                                placeholder="Enter Seller Link" required>
-                        </div>
-                        <input type="hidden" id="skuInput" name="sku">
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary" id="submitLinks">Submit</button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.body.style.zoom = "80%";
-        $(document).ready(function() {
-                    // Cache system
-                    const eBayListingDataCache = {
-                        cache: {},
 
-                        set: function(id, data) {
-                            this.cache[id] = JSON.parse(JSON.stringify(data));
-                        },
-
-                        get: function(id) {
-                            return this.cache[id] ? JSON.parse(JSON.stringify(this.cache[id])) : null;
-                        },
-
-                        updateField: function(id, field, value) {
-                            if (this.cache[id]) {
-                                this.cache[id][field] = value;
-                            }
-                        },
-
-                        clear: function() {
-                            this.cache = {};
-                        }
-                    };
-
-                    // Clear cache on page load
-                    window.addEventListener('load', function() {
-                        eBayListingDataCache.clear();
-                    });
-
-                    // Current state
-                    let currentPage = 1;
-                    let rowsPerPage = Infinity;
-                    let currentSort = {
-                        field: null,
-                        direction: 1
-                    };
-                    let tableData = [];
-                    let filteredData = [];
-                    let isResizing = false;
-                    let isLoading = false;
-                    let isEditMode = false;
-                    let currentEditingElement = null;
-                    let currentDataTypeFilter = 'sku'; // Track data type filter (all, sku, parent)
-                    let currentInvFilter = 'all'; // Track INV filter (all, inv-only)
-
-                    let filterStates = {
-                        inv: $('#inv-filter').val(),
-                        nr_req: $('#nr-req-filter').val(),
-                        link: $('#link-filter').val(),
-                        listed: $('#listed-filter').val(),
-                        rowType: $('#row-data-type').val()
-                    };
-
-                    function applyAllFilters() {
-                        // Start with all data
-                        filteredData = [...tableData];
-
-                        // Apply Data Type filter (Parent/SKU/All)
-                        if (currentDataTypeFilter === 'parent') {
-                            filteredData = filteredData.filter(item => item.is_parent);
-                        } else if (currentDataTypeFilter === 'sku') {
-                            // For SKU: show only non-parent rows with INACTIVE or MISSING status
-                            filteredData = filteredData.filter(item => 
-                                !item.is_parent && 
-                                (item.listing_status === 'INACTIVE' || !item.listing_status)
-                            );
-                        }
-                        // else 'all' - no data type filtering
-
-                        // Apply INV filter on top of data type filter
-                        if (currentInvFilter === 'inv-only') {
-                            filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
-                        }
-                        // else 'all' - no INV filtering
-
-                        // Reset to first page and render
-                        currentPage = 1;
-                        renderTable();
-                        calculateTotals();
-                    }
-
-                    // --- Dropdown Click Handler ---
-                    $('.manual-dropdown-container .column-filter').on('click', function() {
-                        const $dropdown = $(this).closest('.manual-dropdown-container').find('button');
-                        const column = $dropdown.attr('data-column');
-                        const value = $(this).text().trim();
-
-                        if (column) {
-                            // Update the filter state
-                            columnFilters[column] = value;
-
-                            // Update the dropdown button text
-                            $dropdown.find('.filter-selection').text(value);
-
-                            // Apply the filters to the table
-                            applyColumnFilters();
-                        }
-                    });
-
-                    // --- Filtering Logic ---
-                    function applyColumnFilters() {
-                        filteredData = tableData.filter(item => {
-                            let pass = true;
-                            for (const [col, filter] of Object.entries(columnFilters)) {
-                                if (filter === 'ALL') continue;
-                                if (filter === 'DONE' && !(item[col] === true || item[col] === 'true' || item[
-                                        col] === 1)) pass = false;
-                                if (filter === 'PENDING' && (item[col] === true || item[col] === 'true' || item[
-                                        col] === 1)) pass = false;
-                            }
-                            return pass;
-                        });
-                        renderTable();
-                        calculateTotals();
-                    }
-
-                    // Initialize everything
-                    function initTable() {
-                        loadData().then(() => {
-                            renderTable();
-                            initResizableColumns();
-                            initSorting();
-                            initPagination();
-                            initSearch();
-                            calculateTotals();
-                            initEnhancedDropdowns();
-
-                            // Set default INV filter to "INV Only" on page load
-                            // $('#inv-filter').val('inv-only').trigger('change');
-                        });
-                    }
-
-                    // Load data from server
-                    function loadData() {
-                        showLoader();
-                        return $.ajax({
-                            url: '/listing_ebay/view-data',
-                            type: 'GET',
-                            dataType: 'json',
-                            success: function(response) {
-                                // If response is an object with a data property, use that
-                                if (Array.isArray(response)) {
-                                    tableData = response;
-                                } else if (Array.isArray(response.data)) {
-                                    tableData = response.data;
-                                } else {
-                                    tableData = [];
-                                }
-
-                                // Use nr_req and listed values from ebay_data_view table
-                                tableData = tableData.map(item => {
-                                    const inv = parseFloat(item.INV) || 0;
-                                    const isParent = item.sku && item.sku.toUpperCase().includes('PARENT');
-                                    
-                                    // Default logic: if INV > 0 and not parent, default to REQ (RL), otherwise NRL
-                                    let defaultNrReq = 'NRL';
-                                    if (inv > 0 && !isParent) {
-                                        defaultNrReq = 'REQ';
-                                    }
-                                    
-                                    return {
-                                        ...item,
-                                        nr_req: item.nr_req || defaultNrReq,
-                                        listed: item.listed || 'Pending',
-                                        is_parent: isParent
-                                    };
-                                });
-
-                                // Set default to show all data initially
-                                filteredData = [...tableData];
-                            },
-                            error: function(xhr, status, error) {
-                                console.error('Error loading data:', error);
-                                showNotification('danger', 'Failed to load data. Please try again.');
-                                tableData = [];
-                                filteredData = [];
-                            },
-                            complete: function() {
-                                hideLoader();
-                            }
-                        });
-                    }
-
-                    // Render table with current data
-                    function renderTable() {
-                        const $tbody = $('#listing-table tbody');
-                        $tbody.empty();
-
-                        if (isLoading) {
-                            $tbody.append('<tr><td colspan="7" class="text-center">Loading data...</td></tr>');
-                            return;
-                        }
-
-                        // Include all rows without filtering by INV
-                        const filteredRows = filteredData;
-
-                        // Group data by parent
-                        const groupedData = {};
-                        filteredRows.forEach(item => {
-                            if (!groupedData[item.parent]) {
-                                groupedData[item.parent] = [];
-                            }
-                            groupedData[item.parent].push(item);
-                        });
-
-                        // Sort parents alphabetically
-                        const sortedParents = Object.keys(groupedData).sort();
-
-                        let rowIndex = 1;
-
-                        // Iterate through each parent group
-                        sortedParents.forEach(parent => {
-                            const items = groupedData[parent];
-
-                            // Sort items within the group so that the PARENT row appears last
-                            const sortedItems = items.sort((a, b) => {
-                                if (a.sku.includes('PARENT')) return 1; // Move PARENT to the end
-                                if (b.sku.includes('PARENT')) return -1; // Move PARENT to the end
-                                return 0; // Keep other rows in their original order
-                            });
-
-                            // Add all rows to the table
-                            sortedItems.forEach(item => {
-                                const $row = createTableRow(item, rowIndex++);
-                                $tbody.append($row);
-                            });
-                        });
-
-                        if ($tbody.children().length === 0) {
-                            $tbody.append('<tr><td colspan="7" class="text-center">No matching records found</td></tr>');
-                        }
-
-                        updatePaginationInfo();
-                        
-                        // Show filter description with row count
-                        const filterValue = $('#combined-filter').val();
-                        let filterDesc = '';
-                        switch(filterValue) {
-                            case 'all':
-                                filterDesc = 'All SKUs';
-                                break;
-                            case 'inv':
-                                filterDesc = 'INV (All SKUs with Inventory)';
-                                break;
-                            case 'req-nrl':
-                                filterDesc = 'RL-NRL (RL without Links)';
-                                break;
-                            case 'pending':
-                                filterDesc = 'Pending (Listed=Pending)';
-                                break;
-                            default:
-                                filterDesc = 'Filtered';
-                        }
-                        $('#visible-rows').text(`${filterDesc}: ${$tbody.children().length} rows`);
-                    }
-
-
-                    //open modal on click import button
-                    $('#import-btn').on('click', function () {
-                        $('#importModal').modal('show');
-                    });
-
-
-                    //import data
-                    $(document).on('click', '#confirmImportBtn', function () {
-                        let file = $('#importFile')[0].files[0];
-                        if (!file) {
-                            alert('Please select a file to import.');
-                            return;
-                        }
-
-                        let formData = new FormData();
-                        formData.append('file', file);
-
-                        $.ajax({
-                            url: "{{ route('listing_ebay.import') }}",
-                            type: "POST",
-                            data: formData,
-                            processData: false,
-                            contentType: false,
-                            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                            success: function (response) {
-                                $('#importModal').modal('hide');
-                                $('#importFile').val('');
-                                showNotification('success', response.success);
-                                location.reload(); // refresh your DataTable
-                            },
-                            error: function (xhr) {
-                                showNotification('danger', xhr.responseJSON.error || 'Import failed');
-                            }
-                        });
-                    });
-
-
-                    // Helper function to create a table row
-                    function createTableRow(item, index) {
-                        const $row = $('<tr>');
-
-                        // Add a blue background color if the SKU contains "PARENT"
-                        if (item.sku.includes('PARENT')) {
-                            $row.addClass('parent-row');
-                        }
-
-                        $row.append($('<td>').text(item.parent)); // Parent
-                        $row.append($('<td>').text(item.sku)); // SKU
-                        $row.append($('<td>').css('text-align', 'center').text(item.INV)); // INV
-
-                        // NR/REQ dropdown only for non-parent rows
-                        if (!item.sku.includes('PARENT')) {
-                            const currentNR = item.nr_req ? item.nr_req : "REQ";
-                            
-                            // Determine colors based on current value
-                            const bgColor = currentNR === 'NRL' ? '#dc3545' : '#28a745';
-                            const textColor = '#ffffff';
-
-                            const $dropdown = $(`
-                                <select class="form-select form-select-sm nr-select" data-value="${currentNR}" style="min-width: 100px; background-color: ${bgColor} !important; color: ${textColor} !important;">
-                                    <option value="NRL" style="background-color: #dc3545; color: #ffffff;" ${currentNR === 'NRL' ? 'selected' : ''}>NRL</option>
-                                    <option value="REQ" style="background-color: #28a745; color: #ffffff;" ${currentNR === 'REQ' ? 'selected' : ''}>RL</option>
-                                </select>
-                            `);
-
-                            $row.append($('<td>').append($dropdown));
-                        } else {
-                            $row.append($('<td>').text('')); // Empty cell for parent rows
-                        }
-
-                        // --- BUYER LINK, SELLER LINK, AND PEN ICON IN ONE TD ---
-                        const $linkCell = $('<td>');
-
-                        // Buyer Link
-                        if (parseFloat(item.INV) > 0 && item.buyer_link) {
-                            $linkCell.append(
-                                `<a href="${item.buyer_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
-                            );
-                        }
-
-                        // Seller Link
-                        if (parseFloat(item.INV) > 0 && item.seller_link) {
-                            $linkCell.append(
-                                `<a href="${item.seller_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Seller</a>`
-                            );
-                        }
-
-                        // Pen icon (always show for non-parent rows)
-                        if (!item.sku.includes('PARENT')) {
-                            $linkCell.append(
-                                $('<i>')
-                                .addClass('fas fa-pen text-primary link-edit-icon')
-                                .css({
-                                    cursor: 'pointer',
-                                    marginLeft: '6px'
-                                })
-                                .attr('title', 'Edit Links')
-                                .data('sku', item.sku)
-                            );
-                        }
-
-                        $row.append($linkCell);
-
-                        // Listed/Pending dropdown only for non-parent rows
-                        if (!item.sku.includes('PARENT')) {
-                            const $listedDropdown = $('<select>')
-                                .addClass('listed-dropdown form-control form-control-sm')
-                                .append('<option value="Listed" class="listed-option">Listed</option>')
-                                .append('<option value="Pending" class="pending-option">Pending</option>')
-                                .append('<option value="NRL" class="nrl-option">NRL</option>');
-
-                            // If nr_req is 'NRL', automatically set listed to 'NRL'
-                            const listedValue = (item.nr_req === 'NRL') ? 'NRL' : (item.listed || 'Pending');
-                            $listedDropdown.val(listedValue);
-
-                            if (listedValue === 'Listed') {
-                                $listedDropdown.css('background-color', '#28a745').css('color', 'white');
-                            } else if (listedValue === 'Pending') {
-                                $listedDropdown.css('background-color', '#dc3545').css('color', 'white');
-                            } else if (listedValue === 'NRL') {
-                                $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
-                            }
-
-                            $row.append($('<td>').append($listedDropdown));
-                        } else {
-                            $row.append($('<td>').text('')); // Empty cell for parent rows
-                        }
-
-                        // Listing Status column
-                        const $statusCell = $('<td>').css('text-align', 'center');
-                        if (item.listing_status) {
-                            let statusBadge = '';
-                            if (item.listing_status === 'ACTIVE') {
-                                statusBadge = '<span style="background:#28a745; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">ACTIVE</span>';
-                            } else if (item.listing_status === 'INACTIVE') {
-                                statusBadge = '<span style="background:#dc3545; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">INACTIVE</span>';
-                            } else {
-                                statusBadge = '<span style="background:#6c757d; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">' + item.listing_status + '</span>';
-                            }
-                            $statusCell.html(statusBadge);
-                        } else {
-                            $statusCell.html('<span style="background:#ffc107; color:#000; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">MISSING</span>');
-                        }
-                        $row.append($statusCell);
-
-                        return $row;
-                    }
-
-                    // Initialize tooltips
-                    function initTooltips() {
-                        $('[data-bs-toggle="tooltip"]').tooltip({
-                            trigger: 'hover',
-                            placement: 'top',
-                            boundary: 'window',
-                            container: 'body',
-                            offset: [0, 5],
-                            template: '<div class="tooltip" role="tooltip">' +
-                                '<div class="tooltip-arrow"></div>' +
-                                '<div class="tooltip-inner"></div></div>'
-                        });
-                    }
-
-                    // Make columns resizable
-                    function initResizableColumns() {
-                        const $table = $('#listing-table');
-                        const $headers = $table.find('th');
-                        let startX, startWidth, columnIndex;
-
-                        $headers.each(function() {
-                            $(this).append('<div class="resize-handle"></div>');
-                        });
-
-                        $table.on('mousedown', '.resize-handle', function(e) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            isResizing = true;
-                            $(this).addClass('resizing');
-
-                            const $th = $(this).parent();
-                            columnIndex = $th.index();
-                            startX = e.pageX;
-                            startWidth = $th.outerWidth();
-
-                            $('body').css('user-select', 'none');
-                        });
-
-                        $(document).on('mousemove', function(e) {
-                            if (!isResizing) return;
-
-                            const $resizer = $('.resize-handle.resizing');
-                            if ($resizer.length) {
-                                const $th = $resizer.parent();
-                                const newWidth = startWidth + (e.pageX - startX);
-                                $th.css('width', newWidth + 'px');
-                                $th.css('min-width', newWidth + 'px');
-                                $th.css('max-width', newWidth + 'px');
-                            }
-                        });
-
-                        $(document).on('mouseup', function(e) {
-                            if (!isResizing) return;
-
-                            e.stopPropagation();
-                            $('.resize-handle').removeClass('resizing');
-                            $('body').css('user-select', '');
-                            isResizing = false;
-                        });
-                    }
-
-                    // Initialize sorting functionality
-                    function initSorting() {
-                        $('th[data-field]').addClass('sortable').on('click', function(e) {
-                            if (isResizing) {
-                                e.stopPropagation();
-                                return;
-                            }
-
-                            // Prevent sorting when clicking on search inputs
-                            if ($(e.target).is('input') || $(e.target).closest('.position-relative').length) {
-                                return;
-                            }
-
-                            const th = $(this).closest('th');
-                            const thField = th.data('field');
-                            const dataField = thField === 'parent' ? 'Parent' : thField;
-
-                            // Toggle direction if clicking same column, otherwise reset to ascending
-                            if (currentSort.field === dataField) {
-                                currentSort.direction *= -1;
-                            } else {
-                                currentSort.field = dataField;
-                                currentSort.direction = 1;
-                            }
-
-                            // Update UI arrows
-                            $('.sort-arrow').html('↓');
-                            $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
-
-                            // Sort with fresh data
-                            const freshData = [...tableData];
-                            freshData.sort((a, b) => {
-                                const valA = a[dataField] || '';
-                                const valB = b[dataField] || '';
-
-                                // Numeric comparison for numeric fields
-                                if (dataField === 'sl_no' || dataField === 'INV' || dataField ===
-                                    'L30') {
-                                    return (parseFloat(valA) - parseFloat(valB)) * currentSort
-                                        .direction;
-                                }
-
-                                // String comparison for other fields
-                                return String(valA).localeCompare(String(valB)) * currentSort.direction;
-                            });
-
-                            filteredData = freshData;
-                            currentPage = 1;
-                            renderTable();
-                        });
-                    }
-
-                    // Initialize pagination
-                    function initPagination() {
-                        // Remove rows-per-page related code
-
-                        // Keep these but modify to work with all rows
-                        $('#first-page').on('click', function() {
-                            currentPage = 1;
-                            renderTable();
-                        });
-
-                        // Similar modifications for other pagination buttons...
-                        // But since we're showing all rows, you might want to disable pagination completely
-                    }
-
-                    function updatePaginationInfo() {
-                        // Since we're showing all rows, you can either:
-                        // Option 1: Hide pagination completely
-                        $('.pagination-controls').hide();
-
-                        // Option 2: Show "Showing all rows" message
-                        $('#page-info').text('Showing all rows');
-                        $('#first-page, #prev-page, #next-page, #last-page').prop('disabled', true);
-                    }
-
-                    // Initialize search functionality
-                    function initSearch() {
-                        $('#search-input').on('keyup', function() {
-                            const searchTerm = $(this).val().toLowerCase();
-
-                            if (searchTerm) {
-                                filteredData = tableData.filter(item => {
-                                    return Object.values(item).some(val => {
-                                        if (typeof val === 'boolean' || val === null)
-                                            return false;
-                                        return val.toString().toLowerCase().includes(
-                                            searchTerm);
-                                    });
-                                });
-                            } else {
-                                filteredData = [...tableData];
-                            }
-
-                            currentPage = 1;
-                            renderTable();
-                            calculateTotals();
-                        });
-                    }
-
-                    // Calculate and display totals
-                    function calculateTotals() {
-                        try {
-                            if (isLoading || tableData.length === 0) {
-                                resetMetricsToZero();
-                                return;
-                            }
-
-                            const metrics = {
-                                totalSku: 0,
-                                batchTotal: 0,
-                                invTotal: 0,
-                                reqTotal: 0,
-                                rlTotal: 0,
-                                nrlTotal: 0,
-                                withoutLinkTotal: 0,
-                                listedTotal: 0,
-                                pendingTotal: 0,
-                                activeStatusTotal: 0,
-                                inactiveStatusTotal: 0,
-                                missingStatusTotal: 0,
-                                rowCount: 0
-                            };
-
-                            // Use tableData instead of filteredData to show totals for all data
-                            tableData.forEach(item => {
-                                // Count only non-parent rows for SKU total
-                                if (!item.sku.includes('PARENT')) {
-                                    metrics.totalSku++;
-                                    
-                                    // Count INV total only for rows with INV > 0
-                                    if (parseFloat(item.INV) > 0) {
-                                        metrics.invTotal += parseFloat(item.INV) || 0;
-                                    }
-                                    
-                                    // For RL/NRL: Count based on nr_req field
-                                    // nr_req = 'REQ' means RL (green)
-                                    // nr_req = 'NRL' means NRL (red)
-                                    if (item.nr_req === 'NRL') {
-                                        metrics.nrlTotal++;
-                                    } else {
-                                        // Default to RL if nr_req is 'REQ' or any other value
-                                        metrics.rlTotal++;
-                                    }
-                                    
-                                    // Count missing links for all non-parent rows
-                                    if (!item.buyer_link && !item.seller_link) {
-                                        metrics.withoutLinkTotal++;
-                                    }
-                                    
-                                    // Count Listed and Pending for ALL non-parent SKUs
-                                    const listedValue = item.listed || 'Pending';
-                                    if (listedValue === 'Listed') {
-                                        metrics.listedTotal++;
-                                    } else if (listedValue === 'Pending') {
-                                        metrics.pendingTotal++;
-                                    } else if (listedValue === 'NRL') {
-                                        // Don't count NRL in listed/pending totals
-                                    }
-                                    
-                                    // Count listing status
-                                    if (item.listing_status === 'ACTIVE') {
-                                        metrics.activeStatusTotal++;
-                                    } else if (item.listing_status === 'INACTIVE') {
-                                        metrics.inactiveStatusTotal++;
-                                    } else if (!item.listing_status) {
-                                        metrics.missingStatusTotal++;
-                                    }
-                                } else {
-                                    // Count parent rows for Batch total
-                                    metrics.batchTotal++;
-                                }
-                            });
-
-                            $('#total-sku').text(metrics.totalSku);
-                            $('#batch-total').text(metrics.batchTotal);
-                            $('#inv-total').text(metrics.invTotal.toLocaleString());
-                            $('#req-total').text(metrics.reqTotal);
-                            $('#rl-total').text(metrics.rlTotal);
-                            $('#nrl-total').text(metrics.nrlTotal);
-                            $('#without-link-total').text(metrics.withoutLinkTotal);
-                            $('#listed-total').text(metrics.listedTotal); // Green
-                            $('#pending-total').text(metrics.pendingTotal); // Red
-                            $('#active-status-total').text(metrics.activeStatusTotal); // Green
-                            $('#inactive-status-total').text(metrics.inactiveStatusTotal); // Red
-                            $('#missing-status-total').text(metrics.missingStatusTotal); // Yellow
-                        } catch (error) {
-                            console.error('Error in calculateTotals:', error);
-                            resetMetricsToZero();
-                        }
-                    }
-
-                    function resetMetricsToZero() {
-                        $('#total-sku').text('0');
-                        $('#batch-total').text('0');
-                        $('#inv-total').text('0');
-                        $('#rl-total').text('0');
-                        $('#nrl-total').text('0');
-                        $('#without-link-total').text('0');
-                        $('#listed-total').text('0');
-                        $('#pending-total').text('0');
-                        $('#active-status-total').text('0');
-                        $('#inactive-status-total').text('0');
-                        $('#missing-status-total').text('0');
-                    }
-
-                    // Initialize enhanced dropdowns
-                    function initEnhancedDropdowns() {
-                        // Parent dropdown
-                        const $parentSearch = $('#parentSearch');
-                        const $parentResults = $('#parentSearchResults');
-
-                        // SKU dropdown
-                        const $skuSearch = $('#skuSearch');
-                        const $skuResults = $('#skuSearchResults');
-
-                        // Initialize both dropdowns
-                        initEnhancedDropdown($parentSearch, $parentResults, 'parent');
-                        initEnhancedDropdown($skuSearch, $skuResults, 'sku');
-
-                        // Close dropdowns when clicking outside
-                        $(document).on('click', function(e) {
-                            if (!$(e.target).closest('.dropdown-search-container').length) {
-                                $('.dropdown-search-results').hide();
-                            }
-                        });
-
-                        $('#row-data-type').on('change', function() {
-                            currentDataTypeFilter = $(this).val();
-                            applyAllFilters();
-                        });
-                    }
-
-                    // Calculate INV and L30 totals for each parent
-                    function getParentTotals(parentName) {
-                        let invTotal = 0;
-                        let l30Total = 0;
-                        filteredData.forEach(item => {
-                            if (
-                                item.parent === parentName &&
-                                !item.is_parent // Only sum child rows
-                            ) {
-                                invTotal += parseFloat(item.INV) || 0;
-                                l30Total += parseFloat(item.L30) || 0;
-                            }
-                        });
-                        return {
-                            inv: invTotal,
-                            l30: l30Total
-                        };
-                    }
-
-                    function initEnhancedDropdown($input, $results, field) {
-                        let debounceTimer;
-
-                        $input.on('input', function() {
-                            clearTimeout(debounceTimer);
-                            const searchTerm = $(this).val().toLowerCase();
-
-                            debounceTimer = setTimeout(() => {
-                                if (searchTerm.length === 0) {
-                                    $results.hide();
-                                    return;
-                                }
-
-                                updateDropdownResults($results, field, searchTerm);
-                            }, 300);
-                        });
-
-                        $input.on('focus', function() {
-                            const searchTerm = $(this).val().toLowerCase();
-                            if (searchTerm.length > 0) {
-                                updateDropdownResults($results, field, searchTerm);
-                            }
-                        });
-
-                        $(document).on('click', function(e) {
-                            if (!$input.is(e.target) && !$results.is(e.target) && $results.has(e.target).length === 0) {
-                                $results.hide();
-                            }
-                        });
-
-                        $results.on('click', '.dropdown-search-item', function() {
-                            const value = $(this).text();
-                            $input.val(value);
-                            $results.hide();
-
-                            // Filter data
-                            if (value) {
-                                filteredData = tableData.filter(item =>
-                                    item[field] && item[field].toString().toLowerCase().includes(value.toLowerCase())
-                                );
-                            } else {
-                                filteredData = [...tableData];
-                            }
-
-                            currentPage = 1;
-                            renderTable();
-                            calculateTotals();
-                        });
-                    }
-
-                    function updateDropdownResults($results, field, searchTerm) {
-                        const uniqueValues = [...new Set(
-                            tableData
-                                .map(item => item[field])
-                                .filter(val => val && val.toString().toLowerCase().includes(searchTerm))
-                        )].sort();
-
-                        $results.empty();
-
-                        if (uniqueValues.length === 0) {
-                            $results.append('<div class="dropdown-search-item no-results">No results found</div>');
-                        } else {
-                            uniqueValues.forEach(value => {
-                                const $item = $('<div>')
-                                    .addClass('dropdown-search-item')
-                                    .text(value);
-                                $results.append($item);
-                            });
-                        }
-
-                        $results.show();
-                    }
-
-                        // Show notification
-                        function showNotification(type, message) {
-                            const notification = $(`
-                    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-                        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                            ${message}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
+        let ebayListingTable = null;
+        let allListingData = [];
+
+        function isParentSku(sku) {
+            return String(sku || '').toUpperCase().includes('PARENT');
+        }
+
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function showNotification(type, message) {
+            const notification = $(`
+                <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+                    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                        ${escapeHtml(message)}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
-                `);
+                </div>
+            `);
+            $('body').append(notification);
+            setTimeout(() => notification.find('.alert').alert('close'), 3000);
+        }
 
-                            $('body').append(notification);
+        function showLoader() {
+            $('#data-loader').fadeIn(100);
+        }
 
-                            setTimeout(() => {
-                                notification.find('.alert').alert('close');
-                            }, 3000);
+        function hideLoader() {
+            $('#data-loader').fadeOut(100);
+        }
+
+        function normalizeListingRows(rows) {
+            const mapped = (rows || []).map(item => {
+                const inv = parseFloat(item.INV) || 0;
+                const itemId = String(item.eBay_item_id || '').trim();
+                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
+                const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
+                const listed = itemId ? 'Listed' : 'Pending';
+                return {
+                    ...item,
+                    parent: item.parent ?? item.Parent ?? '',
+                    sku: item.sku ?? '',
+                    INV: inv,
+                    L30: parseFloat(item.L30) || 0,
+                    nr_req: nrReq,
+                    listed: listed,
+                    eBay_item_id: itemId || null,
+                    buyer_link: item.buyer_link || '',
+                    seller_link: item.seller_link || '',
+                    is_parent: isParentSku(item.sku)
+                };
+            });
+
+            mapped.sort((a, b) => {
+                const parentCmp = String(a.parent || '').localeCompare(String(b.parent || ''), undefined, { sensitivity: 'base' });
+                if (parentCmp !== 0) return parentCmp;
+                return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
+            });
+
+            return mapped;
+        }
+
+        function calculateTotals() {
+            try {
+                if (!ebayListingTable) {
+                    resetMetricsToZero();
+                    return;
+                }
+
+                const rows = ebayListingTable.getData('active') || [];
+                const metrics = {
+                    invTotal: 0,
+                    reqTotal: 0,
+                    nrlTotal: 0,
+                    withoutLinkTotal: 0,
+                    listedTotal: 0,
+                    pendingTotal: 0
+                };
+
+                rows.forEach(item => {
+                    if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
+                        metrics.invTotal += parseFloat(item.INV) || 0;
+
+                        if (item.nr_req === 'REQ') {
+                            metrics.reqTotal++;
+                            // No Link: REQ rows with no ebay item id (dynamic link unavailable)
+                            if (!String(item.eBay_item_id || '').trim()) {
+                                metrics.withoutLinkTotal++;
+                            }
                         }
-
-                        // Loader functions
-                        function showLoader() {
-                            $('#data-loader').fadeIn();
+                        if (item.nr_req === 'NR') {
+                            metrics.nrlTotal++;
                         }
-
-                        function hideLoader() {
-                            $('#data-loader').fadeOut();
+                        if (item.nr_req !== 'NR') {
+                            if (item.listed === 'Listed') {
+                                metrics.listedTotal++;
+                            }
+                            if (item.listed === 'Pending' || !item.listed) {
+                                metrics.pendingTotal++;
+                            }
                         }
+                    }
+                });
 
-                        // Initialize everything
-                        initTable();
+                $('#req-total').text(metrics.reqTotal);
+                $('#nrl-total').text(metrics.nrlTotal);
+                $('#without-link-total').text(metrics.withoutLinkTotal);
+                $('#listed-total').text(metrics.listedTotal);
+                $('#pending-total').text(metrics.pendingTotal);
+                $('#rows-total').text(rows.length.toLocaleString());
+            } catch (error) {
+                console.error('Error in calculateTotals:', error);
+                resetMetricsToZero();
+            }
+        }
 
-                        // Handle combined filter change
-                        $('#combined-filter').on('change', function() {
-                            const selectedValue = $(this).val();
+        function resetMetricsToZero() {
+            $('#req-total').text('0');
+            $('#nrl-total').text('0');
+            $('#without-link-total').text('0');
+            $('#listed-total').text('0');
+            $('#pending-total').text('0');
+            $('#rows-total').text('0');
+        }
 
-                            if (selectedValue === 'all') {
-                                // Show all rows
-                                filteredData = [...tableData];
-                            } else if (selectedValue === 'inv') {
-                                // Show all rows with INV > 0
-                                filteredData = tableData.filter(item => parseFloat(item.INV) > 0);
-                            } else if (selectedValue === 'req-nrl') {
-                                // Show all REQ rows without buyer_link AND seller_link
-                                filteredData = tableData.filter(item => 
-                                    item.nr_req === 'REQ' && !item.buyer_link && !item.seller_link
-                                );
-                            } else if (selectedValue === 'pending') {
-                                // Show all rows with Listed = Pending
-                                filteredData = tableData.filter(item => item.listed === 'Pending');
-                            }
+        function applyListingFilters() {
+            if (!ebayListingTable) return;
 
-                            currentPage = 1;
-                            renderTable();
-                            calculateTotals();
-                        });
+            const dataType = $('#row-data-type').val();
+            const invFilter = $('#inv-filter').val();
+            const nrReqFilter = $('#nr-req-filter').val();
+            const linkFilter = $('#link-filter').val();
+            const listedFilter = $('#listed-filter').val();
 
-                        // Handle INV filter change
-                        $('#inv-filter').on('change', function() {
-                            currentInvFilter = $(this).val();
-                            applyAllFilters();
-                        });
+            ebayListingTable.setFilter(function (data) {
+                if (dataType === 'parent' && !data.is_parent) return false;
+                if (dataType === 'sku' && data.is_parent) return false;
 
-                        // Save Listed/Pending when dropdown changes (nr_req is handled separately)
-                        $(document).on('change', '.listed-dropdown', function() {
-                            const $row = $(this).closest('tr');
-                            const sku = $row.find('td').eq(1).text().trim();
-                            const listed = $(this).val();
-                            
-                            // Update color based on selection
-                            if (listed === 'Listed') {
-                                $(this).css('background-color', '#28a745').css('color', 'white');
-                            } else if (listed === 'Pending') {
-                                $(this).css('background-color', '#dc3545').css('color', 'white');
-                            } else if (listed === 'NRL') {
-                                $(this).css('background-color', '#6c757d').css('color', 'white');
-                            }
+                if (invFilter === 'inv-only') {
+                    if (!data.is_parent && !(parseFloat(data.INV) > 0)) return false;
+                }
 
-                            saveStatusToDB(sku, '', listed, '', '');
-                        });
+                if (nrReqFilter !== 'all' && data.nr_req !== nrReqFilter) return false;
 
-                        // Handle nr_req dropdown color change
-                        $(document).on('change', '.nr-select', function() {
-                            const $row = $(this).closest('tr');
-                            const sku = $row.find('td').eq(1).text().trim();
-                            const nr_req = $(this).val();
-                            const $listedDropdown = $row.find('.listed-dropdown');
-                            const bgColor = nr_req === 'NRL' ? '#dc3545' : '#28a745';
-                            const textColor = '#ffffff';
+                const hasItemLink = !!String(data.eBay_item_id || '').trim();
+                if (linkFilter === 'with-link' && !hasItemLink) return false;
+                if (linkFilter === 'without-link' && hasItemLink) return false;
 
-                            // Update select styling
-                            $(this).attr('data-value', nr_req);
-                            $(this).css('background-color', bgColor).css('color', textColor);
+                if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
-                            if (nr_req === 'NRL') {
-                                // Automatically set listed to NRL when NRL is selected
-                                $listedDropdown.val('NRL');
-                                $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
-                                
-                                // Update both nr_req and listed in the database
-                                saveStatusToDB(sku, nr_req, 'NRL', '', '');
-                                return; // Exit early since we're saving both values
-                            }
+                return true;
+            });
 
-                            // Save only nr_req when REQ is selected
-                            saveStatusToDB(sku, nr_req, '', '', '');
-                        });
+            calculateTotals();
+        }
 
+        function formatNrReq(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
 
-                        // Save links when submitting the modal
-                        $('#submitLinks').on('click', function(e) {
-                            e.preventDefault();
+            const value = data.nr_req || 'REQ';
+            if (value === 'NR') {
+                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From ebay2 NRL (EbayTwoDataView)">NRL</span>`;
+            }
+            return `<span class="listing-auto-badge listing-auto-badge--req" title="From ebay2 NRL (EbayTwoDataView)">REQ</span>`;
+        }
 
-                            const sku = $('#skuInput').val();
-                            const buyer_link = $('#buyerLink').val();
-                            const seller_link = $('#sellerLink').val();
-                            const nr_req = 'REQ'; // Default or get from row
-                            const listed = 'Pending'; // Default or get from row
+        function showBsModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            } else {
+                $(el).modal('show');
+            }
+        }
 
-                            saveStatusToDB(sku, nr_req, listed, buyer_link, seller_link);
+        function hideBsModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).hide();
+            } else {
+                $(el).modal('hide');
+            }
+        }
 
-                            $('#linkModal').modal('hide');
-                        });
+        function formatEbayItemLink(cell, type) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
 
-                        // Handle NR/REQ filter
-                        $('#nr-req-filter').on('change', function() {
-                            const selectedValue = $(this).val();
+            const itemId = String(data.eBay_item_id || '').trim();
+            if (!itemId) {
+                return `<span class="text-muted" title="No ebay item id">—</span>`;
+            }
 
-                            if (selectedValue === 'all') {
-                                // Show all rows
-                                filteredData = [...tableData];
-                            } else {
-                                // Filter rows based on NR/REQ value
-                                filteredData = tableData.filter(item => item.nr_req === selectedValue);
-                            }
+            const isBuyer = type === 'buyer';
+            const href = isBuyer
+                ? ('https://www.ebay.com/itm/' + encodeURIComponent(itemId))
+                : ('https://www.ebay.com/sh/lst/active?keyword=' + encodeURIComponent(itemId) + '&source=filterbar&action=search');
+            const label = isBuyer ? 'Buyer' : 'Seller';
+            const title = isBuyer
+                ? ('Buyer link — eBay Item ' + itemId)
+                : ('Seller active listings search — eBay Item ' + itemId);
 
-                            currentPage = 1;
-                            renderTable();
-                            calculateTotals();
-                        });
+            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
+                title="${escapeHtml(title)}" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt me-1"></i>${label}
+            </a>`;
+        }
 
-                        // Handle link edit icon click
-                        $(document).on('click', '.link-edit-icon', function() {
-                            const sku = $(this).data('sku');
+        function formatBuyerLink(cell) {
+            return formatEbayItemLink(cell, 'buyer');
+        }
 
-                            // Find the item in tableData by SKU
-                            const item = tableData.find(row => row.sku === sku);
+        function formatSellerLink(cell) {
+            return formatEbayItemLink(cell, 'seller');
+        }
 
-                            // Set the values in the modal inputs
-                            $('#skuInput').val(sku);
-                            $('#buyerLink').val(item && item.buyer_link ? item.buyer_link : '');
-                            $('#sellerLink').val(item && item.seller_link ? item.seller_link : '');
+        function formatListed(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
 
-                            $('#linkModal').modal('show');
-                        });
+            // Missing Listing logic (same as /ebay2-tabulator-view): has eBay item id = Listed
+            const itemId = String(data.eBay_item_id || '').trim();
+            if (itemId) {
+                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
+                    <i class="fas fa-check"></i>
+                </span>`;
+            }
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
+        }
 
-                        // Handle LINK filter
-                        $('#link-filter').on('change', function() {
-                            const selectedValue = $(this).val();
+        $(document).ready(function () {
+            showLoader();
 
-                            if (selectedValue === 'all') {
-                                // Show all rows
-                                filteredData = [...tableData];
-                            } else if (selectedValue === 'with-link') {
-                                // Filter rows with buyer or seller links
-                                filteredData = tableData.filter(item => item.buyer_link || item.seller_link);
-                            } else if (selectedValue === 'without-link') {
-                                // Filter rows without buyer or seller links
-                                filteredData = tableData.filter(item => !item.buyer_link && !item.seller_link);
-                            }
-
-                            currentPage = 1;
-                            renderTable();
-                            calculateTotals();
-                        });
-
-                        // Handle Listed filter
-                        $('#listed-filter').on('change', function() {
-                            const selectedValue = $(this).val();
-
-                            if (selectedValue === 'all') {
-                                filteredData = [...tableData];
-                            } else {
-                                filteredData = tableData.filter(item => item.listed === selectedValue);
-                            }
-
-                            currentPage = 1;
-                            renderTable();
-                            calculateTotals();
-                        });
-
-                        // AJAX function to save to DB
-                        function saveStatusToDB(sku, nr_req, listed, buyer_link, seller_link) {
-                            // Build data object with only non-empty values
-                            const data = {
-                                _token: $('meta[name="csrf-token"]').attr('content'),
-                                sku: sku
-                            };
-                            
-                            if (nr_req) data.nr_req = nr_req;
-                            if (listed) data.listed = listed;
-                            if (buyer_link) data.buyer_link = buyer_link;
-                            if (seller_link) data.seller_link = seller_link;
-                            
-                            $.ajax({
-                                url: '/listing_ebay/update-status',
-                                type: 'POST',
-                                data: data,
-                                success: function(response) {
-                                    showNotification('success', response.message || 'Status updated successfully');
-
-                                    // Update the tableData array with only provided values
-                                    const itemIndex = tableData.findIndex(item => item.sku === sku);
-                                    if (itemIndex !== -1) {
-                                        if (nr_req) tableData[itemIndex].nr_req = nr_req;
-                                        if (listed) tableData[itemIndex].listed = listed;
-                                        if (buyer_link) tableData[itemIndex].buyer_link = buyer_link;
-                                        if (seller_link) tableData[itemIndex].seller_link = seller_link;
-                                    }
-
-                                    // Re-render the table
-                                    renderTable();
-                                    calculateTotals();
-                                },
-                                error: function(xhr, status, error) {
-                                    console.error('Error saving status:', error);
-                                    showNotification('danger', 'Failed to save status. Please try again.');
-                                }
-                            });
+            ebayListingTable = new Tabulator('#ebayListing-table', {
+                ajaxURL: '/listing_ebay/view-data',
+                ajaxResponse: function (url, params, response) {
+                    const rows = Array.isArray(response) ? response : (response.data || []);
+                    allListingData = normalizeListingRows(rows);
+                    return allListingData;
+                },
+                height: '650px',
+                layout: 'fitColumns',
+                placeholder: 'No matching records found',
+                pagination: true,
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 250, 500],
+                paginationCounter: 'rows',
+                paginationButtonCount: 10,
+                selectableRows: true,
+                selectableRowsCheck: function (row) {
+                    return !row.getData().is_parent;
+                },
+                rowFormatter: function (row) {
+                    const el = row.getElement();
+                    if (row.getData().is_parent) {
+                        el.classList.add('parent-row');
+                    } else {
+                        el.classList.remove('parent-row');
+                    }
+                },
+                columns: [
+                    {
+                        formatter: 'rowSelection',
+                        titleFormatter: 'rowSelection',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 44,
+                        minWidth: 44,
+                        resizable: false,
+                        frozen: true,
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            const data = cell.getRow().getData();
+                            if (data.is_parent) return;
+                            cell.getRow().toggleSelect();
                         }
+                    },
+                    {
+                        title: 'Parent',
+                        field: 'parent',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 140,
+                        widthGrow: 1
+                    },
+                    {
+                        title: 'Sku',
+                        field: 'sku',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 160,
+                        widthGrow: 1.2
+                    },
+                    {
+                        title: 'INV',
+                        field: 'INV',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 90,
+                        formatter: function (cell) {
+                            const v = parseFloat(cell.getValue()) || 0;
+                            return v.toLocaleString();
+                        }
+                    },
+                    {
+                        title: 'NRL/REQ',
+                        field: 'nr_req',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 110,
+                        headerTooltip: 'Automatic from EbayTwoDataView NRL (same source as /ebay2-tabulator-view NRL column)',
+                        formatter: formatNrReq
+                    },
+                    {
+                        title: 'Buyer Link',
+                        field: 'eBay_item_id',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        minWidth: 100,
+                        widthGrow: 1,
+                        headerTooltip: 'Dynamic buyer link: https://www.ebay.com/itm/{item_id}',
+                        formatter: formatBuyerLink
+                    },
+                    {
+                        title: 'Seller Link',
+                        field: 'seller_item_link',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        minWidth: 100,
+                        widthGrow: 1,
+                        headerTooltip: 'Dynamic seller link: https://www.ebay.com/sh/lst/active?keyword={item_id}&source=filterbar&action=search',
+                        formatter: formatSellerLink
+                    },
+                    {
+                        title: 'Missing L',
+                        field: 'listed',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 130,
+                        headerTooltip: 'Automatic from ebay_2_metrics.item_id (same Missing Listing logic as /ebay2-tabulator-view)',
+                        formatter: formatListed
+                    }
+                ]
+            });
 
-                        $('#listed-filter').on('change', function() {
-                            filterStates.listed = $(this).val();
-                            applyAllFilters();
-                        });
-                    });
+            ebayListingTable.on('dataProcessed', function () {
+                hideLoader();
+                applyListingFilters();
+            });
+            ebayListingTable.on('dataFiltered', function () {
+                calculateTotals();
+            });
+            ebayListingTable.on('dataLoadError', function () {
+                hideLoader();
+                showNotification('danger', 'Failed to load data. Please try again.');
+            });
+
+            $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
+
+            $('#import-btn').on('click', function () {
+                showBsModal('importModal');
+            });
+
+            $(document).on('click', '#confirmImportBtn', function () {
+                const file = $('#importFile')[0].files[0];
+                if (!file) {
+                    alert('Please select a file to import.');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                showLoader();
+                $.ajax({
+                    url: "{{ route('listing_ebay.import') }}",
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    success: function (response) {
+                        hideBsModal('importModal');
+                        $('#importFile').val('');
+                        let message = 'File imported successfully!';
+                        if (response.success) {
+                            message = response.success;
+                            if (response.processed !== undefined) {
+                                message += ` (Processed: ${response.processed}`;
+                                if (response.skipped !== undefined) message += `, Skipped: ${response.skipped}`;
+                                if (response.errors !== undefined && response.errors > 0) message += `, Errors: ${response.errors}`;
+                                message += ')';
+                            }
+                        }
+                        showNotification('success', message);
+                        ebayListingTable.setData('/listing_ebay/view-data');
+                    },
+                    error: function (xhr) {
+                        hideLoader();
+                        let errorMessage = 'Import failed';
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMessage = xhr.responseJSON.error;
+                        }
+                        showNotification('danger', errorMessage);
+                    }
+                });
+            });
+
+        });
     </script>
 @endsection

@@ -28,6 +28,15 @@
             color: #adb5bd;
             font-size: 12px;
         }
+        .ml-channel-listing-link {
+            color: inherit;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .ml-channel-listing-link:hover {
+            color: #0d6efd;
+            text-decoration: underline;
+        }
         .badge-ml-stat { font-size: 0.9rem; padding: 0.45rem 0.7rem; }
         .badge-ml-chart { cursor: pointer; font-weight: bold; }
         .badge-ml-history { cursor: pointer; }
@@ -55,15 +64,10 @@
             background: #0d6efd;
             color: #fff;
         }
-        .ml-seller-portal-edit {
-            color: #adb5bd;
-            cursor: pointer;
-        }
-        .ml-seller-portal-edit:hover { color: #495057; }
         .ml-seller-portal-empty {
             color: #adb5bd;
             font-style: italic;
-            font-size: 0.85rem;
+            font-size: 0.75rem;
         }
         .tabulator .tabulator-cell.tabulator-editing { padding: 2px 4px; }
 
@@ -683,6 +687,78 @@
                     title: "Channel",
                     field: "channel",
                     minWidth: 220,
+                    formatter: function(cell) {
+                        const name = (cell.getValue() || '').trim();
+                        const url = (cell.getRow().getData().listing_url || '').trim();
+                        if (!name) return '';
+                        const safeName = escapeHtml(name);
+                        if (!url) return safeName;
+                        const safeUrl = escapeHtml(url);
+                        return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="ml-channel-listing-link" title="Open listing page">${safeName}</a>`;
+                    },
+                },
+                {
+                    title: "SKU",
+                    field: "sku",
+                    width: 90,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Total non-PARENT SKUs from CP Master",
+                    formatter: function(cell) {
+                        const v = Number(cell.getValue() || 0);
+                        return `<span style="color:#0d6efd;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                    },
+                },
+                {
+                    title: "0 Inv",
+                    field: "zero_inv",
+                    width: 90,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "SKUs with 0 / missing Shopify INV from CP Master",
+                    formatter: function(cell) {
+                        const v = Number(cell.getValue() || 0);
+                        return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                    },
+                },
+                {
+                    title: "REQ",
+                    field: "req",
+                    width: 100,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "REQ count from the channel listing page",
+                    formatter: function(cell) {
+                        const v = Number(cell.getValue() || 0);
+                        return `<span style="color:#198754;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                    },
+                    bottomCalc: "sum",
+                },
+                {
+                    title: "NRL",
+                    field: "nrl",
+                    width: 100,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "NRL count from the channel listing page",
+                    formatter: function(cell) {
+                        const v = Number(cell.getValue() || 0);
+                        return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                    },
+                    bottomCalc: "sum",
+                },
+                {
+                    title: "Listed",
+                    field: "listed",
+                    width: 110,
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Listed count from the channel listing page",
+                    formatter: function(cell) {
+                        const v = Number(cell.getValue() || 0);
+                        return `<span style="color:#0d6efd;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
+                    },
+                    bottomCalc: "sum",
                 },
                 {
                     title: "Missing Listing",
@@ -711,24 +787,25 @@
                 {
                     title: "Seller Portal",
                     field: "seller_portal",
-                    width: 140,
+                    width: 90,
+                    maxWidth: 90,
                     hozAlign: "center",
                     editor: "input",
                     headerSort: false,
+                    headerTooltip: "Double-click cell to edit",
                     cellDblClick: function(_e, cell) {
                         cell.edit();
                     },
                     formatter: function(cell) {
                         const v = (cell.getValue() || '').trim();
                         if (!v) {
-                            return '<div class="ml-seller-portal-cell"><span class="ml-seller-portal-empty">Click to add</span></div>';
+                            return '<div class="ml-seller-portal-cell"><span class="ml-seller-portal-empty" title="Double-click to add">Add</span></div>';
                         }
                         const safe = escapeHtml(v);
                         return `<div class="ml-seller-portal-cell">
                                     <a href="${safe}" target="_blank" rel="noopener noreferrer" class="ml-seller-portal-link" title="${safe}" onclick="event.stopPropagation();">
                                         <i class="fa fa-link"></i>
                                     </a>
-                                    <i class="fa fa-pen ml-seller-portal-edit" title="Double-click to edit"></i>
                                 </div>`;
                     },
                     cellEdited: function(cell) {

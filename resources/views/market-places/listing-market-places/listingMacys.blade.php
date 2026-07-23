@@ -1,1362 +1,589 @@
-@extends('layouts.vertical', ['title' => 'Listing Macy\'s', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Macys', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
-        /* ========== TABLE STRUCTURE ========== */
-        .table-container {
+        /* ========== TABLE SHELL ========== */
+        #macys-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
-            position: relative;
-            max-height: 600px;
-        }
-
-        .custom-resizable-table {
             width: 100%;
-            border-collapse: collapse;
-            margin: 0;
         }
 
-        .custom-resizable-table th,
-        .custom-resizable-table td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-            position: relative;
-            white-space: nowrap;
-            overflow: visible !important;
-        }
-
-        .custom-resizable-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            user-select: none;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        /* ========== RESIZABLE COLUMNS ========== */
-        .resize-handle {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 5px;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.1);
-            cursor: col-resize;
-            z-index: 100;
-        }
-
-        .resize-handle:hover,
-        .resize-handle.resizing {
-            background: rgba(0, 0, 0, 0.3);
-        }
-
-        /* ========== TOOLTIP SYSTEM ========== */
-        .tooltip-container {
-            position: relative;
-            display: inline-block;
-            margin-left: 8px;
-        }
-
-        .tooltip-icon {
-            cursor: pointer;
-            transform: translateY(1px);
-        }
-
-        .tooltip {
-            z-index: 9999 !important;
-            pointer-events: none;
-        }
-
-        .tooltip-inner {
-            transform: translate(-5px, -5px) !important;
-            max-width: 300px;
-            padding: 6px 10px;
+        #macys-listing-wrap .tabulator {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
             font-size: 13px;
+            background: #fff;
+            width: 100% !important;
         }
 
-        .bs-tooltip-top .tooltip-arrow {
-            bottom: 0;
+        .card-body:has(#macys-listing-toolbar) {
+            width: 100%;
         }
 
-        .bs-tooltip-top .tooltip-arrow::before {
-            transform: translateX(5px) !important;
-            border-top-color: var(--bs-tooltip-bg);
+        #macys-listing-wrap .tabulator .tabulator-tableholder {
+            background: #fff;
         }
 
-        /* ========== COLOR CODED CELLS ========== */
-        .dil-percent-cell {
-            padding: 8px 4px !important;
+        /* ========== HEADER ========== */
+        #macys-listing-wrap .tabulator .tabulator-header {
+            background: #00d5d5;
+            border-bottom: 1px solid #ffffff;
         }
 
-        .dil-percent-value {
-            display: inline-block;
+        #macys-listing-wrap .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            white-space: normal !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            white-space: normal !important;
+            height: auto !important;
+            min-height: 0 !important;
+            display: block;
+            align-items: unset;
+            justify-content: unset;
+            font-size: 12.5px;
+            font-weight: 700;
+            line-height: 1.25;
+            padding: 5px 2px;
+            text-align: center;
+            color: #000 !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            height: auto !important;
+            min-height: 34px;
+            padding: 0;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col {
+            height: auto !important;
+            min-height: 34px;
+            vertical-align: middle;
+            background: #00d5d5 !important;
+            border-right: 1px solid #ffffff;
+            color: #000 !important;
+            font-weight: bold;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+
+        /* Header filters */
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
             padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
+            font-size: 12px;
+            color: #475569;
+            background: #fff;
+            box-shadow: none;
         }
 
-        .dil-percent-value.red {
-            background-color: #dc3545;
-            color: white;
+        #macys-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+            outline: none;
+            border-color: #4361ee;
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        .dil-percent-value.blue {
-            background-color: #3591dc;
-            color: white;
+        /* ========== ROWS / CELLS ========== */
+        #macys-listing-wrap .tabulator .tabulator-row {
+            min-height: 36px;
+            border-bottom: 1px solid #f1f5f9;
         }
 
-        .dil-percent-value.yellow {
-            background-color: #ffc107;
-            color: #212529;
+        #macys-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+            padding: 5px 6px !important;
+            border-right: 1px solid #f1f5f9;
+            vertical-align: middle;
         }
 
-        .dil-percent-value.green {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .dil-percent-value.pink {
-            background-color: #e83e8c;
-            color: white;
-        }
-
-        .dil-percent-value.gray {
-            background-color: #6c757d;
-            color: white;
-        }
-
-        /* ========== TABLE CONTROLS ========== */
-        .table-controls {
-            position: sticky;
-            bottom: 0;
-            background: white;
-            padding: 10px 0;
-            border-top: 1px solid #ddd;
-        }
-
-        /* ========== SORTING ========== */
-        .sortable {
+        #macys-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #macys-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
             cursor: pointer;
+            accent-color: #4361ee;
+            margin: 0;
+            vertical-align: middle;
         }
 
-        .sortable:hover {
-            background-color: #f1f1f1;
+        #macys-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+            display: none;
         }
 
-        .sort-arrow {
-            display: inline-block;
-            margin-left: 5px;
+        #macys-listing-wrap .tabulator .tabulator-row:hover {
+            background-color: #f8fafc !important;
         }
 
-        /* ========== PARENT ROWS ========== */
-        .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
-            /* Light blue background */
-            font-weight: bold;
-            /* Optional: Make the text bold */
+        #macys-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+            background-color: #fcfcfd;
         }
 
-        /* ========== SKU TOOLTIPS ========== */
-        .sku-tooltip-container {
-            position: relative;
-            display: inline-block;
+        #macys-listing-wrap .tabulator-row.parent-row,
+        #macys-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+            background-color: rgba(69, 233, 255, 0.15) !important;
+            font-weight: 700 !important;
+            color: #0f172a;
         }
 
-        .sku-tooltip {
-            visibility: hidden;
-            width: auto;
-            min-width: 120px;
-            background-color: #fff;
-            color: #333;
-            text-align: left;
+        #macys-listing-wrap .tabulator-row.parent-row:hover,
+        #macys-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+            background-color: rgba(69, 233, 255, 0.28) !important;
+        }
+
+        /* ========== FOOTER / PAGINATION ========== */
+        #macys-listing-wrap .tabulator .tabulator-footer {
+            background: #f8fafc !important;
+            border-top: 1px solid #e2e8f0 !important;
+            padding: 10px 16px !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+            margin-right: 6px;
+            font-size: 12px;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 13px;
+            color: #475569;
+            background: #fff;
+            min-height: 36px;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            min-width: 36px !important;
+            height: 36px !important;
+            line-height: 36px !important;
+            padding: 0 10px !important;
+            border-radius: 8px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #fff !important;
+            color: #475569 !important;
+            cursor: pointer;
+            transition: all 0.15s ease !important;
+            text-align: center !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+            background: #f1f5f9 !important;
+            border-color: #cbd5e1 !important;
+            color: #1e293b !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+            background: #4361ee !important;
+            border-color: #4361ee !important;
+            color: #fff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+            opacity: 0.4 !important;
+            cursor: not-allowed !important;
+        }
+
+        #macys-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+            margin: 0 0.5rem;
+            font-size: 12px;
+            color: #334155;
+        }
+
+        /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
+        #macys-listing-toolbar {
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #macys-listing-toolbar .macys-listing-toolbar-row {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+
+        #macys-listing-toolbar .listing-stat-badges {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: stretch;
+            gap: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        #macys-listing-toolbar .listing-stat-badge {
+            flex: 0 0 auto;
+            justify-content: center;
+            margin: 0 !important;
+            border-radius: 0;
+        }
+
+        #macys-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+            border-radius: 8px 0 0 8px;
+        }
+
+        #macys-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+            border-radius: 0 8px 8px 0;
+        }
+
+        #macys-listing-toolbar .filter-select {
+            flex: 0 0 auto;
+            min-width: 0;
+            width: 92px !important;
+            max-width: 92px;
+            border-radius: 5px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 16px 2px 4px;
+            height: 30px;
+            line-height: 1.2;
+        }
+
+        #macys-listing-toolbar .filter-select:focus {
+            outline: none;
+            border-color: #4361ee;
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
+        }
+
+        #macys-listing-toolbar .toolbar-actions {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            margin-left: 0;
+        }
+
+        #macys-listing-toolbar .listing-io-btn {
+            border-radius: 5px;
+            font-weight: 600;
+            font-size: 14px;
+            width: 32px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        #macys-listing-toolbar .listing-io-btn::after {
+            display: none;
+        }
+
+        #macys-listing-toolbar .listing-io-menu {
+            min-width: 42px;
+            padding: 4px;
+        }
+
+        #macys-listing-toolbar .listing-io-menu .dropdown-item {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 32px;
+            padding: 0;
             border-radius: 4px;
-            padding: 8px;
-            position: absolute;
-            z-index: 1001;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            opacity: 0;
-            transition: opacity 0.3s;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            border: 1px solid #ddd;
+            font-size: 14px;
+        }
+
+        #macys-listing-toolbar .listing-io-menu .dropdown-item:hover {
+            background: #f1f5f9;
+        }
+
+        /* ========== STAT BADGES ========== */
+        .listing-stat-badge {
+            display: inline-flex;
+            align-items: center;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 8px 14px;
+            border-radius: 8px;
             white-space: nowrap;
+            line-height: 1.25;
+            letter-spacing: 0.2px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        .sku-tooltip-container:hover .sku-tooltip {
-            visibility: visible;
-            opacity: 1;
+        .listing-stat-badge > span {
+            margin-left: 4px;
+            font-size: 16px;
+            font-weight: 800;
         }
 
-        .sku-link {
-            padding: 4px 0;
-            white-space: nowrap;
+        .listing-stat-badge--req { background: #22c55e; color: #052e16; }
+        .listing-stat-badge--nrl { background: #ef4444; color: #fff; }
+        .listing-stat-badge--nolink { background: #f59e0b; color: #1c1917; }
+        .listing-stat-badge--listed { background: #0ea5e9; color: #fff; }
+        .listing-stat-badge--pending { background: #dc3545; color: #fff; }
+        .listing-stat-badge--rows { background: #334155; color: #fff; }
+
+        /* ========== DROPDOWNS ========== */
+        #macys-listing-wrap select.nr-req-dropdown,
+        #macys-listing-wrap select.listed-dropdown {
+            border: 1px solid transparent;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 13px;
+            padding: 4px 6px;
+            cursor: pointer;
+            appearance: auto;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        .sku-link a {
+        #macys-listing-wrap select.nr-req-dropdown:focus,
+        #macys-listing-wrap select.listed-dropdown:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
+        }
+
+        #macys-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #macys-listing-wrap select.nr-req-dropdown option.req-option {
+            background-color: #28a745;
+            color: #fff;
+        }
+
+        #macys-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #macys-listing-wrap select.nr-req-dropdown option.nr-option {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        #macys-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #macys-listing-wrap select.listed-dropdown option.listed-option {
+            background-color: #28a745;
+            color: #fff;
+        }
+
+        #macys-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #macys-listing-wrap select.listed-dropdown option.pending-option {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        .nrl-badge-btn,
+        .listing-auto-badge {
+            display: inline-block;
+            color: #fff;
+            padding: 6px 10px;
+            border: none;
+            cursor: default;
+            font-size: 13px;
+            font-weight: 700;
+            text-align: center;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+            min-width: 72px;
+        }
+
+        .listing-auto-badge--req,
+        .listing-auto-badge--listed { background-color: #28a745; }
+        .listing-auto-badge--nrl,
+        .listing-auto-badge--not-listed { background-color: #dc3545; }
+
+        .listing-listed-tick {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background-color: #28a745;
+            color: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+
+        .listing-listed-tick > i {
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        /* ========== LINK CELL ========== */
+        #macys-listing-wrap a.listing-item-link {
+            font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        .sku-link a:hover {
+        #macys-listing-wrap a.listing-item-link:hover {
+            color: #1d4ed8 !important;
             text-decoration: underline;
-        }
-
-        /* ========== DROPDOWNS ========== */
-        .custom-dropdown {
-            position: relative;
-            display: inline-block;
-        }
-
-        .custom-dropdown-menu {
-            display: none;
-            position: absolute;
-            background-color: white;
-            min-width: 200px;
-            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        .custom-dropdown-menu.show {
-            display: block;
-        }
-
-        .column-toggle-item {
-            padding: 8px 16px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-        }
-
-        .column-toggle-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .column-toggle-checkbox {
-            margin-right: 8px;
         }
 
         /* ========== LOADER ========== */
         .card-loader-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.8);
-            z-index: 100;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.78);
+            z-index: 20;
             display: flex;
-            justify-content: center;
             align-items: center;
-            border-radius: 0.25rem;
+            justify-content: center;
+            border-radius: 0.375rem;
         }
 
         .loader-content {
             text-align: center;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            padding: 16px 20px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
         }
 
         .loader-text {
-            margin-top: 15px;
-            font-weight: 500;
-            color: #333;
-        }
-
-        .spinner-border {
-            width: 3rem;
-            height: 3rem;
-        }
-
-        /* ========== CARD BODY ========== */
-        .card-body {
-            position: relative;
-        }
-
-        /* ========== SEARCH DROPDOWNS ========== */
-        .dropdown-search-container {
-            position: relative;
-        }
-
-        .dropdown-search-results {
-            position: absolute;
-            width: 100%;
-            max-height: 300px;
-            overflow-y: auto;
-            z-index: 1000;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: none;
-        }
-
-        .dropdown-search-item {
-            padding: 8px 12px;
-            cursor: pointer;
-        }
-
-        .dropdown-search-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .no-results {
-            color: #6c757d;
-            font-style: italic;
-        }
-
-        /* ========== STATUS INDICATORS ========== */
-        .status-circle {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 6px;
-            vertical-align: middle;
-            border: 1px solid #fff;
-        }
-
-        .status-circle.default {
-            background-color: #6c757d;
-        }
-
-        .status-circle.red {
-            background-color: #dc3545;
-        }
-
-        .status-circle.yellow {
-            background-color: #ffc107;
-        }
-
-        .status-circle.blue {
-            background-color: #007bff;
-        }
-
-        .status-circle.green {
-            background-color: #28a745;
-        }
-
-        .status-circle.pink {
-            background-color: #e83e8c;
-        }
-
-        /* ========== FILTER CONTROLS ========== */
-        .d-flex.flex-wrap.gap-2 {
-            gap: 0.5rem !important;
-            margin-bottom: 1rem;
-        }
-
-        .btn-sm i.fas {
-            margin-right: 5px;
-        }
-
-        .manual-dropdown-container {
-            position: relative;
-            display: inline-block;
-        }
-
-        .manual-dropdown-container .dropdown-menu {
-            display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            z-index: 1000;
-            min-width: 160px;
-            padding: 5px 0;
-            margin: 2px 0 0;
-            background-color: #fff;
-            border: 1px solid rgba(0, 0, 0, .15);
-            border-radius: 4px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, .175);
-        }
-
-        .manual-dropdown-container.show .dropdown-menu {
-            display: block;
-        }
-
-        .dropdown-item {
-            display: block;
-            width: 100%;
-            padding: 8px 16px;
-            clear: both;
-            font-weight: 400;
-            color: #212529;
-            text-align: inherit;
-            white-space: nowrap;
-            background-color: transparent;
-            border: 0;
-        }
-
-        .dropdown-item:hover {
-            color: #16181b;
-            text-decoration: none;
-            background-color: #f8f9fa;
-        }
-
-        /* ========== MODAL SYSTEM ========== */
-        .custom-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1050;
-            overflow: hidden;
-            outline: 0;
-            pointer-events: none;
-        }
-
-        .custom-modal.show {
-            display: block;
-        }
-
-        .custom-modal-dialog {
-            position: fixed;
-            width: auto;
-            min-width: 850px;
-            max-width: 90vw;
-            margin: 1.75rem auto;
-            pointer-events: auto;
-            z-index: 1051;
-            transition: transform 0.3s ease-out;
-            background-color: white;
-            border-radius: 0.3rem;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-        }
-
-        .custom-modal-content {
-            pointer-events: auto;
-        }
-
-        .custom-modal-header {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            padding: 1rem;
-            border-bottom: 1px solid #dee2e6;
-            border-top-left-radius: 0.3rem;
-            border-top-right-radius: 0.3rem;
-            background-color: #f8f9fa;
-        }
-
-        .custom-modal-title {
-            margin-bottom: 0;
-            line-height: 1.5;
-            font-size: 1.25rem;
-        }
-
-        .custom-modal-close {
-            padding: 0;
-            background-color: transparent;
-            border: 0;
-            font-size: 1.5rem;
-            font-weight: 700;
-            line-height: 1;
-            color: #000;
-            text-shadow: 0 1px 0 #fff;
-            opacity: 0.5;
-            cursor: pointer;
-        }
-
-        .custom-modal-close:hover {
-            opacity: 0.75;
-        }
-
-        .custom-modal-body {
-            position: relative;
-            flex: 1 1 auto;
-            padding: 1rem;
-            overflow-y: auto;
-            max-height: 70vh;
-        }
-
-        /* Multiple Modal Stacking */
-        .custom-modal:nth-child(1) .custom-modal-dialog {
-            top: 20px;
-            right: 20px;
-            z-index: 1051;
-        }
-
-        .custom-modal:nth-child(2) .custom-modal-dialog {
-            top: 40px;
-            right: 40px;
-            z-index: 1052;
-        }
-
-        .custom-modal:nth-child(3) .custom-modal-dialog {
-            top: 60px;
-            right: 60px;
-            z-index: 1053;
-        }
-
-        .custom-modal:nth-child(4) .custom-modal-dialog {
-            top: 80px;
-            right: 80px;
-            z-index: 1054;
-        }
-
-        .custom-modal:nth-child(5) .custom-modal-dialog {
-            top: 100px;
-            right: 100px;
-            z-index: 1055;
-        }
-
-        /* For more than 5 modals - dynamic calculation */
-        .custom-modal:nth-child(n+6) .custom-modal-dialog {
-            top: calc(100px + (var(--modal-offset) * 20px));
-            right: calc(100px + (var(--modal-offset) * 20px));
-            z-index: calc(1055 + var(--modal-offset));
-        }
-
-        /* Animations */
-        @keyframes modalSlideIn {
-            from {
-                transform: translateX(30px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        @keyframes modalFadeIn {
-            from {
-                opacity: 0;
-            }
-
-            to {
-                opacity: 1;
-            }
-        }
-
-        .custom-modal.show .custom-modal-dialog {
-            animation: modalSlideIn 0.3s ease-out;
-        }
-
-        .custom-modal-backdrop.show {
-            display: block;
-            animation: modalFadeIn 0.15s linear;
-        }
-
-        /* Body scroll lock */
-        body.custom-modal-open {
-            overflow: hidden;
-            padding-right: 15px;
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .custom-modal-dialog {
-                min-width: 95vw;
-                max-width: 95vw;
-                margin: 0.5rem auto;
-            }
-
-            .custom-modal:nth-child(1) .custom-modal-dialog,
-            .custom-modal:nth-child(2) .custom-modal-dialog,
-            .custom-modal:nth-child(3) .custom-modal-dialog,
-            .custom-modal:nth-child(4) .custom-modal-dialog,
-            .custom-modal:nth-child(5) .custom-modal-dialog,
-            .custom-modal:nth-child(n+6) .custom-modal-dialog {
-                top: 10px;
-                right: 10px;
-                left: 10px;
-                margin: 0 auto;
-            }
-        }
-
-        /* Status color overlays */
-        .custom-modal .card.card-bg-red {
-            background: linear-gradient(135deg, rgba(245, 0, 20, 0.69), rgba(255, 255, 255, 0.85));
-            border-color: rgba(220, 53, 70, 0.72);
-        }
-
-        .custom-modal .card.card-bg-green {
-            background: linear-gradient(135deg, rgba(3, 255, 62, 0.424), rgba(255, 255, 255, 0.85));
-            border-color: rgba(40, 167, 69, 0.3);
-        }
-
-        .custom-modal .card.card-bg-yellow {
-            background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(255, 193, 7, 0.3);
-        }
-
-        .custom-modal .card.card-bg-blue {
-            background: linear-gradient(135deg, rgba(0, 123, 255, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(0, 123, 255, 0.3);
-        }
-
-        .custom-modal .card.card-bg-pink {
-            background: linear-gradient(135deg, rgba(232, 62, 140, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(232, 62, 141, 0.424);
-        }
-
-        .custom-modal .card.card-bg-gray {
-            background: linear-gradient(135deg, rgba(108, 117, 125, 0.15), rgba(255, 255, 255, 0.85));
-            border-color: rgba(108, 117, 125, 0.3);
-        }
-
-        @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .custom-modal.show .custom-modal-dialog {
-            animation: slideInRight 0.3s ease-out;
-        }
-
-        /* Close All button */
-        #close-all-modals {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1060;
-        }
-
-        .custom-modal-dialog {
-            position: fixed !important;
-            top: 20px;
-            right: 20px;
-            margin: 0 !important;
-            transform: none !important;
-            cursor: move;
-        }
-
-        .custom-modal-header {
-            cursor: move;
-        }
-
-
-        /* ========== PLAY/PAUSE NAVIGATION BUTTONS ========== */
-        .time-navigation-group {
-            margin-left: 10px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            border-radius: 50px;
-            overflow: hidden;
-            padding: 2px;
-            background: #f8f9fa;
-            display: inline-flex;
-            align-items: center;
-        }
-
-        .time-navigation-group button {
-            padding: 0;
-            border-radius: 50% !important;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 3px;
-            transition: all 0.2s ease;
-            border: 1px solid #dee2e6;
-            background: white;
-            cursor: pointer;
-        }
-
-        .time-navigation-group button:hover {
-            background-color: #f1f3f5 !important;
-            transform: scale(1.05);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .time-navigation-group button:active {
-            transform: scale(0.95);
-        }
-
-        .time-navigation-group button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-
-        .time-navigation-group button i {
-            font-size: 1.1rem;
-            transition: transform 0.2s ease;
-        }
-
-        /* Play button */
-        #play-auto {
-            color: #28a745;
-        }
-
-        #play-auto:hover {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-
-        /* Pause button */
-        #play-pause {
-            color: #ffc107;
-            display: none;
-        }
-
-        #play-pause:hover {
-            background-color: #ffc107 !important;
-            color: white !important;
-        }
-
-        /* Navigation buttons */
-        #play-backward,
-        #play-forward {
-            color: #007bff;
-        }
-
-        #play-backward:hover,
-        #play-forward:hover {
-            background-color: #007bff !important;
-            color: white !important;
-        }
-
-        /* Button state colors - must come after hover styles */
-        #play-auto.btn-success,
-        #play-pause.btn-success {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-
-        #play-auto.btn-warning,
-        #play-pause.btn-warning {
-            background-color: #ffc107 !important;
-            color: #212529 !important;
-        }
-
-        #play-auto.btn-danger,
-        #play-pause.btn-danger {
-            background-color: #dc3545 !important;
-            color: white !important;
-        }
-
-        #play-auto.btn-light,
-        #play-pause.btn-light {
-            background-color: #f8f9fa !important;
-            color: #212529 !important;
-        }
-
-        /* Ensure hover doesn't override state colors */
-        #play-auto.btn-success:hover,
-        #play-pause.btn-success:hover {
-            background-color: #28a745 !important;
-            color: white !important;
-        }
-
-        #play-auto.btn-warning:hover,
-        #play-pause.btn-warning:hover {
-            background-color: #ffc107 !important;
-            color: #212529 !important;
-        }
-
-        #play-auto.btn-danger:hover,
-        #play-pause.btn-danger:hover {
-            background-color: #dc3545 !important;
-            color: white !important;
-        }
-
-        /* Active state styling */
-        .time-navigation-group button:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .time-navigation-group button {
-                width: 36px;
-                height: 36px;
-            }
-
-            .time-navigation-group button i {
-                font-size: 1rem;
-            }
-        }
-
-        /* Add to your CSS file or style section */
-        .hide-column {
-            display: none !important;
-        }
-
-        /*popup modal style*/
-
-        .choose-file {
-            background-color: #ff6b2c;
-            color: white;
-            padding: 10px;
-            border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            width: 100%;
-            display: block;
-            transition: background-color 0.3s;
-        }
-
-        .choose-file:hover {
-            background-color: #e65c1e;
-        }
-
-        .modal-content {
-            border-radius: 16px;
-            padding: 25px;
-            box-shadow: 0 0 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-label {
+            margin-top: 10px;
             font-weight: 600;
+            color: #475569;
         }
 
-        .form-section {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
+        /* ========== PLACEHOLDER ========== */
+        #macys-listing-wrap .tabulator-placeholder {
+            color: #64748b;
+            font-weight: 600;
+            padding: 24px;
         }
 
-        option[value="Todo"] {
-            background-color: #2196f3;
-        }
-
-        option[value="Not Started"] {
-            background-color: #ffff00;
-            color: #000;
-        }
-
-        option[value="Working"] {
-            background-color: #ff00ff;
-        }
-
-        option[value="In Progress"] {
-            background-color: #f1c40f;
-            color: #000;
-        }
-
-        option[value="Monitor"] {
-            background-color: #5c6bc0;
-        }
-
-        option[value="Done"] {
-            background-color: #00ff00;
-            color: #000;
-        }
-
-        option[value="Need Help"] {
-            background-color: #e91e63;
-        }
-
-        option[value="Review"] {
-            background-color: #ffffff;
-            color: #000;
-        }
-
-        option[value="Need Approval"] {
-            background-color: #d4ff00;
-            color: #000;
-        }
-
-        option[value="Dependent"] {
-            background-color: #ff9999;
-        }
-
-        option[value="Approved"] {
-            background-color: #ffeb3b;
-            color: #000;
-        }
-
-        option[value="Hold"] {
-            background-color: #ffffff;
-            color: #000;
-        }
-
-        option[value="Rework"] {
-            background-color: #673ab7;
-        }
-
-        option[value="Urgent"] {
-            background-color: #f44336;
-        }
-
-        option[value="Q-Task"] {
-            background-color: #ff00ff;
-        }
-
-        /*only for scouth view*/
-        /* Add this to your CSS */
-        /* Scouth Products View Specific Styling */
-        div.custom-modal-content h5.custom-modal-title:contains("Scouth products view Details")+.custom-modal-body {
-            padding: 15px;
-            overflow: auto;
-        }
-
-        .scouth-header {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .scouth-header-item {
-            font-weight: bold;
-            padding: 8px 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-        }
-
-        .scouth-table-container {
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        }
-
-        .scouth-table-header {
-            display: flex;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .scouth-table-row {
-            display: flex;
-            border-bottom: 1px solid #dee2e6;
-            background: white;
-        }
-
-        .scouth-table-row:last-child {
-            border-bottom: none;
-        }
-
-        .scouth-table-cell {
-            padding: 10px 12px;
-            min-width: 120px;
-            flex: 1;
-            border-right: 1px solid #dee2e6;
-            word-break: break-word;
-        }
-
-        .scouth-table-cell:last-child {
-            border-right: none;
-        }
-
-        .scouth-table-header .scouth-table-cell {
-            font-weight: bold;
-            color: #495057;
-        }
-
-        .scouth-table-row:hover {
-            background-color: #f1f1f1;
-        }
-
-        .image-thumbnail {
-            max-width: 100px;
-            max-height: 100px;
-            display: block;
-            margin-top: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        .scouth-product-value a {
-            color: #0d6efd;
-            text-decoration: none;
-        }
-
-        .scouth-product-value a:hover {
-            text-decoration: underline;
-        }
-
-        /* Highlight the selected dropdown option */
-        .dropdown-item.active {
-            background-color: #e9ecef;
-            color: #495057;
-            font-weight: bold;
-        }
-
-        /* Style for the filter selection text in buttons */
-        .filter-selection {
-            font-weight: bold;
-            color: #0d6efd;
-            margin-left: 4px;
-        }
-
-        /* Make dropdown buttons show their state */
-        .btn-light.active-filter {
-            background-color: #e2e6ea;
-            border-color: #dae0e5;
-        }
-
-        .nr-req-dropdown {
-            width: 100%;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        .nr-req-dropdown .req-option {
-            background-color: #28a745;
-            /* Green */
-            color: white;
-        }
-
-        .nr-req-dropdown .nr-option {
-            background-color: #dc3545;
-            /* Red */
-            color: white;
-        }
-
-        .nr-req-dropdown option {
-            padding: 4px 8px;
-            font-weight: bold;
-        }
-
-        .listed-dropdown {
-            width: 100%;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        .listed-dropdown option {
-            padding: 4px 8px;
-            font-weight: bold;
-        }
-
-        .listed-dropdown .listed-option {
-            background-color: #28a745;
-            /* Green */
-            color: white;
-        }
-
-        .listed-dropdown .pending-option {
-            background-color: #dc3545;
-            /* Red */
-            color: white;
-        }
-
-        .rl-nrl-dropdown {
-            width: 100%;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        .rl-nrl-dropdown .rl-option {
-            background-color: #28a745;
-            /* Green */
-            color: white;
-        }
-
-        .rl-nrl-dropdown .nrl-option {
-            background-color: #dc3545;
-            /* Red */
-            color: white;
-        }
-
-        .rl-nrl-dropdown option {
-            padding: 4px 8px;
-            font-weight: bold;
-        }
-
-        .live-inactive-dropdown {
-            width: 100%;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-
-        .live-inactive-dropdown option {
-            padding: 4px 8px;
-            font-weight: bold;
-        }
-
-        .live-inactive-dropdown .live-option {
-            background-color: #28a745;
-            /* Green */
-            color: white;
-        }
-
-        .live-inactive-dropdown .inactive-option {
-            background-color: #6c757d;
-            /* Gray */
-            color: white;
-        }
-
-        .listing-status-cell {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-align: center;
-            display: inline-block;
-            min-width: 80px;
-        }
-
-        .listing-status-cell.listed {
-            background-color: #28a745;
-            color: white;
-        }
-
-        .listing-status-cell.missing {
-            background-color: #dc3545;
-            color: white;
-        }
-
-        .listing-status-cell.nrl {
-            background-color: #ffc107;
-            color: #212529;
-        }
-
-        .listing-status-cell.live {
-            background-color: #007bff;
-            color: white;
-        }
-
-        .listing-status-cell.inactive {
-            background-color: #6c757d;
-            color: white;
-        }
     </style>
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Macy\'s', 'sub_title' => 'Macy\'s'])
-    
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Macys', 'sub_title' => 'Macys'])
+
     <div class="row">
         <div class="col-12">
-            <div class="card">
+            <div class="card position-relative">
                 <div class="card-body">
-                    <!-- Controls row -->
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <!-- Left side controls -->
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="row-data-type" class="mr-2">Data Type:</label>
-                                <select id="row-data-type" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="sku">SKU (Child)</option>
-                                    <option value="parent">Parent</option>
-                                </select>
+                    <div id="macys-listing-toolbar" class="mb-3">
+                        <div class="macys-listing-toolbar-row">
+                            <div class="listing-stat-badges">
+                                <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
-                            <div class="form-group col-md-6">
-                                <label for="inv-filter" class="mr-2">INV:</label>
-                                <select id="inv-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="inv-only">INV Only</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="nr-req-filter" class="mr-2">RL/NRL:</label>
-                                <select id="nr-req-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="RL">RL</option>
-                                    <option value="NRL">NRL</option>
-                                </select>
-                            </div>
-                            <div class="form-group col-md-6">
-                                <label for="link-filter" class="mr-2">LINK:</label>
-                                <select id="link-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="with-link">With Link</option>
-                                    <option value="without-link">Without Link</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="listed-filter" class="mr-2">Listed:</label>
-                                <select id="listed-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="Listed">Listed</option>
-                                    <option value="Pending">Pending</option>
-                                </select>
-                            </div>
-                        </div>
 
-                        <div class="d-flex align-items-center mb-3 gap-2">
-
-                            <!-- Import/Export buttons -->
-                            <button type="button" class="btn btn-sm btn-primary mr-2" id="import-btn">Import</button>
-                            <!-- <button type="button" class="btn btn-sm btn-success mr-3" id="export-btn">Export</button> -->
-                            <a href="{{ route('listing_macys.export') }}" class="btn btn-sm btn-success mr-3">Export</a>
-
-                            <!-- Search on right -->
-                            <div class="form-group mb-0 d-flex align-items-center ml-3">
-                                <label for="search-input" class="mr-2 mb-0">Search:</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm"
-                                    placeholder="Search all columns...">
+                            <select id="row-data-type" class="form-select form-select-sm filter-select" aria-label="Data Type">
+                                <option value="all" selected>Data Type</option>
+                                <option value="sku">SKU (Child)</option>
+                                <option value="parent">Parent</option>
+                            </select>
+                            <select id="inv-filter" class="form-select form-select-sm filter-select" aria-label="INV">
+                                <option value="all">INV: All</option>
+                                <option value="inv-only" selected>INV Only</option>
+                            </select>
+                            <select id="nr-req-filter" class="form-select form-select-sm filter-select" aria-label="NRL/REQ">
+                                <option value="all" selected>NRL/REQ</option>
+                                <option value="REQ">REQ</option>
+                                <option value="NR">NRL</option>
+                            </select>
+                            <select id="link-filter" class="form-select form-select-sm filter-select" aria-label="Buyer Link">
+                                <option value="all" selected>Buyer Link</option>
+                                <option value="with-link">With Link</option>
+                                <option value="without-link">Without Link</option>
+                            </select>
+                            <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
+                                <option value="all" selected>Listed</option>
+                                <option value="Listed">Listed Only</option>
+                                <option value="Pending">Missing L</option>
+                            </select>
+                            <div class="toolbar-actions dropdown">
+                                <button type="button"
+                                    class="btn btn-sm btn-primary listing-io-btn"
+                                    id="listing-io-btn"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false"
+                                    title="Import / Export">
+                                    <i class="fas fa-file-import"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end listing-io-menu" aria-labelledby="listing-io-btn">
+                                    <li>
+                                        <button type="button" class="dropdown-item" id="import-btn" title="Import">
+                                            <i class="fas fa-file-import text-primary"></i>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item" href="{{ route('listing_macys.export') }}" title="Export">
+                                            <i class="fas fa-file-export text-success"></i>
+                                        </a>
+                                    </li>
+                                </ul>
                             </div>
                         </div>
                     </div>
 
-                     <!-- Import Modal -->
                     <div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Import Editable Fields</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-
-                            <div class="modal-body">
-
-                                <a href="{{ route('listing_macys.sample') }}" class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
-
-                                <input type="file" id="importFile" name="file" accept=".csv,.txt" class="form-control" />
-                                <small class="text-muted">Only CSV or TXT files are supported.</small>
-                            </div>
-
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            </div>
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Import Editable Fields</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <a href="{{ asset('sample_excel/sample_listing_file.csv') }}" download class="btn btn-outline-secondary mb-3">📄 Download Sample File</a>
+                                    <input type="file" id="importFile" name="file" accept=".csv,.txt" class="form-control" />
+                                    <small class="text-muted">Only CSV or TXT files are supported</small>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-primary" id="confirmImportBtn">Import</button>
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="table-container">
-                        <table class="custom-resizable-table" id="macyListing-table">
-                            <thead>
-                                <tr>
-                                    <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                Parent <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
-                                            <div class="d-flex align-items-center">
-                                                SKU <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm sku-search"
-                                                    placeholder="Search SKU..." id="skuSearch">
-                                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="inv" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                INV <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="inv-total">0</div>
-                                        </div>
-                                    </th>
-                                    <th data-field="rl_nrl" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                RL/NRL
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="link" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Link
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="without-link-total"
-                                                style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Listed/Pending
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div>
-                                                <span class="metric-total" id="listed-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px;">
-                                                    0
-                                                </span>
-                                                <span class="metric-total" id="pending-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px; margin-left:6px;">
-                                                    0
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="live_inactive" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Live/Inactive
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="listing_status" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                Listing Status
-                                            </div>
-                                        </div>
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data will be populated by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination controls -->
-                    <div class="pagination-controls mt-2">
-                        <div class="form-group">
-                            <span id="visible-rows" class="badge badge-light" style="color: #dc3545;">Showing 1-25 of
-                                150</span>
-                        </div>
-                        <button id="first-page" class="btn btn-sm btn-outline-secondary mr-1">First</button>
-                        <button id="prev-page" class="btn btn-sm btn-outline-secondary mr-1">Previous</button>
-                        <span id="page-info" class="mx-2">Page 1 of 6</span>
-                        <button id="next-page" class="btn btn-sm btn-outline-secondary ml-1">Next</button>
-                        <button id="last-page" class="btn btn-sm btn-outline-secondary ml-1">Last</button>
+                    <div id="macys-listing-wrap">
+                        <div id="macysListing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -1372,612 +599,112 @@
         </div>
     </div>
 
-    <div id="linkModal" class="modal fade" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-dialog-centered" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Submit Buyer and Seller Links</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="linkForm">
-                        <div class="mb-3">
-                            <label for="buyerLink" class="form-label">Buyer Link</label>
-                            <input type="url" id="buyerLink" name="buyerLink" class="form-control"
-                                placeholder="Enter Buyer Link" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="sellerLink" class="form-label">Seller Link</label>
-                            <input type="url" id="sellerLink" name="sellerLink" class="form-control"
-                                placeholder="Enter Seller Link" required>
-                        </div>
-                        <input type="hidden" id="skuInput" name="sku">
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary" id="submitLinks">Submit</button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script')
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.body.style.zoom = "80%";
-        $(document).ready(function() {
-            // Cache system
-            const macyListingDataCache = {
-                cache: {},
 
-                set: function(id, data) {
-                    this.cache[id] = JSON.parse(JSON.stringify(data));
-                },
+        let macysListingTable = null;
+        let allListingData = [];
 
-                get: function(id) {
-                    return this.cache[id] ? JSON.parse(JSON.stringify(this.cache[id])) : null;
-                },
+        function isParentSku(sku) {
+            return String(sku || '').toUpperCase().includes('PARENT');
+        }
 
-                updateField: function(id, field, value) {
-                    if (this.cache[id]) {
-                        this.cache[id][field] = value;
-                    }
-                },
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
 
-                clear: function() {
-                    this.cache = {};
-                }
-            };
+        function showNotification(type, message) {
+            const notification = $(`
+                <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+                    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                        ${escapeHtml(message)}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                </div>
+            `);
+            $('body').append(notification);
+            setTimeout(() => notification.find('.alert').alert('close'), 3000);
+        }
 
-            // Clear cache on page load
-            window.addEventListener('load', function() {
-                macyListingDataCache.clear();
+        function showLoader() {
+            $('#data-loader').fadeIn(100);
+        }
+
+        function hideLoader() {
+            $('#data-loader').fadeOut(100);
+        }
+
+        function normalizeListingRows(rows) {
+            const mapped = (rows || []).map(item => {
+                const inv = parseFloat(item.INV) || 0;
+                const itemId = String(item.eBay_item_id || '').trim();
+                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
+                const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
+                const listed = itemId ? 'Listed' : 'Pending';
+                return {
+                    ...item,
+                    parent: item.parent ?? item.Parent ?? '',
+                    sku: item.sku ?? '',
+                    INV: inv,
+                    L30: parseFloat(item.L30) || 0,
+                    nr_req: nrReq,
+                    listed: listed,
+                    eBay_item_id: itemId || null,
+                    buyer_link: item.buyer_link || '',
+                    seller_link: item.seller_link || '',
+                    is_parent: isParentSku(item.sku)
+                };
             });
 
-            // Current state
-            let currentPage = 1;
-            let rowsPerPage = Infinity;
-            let currentSort = {
-                field: null,
-                direction: 1
-            };
-            let tableData = [];
-            let filteredData = [];
-            let isResizing = false;
-            let isLoading = false;
-            let isEditMode = false;
-            let currentEditingElement = null;
-
-            // --- Dropdown Click Handler ---
-            $('.manual-dropdown-container .column-filter').on('click', function() {
-                const $dropdown = $(this).closest('.manual-dropdown-container').find('button');
-                const column = $dropdown.attr('data-column');
-                const value = $(this).text().trim();
-
-                if (column) {
-                    // Update the filter state
-                    columnFilters[column] = value;
-
-                    // Update the dropdown button text
-                    $dropdown.find('.filter-selection').text(value);
-
-                    // Apply the filters to the table
-                    applyColumnFilters();
-                }
+            mapped.sort((a, b) => {
+                const parentCmp = String(a.parent || '').localeCompare(String(b.parent || ''), undefined, { sensitivity: 'base' });
+                if (parentCmp !== 0) return parentCmp;
+                return (a.is_parent ? 1 : 0) - (b.is_parent ? 1 : 0);
             });
 
-            // --- Filtering Logic ---
-            function applyColumnFilters() {
-                filteredData = tableData.filter(item => {
-                    let pass = true;
-                    for (const [col, filter] of Object.entries(columnFilters)) {
-                        if (filter === 'ALL') continue;
-                        if (filter === 'DONE' && !(item[col] === true || item[col] === 'true' || item[
-                                col] === 1)) pass = false;
-                        if (filter === 'PENDING' && (item[col] === true || item[col] === 'true' || item[
-                                col] === 1)) pass = false;
-                    }
-                    return pass;
-                });
-                renderTable();
-                calculateTotals();
-            }
+            return mapped;
+        }
 
-            // Initialize everything
-            function initTable() {
-                loadData().then(() => {
-                    renderTable();
-                    initResizableColumns();
-                    initSorting();
-                    initPagination();
-                    initSearch();
-                    calculateTotals();
-                    initEnhancedDropdowns();
-
-                    // Set default INV filter to "INV Only" on page load
-                    $('#inv-filter').val('inv-only').trigger('change');
-                });
-            }
-
-            // Load data from server
-            function loadData() {
-                showLoader();
-                return $.ajax({
-                    url: '/listing_macys/view-data',
-                    type: 'GET',
-                    dataType: 'json',
-                    success: function(response) {
-                        // If response is an object with a data property, use that
-                        if (Array.isArray(response)) {
-                            tableData = response;
-                        } else if (Array.isArray(response.data)) {
-                            tableData = response.data;
-                        } else {
-                            tableData = [];
-                        }
-
-                        // Set default values for rl_nrl, listed, and live_inactive if missing
-                        tableData = tableData.map(item => ({
-                            ...item,
-                            rl_nrl: item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : (parseFloat(item.INV) > 0 ? 'RL' : 'NRL'))),
-                            listed: item.listed || (parseFloat(item.INV) > 0 ? 'Pending' : 'Listed'),
-                            live_inactive: item.live_inactive || 'Live'
-                        }));
-
-                        filteredData = [...tableData];
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error loading data:', error);
-                        showNotification('danger', 'Failed to load data. Please try again.');
-                        tableData = [];
-                        filteredData = [];
-                    },
-                    complete: function() {
-                        hideLoader();
-                    }
-                });
-            }
-
-            // Render table with current data
-            function renderTable() {
-                const $tbody = $('#macyListing-table tbody');
-                $tbody.empty();
-
-                if (isLoading) {
-                    $tbody.append('<tr><td colspan="8" class="text-center">Loading data...</td></tr>');
+        function calculateTotals() {
+            try {
+                if (!macysListingTable) {
+                    resetMetricsToZero();
                     return;
                 }
 
-                // Include all rows without filtering by INV
-                const filteredRows = filteredData;
-
-                // Group data by parent
-                const groupedData = {};
-                filteredRows.forEach(item => {
-                    if (!groupedData[item.parent]) {
-                        groupedData[item.parent] = [];
-                    }
-                    groupedData[item.parent].push(item);
-                });
-
-                // Sort parents alphabetically
-                const sortedParents = Object.keys(groupedData).sort();
-
-                let rowIndex = 1;
-
-                // Iterate through each parent group
-                sortedParents.forEach(parent => {
-                    const items = groupedData[parent];
-
-                    // Sort items within the group so that the PARENT row appears last
-                    const sortedItems = items.sort((a, b) => {
-                        if (a.sku && a.sku.includes('PARENT')) return 1; // Move PARENT to the end
-                        if (b.sku && b.sku.includes('PARENT')) return -1; // Move PARENT to the end
-                        return 0; // Keep other rows in their original order
-                    });
-
-                    // Add all rows to the table
-                    sortedItems.forEach(item => {
-                        const $row = createTableRow(item, rowIndex++);
-                        $tbody.append($row);
-                    });
-                });
-
-                if ($tbody.children().length === 0) {
-                    $tbody.append('<tr><td colspan="8" class="text-center">No matching records found</td></tr>');
-                }
-
-                updatePaginationInfo();
-                $('#visible-rows').text(`Showing all ${$tbody.children().length} rows`);
-            }
-
-            //open modal on click import button
-            $('#import-btn').on('click', function () {
-                $('#importModal').modal('show');
-            });
-
-
-            //import data
-            $(document).on('click', '#confirmImportBtn', function () {
-                let file = $('#importFile')[0].files[0];
-                if (!file) {
-                    alert('Please select a file to import.');
-                    return;
-                }
-
-                let formData = new FormData();
-                formData.append('file', file);
-
-                $.ajax({
-                    url: "{{ route('listing_macys.import') }}",
-                    type: "POST",
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    success: function (response) {
-                        $('#importModal').modal('hide');
-                        $('#importFile').val('');
-                        showNotification('success', response.success);
-                        location.reload(); // refresh your DataTable
-                    },
-                    error: function (xhr) {
-                        showNotification('danger', xhr.responseJSON.error || 'Import failed');
-                    }
-                });
-            });
-
-            // Helper function to compute listing status (defined at top level for reuse)
-            function computeListingStatus(rlNrl, listed, liveInactive) {
-                // Priority order: NRL has highest priority, then Listed/Pending, then Live/Inactive
-                if (rlNrl === 'NRL') {
-                    return { status: 'NRL', class: 'nrl' };
-                } else if (listed === 'Listed') {
-                    return { status: 'Listed', class: 'listed' };
-                } else if (listed === 'Pending') {
-                    return { status: 'Missing', class: 'missing' };
-                } else if (liveInactive === 'Live') {
-                    return { status: 'Live', class: 'live' };
-                } else if (liveInactive === 'Inactive') {
-                    return { status: 'Inactive', class: 'inactive' };
-                }
-                return { status: '', class: '' };
-            }
-
-            // Helper function to create a table row
-            function createTableRow(item, index) {
-                const $row = $('<tr>');
-
-                // Add a blue background color if the SKU contains "PARENT"
-                if (item.sku && item.sku.includes('PARENT')) {
-                    $row.addClass('parent-row');
-                }
-
-                // Parent
-                $row.append($('<td>').text(item.parent || ''));
-                
-                // SKU
-                $row.append($('<td>').text(item.sku || ''));
-                
-                // INV
-                $row.append($('<td>').text(item.INV || 0));
-
-                // RL/NRL dropdown only for non-parent rows
-                if (!item.sku || !item.sku.includes('PARENT')) {
-                    const $rlNrlDropdown = $('<select>')
-                        .addClass('rl-nrl-dropdown form-control form-control-sm')
-                        .append('<option value="RL" class="rl-option">RL</option>')
-                        .append('<option value="NRL" class="nrl-option">NRL</option>');
-
-                    // Support both old nr_req and new rl_nrl fields
-                    let initialValue = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : 'RL'));
-                    $rlNrlDropdown.val(initialValue);
-
-                    if (initialValue === 'RL') {
-                        $rlNrlDropdown.css('background-color', '#28a745').css('color', 'white');
-                    } else if (initialValue === 'NRL') {
-                        $rlNrlDropdown.css('background-color', '#dc3545').css('color', 'white');
-                    }
-
-                    $row.append($('<td>').append($rlNrlDropdown));
-                } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
-                }
-
-                // --- BUYER LINK, SELLER LINK, AND PEN ICON IN ONE TD ---
-                const $linkCell = $('<td>');
-
-                // Buyer Link
-                if (item.buyer_link) {
-                    $linkCell.append(
-                        `<a href="${item.buyer_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
-                    );
-                }
-
-                // Seller Link
-                if (item.seller_link) {
-                    $linkCell.append(
-                        `<a href="${item.seller_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Seller</a>`
-                    );
-                }
-
-                // Pen icon (always show for non-parent rows, or adjust as needed)
-                if (!item.sku || !item.sku.includes('PARENT')) {
-                    $linkCell.append(
-                        $('<i>')
-                        .addClass('fas fa-pen text-primary link-edit-icon')
-                        .css({
-                            cursor: 'pointer',
-                            marginLeft: '6px'
-                        })
-                        .attr('title', 'Edit Links')
-                        .data('sku', item.sku)
-                    );
-                }
-
-                $row.append($linkCell);
-
-                // Listed/Pending dropdown only for non-parent rows
-                if (!item.sku || !item.sku.includes('PARENT')) {
-                    const $listedDropdown = $('<select>')
-                        .addClass('listed-dropdown form-control form-control-sm')
-                        .append('<option value="Listed" class="listed-option">Listed</option>')
-                        .append('<option value="Pending" class="pending-option">Pending</option>');
-
-                    const listedValue = item.listed || 'Pending';
-                    $listedDropdown.val(listedValue);
-
-                    if (listedValue === 'Listed') {
-                        $listedDropdown.css('background-color', '#28a745').css('color', 'white');
-                    } else if (listedValue === 'Pending') {
-                        $listedDropdown.css('background-color', '#dc3545').css('color', 'white');
-                    }
-
-                    $row.append($('<td>').append($listedDropdown));
-                } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
-                }
-
-                // Live/Inactive dropdown only for non-parent rows
-                if (!item.sku || !item.sku.includes('PARENT')) {
-                    const $liveInactiveDropdown = $('<select>')
-                        .addClass('live-inactive-dropdown form-control form-control-sm')
-                        .append('<option value="Live" class="live-option">Live</option>')
-                        .append('<option value="Inactive" class="inactive-option">Inactive</option>');
-
-                    const liveInactiveValue = item.live_inactive || 'Live';
-                    $liveInactiveDropdown.val(liveInactiveValue);
-
-                    if (liveInactiveValue === 'Live') {
-                        $liveInactiveDropdown.css('background-color', '#28a745').css('color', 'white');
-                    } else if (liveInactiveValue === 'Inactive') {
-                        $liveInactiveDropdown.css('background-color', '#6c757d').css('color', 'white');
-                    }
-
-                    $row.append($('<td>').append($liveInactiveDropdown));
-                } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
-                }
-
-                // Listing Status (computed column) only for non-parent rows
-                if (!item.sku || !item.sku.includes('PARENT')) {
-                    const rlNrl = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : 'RL'));
-                    const listed = item.listed || 'Pending';
-                    const liveInactive = item.live_inactive || 'Live';
-                    const statusInfo = computeListingStatus(rlNrl, listed, liveInactive);
-                    
-                    const $statusCell = $('<td>');
-                    if (statusInfo.status) {
-                        $statusCell.append(
-                            $('<span>')
-                                .addClass('listing-status-cell ' + statusInfo.class)
-                                .text(statusInfo.status)
-                        );
-                    }
-                    $row.append($statusCell);
-                } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
-                }
-
-                return $row;
-            }
-
-            // Initialize tooltips
-            function initTooltips() {
-                $('[data-bs-toggle="tooltip"]').tooltip({
-                    trigger: 'hover',
-                    placement: 'top',
-                    boundary: 'window',
-                    container: 'body',
-                    offset: [0, 5],
-                    template: '<div class="tooltip" role="tooltip">' +
-                        '<div class="tooltip-arrow"></div>' +
-                        '<div class="tooltip-inner"></div></div>'
-                });
-            }
-
-            // Make columns resizable
-            function initResizableColumns() {
-                const $table = $('#macyListing-table');
-                const $headers = $table.find('th');
-                let startX, startWidth, columnIndex;
-
-                $headers.each(function() {
-                    $(this).append('<div class="resize-handle"></div>');
-                });
-
-                $table.on('mousedown', '.resize-handle', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    isResizing = true;
-                    $(this).addClass('resizing');
-
-                    const $th = $(this).parent();
-                    columnIndex = $th.index();
-                    startX = e.pageX;
-                    startWidth = $th.outerWidth();
-
-                    $('body').css('user-select', 'none');
-                });
-
-                $(document).on('mousemove', function(e) {
-                    if (!isResizing) return;
-
-                    const $resizer = $('.resize-handle.resizing');
-                    if ($resizer.length) {
-                        const $th = $resizer.parent();
-                        const newWidth = startWidth + (e.pageX - startX);
-                        $th.css('width', newWidth + 'px');
-                        $th.css('min-width', newWidth + 'px');
-                        $th.css('max-width', newWidth + 'px');
-                    }
-                });
-
-                $(document).on('mouseup', function(e) {
-                    if (!isResizing) return;
-
-                    e.stopPropagation();
-                    $('.resize-handle').removeClass('resizing');
-                    $('body').css('user-select', '');
-                    isResizing = false;
-                });
-            }
-
-            // Initialize sorting functionality
-            function initSorting() {
-                $('th[data-field]').addClass('sortable').on('click', function(e) {
-                    if (isResizing) {
-                        e.stopPropagation();
-                        return;
-                    }
-
-                    // Prevent sorting when clicking on search inputs
-                    if ($(e.target).is('input') || $(e.target).closest('.position-relative').length) {
-                        return;
-                    }
-
-                    const th = $(this).closest('th');
-                    const thField = th.data('field');
-                    const dataField = thField === 'parent' ? 'Parent' : thField;
-
-                    // Toggle direction if clicking same column, otherwise reset to ascending
-                    if (currentSort.field === dataField) {
-                        currentSort.direction *= -1;
-                    } else {
-                        currentSort.field = dataField;
-                        currentSort.direction = 1;
-                    }
-
-                    // Update UI arrows
-                    $('.sort-arrow').html('↓');
-                    $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
-
-                    // Sort with fresh data
-                    const freshData = [...tableData];
-                    freshData.sort((a, b) => {
-                        const valA = a[dataField] || '';
-                        const valB = b[dataField] || '';
-
-                        // Numeric comparison for numeric fields
-                        if (dataField === 'sl_no' || dataField === 'INV' || dataField ===
-                            'L30') {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort
-                                .direction;
-                        }
-
-                        // String comparison for other fields
-                        return String(valA).localeCompare(String(valB)) * currentSort.direction;
-                    });
-
-                    filteredData = freshData;
-                    currentPage = 1;
-                    renderTable();
-                });
-            }
-
-            // Initialize pagination
-            function initPagination() {
-                // Remove rows-per-page related code
-
-                // Keep these but modify to work with all rows
-                $('#first-page').on('click', function() {
-                    currentPage = 1;
-                    renderTable();
-                });
-
-                // Similar modifications for other pagination buttons...
-                // But since we're showing all rows, you might want to disable pagination completely
-            }
-
-            function updatePaginationInfo() {
-                // Since we're showing all rows, you can either:
-                // Option 1: Hide pagination completely
-                $('.pagination-controls').hide();
-
-                // Option 2: Show "Showing all rows" message
-                $('#page-info').text('Showing all rows');
-                $('#first-page, #prev-page, #next-page, #last-page').prop('disabled', true);
-            }
-
-            // Initialize search functionality
-            function initSearch() {
-                $('#search-input').on('keyup', function() {
-                    const searchTerm = $(this).val().toLowerCase();
-
-                    if (searchTerm) {
-                        filteredData = tableData.filter(item => {
-                            return Object.values(item).some(val => {
-                                if (typeof val === 'boolean' || val === null)
-                                    return false;
-                                return val.toString().toLowerCase().includes(
-                                    searchTerm);
-                            });
-                        });
-                    } else {
-                        filteredData = [...tableData];
-                    }
-
-                    currentPage = 1;
-                    renderTable();
-                    calculateTotals();
-                });
-            }
-
-            // Calculate and display totals
-            function calculateTotals() {
-                try {
-                    if (isLoading || filteredData.length === 0) {
-                        resetMetricsToZero();
-                        return;
-                    }
-
-                    const metrics = {
-                        invTotal: 0,
-                        reqTotal: 0,
-                        withoutLinkTotal: 0,
-                        listedTotal: 0, // Green
-                        pendingTotal: 0, // Red
-                        rowCount: 0
-                    };
-
-                    filteredData.forEach(item => {
-                        if (!item.sku || !item.sku.includes('PARENT')) {
-                            if (parseFloat(item.INV) > 0) {
-                                metrics.invTotal += parseFloat(item.INV) || 0;
-                            }
-
-                            // Count RL (was REQ)
-                            const rlNrl = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : 'RL'));
-                            if (rlNrl === 'RL') {
-                                metrics.reqTotal++;
-                            }
-
-                            if (!item.buyer_link && !item.seller_link) {
+                const rows = macysListingTable.getData('active') || [];
+                const metrics = {
+                    invTotal: 0,
+                    reqTotal: 0,
+                    nrlTotal: 0,
+                    withoutLinkTotal: 0,
+                    listedTotal: 0,
+                    pendingTotal: 0
+                };
+
+                rows.forEach(item => {
+                    if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
+                        metrics.invTotal += parseFloat(item.INV) || 0;
+
+                        if (item.nr_req === 'REQ') {
+                            metrics.reqTotal++;
+                            // No Link: REQ rows with no ebay item id (dynamic link unavailable)
+                            if (!String(item.eBay_item_id || '').trim()) {
                                 metrics.withoutLinkTotal++;
                             }
-                            // Count Listed and Pending rows
+                        }
+                        if (item.nr_req === 'NR') {
+                            metrics.nrlTotal++;
+                        }
+                        if (item.nr_req !== 'NR') {
                             if (item.listed === 'Listed') {
                                 metrics.listedTotal++;
                             }
@@ -1985,582 +712,312 @@
                                 metrics.pendingTotal++;
                             }
                         }
-                    });
-
-                    $('#inv-total').text(metrics.invTotal.toLocaleString());
-                    $('#req-total').text(metrics.reqTotal);
-                    $('#without-link-total').text(metrics.withoutLinkTotal);
-                    $('#listed-total').text(metrics.listedTotal); // Green
-                    $('#pending-total').text(metrics.pendingTotal); // Red
-                } catch (error) {
-                    console.error('Error in calculateTotals:', error);
-                    resetMetricsToZero();
-                }
-            }
-
-            function resetMetricsToZero() {
-                $('#inv-total').text('0');
-                $('#req-total').text('0');
-                $('#without-link-total').text('0');
-                $('#listed-total').text('0');
-                $('#pending-total').text('0');
-            }
-
-            // Initialize enhanced dropdowns
-            function initEnhancedDropdowns() {
-                // Define constants at the function level
-                const minSearchLength = 1;
-
-                // Parent dropdown
-                const $parentSearch = $('#parentSearch');
-                const $parentResults = $('#parentSearchResults');
-
-                // SKU dropdown
-                const $skuSearch = $('#skuSearch');
-                const $skuResults = $('#skuSearchResults');
-
-                // Initialize both dropdowns
-                initEnhancedDropdown($parentSearch, $parentResults, 'Parent');
-                initEnhancedDropdown($skuSearch, $skuResults, 'sku');
-
-                // Close dropdowns when clicking outside
-                $(document).on('click', function(e) {
-                    if (!$(e.target).closest('.dropdown-search-container').length) {
-                        $('.dropdown-search-results').hide();
                     }
                 });
 
-                // Function to update dropdown results
-                function updateDropdownResults($results, field, searchTerm) {
-                    if (!tableData.length) return;
+                $('#req-total').text(metrics.reqTotal);
+                $('#nrl-total').text(metrics.nrlTotal);
+                $('#without-link-total').text(metrics.withoutLinkTotal);
+                $('#listed-total').text(metrics.listedTotal);
+                $('#pending-total').text(metrics.pendingTotal);
+                $('#rows-total').text(rows.length.toLocaleString());
+            } catch (error) {
+                console.error('Error in calculateTotals:', error);
+                resetMetricsToZero();
+            }
+        }
 
-                    $results.empty();
+        function resetMetricsToZero() {
+            $('#req-total').text('0');
+            $('#nrl-total').text('0');
+            $('#without-link-total').text('0');
+            $('#listed-total').text('0');
+            $('#pending-total').text('0');
+            $('#rows-total').text('0');
+        }
 
-                    // Get unique values for the field
-                    const uniqueValues = [...new Set(tableData.map(item => String(item[field] || '')))];
+        function applyListingFilters() {
+            if (!macysListingTable) return;
 
-                    // Filter based on search term if provided
-                    const filteredValues = searchTerm.length >= minSearchLength ?
-                        uniqueValues.filter(value =>
-                            value.toLowerCase().includes(searchTerm.toLowerCase())
-                        ) :
-                        uniqueValues;
+            const dataType = $('#row-data-type').val();
+            const invFilter = $('#inv-filter').val();
+            const nrReqFilter = $('#nr-req-filter').val();
+            const linkFilter = $('#link-filter').val();
+            const listedFilter = $('#listed-filter').val();
 
-                    if (filteredValues.length) {
-                        filteredValues.sort().forEach(value => {
-                            if (value) {
-                                $results.append(
-                                    `<div class="dropdown-search-item" tabindex="0" data-value="${value}">${value}</div>`
-                                );
-                            }
-                        });
-                    } else {
-                        $results.append('<div class="dropdown-search-item no-results">No matches found</div>');
-                    }
+            macysListingTable.setFilter(function (data) {
+                if (dataType === 'parent' && !data.is_parent) return false;
+                if (dataType === 'sku' && data.is_parent) return false;
 
-                    $results.show();
+                if (invFilter === 'inv-only') {
+                    if (!data.is_parent && !(parseFloat(data.INV) > 0)) return false;
                 }
 
-                // Function to filter the table by column value
-                function filterByColumn(column, value) {
-                    if (value === '') {
-                        filteredData = [...tableData];
-                    } else {
-                        filteredData = tableData.filter(item =>
-                            String(item[column] || '').toLowerCase() === value.toLowerCase()
-                        );
-                    }
+                if (nrReqFilter !== 'all' && data.nr_req !== nrReqFilter) return false;
 
-                    currentPage = 1;
-                    renderTable();
-                    calculateTotals();
-                }
+                const hasItemLink = !!String(data.eBay_item_id || '').trim();
+                if (linkFilter === 'with-link' && !hasItemLink) return false;
+                if (linkFilter === 'without-link' && hasItemLink) return false;
 
-                // Initialize a single dropdown
-                function initEnhancedDropdown($input, $results, field) {
-                    let timeout;
+                if (listedFilter !== 'all' && data.listed !== listedFilter) return false;
 
-                    // Show dropdown when input is focused
-                    $input.on('focus', function(e) {
-                        e.stopPropagation();
-                        updateDropdownResults($results, field, $(this).val().trim().toLowerCase());
-                    });
-
-                    // Handle input events
-                    $input.on('input', function() {
-                        clearTimeout(timeout);
-                        const searchTerm = $(this).val().trim().toLowerCase();
-
-                        timeout = setTimeout(() => {
-                            updateDropdownResults($results, field, searchTerm);
-                        }, 300);
-                    });
-
-                    // Handle item selection
-                    $results.on('click', '.dropdown-search-item:not(.no-results)', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const value = $(this).data('value');
-                        $input.val(value);
-                        filterByColumn(field, value);
-                        $results.hide();
-                    });
-
-                    // Handle keyboard navigation
-                    $input.on('keydown', function(e) {
-                        if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            const $firstItem = $results.find('.dropdown-search-item').first();
-                            if ($firstItem.length) {
-                                $firstItem.focus();
-                            }
-                        }
-                    });
-
-                    $results.on('keydown', '.dropdown-search-item', function(e) {
-                        if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            $(this).next('.dropdown-search-item').focus();
-                        } else if (e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            const $prev = $(this).prev('.dropdown-search-item');
-                            if ($prev.length) {
-                                $prev.focus();
-                            } else {
-                                $input.focus();
-                            }
-                        } else if (e.key === 'Enter') {
-                            e.preventDefault();
-                            $(this).click();
-                            $results.hide();
-                        } else if (e.key === 'Escape') {
-                            $results.hide();
-                            $input.focus();
-                        }
-                    });
-                }
-
-                $('#row-data-type').on('change', function() {
-                    const filterType = $(this).val();
-                    applyRowTypeFilter(filterType);
-                });
-            }
-
-            // Calculate INV and L30 totals for each parent
-            function getParentTotals(parentName) {
-                let invTotal = 0;
-                let l30Total = 0;
-                filteredData.forEach(item => {
-                    if (
-                        item.parent === parentName &&
-                        !item.is_parent // Only sum child rows
-                    ) {
-                        invTotal += parseFloat(item.INV) || 0;
-                        l30Total += parseFloat(item.L30) || 0;
-                    }
-                });
-                return {
-                    invTotal,
-                    l30Total
-                };
-            }
-
-            function initEnhancedDropdown($input, $results, field) {
-                let timeout;
-                const minSearchLength = 1;
-
-                // Show dropdown when input is clicked
-                $input.on('click', function(e) {
-                    e.stopPropagation();
-                    updateDropdownResults($results, field, $(this).val().trim().toLowerCase());
-                });
-
-                // Handle input events
-                $input.on('input', function() {
-                    clearTimeout(timeout);
-                    const searchTerm = $(this).val().trim().toLowerCase();
-
-                    // If search is cleared, trigger filtering immediately
-                    if (searchTerm === '') {
-                        filterByColumn(field, '');
-                        return;
-                    }
-
-                    timeout = setTimeout(() => {
-                        updateDropdownResults($results, field, searchTerm);
-                    }, 300);
-                });
-
-                // Handle item selection
-                $results.on('click', '.dropdown-search-item', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    const value = $(this).data('value');
-                    $input.val(value);
-                    filterByColumn(field, value);
-
-                    // Close the dropdown after selection
-                    $results.hide();
-
-                    // If you want to clear the filter when clicking the same value again
-                    if ($input.data('last-value') === value) {
-                        $input.val('');
-                        filterByColumn(field, '');
-                    }
-                    $input.data('last-value', value);
-                });
-
-                // Handle keyboard navigation
-                $input.on('keydown', function(e) {
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        const $firstItem = $results.find('.dropdown-search-item').first();
-                        if ($firstItem.length) {
-                            $firstItem.focus();
-                        }
-                    }
-                });
-
-                $results.on('keydown', '.dropdown-search-item', function(e) {
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        $(this).next('.dropdown-search-item').focus();
-                    } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        const $prev = $(this).prev('.dropdown-search-item');
-                        $(this).click();
-                        $results.hide();
-                    } else if (e.key === 'Escape') {
-                        $results.hide();
-                        $input.focus();
-                    }
-                });
-            }
-
-            function updateDropdownResults($results, field, searchTerm) {
-                if (!tableData.length) return;
-
-                $results.empty();
-
-                if (searchTerm.length < minSearchLength) {
-                    // Show all unique values when search is empty
-                    const uniqueValues = [...new Set(tableData.map(item => String(item[field] || '')))];
-                    uniqueValues.sort().forEach(value => {
-                        if (value) {
-                            $results.append(
-                                `<div class="dropdown-search-item" data-value="${value}">${value}</div>`
-                            );
-                        }
-                    });
-                } else {
-                    // Filter results based on search term
-                    const matches = tableData.filter(item =>
-                        String(item[field] || '').toLowerCase().includes(searchTerm)
-                    );
-
-                    if (matches.length) {
-                        const uniqueMatches = [...new Set(matches.map(item => String(item[field] || '')))];
-                        uniqueMatches.sort().forEach(value => {
-                            if (value) {
-                                $results.append(
-                                    `<div class="dropdown-search-item" data-value="${value}">${value}</div>`
-                                );
-                            }
-                        });
-                    } else {
-                        $results.append('<div class="dropdown-search-item no-results">No matches found</div>');
-                    }
-                }
-
-                $results.show();
-            }
-
-            function applyRowTypeFilter(filterType) {
-                // Reset to all data first
-                filteredData = [...tableData];
-
-                // Apply the row type filter
-                if (filterType === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
-                } else if (filterType === 'sku') {
-                    filteredData = filteredData.filter(item => !item.is_parent);
-                }
-                // else 'all' - no filtering needed
-
-                // Reset to first page and render
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
-            }
-
-            // Show notification
-            function showNotification(type, message) {
-                const notification = $(`
-                    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-                        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                            ${message}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    </div>
-                `);
-
-                $('body').append(notification);
-
-                setTimeout(() => {
-                    notification.find('.alert').alert('close');
-                }, 3000);
-            }
-
-            // Loader functions
-            function showLoader() {
-                $('#data-loader').fadeIn();
-            }
-
-            function hideLoader() {
-                $('#data-loader').fadeOut();
-            }
-
-            // Initialize everything
-            initTable();
-
-            // Handle INV filter change
-            $('#inv-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    // Show all rows, including rows with INV <= 0
-                    filteredData = [...tableData];
-                } else if (selectedValue === 'inv-only') {
-                    // Show rows with INV > 0, but always include rows with "PARENT" in the SKU
-                    filteredData = tableData.filter(item => {
-                        return (item.sku && item.sku.includes('PARENT')) || parseFloat(item.INV) > 0;
-                    });
-                }
-
-                currentPage = 1; // Reset to the first page
-                renderTable(); // Re-render the table
-                calculateTotals(); // Recalculate totals
+                return true;
             });
 
-            // AJAX function to save to DB
-            function saveStatusToDB(sku, data, callback) {
+            calculateTotals();
+        }
+
+        function formatNrReq(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+
+            const value = data.nr_req || 'REQ';
+            if (value === 'NR') {
+                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From channel DataView NRL">NRL</span>`;
+            }
+            return `<span class="listing-auto-badge listing-auto-badge--req" title="From channel DataView NRL">REQ</span>`;
+        }
+
+        function showBsModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            } else {
+                $(el).modal('show');
+            }
+        }
+
+        function hideBsModal(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (window.bootstrap && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).hide();
+            } else {
+                $(el).modal('hide');
+            }
+        }
+
+        function formatEbayItemLink(cell, type) {
+            const data = cell.getRow().getData();
+            const isBuyer = type === 'buyer';
+            const stored = String(isBuyer ? (data.buyer_link || '') : (data.seller_link || '')).trim();
+            if (stored) {
+                const label = isBuyer ? 'Buyer' : 'Seller';
+                return `<a href="${escapeHtml(stored)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
+                title="${escapeHtml(label + ' link')}" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt"></i> ${label}
+            </a>`;
+            }
+            return '<span class="listing-link-empty">—</span>';
+        }
+
+        function formatBuyerLink(cell) {
+            return formatEbayItemLink(cell, 'buyer');
+        }
+
+        function formatSellerLink(cell) {
+            return formatEbayItemLink(cell, 'seller');
+        }
+
+        function formatListed(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+
+            // Missing Listing: channel listing id / price signal = Listed
+            const itemId = String(data.eBay_item_id || '').trim();
+            if (itemId) {
+                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
+                    <i class="fas fa-check"></i>
+                </span>`;
+            }
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
+        }
+
+        $(document).ready(function () {
+            showLoader();
+
+            macysListingTable = new Tabulator('#macysListing-table', {
+                ajaxURL: '/listing_macys/view-data',
+                ajaxResponse: function (url, params, response) {
+                    const rows = Array.isArray(response) ? response : (response.data || []);
+                    allListingData = normalizeListingRows(rows);
+                    return allListingData;
+                },
+                height: '650px',
+                layout: 'fitColumns',
+                placeholder: 'No matching records found',
+                pagination: true,
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 250, 500],
+                paginationCounter: 'rows',
+                paginationButtonCount: 10,
+                selectableRows: true,
+                selectableRowsCheck: function (row) {
+                    return !row.getData().is_parent;
+                },
+                rowFormatter: function (row) {
+                    const el = row.getElement();
+                    if (row.getData().is_parent) {
+                        el.classList.add('parent-row');
+                    } else {
+                        el.classList.remove('parent-row');
+                    }
+                },
+                columns: [
+                    {
+                        formatter: 'rowSelection',
+                        titleFormatter: 'rowSelection',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 44,
+                        minWidth: 44,
+                        resizable: false,
+                        frozen: true,
+                        cellClick: function (e, cell) {
+                            e.stopPropagation();
+                            const data = cell.getRow().getData();
+                            if (data.is_parent) return;
+                            cell.getRow().toggleSelect();
+                        }
+                    },
+                    {
+                        title: 'Parent',
+                        field: 'parent',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 140,
+                        widthGrow: 1
+                    },
+                    {
+                        title: 'Sku',
+                        field: 'sku',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 160,
+                        widthGrow: 1.2
+                    },
+                    {
+                        title: 'INV',
+                        field: 'INV',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 90,
+                        formatter: function (cell) {
+                            const v = parseFloat(cell.getValue()) || 0;
+                            return v.toLocaleString();
+                        }
+                    },
+                    {
+                        title: 'NRL/REQ',
+                        field: 'nr_req',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 110,
+                        headerTooltip: 'Automatic from channel DataView NRL',
+                        formatter: formatNrReq
+                    },
+                    {
+                        title: 'Buyer Link',
+                        field: 'eBay_item_id',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        minWidth: 100,
+                        widthGrow: 1,
+                        headerTooltip: 'Buyer link from listing status',
+                        formatter: formatBuyerLink
+                    },
+                    {
+                        title: 'Seller Link',
+                        field: 'seller_item_link',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        minWidth: 100,
+                        widthGrow: 1,
+                        headerTooltip: 'Dynamic seller link: https://www.ebay.com/sh/lst/active?keyword={item_id}&source=filterbar&action=search',
+                        formatter: formatSellerLink
+                    },
+                    {
+                        title: 'Missing L',
+                        field: 'listed',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 130,
+                        headerTooltip: 'Automatic from channel listing signal (EbayTwo Missing L pattern)',
+                        formatter: formatListed
+                    }
+                ]
+            });
+
+            macysListingTable.on('dataProcessed', function () {
+                hideLoader();
+                applyListingFilters();
+            });
+            macysListingTable.on('dataFiltered', function () {
+                calculateTotals();
+            });
+            macysListingTable.on('dataLoadError', function () {
+                hideLoader();
+                showNotification('danger', 'Failed to load data. Please try again.');
+            });
+
+            $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
+
+            $('#import-btn').on('click', function () {
+                showBsModal('importModal');
+            });
+
+            $(document).on('click', '#confirmImportBtn', function () {
+                const file = $('#importFile')[0].files[0];
+                if (!file) {
+                    alert('Please select a file to import.');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                showLoader();
                 $.ajax({
-                    url: '/listing_macys/save-status',
+                    url: "{{ route('listing_macys.import') }}",
                     type: 'POST',
-                    data: {
-                        sku: sku,
-                        ...data,
-                        _token: $('meta[name="csrf-token"]').attr('content')
-                    },
-                    success: function(response) {
-                        showNotification('success', 'Saved!');
-                        // Update the local tableData with new values
-                        const item = tableData.find(row => row.sku === sku);
-                        if (item) {
-                            Object.assign(item, data);
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                    success: function (response) {
+                        hideBsModal('importModal');
+                        $('#importFile').val('');
+                        let message = 'File imported successfully!';
+                        if (response.success) {
+                            message = response.success;
+                            if (response.processed !== undefined) {
+                                message += ` (Processed: ${response.processed}`;
+                                if (response.skipped !== undefined) message += `, Skipped: ${response.skipped}`;
+                                if (response.errors !== undefined && response.errors > 0) message += `, Errors: ${response.errors}`;
+                                message += ')';
+                            }
                         }
-                        calculateTotals(); // Recalculate totals after update
-                        if (callback) callback();
+                        showNotification('success', message);
+                        macysListingTable.setData('/listing_macys/view-data');
                     },
-                    error: function(xhr) {
-                        showNotification('danger', 'Save failed!');
+                    error: function (xhr) {
+                        hideLoader();
+                        let errorMessage = 'Import failed';
+                        if (xhr.responseJSON && xhr.responseJSON.error) {
+                            errorMessage = xhr.responseJSON.error;
+                        }
+                        showNotification('danger', errorMessage);
                     }
                 });
-            }
-
-            // RL/NRL dropdown change handler
-            $(document).on('change', '.rl-nrl-dropdown', function() {
-                const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(1).text().trim(); // SKU is now at index 1 (after Parent)
-                const rl_nrl = $(this).val();
-                const $dropdown = $(this);
-
-                if (!sku) {
-                    showNotification('danger', 'SKU not found!');
-                    return;
-                }
-
-                // Update dropdown color
-                if (rl_nrl === 'RL') {
-                    $dropdown.css('background-color', '#28a745').css('color', 'white');
-                } else if (rl_nrl === 'NRL') {
-                    $dropdown.css('background-color', '#dc3545').css('color', 'white');
-                }
-
-                saveStatusToDB(sku, {
-                    rl_nrl: rl_nrl
-                }, function() {
-                    // Update listing status after save
-                    updateListingStatus($row);
-                });
             });
 
-            // Listed dropdown change handler
-            $(document).on('change', '.listed-dropdown', function() {
-                const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(1).text().trim(); // SKU is now at index 1 (after Parent)
-                const listed = $(this).val();
-                const $dropdown = $(this);
-
-                if (!sku) {
-                    showNotification('danger', 'SKU not found!');
-                    return;
-                }
-
-                // Update dropdown color
-                if (listed === 'Listed') {
-                    $dropdown.css('background-color', '#28a745').css('color', 'white');
-                } else if (listed === 'Pending') {
-                    $dropdown.css('background-color', '#dc3545').css('color', 'white');
-                }
-
-                saveStatusToDB(sku, {
-                    listed: listed
-                }, function() {
-                    // Update listing status after save
-                    updateListingStatus($row);
-                });
-            });
-
-            // Live/Inactive dropdown change handler
-            $(document).on('change', '.live-inactive-dropdown', function() {
-                const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(1).text().trim(); // SKU is now at index 1 (after Parent)
-                const live_inactive = $(this).val();
-                const $dropdown = $(this);
-
-                if (!sku) {
-                    showNotification('danger', 'SKU not found!');
-                    return;
-                }
-
-                // Update dropdown color
-                if (live_inactive === 'Live') {
-                    $dropdown.css('background-color', '#28a745').css('color', 'white');
-                } else if (live_inactive === 'Inactive') {
-                    $dropdown.css('background-color', '#6c757d').css('color', 'white');
-                }
-
-                saveStatusToDB(sku, {
-                    live_inactive: live_inactive
-                }, function() {
-                    // Update listing status after save
-                    updateListingStatus($row);
-                });
-            });
-
-            // Function to update listing status cell in a row
-            function updateListingStatus($row) {
-                // Get values directly from the row's dropdowns (columns: Parent=0, SKU=1, INV=2, RL/NRL=3, Link=4, Listed/Pending=5, Live/Inactive=6, Listing Status=7)
-                const $rlNrlDropdown = $row.find('td').eq(3).find('.rl-nrl-dropdown');
-                const $listedDropdown = $row.find('td').eq(5).find('.listed-dropdown');
-                const $liveInactiveDropdown = $row.find('td').eq(6).find('.live-inactive-dropdown');
-                
-                const rlNrl = $rlNrlDropdown.length ? $rlNrlDropdown.val() : 'RL';
-                const listed = $listedDropdown.length ? $listedDropdown.val() : 'Pending';
-                const liveInactive = $liveInactiveDropdown.length ? $liveInactiveDropdown.val() : 'Live';
-                
-                const statusInfo = computeListingStatus(rlNrl, listed, liveInactive);
-
-                // Update the listing status cell (last column, index 7)
-                const $statusCell = $row.find('td').eq(7);
-                $statusCell.empty();
-                if (statusInfo.status) {
-                    $statusCell.append(
-                        $('<span>')
-                            .addClass('listing-status-cell ' + statusInfo.class)
-                            .text(statusInfo.status)
-                    );
-                }
-            }
-
-            // Save links when submitting the modal
-            $('#submitLinks').on('click', function(e) {
-                e.preventDefault();
-                const sku = $('#skuInput').val();
-                const buyer_link = $('#buyerLink').val();
-                const seller_link = $('#sellerLink').val();
-
-                if (!sku) {
-                    showNotification('danger', 'SKU is required!');
-                    return;
-                }
-
-                saveStatusToDB(sku, {
-                    buyer_link: buyer_link || '',
-                    seller_link: seller_link || ''
-                });
-
-                $('#linkModal').modal('hide');
-            });
-
-            $('#nr-req-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    // Show all rows
-                    filteredData = [...tableData];
-                } else {
-                    // Filter rows based on RL/NRL value (support both old and new field names)
-                    filteredData = tableData.filter(item => {
-                        const rlNrl = item.rl_nrl || (item.nr_req === 'REQ' ? 'RL' : (item.nr_req === 'NR' ? 'NRL' : null));
-                        return rlNrl === selectedValue;
-                    });
-                }
-
-                currentPage = 1; // Reset to the first page
-                renderTable(); // Re-render the table
-                calculateTotals(); // Recalculate totals
-            });
-
-            $(document).on('click', '.link-edit-icon', function() {
-                const sku = $(this).data('sku'); // Get SKU from the clicked pen icon
-
-                // Find the item in tableData by SKU
-                const item = tableData.find(row => row.sku === sku);
-
-                // Set the values in the modal inputs
-                $('#skuInput').val(sku);
-                $('#buyerLink').val(item && item.buyer_link ? item.buyer_link : '');
-                $('#sellerLink').val(item && item.seller_link ? item.seller_link : '');
-
-                $('#linkModal').modal('show'); // Open the modal
-            });
-
-            $('#link-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    // Show all rows
-                    filteredData = [...tableData];
-                } else if (selectedValue === 'with-link') {
-                    // Filter rows with buyer or seller links
-                    filteredData = tableData.filter(item => item.buyer_link || item.seller_link);
-                } else if (selectedValue === 'without-link') {
-                    // Filter rows without buyer or seller links
-                    filteredData = tableData.filter(item => !item.buyer_link && !item.seller_link);
-                }
-
-                currentPage = 1; // Reset to the first page
-                renderTable(); // Re-render the table
-                calculateTotals(); // Recalculate totals
-            });
-
-            $('#listed-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    filteredData = [...tableData];
-                } else {
-                    filteredData = tableData.filter(item => item.listed === selectedValue);
-                }
-
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
-            });
         });
     </script>
 @endsection

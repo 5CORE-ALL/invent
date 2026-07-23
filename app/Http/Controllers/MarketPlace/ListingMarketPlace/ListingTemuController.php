@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
+
+
 use App\Http\Controllers\Controller;
+use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuListingStatus;
@@ -30,37 +34,9 @@ class ListingTemuController extends Controller
 
     public function getViewListingTemuData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
-            $childSku = $item->sku;
-            $inventory = $shopifyData[$childSku]->inv ?? 0;
-            $item->INV = $inventory;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            
-            // Get status data
-            $statusValue = null;
-            if (isset($statusData[$childSku])) {
-                $status = $statusData[$childSku]->value;
-                $statusValue = is_array($status) ? $status : (is_string($status) ? json_decode($status, true) : []);
-            }
-            
-            // Set default values based on inventory (same as decrease page)
-            $item->nr_req = $statusValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
-            $item->listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
-            $item->buyer_link = $statusValue['buyer_link'] ?? null;
-            $item->seller_link = $statusValue['seller_link'] ?? null;
-            
-            return $item;
-        })->values();
-
         return response()->json([
             'status' => 200,
-            'data' => $processedData
+            'data' => AutomatedListingPage::rows('temu'),
         ]);
     }
 
@@ -97,48 +73,7 @@ class ListingTemuController extends Controller
 
     public function getNrReqCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        $reqCount = 0;
-        $listedCount = 0;
-        $pendingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
-
-            if ($isParent || floatval($inv) <= 0) continue;
-
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
-            }
-
-            // NR/REQ logic
-            $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
-            if ($nrReq === 'REQ') {
-                $reqCount++;
-            }
-
-            // Listed/Pending logic
-            $listed = $status['listed'] ?? (floatval($inv) > 0 ? 'Pending' : 'Listed');
-            if ($listed === 'Listed') {
-                $listedCount++;
-            } elseif ($listed === 'Pending') {
-                $pendingCount++;
-            }
-        }
-
-        return [
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
-        ];
+        return ChannelListingRegistry::nrReqCountArray('temu');
     }
 
     public function import(Request $request)

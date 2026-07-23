@@ -362,7 +362,7 @@
         .listing-stat-badge--nrl { background: #ef4444; color: #fff; }
         .listing-stat-badge--nolink { background: #f59e0b; color: #1c1917; }
         .listing-stat-badge--listed { background: #0ea5e9; color: #fff; }
-        .listing-stat-badge--pending { background: #a855f7; color: #fff; }
+        .listing-stat-badge--pending { background: #dc3545; color: #fff; }
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
@@ -509,7 +509,7 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending">Pending:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending">Missing L:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -535,7 +535,7 @@
                             <select id="listed-filter" class="form-select form-select-sm filter-select" aria-label="Listed">
                                 <option value="all" selected>Listed</option>
                                 <option value="Listed">Listed Only</option>
-                                <option value="Pending">Pending</option>
+                                <option value="Pending">Missing L</option>
                             </select>
                             <div class="toolbar-actions dropdown">
                                 <button type="button"
@@ -841,7 +841,7 @@
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Pending — Missing Listing (no ebay item id)">Pending</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
         }
 
         $(document).ready(function () {
@@ -953,7 +953,7 @@
                         formatter: formatSellerLink
                     },
                     {
-                        title: 'Pending',
+                        title: 'Missing L',
                         field: 'listed',
                         hozAlign: 'center',
                         headerHozAlign: 'center',

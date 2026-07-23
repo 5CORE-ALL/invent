@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
+
+
 use App\Http\Controllers\Controller;
+use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\MacysListingStatus;
@@ -30,66 +34,9 @@ class ListingMacysController extends Controller
 
     public function getViewListingMacysData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        
-        // Get status data, handling duplicates by taking the most recent non-empty record
-        $statusData = MacysListingStatus::whereIn('sku', $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->filter(function ($record) {
-                // Filter out records with empty or null values
-                $value = is_array($record->value) ? $record->value : (json_decode($record->value, true) ?? []);
-                return !empty($value) && (isset($value['rl_nrl']) || isset($value['nr_req']) || isset($value['listed']) || isset($value['live_inactive']) || isset($value['buyer_link']) || isset($value['seller_link']));
-            })
-            ->keyBy('sku');
-
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
-            $childSku = $item->sku;
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            
-            // If status exists, fill values from JSON
-            if (isset($statusData[$childSku])) {
-                $status = $statusData[$childSku]->value;
-                if (is_string($status)) {
-                    $status = json_decode($status, true) ?? [];
-                }
-                if (is_array($status) && !empty($status)) {
-                    // Use stored values, support both old 'nr_req' and new 'rl_nrl'
-                    $item->rl_nrl = $status['rl_nrl'] ?? $status['nr_req'] ?? (floatval($item->INV) > 0 ? 'RL' : 'NRL');
-                    // Map old values to new values if needed
-                    if (isset($status['nr_req']) && !isset($status['rl_nrl'])) {
-                        $item->rl_nrl = ($status['nr_req'] === 'REQ') ? 'RL' : (($status['nr_req'] === 'NR') ? 'NRL' : $item->rl_nrl);
-                    }
-                    $item->listed = $status['listed'] ?? null;
-                    $item->live_inactive = $status['live_inactive'] ?? null;
-                    $item->buyer_link = $status['buyer_link'] ?? null;
-                    $item->seller_link = $status['seller_link'] ?? null;
-                } else {
-                    // Empty status - set defaults
-                    $item->rl_nrl = floatval($item->INV) > 0 ? 'RL' : 'NRL';
-                    $item->listed = null;
-                    $item->live_inactive = null;
-                    $item->buyer_link = null;
-                    $item->seller_link = null;
-                }
-            } else {
-                // No status record exists - set defaults based on INV
-                $item->rl_nrl = floatval($item->INV) > 0 ? 'RL' : 'NRL';
-                $item->listed = null;
-                $item->live_inactive = null;
-                $item->buyer_link = null;
-                $item->seller_link = null;
-            }
-            return $item;
-        })->values();
-
         return response()->json([
             'status' => 200,
-            'data' => $processedData
+            'data' => AutomatedListingPage::rows('macys'),
         ]);
     }
 
@@ -145,50 +92,8 @@ class ListingMacysController extends Controller
 
     public function getNrReqCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = MacysListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        $reqCount = 0;
-        $listedCount = 0;
-        $pendingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
-
-            if ($isParent || floatval($inv) <= 0) continue;
-
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
-            }
-
-            // NR/REQ logic
-            $nrReq = $status['nr_req'] ?? (floatval($inv) > 0 ? 'REQ' : 'NR');
-            if ($nrReq === 'REQ') {
-                $reqCount++;
-            }
-
-            // Listed/Pending logic
-            $listed = $status['listed'] ?? (floatval($inv) > 0 ? 'Pending' : 'Listed');
-            if ($listed === 'Listed') {
-                $listedCount++;
-            } elseif ($listed === 'Pending') {
-                $pendingCount++;
-            }
-        }
-
-        return [
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
-        ];
+        return ChannelListingRegistry::nrReqCountArray('macys');
     }
-
 
     public function import(Request $request)
     {

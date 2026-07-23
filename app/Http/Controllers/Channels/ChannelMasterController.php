@@ -43,6 +43,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Http\Controllers\MarketPlace\EbayThreeController as MarketPlaceEbayThreeController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
+use App\Support\Marketplace\EbayTwoListingCounts;
 use App\Models\AliExpressSheetData;
 use App\Models\AliexpressDailyData;
 use App\Models\AliexpressListingStatus;
@@ -1930,6 +1931,11 @@ class ChannelMasterController extends Controller
             'Tienda Mia' => fn () => $this->getTiendamiaLiveMapMissNMapFromPricingData(
                 Request::create('/tiendamia-data-json', 'GET')
             ),
+            // Missing L from /listing-ebaytwo source (EbayTwoDataView NRL + ebay_2_metrics.item_id)
+            'EbayTwo' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
+            'Ebay 2' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
+            'eBay 2' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
+            'eBay Two' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
         ];
 
         foreach ($rows as &$row) {
@@ -7269,7 +7275,7 @@ class ChannelMasterController extends Controller
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayTwo')->first();
 
-        $mapMissCounts = $this->getEbay2LiveMapMissCountsFromTabulator($request);
+        $mapMissCounts = $this->getEbayTwoLiveMapMissCountsFromListingSource();
 
         $result[] = [
             'Channel '   => 'EbayTwo',
@@ -7314,45 +7320,25 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Get eBay Two Missing Listing count
-     * Missing Listing = SKUs with INV > 0, not PARENT, not Listed, and not NR
+     * Get eBay Two Missing Listing count — same source as /listing-ebaytwo.
      */
     private function getEbayTwoMissingListingCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
+        return EbayTwoListingCounts::missingL();
+    }
 
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = EbayTwoListingStatus::whereIn('sku', $skus)
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->keyBy('sku');
+    /**
+     * EbayTwo Map/Miss/NMap for Active Channel.
+     * Missing L from /listing-ebaytwo; Map / N Map / views from ebay2-tabulator rows.
+     *
+     * @return array{map: int, miss: int, nmap: int, total_views: int|float}
+     */
+    private function getEbayTwoLiveMapMissCountsFromListingSource(): array
+    {
+        $counts = $this->getEbay2LiveMapMissCountsFromTabulator(Request::create('/ebay2-tabulator-view', 'GET'));
+        $counts['miss'] = EbayTwoListingCounts::missingL();
 
-        $missingListingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            $isParent = stripos($sku, 'PARENT') !== false;
-            $inv = isset($shopifyData[$sku]) ? $shopifyData[$sku]->inv : 0;
-
-            if ($isParent || floatval($inv) <= 0) continue;
-
-            $status = isset($statusData[$sku]) ? $statusData[$sku]->value : null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
-            }
-
-            // eBay Two uses nr_req (REQ/NR)
-            $nrReq = isset($status['nr_req']) ? $status['nr_req'] : 'REQ';
-            $listed = isset($status['listed']) ? $status['listed'] : null;
-
-            // Missing Listing: Not Listed AND not marked as NR
-            if ($listed !== 'Listed' && $nrReq !== 'NR') {
-                $missingListingCount++;
-            }
-        }
-
-        return $missingListingCount;
+        return $counts;
     }
 
 
@@ -7717,14 +7703,22 @@ class ChannelMasterController extends Controller
 
             return [
                 'map' => $map,
-                'miss' => $missing,
+                // Missing L from /listing-ebaytwo (DataView NRL + ebay_2_metrics.item_id)
+                'miss' => EbayTwoListingCounts::missingL(),
                 'nmap' => $nmap,
                 'total_views' => $views,
             ];
         } catch (\Throwable $e) {
             Log::warning('eBay 2 live map/miss fallback: ' . $e->getMessage());
 
-            return $this->getMapAndMissCounts('ebay2');
+            $fallback = $this->getMapAndMissCounts('ebay2');
+            try {
+                $fallback['miss'] = EbayTwoListingCounts::missingL();
+            } catch (\Throwable $ignored) {
+                // keep fallback miss
+            }
+
+            return $fallback;
         }
     }
 

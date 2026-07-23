@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ChannelMaster;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\MissingListingDar;
+use App\Support\Marketplace\CpMasterCounts;
+use App\Support\Marketplace\EbayTwoListingCounts;
+use App\Support\Marketplace\ListingChannelCounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -14,12 +17,12 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Missing Listing page — Tabulator view powered by channel_master.
  *
- * Renders one row per active channel with three columns:
- *   - Image           (channel_master.logo)
- *   - Channel         (channel_master.channel)
- *   - Missing Listing (channel_master_calculated_data.miss for the channel —
- *                      same source the /all-marketplace-master page uses
- *                      for its "Missing L" column)
+ * Columns:
+ *   - Image / Channel
+ *   - SKU / 0 Inv         (from CP Master / product master)
+ *   - REQ / NRL / Listed  (from each channel's listing page getNrReqCount)
+ *   - Missing Listing     (calculated miss, with EbayTwo live overlay)
+ *   - Seller Portal
  */
 class MissingListingController extends Controller
 {
@@ -33,11 +36,6 @@ class MissingListingController extends Controller
 
     /**
      * JSON payload for the Tabulator table on the Missing Listing page.
-     *
-     * Uses channel_master_calculated_data as the row source — the same table
-     * /all-marketplace-master reads in getViewChannelDataFast() — so badge
-     * totals and per-row Miss values stay in sync. Logo / seller_link are
-     * joined from channel_master when a name match is found.
      */
     public function getData(Request $request)
     {
@@ -54,17 +52,18 @@ class MissingListingController extends Controller
             $hasSellerLink = Schema::hasColumn('channel_master', 'seller_link');
 
             $masterColumns = ['id', 'channel'];
-            if ($hasLogo)       { $masterColumns[] = 'logo'; }
-            if ($hasSellerLink) { $masterColumns[] = 'seller_link'; }
+            if ($hasLogo) {
+                $masterColumns[] = 'logo';
+            }
+            if ($hasSellerLink) {
+                $masterColumns[] = 'seller_link';
+            }
 
             $masterRows = ChannelMaster::whereRaw('LOWER(TRIM(status)) = ?', ['active'])
                 ->whereNotNull('channel')
                 ->where('channel', '!=', '')
                 ->get($masterColumns);
 
-            // Index channel_master rows by exact name and by the same normalized
-            // key the chart APIs use, so we can attach logo / seller_link even
-            // when calculated_data stores a slightly different label.
             $masterByExact = [];
             $masterByNorm  = [];
             foreach ($masterRows as $row) {
@@ -74,27 +73,58 @@ class MissingListingController extends Controller
 
             $calculatedRows = ChannelMasterCalculatedData::orderBy('channel')->get(['channel', 'miss']);
 
-            $data = $calculatedRows->map(function ($row) use ($hasLogo, $hasSellerLink, $masterByExact, $masterByNorm) {
+            $ebayTwoMissingL = EbayTwoListingCounts::missingL();
+            $cpMasterCounts = CpMasterCounts::counts();
+            $cpSkuCount = (int) ($cpMasterCounts['SKU'] ?? 0);
+            $cpZeroInv = (int) ($cpMasterCounts['ZeroInv'] ?? 0);
+
+            $data = $calculatedRows->map(function ($row) use (
+                $hasLogo,
+                $hasSellerLink,
+                $masterByExact,
+                $masterByNorm,
+                $ebayTwoMissingL,
+                $cpSkuCount,
+                $cpZeroInv
+            ) {
                 $channel = $row->channel;
                 $master  = $masterByExact[$channel]
                     ?? $masterByNorm[$this->normalizeChannelKey($channel)]
                     ?? null;
 
+                $miss = (int) ($row->miss ?? 0);
+                $norm = $this->normalizeChannelKey((string) $channel);
+                if (in_array($norm, ['ebaytwo', 'ebay2'], true)
+                    || in_array(trim((string) $channel), ['EbayTwo', 'Ebay 2', 'eBay 2', 'eBay Two'], true)
+                ) {
+                    $miss = $ebayTwoMissingL;
+                }
+
+                // REQ / NRL / Listed from listing pages (cached)
+                $listingCounts = ListingChannelCounts::forChannel((string) $channel);
+
                 return [
                     'id'              => $master?->id,
                     'image'           => ($hasLogo && $master) ? ($master->logo ?? null) : null,
                     'channel'         => $channel,
-                    'missing_listing' => (int) ($row->miss ?? 0),
+                    'listing_url'     => ListingChannelCounts::listingUrl((string) $channel),
+                    'sku'             => $cpSkuCount,
+                    'zero_inv'        => $cpZeroInv,
+                    'req'             => (int) ($listingCounts['REQ'] ?? 0),
+                    'nrl'             => (int) ($listingCounts['NRL'] ?? 0),
+                    'listed'          => (int) ($listingCounts['Listed'] ?? 0),
+                    'missing_listing' => $miss,
                     'seller_portal'   => ($hasSellerLink && $master) ? ($master->seller_link ?? null) : null,
                 ];
             })->values();
+
+            $totalMissingL = (int) $data->sum('missing_listing');
 
             return response()->json([
                 'success' => true,
                 'data'    => $data,
                 'count'   => $data->count(),
-                // Same Missing L total as /all-marketplace-master (live overlay-synced badge).
-                'total_missing_l' => \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::missingLCountForSidebar(),
+                'total_missing_l' => $totalMissingL,
             ]);
         } catch (\Throwable $e) {
             Log::error('Missing Listing getData failed: ' . $e->getMessage());
@@ -102,20 +132,11 @@ class MissingListingController extends Controller
         }
     }
 
-    /**
-     * Same channel normalizer used by ChannelMasterController chart lookups.
-     */
     private function normalizeChannelKey(string $channel): string
     {
         return strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
     }
 
-    /**
-     * Update the Seller Portal URL for a single channel directly into
-     * channel_master.seller_link — the exact same column the
-     * /all-marketplace-master "Edit Channel" modal writes to. Keeps the
-     * two pages in sync so an edit here is visible there immediately.
-     */
     public function updateSellerPortal(Request $request)
     {
         $request->validate([
@@ -154,11 +175,6 @@ class MissingListingController extends Controller
         }
     }
 
-    /**
-     * Persist a Daily Activity Report submission from the Missing Listing page.
-     * Captures the logged-in user and the server-side submission timestamp so
-     * the History panel can show "who, when" without trusting the client clock.
-     */
     public function submitDar(Request $request)
     {
         $request->validate([
@@ -196,11 +212,6 @@ class MissingListingController extends Controller
         }
     }
 
-    /**
-     * Return all Missing Listing DAR submissions, newest first, joined with
-     * the submitter's name. Powers both the History modal table and the
-     * "History: N" badge count in the page header.
-     */
     public function darHistory(Request $request)
     {
         try {

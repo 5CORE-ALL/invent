@@ -1,0 +1,80 @@
+<?php
+
+namespace App\Support\Marketplace;
+
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
+use Illuminate\Support\Collection;
+
+/**
+ * Build listing-page row payloads (EbayTwo pattern) for a registry channel key.
+ */
+class AutomatedListingPage
+{
+    /**
+     * @return Collection<int, ProductMaster>
+     */
+    public static function rows(string $channelKey): Collection
+    {
+        $cfg = ChannelListingRegistry::get($channelKey);
+        if ($cfg === null) {
+            return collect();
+        }
+
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        $statusClass = $cfg['status'] ?? null;
+        $statusData = collect();
+        if ($statusClass && class_exists($statusClass)) {
+            $statusData = $statusClass::whereIn('sku', $skus)
+                ->get()
+                ->mapWithKeys(function ($row) {
+                    return [strtolower(trim((string) $row->sku)) => $row];
+                });
+        }
+
+        $dataView = $cfg['dataView'] ?? null;
+        $nrValues = ($dataView && class_exists($dataView))
+            ? ListingCountsEngine::loadNrValues($dataView, $skus)
+            : collect();
+
+        $listedMap = ChannelListingRegistry::loadListedIds($cfg, $skus);
+        $idField = (string) ($cfg['id_field'] ?? 'listing_id');
+
+        return $productMasters->map(function ($item) use ($shopifyData, $statusData, $nrValues, $listedMap, $idField) {
+            $childSku = (string) $item->sku;
+            $skuLower = strtolower(trim($childSku));
+            $skuUpper = strtoupper(trim($childSku));
+
+            $item->INV = $shopifyData[$childSku]->inv ?? 0;
+            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
+
+            $item->buyer_link = null;
+            $item->seller_link = null;
+            if (isset($statusData[$skuLower])) {
+                $statusValue = $statusData[$skuLower]->value;
+                $status = is_array($statusValue)
+                    ? $statusValue
+                    : (json_decode($statusValue, true) ?? []);
+                $item->buyer_link = $status['buyer_link'] ?? null;
+                $item->seller_link = $status['seller_link'] ?? null;
+            }
+
+            $item->nr_req = ListingCountsEngine::nrReqFromDataView(
+                $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
+            );
+
+            $listingId = trim((string) ($listedMap[$skuLower] ?? ''));
+            $idOrNull = $listingId !== '' ? $listingId : null;
+            $item->{$idField} = $idOrNull;
+            $item->listing_id = $idOrNull;
+            // EbayTwo-style blades historically read eBay_item_id for Missing L / links
+            $item->eBay_item_id = $idOrNull;
+            $item->listed = $listingId !== '' ? 'Listed' : 'Pending';
+
+            return $item;
+        })->values();
+    }
+}

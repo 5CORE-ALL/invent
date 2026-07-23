@@ -431,7 +431,7 @@
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge fs-6 p-2" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
                         <span class="badge bg-primary fs-6 p-2 d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: not listed (no eBay item id), REQ, INV &gt; 0 (Missing L) — same as /map-issues">M L: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="ebay2-missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Missing L from /listing-ebaytwo (REQ + INV &gt; 0 + no ebay item id). Click to filter matching rows on this page.">ML: {{ number_format((int) ($listingMissingLCount ?? 0)) }}</span>
                         <span class="badge fs-6 p-2" id="ebay2-nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;" title="Click to filter: N Map rows (same as MAP column)">N Map: 0</span>
                         
                     </div>
@@ -788,6 +788,8 @@
          *  the CVR formula so the page CVR is computed against orders-API ground truth
          *  instead of the laggier ebay_2_metrics.ebay_l30 sum. */
         const ORDERS_L30_TOTAL_QTY = {{ (int) ($ordersL30TotalQty ?? 0) }};
+        // Missing L badge — same source as /listing-ebaytwo (not in-page row count)
+        const LISTING_MISSING_L_COUNT = {{ (int) ($listingMissingLCount ?? 0) }};
         /** L30 Sales / GPFT% / GROI% from the same real orders /ebay2/daily-sales uses,
          *  so these badges agree with that page (fixed server values). */
         const ORDERS_L30_TOTAL_SALES = {{ (float) ($ordersL30TotalSales ?? 0) }};
@@ -4462,14 +4464,11 @@
                 const prevAvgL7Views = avgL7ViewsGlobal;
                 avgL7ViewsGlobal = avgL7Views;
 
-                // Missing L / Map / N Map are counted over the FULL dataset (like /map-issues),
-                // not the active/filtered view — otherwise not-listed rows are hidden by the
-                // default filters and the Missing badge shows 0.
-                let missingCount = 0;
+                // Map / N Map are counted over the FULL dataset (like /map-issues).
+                // Missing L badge uses /listing-ebaytwo source (LISTING_MISSING_L_COUNT).
                 let mapCount = 0;
                 let nmapCount = 0;
                 table.getData().forEach(row => {
-                    if (isEbay2MissingL(row)) missingCount++;
                     if (isEbay2TabulatorMapRow(row)) mapCount++;
                     if (isEbay2TabulatorNMapRow(row)) nmapCount++;
                 });
@@ -4482,6 +4481,7 @@
                 // Sales / GPFT% / GROI% are fixed server values from the same real L30 orders
                 // /ebay2/daily-sales uses, so this page agrees with that page (the per-SKU
                 // datasheet is tax-excluded, lags the Orders API, and only counts filtered rows).
+                
                 $('#total-sales-amt-badge').text('Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString());
                 $('#avg-gpft-badge').text('GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%');
                 $('#groi-percent-badge').text('GROI: ' + Math.round(ORDERS_L30_GROI) + '%');
@@ -4498,7 +4498,7 @@
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#avg-l7-views-badge').text('L7: ' + avgL7Views.toFixed(1));
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#ebay2-missing-count-badge').text('M L: ' + missingCount.toLocaleString());
+                $('#ebay2-missing-count-badge').text('ML: ' + LISTING_MISSING_L_COUNT.toLocaleString());
                 $('#ebay2-map-count-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#ebay2-nmap-count-badge').text('N Map: ' + nmapCount.toLocaleString());
 

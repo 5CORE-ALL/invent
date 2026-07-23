@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Zendrop', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Reverb', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -9,13 +9,13 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE SHELL ========== */
-        #zendrop-listing-wrap {
+        #reverb-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
             width: 100%;
         }
 
-        #zendrop-listing-wrap .tabulator {
+        #reverb-listing-wrap .tabulator {
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 13px;
@@ -23,33 +23,33 @@
             width: 100% !important;
         }
 
-        .card-body:has(#zendrop-listing-toolbar) {
+        .card-body:has(#reverb-listing-toolbar) {
             width: 100%;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-tableholder {
+        #reverb-listing-wrap .tabulator .tabulator-tableholder {
             background: #fff;
         }
 
         /* ========== HEADER ========== */
-        #zendrop-listing-wrap .tabulator .tabulator-header {
+        #reverb-listing-wrap .tabulator .tabulator-header {
             background: #00d5d5;
             border-bottom: 1px solid #ffffff;
         }
 
-        #zendrop-listing-wrap .tabulator-col .tabulator-col-sorter {
+        #reverb-listing-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -67,13 +67,13 @@
             color: #000 !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             height: auto !important;
             min-height: 34px;
             padding: 0;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col {
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
@@ -83,13 +83,13 @@
             font-weight: bold;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
 
         /* Header filters */
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
             width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -100,26 +100,26 @@
             box-shadow: none;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        #reverb-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
         /* ========== ROWS / CELLS ========== */
-        #zendrop-listing-wrap .tabulator .tabulator-row {
+        #reverb-listing-wrap .tabulator .tabulator-row {
             min-height: 36px;
             border-bottom: 1px solid #f1f5f9;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+        #reverb-listing-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 5px 6px !important;
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
 
-        #zendrop-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
-        #zendrop-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+        #reverb-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #reverb-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
@@ -128,38 +128,38 @@
             vertical-align: middle;
         }
 
-        #zendrop-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+        #reverb-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
             display: none;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-row:hover {
+        #reverb-listing-wrap .tabulator .tabulator-row:hover {
             background-color: #f8fafc !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+        #reverb-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
             background-color: #fcfcfd;
         }
 
-        #zendrop-listing-wrap .tabulator-row.parent-row,
-        #zendrop-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+        #reverb-listing-wrap .tabulator-row.parent-row,
+        #reverb-listing-wrap .tabulator-row.parent-row .tabulator-cell {
             background-color: rgba(69, 233, 255, 0.15) !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
-        #zendrop-listing-wrap .tabulator-row.parent-row:hover,
-        #zendrop-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+        #reverb-listing-wrap .tabulator-row.parent-row:hover,
+        #reverb-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: rgba(69, 233, 255, 0.28) !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */
-        #zendrop-listing-wrap .tabulator .tabulator-footer {
+        #reverb-listing-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -167,14 +167,14 @@
             flex-wrap: wrap;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
             margin-right: 6px;
             font-size: 12px;
             color: #475569;
             font-weight: 600;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 4px 8px;
@@ -184,7 +184,7 @@
             min-height: 36px;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             font-size: 14px !important;
             font-weight: 500 !important;
             min-width: 36px !important;
@@ -200,13 +200,13 @@
             text-align: center !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
             background: #f1f5f9 !important;
             border-color: #cbd5e1 !important;
             color: #1e293b !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
             background: #4361ee !important;
             border-color: #4361ee !important;
             color: #fff !important;
@@ -214,19 +214,19 @@
             box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
             opacity: 0.4 !important;
             cursor: not-allowed !important;
         }
 
-        #zendrop-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+        #reverb-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
             margin: 0 0.5rem;
             font-size: 12px;
             color: #334155;
         }
 
         /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
-        #zendrop-listing-toolbar {
+        #reverb-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
@@ -236,7 +236,7 @@
             box-sizing: border-box;
         }
 
-        #zendrop-listing-toolbar .zendrop-listing-toolbar-row {
+        #reverb-listing-toolbar .reverb-listing-toolbar-row {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
@@ -247,7 +247,7 @@
             box-sizing: border-box;
         }
 
-        #zendrop-listing-toolbar .listing-stat-badges {
+        #reverb-listing-toolbar .listing-stat-badges {
             display: inline-flex;
             flex: 0 0 auto;
             align-items: stretch;
@@ -256,22 +256,22 @@
             padding: 0;
         }
 
-        #zendrop-listing-toolbar .listing-stat-badge {
+        #reverb-listing-toolbar .listing-stat-badge {
             flex: 0 0 auto;
             justify-content: center;
             margin: 0 !important;
             border-radius: 0;
         }
 
-        #zendrop-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+        #reverb-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
             border-radius: 8px 0 0 8px;
         }
 
-        #zendrop-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+        #reverb-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
             border-radius: 0 8px 8px 0;
         }
 
-        #zendrop-listing-toolbar .filter-select {
+        #reverb-listing-toolbar .filter-select {
             flex: 0 0 auto;
             min-width: 0;
             width: 92px !important;
@@ -287,20 +287,20 @@
             line-height: 1.2;
         }
 
-        #zendrop-listing-toolbar .filter-select:focus {
+        #reverb-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #zendrop-listing-toolbar .toolbar-actions {
+        #reverb-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
             align-items: center;
             margin-left: 0;
         }
 
-        #zendrop-listing-toolbar .listing-io-btn {
+        #reverb-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
             font-size: 14px;
@@ -313,16 +313,16 @@
             line-height: 1;
         }
 
-        #zendrop-listing-toolbar .listing-io-btn::after {
+        #reverb-listing-toolbar .listing-io-btn::after {
             display: none;
         }
 
-        #zendrop-listing-toolbar .listing-io-menu {
+        #reverb-listing-toolbar .listing-io-menu {
             min-width: 42px;
             padding: 4px;
         }
 
-        #zendrop-listing-toolbar .listing-io-menu .dropdown-item {
+        #reverb-listing-toolbar .listing-io-menu .dropdown-item {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -333,7 +333,7 @@
             font-size: 14px;
         }
 
-        #zendrop-listing-toolbar .listing-io-menu .dropdown-item:hover {
+        #reverb-listing-toolbar .listing-io-menu .dropdown-item:hover {
             background: #f1f5f9;
         }
 
@@ -366,8 +366,8 @@
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
-        #zendrop-listing-wrap select.nr-req-dropdown,
-        #zendrop-listing-wrap select.listed-dropdown {
+        #reverb-listing-wrap select.nr-req-dropdown,
+        #reverb-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
             font-weight: 700;
@@ -378,32 +378,32 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #zendrop-listing-wrap select.nr-req-dropdown:focus,
-        #zendrop-listing-wrap select.listed-dropdown:focus {
+        #reverb-listing-wrap select.nr-req-dropdown:focus,
+        #reverb-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
         }
 
-        #zendrop-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #zendrop-listing-wrap select.nr-req-dropdown option.req-option {
+        #reverb-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #reverb-listing-wrap select.nr-req-dropdown option.req-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #zendrop-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #zendrop-listing-wrap select.nr-req-dropdown option.nr-option {
+        #reverb-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #reverb-listing-wrap select.nr-req-dropdown option.nr-option {
             background-color: #dc3545;
             color: #fff;
         }
 
-        #zendrop-listing-wrap select.listed-dropdown[data-val="Listed"],
-        #zendrop-listing-wrap select.listed-dropdown option.listed-option {
+        #reverb-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #reverb-listing-wrap select.listed-dropdown option.listed-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #zendrop-listing-wrap select.listed-dropdown[data-val="Pending"],
-        #zendrop-listing-wrap select.listed-dropdown option.pending-option {
+        #reverb-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #reverb-listing-wrap select.listed-dropdown option.pending-option {
             background-color: #dc3545;
             color: #fff;
         }
@@ -447,13 +447,13 @@
         }
 
         /* ========== LINK CELL ========== */
-        #zendrop-listing-wrap a.listing-item-link {
+        #reverb-listing-wrap a.listing-item-link {
             font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        #zendrop-listing-wrap a.listing-item-link:hover {
+        #reverb-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
         }
@@ -486,7 +486,7 @@
         }
 
         /* ========== PLACEHOLDER ========== */
-        #zendrop-listing-wrap .tabulator-placeholder {
+        #reverb-listing-wrap .tabulator-placeholder {
             color: #64748b;
             font-weight: 600;
             padding: 24px;
@@ -496,14 +496,14 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Zendrop', 'sub_title' => 'Zendrop'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Reverb', 'sub_title' => 'Reverb'])
 
     <div class="row">
         <div class="col-12">
             <div class="card position-relative">
                 <div class="card-body">
-                    <div id="zendrop-listing-toolbar" class="mb-3">
-                        <div class="zendrop-listing-toolbar-row">
+                    <div id="reverb-listing-toolbar" class="mb-3">
+                        <div class="reverb-listing-toolbar-row">
                             <div class="listing-stat-badges">
                                 <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
@@ -553,7 +553,7 @@
                                         </button>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item" href="{{ route('listing_zendrop.export') }}" title="Export">
+                                        <a class="dropdown-item" href="{{ route('listing_reverb.export') }}" title="Export">
                                             <i class="fas fa-file-export text-success"></i>
                                         </a>
                                     </li>
@@ -582,8 +582,8 @@
                         </div>
                     </div>
 
-                    <div id="zendrop-listing-wrap">
-                        <div id="zendropListing-table"></div>
+                    <div id="reverb-listing-wrap">
+                        <div id="reverbListing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -606,7 +606,7 @@
     <script>
         document.body.style.zoom = "80%";
 
-        let zendropListingTable = null;
+        let reverbListingTable = null;
         let allListingData = [];
 
         function isParentSku(sku) {
@@ -675,12 +675,12 @@
 
         function calculateTotals() {
             try {
-                if (!zendropListingTable) {
+                if (!reverbListingTable) {
                     resetMetricsToZero();
                     return;
                 }
 
-                const rows = zendropListingTable.getData('active') || [];
+                const rows = reverbListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -737,7 +737,7 @@
         }
 
         function applyListingFilters() {
-            if (!zendropListingTable) return;
+            if (!reverbListingTable) return;
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
@@ -745,7 +745,7 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            zendropListingTable.setFilter(function (data) {
+            reverbListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
@@ -837,8 +837,8 @@
         $(document).ready(function () {
             showLoader();
 
-            zendropListingTable = new Tabulator('#zendropListing-table', {
-                ajaxURL: '/listing_zendrop/view-data',
+            reverbListingTable = new Tabulator('#reverbListing-table', {
+                ajaxURL: '/listing_reverb/view-data',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     allListingData = normalizeListingRows(rows);
@@ -955,14 +955,14 @@
                 ]
             });
 
-            zendropListingTable.on('dataProcessed', function () {
+            reverbListingTable.on('dataProcessed', function () {
                 hideLoader();
                 applyListingFilters();
             });
-            zendropListingTable.on('dataFiltered', function () {
+            reverbListingTable.on('dataFiltered', function () {
                 calculateTotals();
             });
-            zendropListingTable.on('dataLoadError', function () {
+            reverbListingTable.on('dataLoadError', function () {
                 hideLoader();
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
@@ -985,7 +985,7 @@
 
                 showLoader();
                 $.ajax({
-                    url: "{{ route('listing_zendrop.import') }}",
+                    url: "{{ route('listing_reverb.import') }}",
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1005,7 +1005,7 @@
                             }
                         }
                         showNotification('success', message);
-                        zendropListingTable.setData('/listing_zendrop/view-data');
+                        reverbListingTable.setData('/listing_reverb/view-data');
                     },
                     error: function (xhr) {
                         hideLoader();

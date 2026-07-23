@@ -104,6 +104,8 @@ class EbayTwoController extends Controller
             'ordersL30Pft'         => $agg['pft'],
             'ordersL30Cogs'        => $agg['cogs'],
             'ordersL30Nroi'        => $ordersL30Nroi,
+            // Missing L badge — same source as /listing-ebaytwo
+            'listingMissingLCount' => \App\Support\Marketplace\EbayTwoListingCounts::missingL(),
         ]);
     }
 
@@ -702,7 +704,7 @@ class EbayTwoController extends Controller
                 $row['kw_apprSbid'] = '';
             }
 
-            // NRL from data view
+            // NRL from data view — also drives nr_req for Missing L (same as /listing-ebaytwo)
             $row['NRL'] = '';
             $dataViewSkuKey = strtoupper(trim((string) $pm->sku));
             if ($nrValues->has($dataViewSkuKey)) {
@@ -714,6 +716,9 @@ class EbayTwoController extends Controller
                     $row['NRL'] = $raw['NRL'] ?? '';
                 }
             }
+            $row['nr_req'] = \App\Support\Marketplace\EbayTwoListingCounts::nrReqFromDataView(
+                $nrValues->has($dataViewSkuKey) ? $nrValues->get($dataViewSkuKey) : null
+            );
 
             // PMT Ads detail fields (bid_percentage, suggested_bid)
             if ($ebayMetric && $campaignListings->has($ebayMetric->item_id)) {
@@ -1029,6 +1034,10 @@ class EbayTwoController extends Controller
                         }
                     }
                 }
+                // Missing L / nr_req — same source as /listing-ebaytwo
+                $row['nr_req'] = \App\Support\Marketplace\EbayTwoListingCounts::nrReqFromDataView(
+                    $nrValues->has($dvKeyOrphan) ? $nrValues->get($dvKeyOrphan) : null
+                );
                 
                 $result[] = (object) $row;
             }

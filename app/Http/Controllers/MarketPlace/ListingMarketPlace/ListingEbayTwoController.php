@@ -8,6 +8,7 @@ use App\Models\ShopifySku;
 use App\Models\EbayTwoListingStatus;
 use App\Models\EbayTwoDataView;
 use App\Models\Ebay2Metric;
+use App\Support\Marketplace\EbayTwoListingCounts;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -78,23 +79,10 @@ class ListingEbayTwoController extends Controller
                 $item->seller_link = $status['seller_link'] ?? null;
             }
 
-            // NRL/REQ from EbayTwoDataView (same as ebay2 NRL column)
-            $nrlRaw = '';
-            if ($nrValues->has($skuUpper)) {
-                $raw = $nrValues->get($skuUpper);
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $nrlRaw = strtoupper(trim((string) ($raw['NRL'] ?? '')));
-                }
-            }
-            // Normalize to listing-page values: REQ | NR
-            if (in_array($nrlRaw, ['NRL', 'NR'], true)) {
-                $item->nr_req = 'NR';
-            } else {
-                $item->nr_req = 'REQ';
-            }
+            // NRL/REQ from EbayTwoDataView (same as ebay2 NRL column / EbayTwoListingCounts)
+            $item->nr_req = EbayTwoListingCounts::nrReqFromDataView(
+                $nrValues->has($skuUpper) ? $nrValues->get($skuUpper) : null
+            );
 
             // Listed / Not Listed from ebay_2_metrics.item_id (Missing Listing logic)
             $ebayMetric = $ebayMetrics->get($skuLower);
@@ -150,65 +138,13 @@ class ListingEbayTwoController extends Controller
 
     public function getNrReqCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-
-        $nrValues = EbayTwoDataView::whereIn('sku', $skus)
-            ->get(['sku', 'value'])
-            ->mapWithKeys(function ($row) {
-                return [strtoupper(trim((string) $row->sku)) => $row->value];
-            });
-
-        $ebayMetrics = Ebay2Metric::whereIn('sku', $skus)
-            ->get(['sku', 'item_id'])
-            ->mapWithKeys(function ($row) {
-                return [strtolower(trim((string) $row->sku)) => $row];
-            });
-
-        $reqCount = 0;
-        $listedCount = 0;
-        $pendingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim((string) $item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
-
-            if ($isParent || floatval($inv) <= 0) {
-                continue;
-            }
-
-            $nrlRaw = '';
-            $skuUpper = strtoupper($sku);
-            if ($nrValues->has($skuUpper)) {
-                $raw = $nrValues->get($skuUpper);
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $nrlRaw = strtoupper(trim((string) ($raw['NRL'] ?? '')));
-                }
-            }
-            $nrReq = in_array($nrlRaw, ['NRL', 'NR'], true) ? 'NR' : 'REQ';
-            if ($nrReq === 'REQ') {
-                $reqCount++;
-            }
-
-            $ebayMetric = $ebayMetrics->get(strtolower($sku));
-            $itemId = $ebayMetric ? trim((string) ($ebayMetric->item_id ?? '')) : '';
-            if ($itemId !== '') {
-                $listedCount++;
-            } elseif ($nrReq === 'REQ') {
-                $pendingCount++;
-            }
-        }
+        $counts = EbayTwoListingCounts::counts();
 
         return [
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
+            'REQ' => $counts['REQ'],
+            'NRL' => $counts['NRL'],
+            'Listed' => $counts['Listed'],
+            'Pending' => $counts['MissingL'],
         ];
     }
 

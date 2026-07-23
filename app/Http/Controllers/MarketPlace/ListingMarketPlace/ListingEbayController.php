@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 
+
+
 use App\Http\Controllers\Controller;
+use App\Support\Marketplace\AutomatedListingPage;
+use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\EbayDataView;
@@ -32,78 +36,9 @@ class ListingEbayController extends Controller
 
     public function getViewListingEbayData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        
-        // Fetch all data from ebay_data_view table
-        $ebayDataView = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-        
-        // Fetch listing_status from ebay_metrics table
-        $ebayMetrics = EbayMetric::whereIn('sku', $skus)
-            ->select('sku', 'listing_status')
-            ->get()
-            ->keyBy('sku');
-
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $ebayDataView, $ebayMetrics) {
-            $childSku = $item->sku;
-            $parent = $item->parent ?? '';
-            $isParent = stripos($childSku, 'PARENT') !== false;
-
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
-            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            $item->parent = $parent;
-            $item->is_parent = $isParent;
-
-            // Default values
-            $nr_req = 'REQ'; // Default to REQ (shows as RL)
-            $listed = null;
-            $buyer_link = null;
-            $seller_link = null;
-            $listing_status = null;
-
-            // Get data from ebay_data_view table
-            if (isset($ebayDataView[$childSku])) {
-                $ebayData = $ebayDataView[$childSku]->value;
-                
-                // Read NRL field - "REQ" or "NRL"
-                $nrlValue = $ebayData['NRL'] ?? null;
-                if ($nrlValue === 'NRL') {
-                    $nr_req = 'NRL';
-                } else if ($nrlValue === 'REQ') {
-                    $nr_req = 'REQ';
-                }
-                
-                // Read listed field
-                $listedValue = $ebayData['Listed'] ?? $ebayData['listed'] ?? null;
-                if (is_bool($listedValue)) {
-                    $listed = $listedValue ? 'Listed' : 'Pending';
-                } else if (is_string($listedValue)) {
-                    $listed = $listedValue;
-                }
-                
-                $buyer_link = $ebayData['buyer_link'] ?? null;
-                $seller_link = $ebayData['seller_link'] ?? null;
-            }
-            
-            // Get listing_status from ebay_metrics table
-            if (isset($ebayMetrics[$childSku])) {
-                $listing_status = $ebayMetrics[$childSku]->listing_status;
-            }
-
-            $item->nr_req = $nr_req;
-            $item->listed = $listed;
-            $item->buyer_link = $buyer_link;
-            $item->seller_link = $seller_link;
-            $item->listing_status = $listing_status;
-
-            return $item;
-        })->values();
-
         return response()->json([
-            'data' => $processedData,
             'status' => 200,
+            'data' => AutomatedListingPage::rows('ebay'),
         ]);
     }
 
@@ -156,75 +91,7 @@ class ListingEbayController extends Controller
 
     public function getNrReqCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        $reqCount = 0;
-        $listedCount = 0;
-        $pendingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
-
-            if ($isParent || floatval($inv) <= 0) continue;
-
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
-            }
-
-            // NR/REQ logic - read from NRL field
-            $nrlValue = $status['NRL'] ?? null;
-            $nrReq = 'REQ'; // Default
-            if ($nrlValue === 'NRL') {
-                $nrReq = 'NRL';
-            } else if ($nrlValue === 'REQ') {
-                $nrReq = 'REQ';
-            }
-            
-            if ($nrReq === 'REQ') {
-                $reqCount++;
-            }
-
-            // Read listed field
-            $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
-            $listed = null;
-            if (is_bool($listedValue)) {
-                $listed = $listedValue ? 'Listed' : 'Pending';
-            } else if (is_string($listedValue)) {
-                $listed = $listedValue;
-            }
-            
-            if ($listed === 'Listed') {
-                $listedCount++;
-            }
-
-            // Row-wise pending logic to match frontend
-            if ($nrReq !== 'NR' && ($listed === 'Pending' || empty($listed))) {
-                $pendingCount++;
-            }
-
-            // $pendingCount = max($reqCount - $listedCount, 0);
-
-            // Listed/Pending logic
-            // $listed = $status['listed'] ?? (floatval($inv) > 0 ? 'Pending' : 'Listed');
-            // if ($listed === 'Listed') {
-            //     $listedCount++;
-            // } elseif ($listed === 'Pending') {
-            //     $pendingCount++;
-            // }
-        }
-
-        return [
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
-        ];
+        return ChannelListingRegistry::nrReqCountArray('ebay');
     }
 
     public function import(Request $request)

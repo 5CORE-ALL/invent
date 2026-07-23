@@ -8,6 +8,7 @@ use App\Models\AmazonListingStatus;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ProductStockMapping;
+use App\Support\Marketplace\AmazonListingCounts;
 use Illuminate\Http\Request;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingDailyMetric;
@@ -35,144 +36,52 @@ class ListingAmazonController extends Controller
 
     public function getViewListingAmazonData(Request $request)
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')
-            ->select('id', 'sku', 'parent', 'Values')
-            ->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
+        $productMasters = ProductMaster::whereNull('deleted_at')->get();
+        $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-        // Load all data in one go with proper indexing
         $shopifyData = ShopifySku::mapByProductSkus($skus);
-        
-        $statusData = AmazonDataView::whereIn('sku', $skus)
-            ->select('sku', 'value')
-            ->get()
-            ->keyBy('sku');
-        
-        $listingStatusData = AmazonDatasheet::whereIn('sku', $skus)
-            ->select('sku', 'listing_status')
-            ->get()
-            ->keyBy('sku');
-        
-        // Load NR values from AmazonListingStatus for fallback (matching amazon-tabulator-view)
-        $nrListingStatuses = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        $processedData = [];
-        foreach ($productMasters as $item) {
-            $childSku = $item->sku;
-            
-            // Skip SKUs that start with "PARENT"
-            if (str_starts_with(strtoupper(trim($childSku)), 'PARENT')) {
-                continue;
-            }
-            
-            // Default values
-            $nr_req = 'REQ'; // Default to REQ (shows as RL)
-            $nr = null; // NR field for amazon-tabulator-view compatibility
-            $listed = null;
-            $buyer_link = null;
-            $seller_link = null;
-            $listing_status = isset($listingStatusData[$childSku]) ? $listingStatusData[$childSku]->listing_status : null;
-            
-            if (isset($statusData[$childSku])) {
-                $status = $statusData[$childSku]->value;
-                if (!is_array($status)) {
-                    $status = json_decode($status, true) ?? [];
-                }
-                
-                // Read NRL field - matching amazon-tabulator-view logic exactly
-                // "NRL" means NRL (NR), "RL" or "REQ" means RL (REQ)
-                $nrlValue = $status['NRL'] ?? null;
-                if ($nrlValue === 'NRL') {
-                    $nr_req = 'NR';
-                    $nr = 'NR'; // For amazon-tabulator-view compatibility
-                } else if ($nrlValue === 'REQ') {
-                    $nr_req = 'REQ';
-                    $nr = 'REQ'; // For amazon-tabulator-view compatibility
-                } else if ($nrlValue === 'RL') {
-                    // 'RL' is the format saved by saveStatus, map to 'REQ' for display
-                    $nr_req = 'REQ';
-                    $nr = 'REQ'; // For amazon-tabulator-view compatibility
-                } else {
-                    // If NRL field is null or any other value, set NR to null (will fallback to AmazonListingStatus)
-                    $nr = null;
-                }
-                
-                $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
-                if (is_bool($listedValue)) {
-                    $listed = $listedValue ? 'Listed' : 'Pending';
-                } else {
-                    $listed = $listedValue;
-                }
-                $buyer_link = $status['buyer_link'] ?? null;
-                $seller_link = $status['seller_link'] ?? null;
-            }
-            
-            // Fallback to AmazonListingStatus if NR not set from AmazonDataView (matching amazon-tabulator-view)
-            if ($nr === null) {
-                $listingStatus = $nrListingStatuses->get($childSku);
-                if ($listingStatus && $listingStatus->value) {
-                    $listingValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true) ?? [];
-                    $nr = $listingValue['nr_req'] ?? null;
-                    // Only set links from listing status if not already set from AmazonDataView
-                    if ($buyer_link === null) {
-                        $buyer_link = $listingValue['buyer_link'] ?? null;
-                    }
-                    if ($seller_link === null) {
-                        $seller_link = $listingValue['seller_link'] ?? null;
-                    }
-                }
-            }
-            
-            // If still null after fallback, default to REQ
-            if ($nr === null) {
-                $nr = 'REQ';
-                $nr_req = 'REQ';
-            }
-            
-            // Get status from ProductMaster Values field
-            $status = null;
-            $image_path = null;
-            if ($item->Values) {
-                $values = is_array($item->Values) ? $item->Values : json_decode($item->Values, true);
-                if (is_array($values)) {
-                    $status = $values['status'] ?? null;
-                    $image_path = $values['image_path'] ?? null;
-                }
-            }
-            
-            // Get image from Shopify first, then fallback to local image_path (same as product-master)
-            $shopifyImage = isset($shopifyData[$childSku]) ? ($shopifyData[$childSku]->image_src ?? null) : null;
-            
-            if ($shopifyImage) {
-                $image_path = $shopifyImage; // Use Shopify URL
-            } elseif ($image_path) {
-                $image_path = '/' . ltrim($image_path, '/'); // Use local path, ensure leading slash
-            } else {
-                $image_path = null;
-            }
-            
-            $row = [
-                'id' => $item->id,
-                'sku' => $childSku,
-                'parent' => $item->parent,
-                'INV' => $shopifyData[$childSku]->inv ?? 0,
-                'L30' => $shopifyData[$childSku]->quantity ?? 0,
-                'nr_req' => $nr_req,
-                'NR' => $nr, // Add NR field for amazon-tabulator-view compatibility
-                'listed' => $listed,
-                'buyer_link' => $buyer_link,
-                'seller_link' => $seller_link,
-                'listing_status' => $listing_status,
-                'status' => $status, // Status from ProductMaster
-                'image_path' => $image_path // Image path (Shopify first, then local)
-            ];
-            
-            $processedData[] = $row;
-        }
+        // Links only — NRL/REQ + Listed are automated (same pattern as /listing-ebaytwo)
+        $statusData = AmazonDataView::whereIn('sku', $skus)
+            ->get(['sku', 'value'])
+            ->mapWithKeys(function ($row) {
+                return [strtoupper(trim((string) $row->sku)) => $row->value];
+            });
+
+        $datasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
+
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $datasheetsByNorm) {
+            $childSku = (string) $item->sku;
+            $skuUpper = strtoupper(trim($childSku));
+
+            $item->INV = $shopifyData[$childSku]->inv ?? 0;
+            $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
+
+            $raw = $statusData->has($skuUpper) ? $statusData->get($skuUpper) : null;
+            $status = is_array($raw) ? $raw : (is_string($raw) ? (json_decode($raw, true) ?: []) : []);
+            $item->buyer_link = $status['buyer_link'] ?? null;
+            $item->seller_link = $status['seller_link'] ?? null;
+
+            // NRL/REQ from AmazonDataView (same as amazon-tabulator / AmazonListingCounts)
+            $item->nr_req = AmazonListingCounts::nrReqFromDataView($raw);
+            $item->NR = $item->nr_req;
+
+            // Listed / Missing L from amazon_datsheets (price > 0) — same as Active Channel Missing L
+            $sheet = AmazonDatasheet::pickBestForProductSku(
+                $childSku,
+                $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($childSku))
+            );
+            $asin = AmazonListingCounts::asinFromDatasheet($sheet);
+            $item->asin = $asin !== '' ? $asin : null;
+            $item->listed = AmazonListingCounts::isListedFromDatasheet($sheet) ? 'Listed' : 'Pending';
+            $item->listing_status = $sheet->listing_status ?? null;
+
+            return $item;
+        })->values();
 
         return response()->json([
             'status' => 200,
-            'data' => $processedData
+            'data' => $processedData,
         ]);
     }
 
@@ -249,172 +158,151 @@ class ListingAmazonController extends Controller
 
     public function getNrReqCount()
     {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-        $amazonListed = ProductStockMapping::pluck('inventory_amazon_product', 'sku');
-
-        $reqCount = 0;
-        $listedCount = 0;
-        $pendingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            
-            // Skip SKUs that start with "PARENT"
-            if (str_starts_with(strtoupper($sku), 'PARENT')) {
-                continue;
-            }
-            
-            $inv = $shopifyData[$sku]->inv ?? 0;
-
-            if (floatval($inv) <= 0) continue;
-
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
-            }
-
-            $mappingValue = $amazonListed[$sku] ?? null;
-            $listed = null;
-            if ($mappingValue !== null) {
-                $normalized = strtolower(trim($mappingValue));
-                $listed = $normalized !== '' && $normalized !== 'not listed' ? 'Listed' : 'Not Listed';
-            } else {
-                // Check both 'Listed' (boolean) and 'listed' (string) fields
-                $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
-                if (is_bool($listedValue)) {
-                    $listed = $listedValue ? 'Listed' : 'Not Listed';
-                } else {
-                    $listed = $listedValue;
-                }
-            }
-
-            // Read NRL field from amazon_data_view - "RL" means RL, "NRL" means NRL (synced with other Amazon pages)
-            $nrlValue = $status['NRL'] ?? 'RL';
-            // Support both 'RL' (new format) and 'REQ' (old format) for backward compatibility
-            $nrReq = ($nrlValue === 'NRL') ? 'NR' : 'REQ';
-            
-            if ($nrReq === 'REQ') {
-                $reqCount++;
-            }
-
-            if ($listed === 'Listed') {
-                $listedCount++;
-            }
-
-            // Count as pending if nr_req is not NR AND listed is not Listed
-            if ($nrReq !== 'NR' && $listed !== 'Listed') {
-                $pendingCount++;
-            }
-        }
-
-        Log::info("Amazon getNrReqCount: " . json_encode([
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
-        ]));
+        $counts = AmazonListingCounts::counts();
 
         return [
-            'REQ' => $reqCount,
-            'Listed' => $listedCount,
-            'Pending' => $pendingCount,
+            'REQ' => $counts['REQ'],
+            'NRL' => $counts['NRL'],
+            'Listed' => $counts['Listed'],
+            'Pending' => $counts['MissingL'],
         ];
     }
 
 
     public function import(Request $request)
     {
-        $request->validate([
-            'file' => 'required|mimes:csv,txt',
-        ]);
+        try {
+            $request->validate([
+                'file' => [
+                    'required',
+                    'file',
+                    function ($attribute, $value, $fail) {
+                        $extension = strtolower($value->getClientOriginalExtension());
+                        if (! in_array($extension, ['csv', 'txt'], true)) {
+                            $fail('The file must be a CSV or TXT file.');
+                        }
+                    },
+                ],
+            ]);
 
-        $file = $request->file('file');
-        $rows = array_map('str_getcsv', file($file));
-        // $header = array_map('trim', $rows[0]); // first row = header
-        $header = array_map(function ($h) {
-            return trim(preg_replace('/^\xEF\xBB\xBF/', '', $h)); // remove BOM if present
-        }, $rows[0]);
+            $file = $request->file('file');
+            $fileContent = file($file->getRealPath());
+            $firstLine = $fileContent[0] ?? '';
+            $delimiter = (strpos($firstLine, "\t") !== false) ? "\t" : ',';
 
-        unset($rows[0]);
+            $rows = array_map(function ($line) use ($delimiter) {
+                return str_getcsv($line, $delimiter);
+            }, $fileContent);
 
-        $allowedHeaders = ['sku','listed', 'buyer_link', 'seller_link'];
-        foreach ($header as $h) {
-            if (!in_array($h, $allowedHeaders)) {
-                return response()->json([
-                    'error' => "Invalid header '$h'. Allowed headers: " . implode(', ', $allowedHeaders)
-                ], 422);
-            }
-        }
+            $header = array_map(function ($h) {
+                return trim(preg_replace('/^\xEF\xBB\xBF/', '', $h));
+            }, $rows[0] ?? []);
+            unset($rows[0]);
 
-        foreach ($rows as $row) {
-            if (count($row) < 1) {
-                continue; // skip empty
-            }
-
-            $rowData = array_combine($header, $row);
-            $sku = trim($rowData['sku'] ?? '');
-
-            if (!$sku) {
-                continue;
-            }
-
-            // Only import SKUs that exist in product_masters
-            if (!ProductMaster::where('sku', $sku)->exists()) {
-                continue;
-            }
-
-            $status = AmazonDataView::where('sku', $sku)->first();
-            $existing = $status ? $status->value : [];
-
-            $fields = ['listed', 'buyer_link', 'seller_link'];
-            foreach ($fields as $field) {
-                if (array_key_exists($field, $rowData) && $rowData[$field] !== '') {
-                    $existing[$field] = $rowData[$field];
+            $allowedHeaders = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
+            foreach ($header as $h) {
+                if (! in_array($h, $allowedHeaders, true)) {
+                    return response()->json([
+                        'error' => "Invalid header '$h'. Allowed headers: " . implode(', ', $allowedHeaders),
+                    ], 422);
                 }
             }
 
-            AmazonDataView::updateOrCreate(
-                ['sku' => $sku],
-                ['value' => $existing]
-            );
+            $processedCount = 0;
+            $skippedCount = 0;
+
+            foreach ($rows as $row) {
+                if (count($row) < 1) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                $headerCount = count($header);
+                $rowCount = count($row);
+                if ($rowCount < $headerCount) {
+                    $row = array_pad($row, $headerCount, '');
+                }
+                if ($rowCount > $headerCount) {
+                    $row = array_slice($row, 0, $headerCount);
+                }
+
+                $rowData = array_combine($header, $row);
+                $sku = trim($rowData['sku'] ?? '');
+                if ($sku === '' || ! ProductMaster::where('sku', $sku)->whereNull('deleted_at')->exists()) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                $status = AmazonDataView::where('sku', $sku)->first();
+                $existing = $status ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?: [])) : [];
+
+                foreach (['buyer_link', 'seller_link'] as $field) {
+                    if (array_key_exists($field, $rowData) && $rowData[$field] !== '') {
+                        $existing[$field] = trim($rowData[$field]);
+                    }
+                }
+
+                // Optional: import NRL into AmazonDataView (REQ/NR → RL/NRL)
+                if (array_key_exists('nr_req', $rowData) && trim((string) $rowData['nr_req']) !== '') {
+                    $nr = strtoupper(trim((string) $rowData['nr_req']));
+                    $existing['NRL'] = in_array($nr, ['NR', 'NRL'], true) ? 'NRL' : 'RL';
+                }
+
+                AmazonDataView::updateOrCreate(['sku' => $sku], ['value' => $existing]);
+                $processedCount++;
+            }
+
+            return response()->json([
+                'success' => 'CSV imported successfully',
+                'processed' => $processedCount,
+                'skipped' => $skippedCount,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Import failed: ' . $e->getMessage()], 500);
         }
-
-        return response()->json(['success' => 'CSV imported successfully']);
     }
-
 
     public function export(Request $request)
     {
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="amazon_listing_status.csv"',
+            'Content-Disposition' => 'attachment; filename="listing_amazon_' . date('Y-m-d') . '.csv"',
         ];
 
-        $columns = ['sku', 'listed', 'buyer_link', 'seller_link'];
+        $columns = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link', 'asin'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
-
-            // Write header row
             fputcsv($file, $columns);
 
-            // Fetch all SKUs from product master
-            $productMasters = ProductMaster::pluck('sku');
+            $productMasters = ProductMaster::whereNull('deleted_at')->get(['sku']);
+            $skus = $productMasters->pluck('sku')->unique()->filter()->values()->all();
 
-            foreach ($productMasters as $sku) {
-                $status = AmazonDataView::where('sku', $sku)->first();
+            $statusData = AmazonDataView::whereIn('sku', $skus)
+                ->get(['sku', 'value'])
+                ->mapWithKeys(fn ($row) => [strtoupper(trim((string) $row->sku)) => $row->value]);
 
-                $row = [
-                    'sku'         => $sku,
-                    'listed'      => $status->value['listed'] ?? '',
-                    'buyer_link'  => $status->value['buyer_link'] ?? '',
-                    'seller_link' => $status->value['seller_link'] ?? '',
-                ];
+            $datasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
 
-                fputcsv($file, $row);
+            foreach ($productMasters as $product) {
+                $sku = (string) $product->sku;
+                $skuUpper = strtoupper(trim($sku));
+                $raw = $statusData->has($skuUpper) ? $statusData->get($skuUpper) : null;
+                $value = is_array($raw) ? $raw : (is_string($raw) ? (json_decode($raw, true) ?: []) : []);
+
+                $sheet = AmazonDatasheet::pickBestForProductSku(
+                    $sku,
+                    $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($sku))
+                );
+
+                fputcsv($file, [
+                    'sku' => $sku,
+                    'nr_req' => AmazonListingCounts::nrReqFromDataView($raw),
+                    'listed' => AmazonListingCounts::isListedFromDatasheet($sheet) ? 'Listed' : 'Pending',
+                    'buyer_link' => $value['buyer_link'] ?? '',
+                    'seller_link' => $value['seller_link'] ?? '',
+                    'asin' => AmazonListingCounts::asinFromDatasheet($sheet),
+                ]);
             }
 
             fclose($file);
