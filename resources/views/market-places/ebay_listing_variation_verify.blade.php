@@ -85,6 +85,7 @@
         .ebay-stat-badge--parents { background: #4c7ed8; }
         .ebay-stat-badge--children { background: #8b5cf6; }
         .ebay-stat-badge--listed { background: #16a34a; }
+        .ebay-stat-badge--mismatch { background: #dc2626; }
         .ebay-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .ebay-raw-icon-btn > i { font-size: 14px; }
 
@@ -92,6 +93,17 @@
         .ebay-lvv-avail-no { color: #dc2626; font-weight: 700; }
         .ebay-lvv-avail-na { color: #94a3b8; }
         .ebay-lvv-avail-partial { color: #ea580c; font-weight: 700; }
+
+        .ebay-lvv-diff { display: block; margin-top: 4px; line-height: 1.35; text-align: left; font-weight: 500; }
+        .ebay-lvv-diff-missing { color: #dc2626; }
+        .ebay-lvv-diff-extra { color: #2563eb; }
+        .ebay-lvv-diff-label { font-weight: 700; margin-right: 4px; }
+        .ebay-lvv-sku-chip {
+            display: inline-block; margin: 1px 3px 1px 0; padding: 1px 6px; border-radius: 4px;
+            font-size: 11.5px; font-weight: 600; line-height: 1.4;
+        }
+        .ebay-lvv-sku-chip--missing { background: #fee2e2; color: #b91c1c; }
+        .ebay-lvv-sku-chip--extra { background: #dbeafe; color: #1d4ed8; }
     </style>
 @endsection
 
@@ -110,6 +122,7 @@
                             <span class="ebay-stat-badge ebay-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="ebay-lvv-badge-parents">0</span></span>
                             <span class="ebay-stat-badge ebay-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="ebay-lvv-badge-children">0</span></span>
                             <span class="ebay-stat-badge ebay-stat-badge--listed" title="eBay listings cache (ebay_metrics)">LISTED:<span id="ebay-lvv-badge-listed">0</span></span>
+                            <span class="ebay-stat-badge ebay-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="ebay-lvv-badge-mismatch">0</span></span>
                         </div>
                         <span id="ebay-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="ebay-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -119,6 +132,9 @@
                         <button type="button" id="ebay-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull eBay listings (inventory report)">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
                         </button>
+                        <button type="button" id="ebay-lvv-export-btn" class="btn btn-sm btn-success" title="Export filtered rows to Excel">
+                            <i class="fas fa-file-excel me-1"></i> Export Excel
+                        </button>
                         <span class="text-muted small" id="ebay-lvv-status-line"></span>
                     </div>
 
@@ -127,14 +143,20 @@
                             <div>
                                 <label class="ebay-lvv-filter-label" for="ebay-lvv-listed-filter">Listed</label>
                                 <select id="ebay-lvv-listed-filter" class="form-select form-select-sm ebay-lvv-filter-select">
-                                    <option value="all" selected>All</option>
-                                    <option value="mismatch">Mismatch Only</option>
+                                    <option value="all">All</option>
+                                    <option value="mismatch" selected>Mismatch Only</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
                             <div class="d-flex align-items-end gap-2">
                                 <button type="button" class="btn btn-sm btn-primary" id="ebay-lvv-filter-apply">Apply</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="ebay-lvv-filter-clear">Clear</button>
+                            </div>
+                            <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small">
+                                <span class="ebay-lvv-sku-chip ebay-lvv-sku-chip--missing">Missing</span>
+                                <span class="text-muted">in CP Master, not on parent listing</span>
+                                <span class="ebay-lvv-sku-chip ebay-lvv-sku-chip--extra">Excess</span>
+                                <span class="text-muted">on parent listing, not in CP Master</span>
                             </div>
                         </div>
                     </div>
@@ -154,6 +176,7 @@
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let ebayLvvTable = null;
 
@@ -177,6 +200,7 @@
             $('#ebay-lvv-badge-parents').text((meta.required_parent_count || 0).toLocaleString());
             $('#ebay-lvv-badge-children').text((meta.required_child_count || 0).toLocaleString());
             $('#ebay-lvv-badge-listed').text((meta.listings_count || 0).toLocaleString());
+            $('#ebay-lvv-badge-mismatch').text((meta.mismatch_count || 0).toLocaleString());
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -223,6 +247,14 @@
             return `<span class="fw-semibold ebay-lvv-avail-yes">${ebayLvvEscapeHtml(label)}</span>`;
         }
 
+        function ebayLvvSkuChips(skus, type) {
+            if (!Array.isArray(skus) || skus.length === 0) return '';
+            const chipCls = type === 'extra' ? 'ebay-lvv-sku-chip--extra' : 'ebay-lvv-sku-chip--missing';
+            return skus.map(s =>
+                `<span class="ebay-lvv-sku-chip ${chipCls}">${ebayLvvEscapeHtml(s)}</span>`
+            ).join('');
+        }
+
         function ebayLvvFormatAvailable(cell) {
             const d = cell.getRow().getData();
             const label = d.child_sku_available_label || '';
@@ -230,10 +262,84 @@
 
             const avail = parseInt(d.child_sku_available_count, 10) || 0;
             const total = parseInt(d.child_sku_total, 10) || 0;
+            const extraCount = parseInt(d.extra_count, 10) || 0;
+
             let cls = 'ebay-lvv-avail-partial';
-            if (total > 0 && avail === total) cls = 'ebay-lvv-avail-yes';
+            if (total > 0 && avail === total && extraCount === 0) cls = 'ebay-lvv-avail-yes';
             else if (avail === 0) cls = 'ebay-lvv-avail-no';
+
             return `<span class="fw-semibold ${cls}">${ebayLvvEscapeHtml(label)}</span>`;
+        }
+
+        function ebayLvvFormatMissingExcess(cell) {
+            const d = cell.getRow().getData();
+            const missingSkus = Array.isArray(d.missing_skus) ? d.missing_skus : [];
+            const extraSkus = Array.isArray(d.extra_skus) ? d.extra_skus : [];
+
+            if (missingSkus.length === 0 && extraSkus.length === 0) {
+                return ebayLvvDash(null);
+            }
+
+            let html = '';
+            if (missingSkus.length > 0) {
+                html += `<span class="ebay-lvv-diff ebay-lvv-diff-missing">`
+                    + `<span class="ebay-lvv-diff-label">Missing:</span>`
+                    + ebayLvvSkuChips(missingSkus, 'missing')
+                    + `</span>`;
+            }
+            if (extraSkus.length > 0) {
+                html += `<span class="ebay-lvv-diff ebay-lvv-diff-extra">`
+                    + `<span class="ebay-lvv-diff-label">Excess:</span>`
+                    + ebayLvvSkuChips(extraSkus, 'extra')
+                    + `</span>`;
+            }
+            return html;
+        }
+
+        function ebayLvvExportExcel() {
+            if (!ebayLvvTable || typeof XLSX === 'undefined') {
+                alert('Export library not loaded. Please refresh and try again.');
+                return;
+            }
+
+            const rows = ebayLvvTable.getData('active') || [];
+            if (rows.length === 0) {
+                alert('No data to export.');
+                return;
+            }
+
+            const exportData = rows.map(function (d) {
+                const missingSkus = Array.isArray(d.missing_skus) ? d.missing_skus : [];
+                const extraSkus = Array.isArray(d.extra_skus) ? d.extra_skus : [];
+                let matchLabel = '—';
+                if (d.match_status === true) matchLabel = 'Match';
+                else if (d.match_status === false) matchLabel = 'Mismatch';
+
+                return {
+                    'Parent': d.parent || '',
+                    'Required': d.child_sku_required_label ?? '',
+                    'Parent Vs Listed SKU': d.child_sku_available_label || '',
+                    'Listed Count': d.child_sku_available_count ?? '',
+                    'Required Count': d.child_sku_total ?? '',
+                    'Missing Count': d.missing_count ?? missingSkus.length,
+                    'Excess Count': d.extra_count ?? extraSkus.length,
+                    'Missing SKUs': missingSkus.join(', '),
+                    'Excess SKUs': extraSkus.join(', '),
+                    'Match Status': matchLabel,
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            ws['!cols'] = [
+                { wch: 22 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 14 },
+                { wch: 12 }, { wch: 12 }, { wch: 50 }, { wch: 50 }, { wch: 12 },
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Ebay Variation Verify');
+
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            XLSX.writeFile(wb, 'ebay_listing_variation_verify_' + stamp + '.xlsx');
         }
 
         $(document).ready(function () {
@@ -287,6 +393,16 @@
                         minWidth: 140,
                         widthGrow: 1,
                         formatter: ebayLvvFormatAvailable
+                    },
+                    {
+                        title: 'Missing / Excess SKU',
+                        field: 'missing_skus',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 320,
+                        widthGrow: 4,
+                        formatter: ebayLvvFormatMissingExcess,
+                        variableHeight: true
                     }
                 ]
             });
@@ -316,6 +432,8 @@
                 ebayLvvTable.setData('{{ route("ebay.listing.variation.verify.data") }}')
                     .finally(function () { $btn.prop('disabled', false); });
             });
+
+            $('#ebay-lvv-export-btn').on('click', ebayLvvExportExcel);
 
             $('#ebay-lvv-pull-btn').on('click', function () {
                 const $btn = $(this);

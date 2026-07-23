@@ -19,6 +19,8 @@ class TikTokListingVariationVerifyController extends Controller
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
+     * Missing = CP Master child not on the parent TikTok listing (product_id group).
+     * Extra   = SKU on the parent TikTok listing that is not a CP Master child.
      */
     public function data(Request $request)
     {
@@ -56,11 +58,25 @@ class TikTokListingVariationVerifyController extends Controller
 
         $formattedData = [];
         foreach ($parentGroups as $parentKey => $children) {
-            $known = array_filter($children, fn ($c) => $c['child_sku_available'] !== null);
-            $availableCount = count(array_filter($known, fn ($c) => $c['child_sku_available'] === true));
+            $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet);
+
             $requiredCount = count($children);
-            $knownCount = count($known);
-            $parentMatch = $knownCount > 0 ? ($availableCount === $requiredCount) : null;
+            $availableCount = $diff['available_count'];
+            $missingSkus = $diff['missing_skus'];
+            $extraSkus = $diff['extra_skus'];
+            $known = $diff['known'];
+
+            $parentMatch = $known
+                ? ($availableCount === $requiredCount && count($extraSkus) === 0)
+                : null;
+
+            $label = '—';
+            if ($known) {
+                $label = $availableCount . '/' . $requiredCount;
+                if (count($extraSkus) > 0) {
+                    $label .= ' · +' . count($extraSkus) . ' extra';
+                }
+            }
 
             $formattedData[] = [
                 'parent' => $parentKey,
@@ -68,11 +84,13 @@ class TikTokListingVariationVerifyController extends Controller
                 'child_sku_required' => $requiredCount,
                 'child_sku_required_label' => (string) $requiredCount,
                 'child_sku_available' => $parentMatch,
-                'child_sku_available_label' => $knownCount > 0
-                    ? ($availableCount . '/' . $requiredCount)
-                    : '—',
+                'child_sku_available_label' => $label,
                 'child_sku_available_count' => $availableCount,
                 'child_sku_total' => $requiredCount,
+                'missing_skus' => $missingSkus,
+                'extra_skus' => $extraSkus,
+                'missing_count' => count($missingSkus),
+                'extra_count' => count($extraSkus),
                 'match_status' => $parentMatch,
             ];
         }
@@ -84,6 +102,7 @@ class TikTokListingVariationVerifyController extends Controller
                 'last_pulled_at' => TikTokProduct::query()->max('updated_at'),
                 'has_listings_cache' => TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
+                'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
                 'required_refreshed_at' => now()->toDateTimeString(),
             ],
@@ -128,22 +147,180 @@ class TikTokListingVariationVerifyController extends Controller
     }
 
     /**
-     * @return array{set: array<string, true>, empty: bool}
+     * Compare CP Master children to SKUs on the parent TikTok listing (shared product_id).
+     *
+     * @param  array<int, array{parent: string, sku: string, child_sku_available: ?bool}>  $children
+     * @param  array{
+     *   set: array<string, true>,
+     *   empty: bool,
+     *   sku_to_product_id: array<string, string>,
+     *   product_id_to_skus: array<string, list<string>>,
+     *   parent_to_product_id: array<string, string>
+     * }  $lookup
+     * @return array{
+     *   known: bool,
+     *   available_count: int,
+     *   missing_skus: list<string>,
+     *   extra_skus: list<string>
+     * }
+     */
+    private function diffParentListing(string $parentKey, array $children, array $lookup): array
+    {
+        $requiredNormToSku = [];
+        foreach ($children as $child) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku']);
+            if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
+                $requiredNormToSku[$norm] = $child['sku'];
+            }
+        }
+
+        if ($lookup['empty']) {
+            return [
+                'known' => false,
+                'available_count' => 0,
+                'missing_skus' => [],
+                'extra_skus' => [],
+            ];
+        }
+
+        // Prefer a PARENT-row product_id; else most common product_id among listed children.
+        $productId = null;
+        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($parentKey);
+        if ($parentNorm !== '' && isset($lookup['parent_to_product_id'][$parentNorm])) {
+            $productId = $lookup['parent_to_product_id'][$parentNorm];
+        } else {
+            $productIdCounts = [];
+            foreach ($requiredNormToSku as $norm => $_sku) {
+                if (! isset($lookup['sku_to_product_id'][$norm])) {
+                    continue;
+                }
+                $candidate = $lookup['sku_to_product_id'][$norm];
+                $productIdCounts[$candidate] = ($productIdCounts[$candidate] ?? 0) + 1;
+            }
+            if ($productIdCounts !== []) {
+                arsort($productIdCounts);
+                $productId = (string) array_key_first($productIdCounts);
+            }
+        }
+
+        // No shared listing found — fall back to flat listed-SKU check (missing only).
+        if ($productId === null || $productId === '') {
+            $availableCount = 0;
+            $missingSkus = [];
+            foreach ($requiredNormToSku as $norm => $sku) {
+                if (isset($lookup['set'][$norm])) {
+                    $availableCount++;
+                } else {
+                    $missingSkus[] = $sku;
+                }
+            }
+
+            return [
+                'known' => true,
+                'available_count' => $availableCount,
+                'missing_skus' => $missingSkus,
+                'extra_skus' => [],
+            ];
+        }
+
+        $listedOnParent = [];
+        foreach ($lookup['product_id_to_skus'][$productId] ?? [] as $listedSku) {
+            $trimmed = trim((string) $listedSku);
+            if ($trimmed === '' || preg_match('/^PARENT\s+/i', $trimmed) || ! $this->looksLikeSku($trimmed)) {
+                continue;
+            }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($trimmed);
+            if ($norm === '') {
+                continue;
+            }
+            if (! isset($listedOnParent[$norm])) {
+                $listedOnParent[$norm] = $trimmed;
+            }
+        }
+
+        $availableCount = 0;
+        $missingSkus = [];
+        foreach ($requiredNormToSku as $norm => $sku) {
+            if (isset($listedOnParent[$norm])) {
+                $availableCount++;
+            } else {
+                $missingSkus[] = $sku;
+            }
+        }
+
+        $extraSkus = [];
+        foreach ($listedOnParent as $norm => $sku) {
+            if (! isset($requiredNormToSku[$norm])) {
+                $extraSkus[] = $sku;
+            }
+        }
+
+        sort($missingSkus, SORT_NATURAL | SORT_FLAG_CASE);
+        sort($extraSkus, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return [
+            'known' => true,
+            'available_count' => $availableCount,
+            'missing_skus' => $missingSkus,
+            'extra_skus' => $extraSkus,
+        ];
+    }
+
+    /**
+     * @return array{
+     *   set: array<string, true>,
+     *   empty: bool,
+     *   sku_to_product_id: array<string, string>,
+     *   product_id_to_skus: array<string, list<string>>,
+     *   parent_to_product_id: array<string, string>
+     * }
      */
     private function buildListedSkuLookup(): array
     {
         $set = [];
+        $skuToProductId = [];
+        $productIdToSkus = [];
+        $parentToProductId = [];
 
-        foreach (TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+        $rows = TikTokProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'product_id']);
+
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            $productId = trim((string) ($row->product_id ?? ''));
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+
             if ($norm !== '') {
                 $set[$norm] = true;
+                if ($productId !== '' && ! isset($skuToProductId[$norm])) {
+                    $skuToProductId[$norm] = $productId;
+                }
+            }
+
+            if ($productId !== '') {
+                $productIdToSkus[$productId][] = $sku;
+
+                if (preg_match('/^PARENT\s+(.+)$/i', $sku, $m)) {
+                    $parentNorm = ShopifySku::normalizeSkuForShopifyLookup(trim($m[1]));
+                    if ($parentNorm !== '' && ! isset($parentToProductId[$parentNorm])) {
+                        $parentToProductId[$parentNorm] = $productId;
+                    }
+                }
             }
         }
 
         return [
             'set' => $set,
             'empty' => empty($set),
+            'sku_to_product_id' => $skuToProductId,
+            'product_id_to_skus' => $productIdToSkus,
+            'parent_to_product_id' => $parentToProductId,
         ];
     }
 
@@ -162,5 +339,20 @@ class TikTokListingVariationVerifyController extends Controller
         }
 
         return isset($lookup['set'][$norm]);
+    }
+
+    /**
+     * Skip junk rows sometimes stored in tiktok_products.sku (URLs, bare prices).
+     */
+    private function looksLikeSku(string $sku): bool
+    {
+        if (preg_match('#^https?://#i', $sku)) {
+            return false;
+        }
+        if (preg_match('/^\d+(\.\d+)?$/', $sku)) {
+            return false;
+        }
+
+        return true;
     }
 }

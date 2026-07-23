@@ -3,24 +3,25 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Models\AmazonDatasheet;
-use App\Models\AmazonListingRaw;
+use App\Models\MacysPriceData;
+use App\Models\PurchasingPowerProduct;
 use App\Models\ProductMaster;
-use App\Services\AmazonSpApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-class AmzListingVariationVerifyController extends Controller
+class PurchasingPowerListingVariationVerifyController extends Controller
 {
     public function index()
     {
-        return view('market-places.amz_listing_variation_verify');
+        return view('market-places.purchasing_power_listing_variation_verify');
     }
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Missing = CP Master child not listed on Amazon.
-     * Extra   = listed Amazon SKU in this parent family that is not a CP Master child.
+     * Listed source: purchasing_power_products + Mirakl offers (macys_price_data),
+     * same PP Price rule as /purchasing-power-pricing (Missing when PP Price <= 0).
+     * Missing = CP Master child with PP Price <= 0.
+     * Extra   = listed PP SKU in this parent family that is not a CP Master child.
      */
     public function data(Request $request)
     {
@@ -99,10 +100,13 @@ class AmzListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) AmazonListingRaw::query()->count(),
-                'last_pulled_at' => AmazonListingRaw::query()->max('report_imported_at'),
-                'has_listings_cache' => AmazonListingRaw::query()->exists()
-                    || AmazonDatasheet::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => (int) PurchasingPowerProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
+                'last_pulled_at' => max(
+                    PurchasingPowerProduct::query()->max('updated_at'),
+                    MacysPriceData::query()->max('updated_at')
+                ),
+                'has_listings_cache' => PurchasingPowerProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->exists()
+                    || MacysPriceData::query()->exists(),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
@@ -111,31 +115,43 @@ class AmzListingVariationVerifyController extends Controller
         ]);
     }
 
+    /**
+     * Purchasing Power listings come from /purchasing-power-pricing
+     * (purchasing_power_products + Mirakl offer prices in macys_price_data).
+     */
     public function pullListings(Request $request)
     {
         try {
-            set_time_limit(3600);
+            $productsCount = (int) PurchasingPowerProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $offersCount = (int) MacysPriceData::query()->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('offer_sku')->where('offer_sku', '!=', '');
+                })->orWhere(function ($q2) {
+                    $q2->whereNotNull('sku')->where('sku', '!=', '');
+                });
+            })->count();
+            $lastPulledAt = max(
+                PurchasingPowerProduct::query()->max('updated_at'),
+                MacysPriceData::query()->max('updated_at')
+            );
 
-            $service = new AmazonSpApiService();
-            $result = $service->fetchAndStoreListingsReport();
-
-            if (!($result['success'] ?? false)) {
+            if ($productsCount === 0 && $offersCount === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => $result['message'] ?? 'Failed to pull Amazon listings.',
+                    'message' => 'No Purchasing Power listings in purchasing_power_products / macys_price_data. Update data on Purchasing Power Pricing (/purchasing-power-pricing) first.',
+                    'count' => 0,
+                    'last_pulled_at' => $lastPulledAt,
                 ], 422);
             }
 
-            $count = (int) ($result['count'] ?? 0);
-
             return response()->json([
                 'status' => 200,
-                'message' => "Pulled {$count} Amazon listings. Parent Vs Listed SKU updated.",
-                'count' => $count,
-                'last_pulled_at' => AmazonListingRaw::query()->max('report_imported_at'),
+                'message' => "Purchasing Power listings ready. {$productsCount} in purchasing_power_products, {$offersCount} offer rows. Parent Vs Listed SKU updated.",
+                'count' => $productsCount,
+                'last_pulled_at' => $lastPulledAt,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Amz Listing Variation Verify: pull listings failed', [
+            Log::error('Purchasing Power Listing Variation Verify: pull listings failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -144,6 +160,17 @@ class AmzListingVariationVerifyController extends Controller
                 'message' => 'Pull failed: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Same SKU key as /purchasing-power-pricing (uppercase trim).
+     */
+    private function normalizeSku(?string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim((string) $sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
     }
 
     /**
@@ -161,7 +188,7 @@ class AmzListingVariationVerifyController extends Controller
     {
         $requiredNormToSku = [];
         foreach ($children as $child) {
-            $norm = AmazonDatasheet::normalizeSkuForLookup($child['sku']);
+            $norm = $this->normalizeSku($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
                 $requiredNormToSku[$norm] = $child['sku'];
             }
@@ -186,7 +213,7 @@ class AmzListingVariationVerifyController extends Controller
             }
         }
 
-        $parentNorm = AmazonDatasheet::normalizeSkuForLookup($parentKey);
+        $parentNorm = $this->normalizeSku($parentKey);
         $childPrefix = $this->commonPrefix(array_keys($requiredNormToSku));
         $extraSkus = [];
 
@@ -199,11 +226,9 @@ class AmzListingVariationVerifyController extends Controller
             }
 
             $pmParent = $pmParentByNorm[$norm] ?? null;
-            // Belongs to another CP parent — not excess for this group.
             if ($pmParent !== null && $pmParent !== $parentKey) {
                 continue;
             }
-            // Same parent in PM would already be in required; skip if somehow present.
             if ($pmParent === $parentKey) {
                 continue;
             }
@@ -232,36 +257,59 @@ class AmzListingVariationVerifyController extends Controller
         $set = [];
         $skuToListed = [];
 
-        foreach (AmazonListingRaw::query()->whereNotNull('seller_sku')->where('seller_sku', '!=', '')->pluck('seller_sku') as $sellerSku) {
-            $sku = trim((string) $sellerSku);
+        // Mirakl portal offers (preferred PP Price on /purchasing-power-pricing)
+        $offerPriceByNorm = [];
+        $offerSkuByNorm = [];
+        foreach (MacysPriceData::query()->get(['sku', 'offer_sku', 'price']) as $row) {
+            $sku = trim((string) (($row->offer_sku ?: $row->sku) ?? ''));
             if ($sku === '') {
                 continue;
             }
-            $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+            $norm = $this->normalizeSku($sku);
             if ($norm === '') {
                 continue;
             }
-            $set[$norm] = true;
-            if (! isset($skuToListed[$norm])) {
-                $skuToListed[$norm] = $sku;
+            $offerPriceByNorm[$norm] = (float) ($row->price ?? 0);
+            if (! isset($offerSkuByNorm[$norm])) {
+                $offerSkuByNorm[$norm] = $sku;
             }
         }
 
-        if (empty($set)) {
-            foreach (AmazonDatasheet::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
-                $sku = trim((string) $sku);
-                if ($sku === '') {
-                    continue;
-                }
-                $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-                if ($norm === '') {
-                    continue;
-                }
-                $set[$norm] = true;
-                if (! isset($skuToListed[$norm])) {
-                    $skuToListed[$norm] = $sku;
-                }
+        $productPriceByNorm = [];
+        $productSkuByNorm = [];
+        foreach (PurchasingPowerProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price']) as $row) {
+            $sku = trim((string) ($row->sku ?? ''));
+            if ($sku === '') {
+                continue;
             }
+            $norm = $this->normalizeSku($sku);
+            if ($norm === '') {
+                continue;
+            }
+            $productPriceByNorm[$norm] = (float) ($row->price ?? 0);
+            if (! isset($productSkuByNorm[$norm])) {
+                $productSkuByNorm[$norm] = $sku;
+            }
+        }
+
+        // Excess candidates: PP catalog rows with effective PP Price > 0
+        foreach ($productPriceByNorm as $norm => $productPrice) {
+            $price = array_key_exists($norm, $offerPriceByNorm)
+                ? $offerPriceByNorm[$norm]
+                : $productPrice;
+            if ($price <= 0) {
+                continue;
+            }
+            $set[$norm] = true;
+            $skuToListed[$norm] = $productSkuByNorm[$norm] ?? $norm;
+        }
+
+        // Offer-only SKUs still count as listed for Missing (same PP Price rule)
+        foreach ($offerPriceByNorm as $norm => $offerPrice) {
+            if ($offerPrice <= 0 || isset($set[$norm])) {
+                continue;
+            }
+            $set[$norm] = true;
         }
 
         return [
@@ -284,7 +332,7 @@ class AmzListingVariationVerifyController extends Controller
             ->get(['sku', 'parent']);
 
         foreach ($rows as $row) {
-            $norm = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+            $norm = $this->normalizeSku((string) ($row->sku ?? ''));
             if ($norm === '' || isset($map[$norm])) {
                 continue;
             }
@@ -303,7 +351,7 @@ class AmzListingVariationVerifyController extends Controller
             return null;
         }
 
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+        $norm = $this->normalizeSku($sku);
         if ($norm === '') {
             return false;
         }
@@ -342,7 +390,12 @@ class AmzListingVariationVerifyController extends Controller
             return true;
         }
 
-        // Avoid tiny prefixes that match unrelated SKUs (e.g. "CS").
+        $skuCompact = str_replace(' ', '', $skuNorm);
+        $parentCompact = str_replace(' ', '', $parentNorm);
+        if ($parentCompact !== '' && str_starts_with($skuCompact, $parentCompact)) {
+            return true;
+        }
+
         if (strlen($childPrefix) >= 4 && str_starts_with($skuNorm, $childPrefix)) {
             return true;
         }

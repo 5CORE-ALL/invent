@@ -4,21 +4,22 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
-use App\Models\Temu2Pricing;
+use App\Models\ShopifySku;
+use App\Models\TikTokProductTwo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-class Temu2ListingVariationVerifyController extends Controller
+class TikTok2ListingVariationVerifyController extends Controller
 {
     public function index()
     {
-        return view('market-places.temu2_listing_variation_verify');
+        return view('market-places.tiktok2_listing_variation_verify');
     }
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Missing = CP Master child not on the parent Temu 2 listing (goods_id group).
-     * Extra   = SKU on the parent Temu 2 listing that is not a CP Master child.
+     * Missing = CP Master child not on the parent TikTok listing (product_id group).
+     * Extra   = SKU on the parent TikTok listing that is not a CP Master child.
      */
     public function data(Request $request)
     {
@@ -96,9 +97,9 @@ class Temu2ListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
-                'last_pulled_at' => Temu2Pricing::query()->max('updated_at'),
-                'has_listings_cache' => Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
+                'last_pulled_at' => TikTokProductTwo::query()->max('updated_at'),
+                'has_listings_cache' => TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
@@ -108,19 +109,19 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Temu 2 listings come from the temu2_pricing Excel upload (no API pull).
-     * This endpoint refreshes meta from the current cache so the UI matches other pages.
+     * TikTok 2 listings come from CSV upload on /tiktok-2-pricing (no API pull).
+     * This endpoint refreshes meta from the current tiktok_products_two cache.
      */
     public function pullListings(Request $request)
     {
         try {
-            $count = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
-            $lastPulledAt = Temu2Pricing::query()->max('updated_at');
+            $count = (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $lastPulledAt = TikTokProductTwo::query()->max('updated_at');
 
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Temu 2 listings in temu2_pricing. Upload pricing on Temu 2 Analytics first.',
+                    'message' => 'No TikTok 2 listings in tiktok_products_two. Upload CSV on TikTok 2 Shop - Analytics (/tiktok-2-pricing) first.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
@@ -128,12 +129,12 @@ class Temu2ListingVariationVerifyController extends Controller
 
             return response()->json([
                 'status' => 200,
-                'message' => "Temu 2 listings ready. {$count} SKUs in temu2_pricing. Parent Vs Listed SKU updated.",
+                'message' => "TikTok 2 listings ready. {$count} SKUs in tiktok_products_two. Parent Vs Listed SKU updated.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Temu 2 Listing Variation Verify: pull listings failed', [
+            Log::error('TikTok 2 Listing Variation Verify: pull listings failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -145,15 +146,15 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Compare CP Master children to SKUs on the parent Temu 2 listing (shared goods_id).
+     * Compare CP Master children to SKUs on the parent TikTok listing (shared product_id).
      *
      * @param  array<int, array{parent: string, sku: string, child_sku_available: ?bool}>  $children
      * @param  array{
      *   set: array<string, true>,
      *   empty: bool,
-     *   sku_to_goods_id: array<string, string>,
-     *   goods_id_to_skus: array<string, list<string>>,
-     *   parent_to_goods_id: array<string, string>
+     *   sku_to_product_id: array<string, string>,
+     *   product_id_to_skus: array<string, list<string>>,
+     *   parent_to_product_id: array<string, string>
      * }  $lookup
      * @return array{
      *   known: bool,
@@ -166,7 +167,7 @@ class Temu2ListingVariationVerifyController extends Controller
     {
         $requiredNormToSku = [];
         foreach ($children as $child) {
-            $norm = $this->normalizeSku($child['sku']);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
                 $requiredNormToSku[$norm] = $child['sku'];
             }
@@ -181,28 +182,28 @@ class Temu2ListingVariationVerifyController extends Controller
             ];
         }
 
-        // Prefer PARENT-row goods_id; else most common goods_id among listed required children.
-        $goodsId = null;
-        $parentNorm = $this->normalizeSku($parentKey);
-        if ($parentNorm !== '' && isset($lookup['parent_to_goods_id'][$parentNorm])) {
-            $goodsId = $lookup['parent_to_goods_id'][$parentNorm];
+        // Prefer a PARENT-row product_id; else most common product_id among listed children.
+        $productId = null;
+        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($parentKey);
+        if ($parentNorm !== '' && isset($lookup['parent_to_product_id'][$parentNorm])) {
+            $productId = $lookup['parent_to_product_id'][$parentNorm];
         } else {
-            $goodsIdCounts = [];
+            $productIdCounts = [];
             foreach ($requiredNormToSku as $norm => $_sku) {
-                if (! isset($lookup['sku_to_goods_id'][$norm])) {
+                if (! isset($lookup['sku_to_product_id'][$norm])) {
                     continue;
                 }
-                $candidate = $lookup['sku_to_goods_id'][$norm];
-                $goodsIdCounts[$candidate] = ($goodsIdCounts[$candidate] ?? 0) + 1;
+                $candidate = $lookup['sku_to_product_id'][$norm];
+                $productIdCounts[$candidate] = ($productIdCounts[$candidate] ?? 0) + 1;
             }
-            if ($goodsIdCounts !== []) {
-                arsort($goodsIdCounts);
-                $goodsId = (string) array_key_first($goodsIdCounts);
+            if ($productIdCounts !== []) {
+                arsort($productIdCounts);
+                $productId = (string) array_key_first($productIdCounts);
             }
         }
 
         // No shared listing found — fall back to flat listed-SKU check (missing only).
-        if ($goodsId === null || $goodsId === '') {
+        if ($productId === null || $productId === '') {
             $availableCount = 0;
             $missingSkus = [];
             foreach ($requiredNormToSku as $norm => $sku) {
@@ -222,12 +223,12 @@ class Temu2ListingVariationVerifyController extends Controller
         }
 
         $listedOnParent = [];
-        foreach ($lookup['goods_id_to_skus'][$goodsId] ?? [] as $listedSku) {
+        foreach ($lookup['product_id_to_skus'][$productId] ?? [] as $listedSku) {
             $trimmed = trim((string) $listedSku);
-            if ($trimmed === '' || preg_match('/^PARENT\s+/i', $trimmed)) {
+            if ($trimmed === '' || preg_match('/^PARENT\s+/i', $trimmed) || ! $this->looksLikeSku($trimmed)) {
                 continue;
             }
-            $norm = $this->normalizeSku($trimmed);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($trimmed);
             if ($norm === '') {
                 continue;
             }
@@ -265,38 +266,25 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Same SKU normalize as Temu 2 Analytics (PCS folding + space collapse).
-     */
-    private function normalizeSku(?string $sku): string
-    {
-        $sku = strtoupper(trim((string) $sku));
-        $sku = str_replace("\xC2\xA0", ' ', $sku);
-        $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-        $sku = preg_replace('/\s+/', ' ', $sku);
-
-        return $sku;
-    }
-
-    /**
      * @return array{
      *   set: array<string, true>,
      *   empty: bool,
-     *   sku_to_goods_id: array<string, string>,
-     *   goods_id_to_skus: array<string, list<string>>,
-     *   parent_to_goods_id: array<string, string>
+     *   sku_to_product_id: array<string, string>,
+     *   product_id_to_skus: array<string, list<string>>,
+     *   parent_to_product_id: array<string, string>
      * }
      */
     private function buildListedSkuLookup(): array
     {
         $set = [];
-        $skuToGoodsId = [];
-        $goodsIdToSkus = [];
-        $parentToGoodsId = [];
+        $skuToProductId = [];
+        $productIdToSkus = [];
+        $parentToProductId = [];
 
-        $rows = Temu2Pricing::query()
+        $rows = TikTokProductTwo::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->get(['sku', 'goods_id']);
+            ->get(['sku', 'product_id']);
 
         foreach ($rows as $row) {
             $sku = trim((string) ($row->sku ?? ''));
@@ -304,23 +292,23 @@ class Temu2ListingVariationVerifyController extends Controller
                 continue;
             }
 
-            $goodsId = trim((string) ($row->goods_id ?? ''));
-            $norm = $this->normalizeSku($sku);
+            $productId = trim((string) ($row->product_id ?? ''));
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
 
             if ($norm !== '') {
                 $set[$norm] = true;
-                if ($goodsId !== '' && ! isset($skuToGoodsId[$norm])) {
-                    $skuToGoodsId[$norm] = $goodsId;
+                if ($productId !== '' && ! isset($skuToProductId[$norm])) {
+                    $skuToProductId[$norm] = $productId;
                 }
             }
 
-            if ($goodsId !== '') {
-                $goodsIdToSkus[$goodsId][] = $sku;
+            if ($productId !== '') {
+                $productIdToSkus[$productId][] = $sku;
 
                 if (preg_match('/^PARENT\s+(.+)$/i', $sku, $m)) {
-                    $parentNorm = $this->normalizeSku(trim($m[1]));
-                    if ($parentNorm !== '' && ! isset($parentToGoodsId[$parentNorm])) {
-                        $parentToGoodsId[$parentNorm] = $goodsId;
+                    $parentNorm = ShopifySku::normalizeSkuForShopifyLookup(trim($m[1]));
+                    if ($parentNorm !== '' && ! isset($parentToProductId[$parentNorm])) {
+                        $parentToProductId[$parentNorm] = $productId;
                     }
                 }
             }
@@ -329,9 +317,9 @@ class Temu2ListingVariationVerifyController extends Controller
         return [
             'set' => $set,
             'empty' => empty($set),
-            'sku_to_goods_id' => $skuToGoodsId,
-            'goods_id_to_skus' => $goodsIdToSkus,
-            'parent_to_goods_id' => $parentToGoodsId,
+            'sku_to_product_id' => $skuToProductId,
+            'product_id_to_skus' => $productIdToSkus,
+            'parent_to_product_id' => $parentToProductId,
         ];
     }
 
@@ -344,11 +332,26 @@ class Temu2ListingVariationVerifyController extends Controller
             return null;
         }
 
-        $norm = $this->normalizeSku($sku);
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
         if ($norm === '') {
             return false;
         }
 
         return isset($lookup['set'][$norm]);
+    }
+
+    /**
+     * Skip junk rows sometimes stored in tiktok_products_two.sku (URLs, bare prices).
+     */
+    private function looksLikeSku(string $sku): bool
+    {
+        if (preg_match('#^https?://#i', $sku)) {
+            return false;
+        }
+        if (preg_match('/^\d+(\.\d+)?$/', $sku)) {
+            return false;
+        }
+
+        return true;
     }
 }

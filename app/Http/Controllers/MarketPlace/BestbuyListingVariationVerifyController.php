@@ -3,24 +3,25 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Models\AmazonDatasheet;
-use App\Models\AmazonListingRaw;
+use App\Models\BestbuyUsaProduct;
+use App\Models\BestbuyPriceData;
 use App\Models\ProductMaster;
-use App\Services\AmazonSpApiService;
+use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-class AmzListingVariationVerifyController extends Controller
+class BestbuyListingVariationVerifyController extends Controller
 {
     public function index()
     {
-        return view('market-places.amz_listing_variation_verify');
+        return view('market-places.bestbuy_listing_variation_verify');
     }
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Missing = CP Master child not listed on Amazon.
-     * Extra   = listed Amazon SKU in this parent family that is not a CP Master child.
+     * Listed source: bestbuy_usa_products + bestbuy_price_data (same as /bestbuy-pricing).
+     * Missing = CP Master child not listed on Best Buy.
+     * Extra   = listed Best Buy SKU in this parent family that is not a CP Master child.
      */
     public function data(Request $request)
     {
@@ -96,13 +97,19 @@ class AmzListingVariationVerifyController extends Controller
             ];
         }
 
+        $productsCount = (int) BestbuyUsaProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+        $priceDataCount = (int) BestbuyPriceData::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+        $lastPulledAt = collect([
+            BestbuyUsaProduct::query()->max('updated_at'),
+            BestbuyPriceData::query()->max('updated_at'),
+        ])->filter()->max();
+
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) AmazonListingRaw::query()->count(),
-                'last_pulled_at' => AmazonListingRaw::query()->max('report_imported_at'),
-                'has_listings_cache' => AmazonListingRaw::query()->exists()
-                    || AmazonDatasheet::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => max($productsCount, $priceDataCount),
+                'last_pulled_at' => $lastPulledAt,
+                'has_listings_cache' => $productsCount > 0 || $priceDataCount > 0,
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
@@ -111,31 +118,38 @@ class AmzListingVariationVerifyController extends Controller
         ]);
     }
 
+    /**
+     * Best Buy listings come from /bestbuy-pricing (bestbuy_usa_products + bestbuy_price_data upload).
+     * This endpoint refreshes meta from the current cache.
+     */
     public function pullListings(Request $request)
     {
         try {
-            set_time_limit(3600);
+            $productsCount = (int) BestbuyUsaProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $priceDataCount = (int) BestbuyPriceData::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $count = max($productsCount, $priceDataCount);
+            $lastPulledAt = collect([
+                BestbuyUsaProduct::query()->max('updated_at'),
+                BestbuyPriceData::query()->max('updated_at'),
+            ])->filter()->max();
 
-            $service = new AmazonSpApiService();
-            $result = $service->fetchAndStoreListingsReport();
-
-            if (!($result['success'] ?? false)) {
+            if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => $result['message'] ?? 'Failed to pull Amazon listings.',
+                    'message' => 'No Best Buy listings in bestbuy_usa_products / bestbuy_price_data. Update data on Best Buy Pricing (/bestbuy-pricing) first.',
+                    'count' => 0,
+                    'last_pulled_at' => $lastPulledAt,
                 ], 422);
             }
 
-            $count = (int) ($result['count'] ?? 0);
-
             return response()->json([
                 'status' => 200,
-                'message' => "Pulled {$count} Amazon listings. Parent Vs Listed SKU updated.",
+                'message' => "Best Buy listings ready. {$productsCount} in bestbuy_usa_products, {$priceDataCount} in bestbuy_price_data. Parent Vs Listed SKU updated.",
                 'count' => $count,
-                'last_pulled_at' => AmazonListingRaw::query()->max('report_imported_at'),
+                'last_pulled_at' => $lastPulledAt,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Amz Listing Variation Verify: pull listings failed', [
+            Log::error('Bestbuy Listing Variation Verify: pull listings failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -161,7 +175,7 @@ class AmzListingVariationVerifyController extends Controller
     {
         $requiredNormToSku = [];
         foreach ($children as $child) {
-            $norm = AmazonDatasheet::normalizeSkuForLookup($child['sku']);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
                 $requiredNormToSku[$norm] = $child['sku'];
             }
@@ -186,7 +200,7 @@ class AmzListingVariationVerifyController extends Controller
             }
         }
 
-        $parentNorm = AmazonDatasheet::normalizeSkuForLookup($parentKey);
+        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($parentKey);
         $childPrefix = $this->commonPrefix(array_keys($requiredNormToSku));
         $extraSkus = [];
 
@@ -199,11 +213,9 @@ class AmzListingVariationVerifyController extends Controller
             }
 
             $pmParent = $pmParentByNorm[$norm] ?? null;
-            // Belongs to another CP parent — not excess for this group.
             if ($pmParent !== null && $pmParent !== $parentKey) {
                 continue;
             }
-            // Same parent in PM would already be in required; skip if somehow present.
             if ($pmParent === $parentKey) {
                 continue;
             }
@@ -232,36 +244,27 @@ class AmzListingVariationVerifyController extends Controller
         $set = [];
         $skuToListed = [];
 
-        foreach (AmazonListingRaw::query()->whereNotNull('seller_sku')->where('seller_sku', '!=', '')->pluck('seller_sku') as $sellerSku) {
-            $sku = trim((string) $sellerSku);
+        $addSku = function (string $sku) use (&$set, &$skuToListed): void {
+            $sku = trim($sku);
             if ($sku === '') {
-                continue;
+                return;
             }
-            $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
             if ($norm === '') {
-                continue;
+                return;
             }
             $set[$norm] = true;
             if (! isset($skuToListed[$norm])) {
                 $skuToListed[$norm] = $sku;
             }
+        };
+
+        foreach (BestbuyUsaProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            $addSku((string) $sku);
         }
 
-        if (empty($set)) {
-            foreach (AmazonDatasheet::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
-                $sku = trim((string) $sku);
-                if ($sku === '') {
-                    continue;
-                }
-                $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
-                if ($norm === '') {
-                    continue;
-                }
-                $set[$norm] = true;
-                if (! isset($skuToListed[$norm])) {
-                    $skuToListed[$norm] = $sku;
-                }
-            }
+        foreach (BestbuyPriceData::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            $addSku((string) $sku);
         }
 
         return [
@@ -284,7 +287,7 @@ class AmzListingVariationVerifyController extends Controller
             ->get(['sku', 'parent']);
 
         foreach ($rows as $row) {
-            $norm = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
             if ($norm === '' || isset($map[$norm])) {
                 continue;
             }
@@ -303,7 +306,7 @@ class AmzListingVariationVerifyController extends Controller
             return null;
         }
 
-        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
         if ($norm === '') {
             return false;
         }
@@ -342,7 +345,13 @@ class AmzListingVariationVerifyController extends Controller
             return true;
         }
 
-        // Avoid tiny prefixes that match unrelated SKUs (e.g. "CS").
+        // Compact form (no spaces) — Shopify normalize keeps spaces; also match collapsed.
+        $skuCompact = str_replace(' ', '', $skuNorm);
+        $parentCompact = str_replace(' ', '', $parentNorm);
+        if ($parentCompact !== '' && str_starts_with($skuCompact, $parentCompact)) {
+            return true;
+        }
+
         if (strlen($childPrefix) >= 4 && str_starts_with($skuNorm, $childPrefix)) {
             return true;
         }

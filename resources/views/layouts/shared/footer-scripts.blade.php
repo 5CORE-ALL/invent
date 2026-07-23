@@ -6,8 +6,12 @@
     // Only run if searchMenuItem exists (not on login page)
     const searchMenuItem = document.getElementById('searchMenuItem');
     if (searchMenuItem) {
+        // Match when every search word appears in text, regardless of order
+        const matchesQuery = (text, queryWords) => queryWords.every(word => text.includes(word));
+
         searchMenuItem.addEventListener('input', function () {
             const query = this.value.toLowerCase().trim();
+            const queryWords = query.split(/\s+/).filter(Boolean);
 
             // If empty query, reset everything
             if (query === '') {
@@ -25,14 +29,14 @@
             topLevelItems.forEach(topItem => {
                 // Check if top item matches
                 const topItemText = topItem.querySelector('.side-nav-link')?.textContent.toLowerCase() || '';
-                const topItemMatches = topItemText.includes(query);
+                const topItemMatches = matchesQuery(topItemText, queryWords);
 
                 // Check if any child matches
                 let hasMatchingChild = false;
                 const allChildLinks = topItem.querySelectorAll('.side-nav-second-level a, .side-nav-third-level a, .side-nav-forth-level a');
                 allChildLinks.forEach(link => {
                     const text = link.textContent.toLowerCase();
-                    if (text.includes(query)) {
+                    if (matchesQuery(text, queryWords)) {
                         hasMatchingChild = true;
                     }
                 });
@@ -89,7 +93,7 @@
                         const secondLevelItems = topItem.querySelectorAll('.side-nav-second-level > li');
                         secondLevelItems.forEach(secondItem => {
                             const secondText = secondItem.textContent.toLowerCase();
-                            const secondMatches = secondText.includes(query);
+                            const secondMatches = matchesQuery(secondText, queryWords);
 
                             if (secondMatches) {
                                 secondItem.style.display = '';

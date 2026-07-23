@@ -85,6 +85,7 @@
         .tiktok-stat-badge--parents { background: #4c7ed8; }
         .tiktok-stat-badge--children { background: #8b5cf6; }
         .tiktok-stat-badge--listed { background: #16a34a; }
+        .tiktok-stat-badge--mismatch { background: #dc2626; }
         .tiktok-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .tiktok-raw-icon-btn > i { font-size: 14px; }
 
@@ -92,6 +93,17 @@
         .tiktok-lvv-avail-no { color: #dc2626; font-weight: 700; }
         .tiktok-lvv-avail-na { color: #94a3b8; }
         .tiktok-lvv-avail-partial { color: #ea580c; font-weight: 700; }
+
+        .tiktok-lvv-diff { display: block; margin-top: 4px; line-height: 1.35; text-align: left; font-weight: 500; }
+        .tiktok-lvv-diff-missing { color: #dc2626; }
+        .tiktok-lvv-diff-extra { color: #2563eb; }
+        .tiktok-lvv-diff-label { font-weight: 700; margin-right: 4px; }
+        .tiktok-lvv-sku-chip {
+            display: inline-block; margin: 1px 3px 1px 0; padding: 1px 6px; border-radius: 4px;
+            font-size: 11.5px; font-weight: 600; line-height: 1.4;
+        }
+        .tiktok-lvv-sku-chip--missing { background: #fee2e2; color: #b91c1c; }
+        .tiktok-lvv-sku-chip--extra { background: #dbeafe; color: #1d4ed8; }
     </style>
 @endsection
 
@@ -109,15 +121,19 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="tiktok-stat-badge tiktok-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="tiktok-lvv-badge-parents">0</span></span>
                             <span class="tiktok-stat-badge tiktok-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="tiktok-lvv-badge-children">0</span></span>
-                            <span class="tiktok-stat-badge tiktok-stat-badge--listed" title="TikTok 1 listings cache (tiktok_products)">LISTED:<span id="tiktok-lvv-badge-listed">0</span></span>
+                            <span class="tiktok-stat-badge tiktok-stat-badge--listed" title="eBay listings cache (tiktok_products)">LISTED:<span id="tiktok-lvv-badge-listed">0</span></span>
+                            <span class="tiktok-stat-badge tiktok-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="tiktok-lvv-badge-mismatch">0</span></span>
                         </div>
                         <span id="tiktok-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="tiktok-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
                         <button type="button" id="tiktok-lvv-refresh-btn" class="btn btn-sm btn-outline-primary tiktok-raw-icon-btn" title="Refresh" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="tiktok-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull TikTok 1 listings (Shop API)">
+                        <button type="button" id="tiktok-lvv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull TikTok listings (inventory report)">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
+                        </button>
+                        <button type="button" id="tiktok-lvv-export-btn" class="btn btn-sm btn-success" title="Export filtered rows to Excel">
+                            <i class="fas fa-file-excel me-1"></i> Export Excel
                         </button>
                         <span class="text-muted small" id="tiktok-lvv-status-line"></span>
                     </div>
@@ -127,14 +143,20 @@
                             <div>
                                 <label class="tiktok-lvv-filter-label" for="tiktok-lvv-listed-filter">Listed</label>
                                 <select id="tiktok-lvv-listed-filter" class="form-select form-select-sm tiktok-lvv-filter-select">
-                                    <option value="all" selected>All</option>
-                                    <option value="mismatch">Mismatch Only</option>
+                                    <option value="all">All</option>
+                                    <option value="mismatch" selected>Mismatch Only</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
                             <div class="d-flex align-items-end gap-2">
                                 <button type="button" class="btn btn-sm btn-primary" id="tiktok-lvv-filter-apply">Apply</button>
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="tiktok-lvv-filter-clear">Clear</button>
+                            </div>
+                            <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small">
+                                <span class="tiktok-lvv-sku-chip tiktok-lvv-sku-chip--missing">Missing</span>
+                                <span class="text-muted">in CP Master, not on parent listing</span>
+                                <span class="tiktok-lvv-sku-chip tiktok-lvv-sku-chip--extra">Excess</span>
+                                <span class="text-muted">on parent listing, not in CP Master</span>
                             </div>
                         </div>
                     </div>
@@ -154,6 +176,7 @@
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let tiktokLvvTable = null;
 
@@ -177,6 +200,7 @@
             $('#tiktok-lvv-badge-parents').text((meta.required_parent_count || 0).toLocaleString());
             $('#tiktok-lvv-badge-children').text((meta.required_child_count || 0).toLocaleString());
             $('#tiktok-lvv-badge-listed').text((meta.listings_count || 0).toLocaleString());
+            $('#tiktok-lvv-badge-mismatch').text((meta.mismatch_count || 0).toLocaleString());
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -223,6 +247,14 @@
             return `<span class="fw-semibold tiktok-lvv-avail-yes">${tiktokLvvEscapeHtml(label)}</span>`;
         }
 
+        function tiktokLvvSkuChips(skus, type) {
+            if (!Array.isArray(skus) || skus.length === 0) return '';
+            const chipCls = type === 'extra' ? 'tiktok-lvv-sku-chip--extra' : 'tiktok-lvv-sku-chip--missing';
+            return skus.map(s =>
+                `<span class="tiktok-lvv-sku-chip ${chipCls}">${tiktokLvvEscapeHtml(s)}</span>`
+            ).join('');
+        }
+
         function tiktokLvvFormatAvailable(cell) {
             const d = cell.getRow().getData();
             const label = d.child_sku_available_label || '';
@@ -230,10 +262,84 @@
 
             const avail = parseInt(d.child_sku_available_count, 10) || 0;
             const total = parseInt(d.child_sku_total, 10) || 0;
+            const extraCount = parseInt(d.extra_count, 10) || 0;
+
             let cls = 'tiktok-lvv-avail-partial';
-            if (total > 0 && avail === total) cls = 'tiktok-lvv-avail-yes';
+            if (total > 0 && avail === total && extraCount === 0) cls = 'tiktok-lvv-avail-yes';
             else if (avail === 0) cls = 'tiktok-lvv-avail-no';
+
             return `<span class="fw-semibold ${cls}">${tiktokLvvEscapeHtml(label)}</span>`;
+        }
+
+        function tiktokLvvFormatMissingExcess(cell) {
+            const d = cell.getRow().getData();
+            const missingSkus = Array.isArray(d.missing_skus) ? d.missing_skus : [];
+            const extraSkus = Array.isArray(d.extra_skus) ? d.extra_skus : [];
+
+            if (missingSkus.length === 0 && extraSkus.length === 0) {
+                return tiktokLvvDash(null);
+            }
+
+            let html = '';
+            if (missingSkus.length > 0) {
+                html += `<span class="tiktok-lvv-diff tiktok-lvv-diff-missing">`
+                    + `<span class="tiktok-lvv-diff-label">Missing:</span>`
+                    + tiktokLvvSkuChips(missingSkus, 'missing')
+                    + `</span>`;
+            }
+            if (extraSkus.length > 0) {
+                html += `<span class="tiktok-lvv-diff tiktok-lvv-diff-extra">`
+                    + `<span class="tiktok-lvv-diff-label">Excess:</span>`
+                    + tiktokLvvSkuChips(extraSkus, 'extra')
+                    + `</span>`;
+            }
+            return html;
+        }
+
+        function tiktokLvvExportExcel() {
+            if (!tiktokLvvTable || typeof XLSX === 'undefined') {
+                alert('Export library not loaded. Please refresh and try again.');
+                return;
+            }
+
+            const rows = tiktokLvvTable.getData('active') || [];
+            if (rows.length === 0) {
+                alert('No data to export.');
+                return;
+            }
+
+            const exportData = rows.map(function (d) {
+                const missingSkus = Array.isArray(d.missing_skus) ? d.missing_skus : [];
+                const extraSkus = Array.isArray(d.extra_skus) ? d.extra_skus : [];
+                let matchLabel = '—';
+                if (d.match_status === true) matchLabel = 'Match';
+                else if (d.match_status === false) matchLabel = 'Mismatch';
+
+                return {
+                    'Parent': d.parent || '',
+                    'Required': d.child_sku_required_label ?? '',
+                    'Parent Vs Listed SKU': d.child_sku_available_label || '',
+                    'Listed Count': d.child_sku_available_count ?? '',
+                    'Required Count': d.child_sku_total ?? '',
+                    'Missing Count': d.missing_count ?? missingSkus.length,
+                    'Excess Count': d.extra_count ?? extraSkus.length,
+                    'Missing SKUs': missingSkus.join(', '),
+                    'Excess SKUs': extraSkus.join(', '),
+                    'Match Status': matchLabel,
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            ws['!cols'] = [
+                { wch: 22 }, { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 14 },
+                { wch: 12 }, { wch: 12 }, { wch: 50 }, { wch: 50 }, { wch: 12 },
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'TikTok Variation Verify');
+
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            XLSX.writeFile(wb, 'tiktok_listing_variation_verify_' + stamp + '.xlsx');
         }
 
         $(document).ready(function () {
@@ -287,6 +393,16 @@
                         minWidth: 140,
                         widthGrow: 1,
                         formatter: tiktokLvvFormatAvailable
+                    },
+                    {
+                        title: 'Missing / Excess SKU',
+                        field: 'missing_skus',
+                        hozAlign: 'left',
+                        headerHozAlign: 'center',
+                        minWidth: 320,
+                        widthGrow: 4,
+                        formatter: tiktokLvvFormatMissingExcess,
+                        variableHeight: true
                     }
                 ]
             });
@@ -317,11 +433,13 @@
                     .finally(function () { $btn.prop('disabled', false); });
             });
 
+            $('#tiktok-lvv-export-btn').on('click', tiktokLvvExportExcel);
+
             $('#tiktok-lvv-pull-btn').on('click', function () {
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Pull all product listings from TikTok Shop API?\n\nThis runs sync:tiktok-api-data and may take a few minutes.')) {
+                if (!confirm('Pull all merchant listings from TikTok 1 API (sync:tiktok-api-data)?\n\nThis runs sync:tiktok-api-data and may take a few minutes.')) {
                     return;
                 }
 

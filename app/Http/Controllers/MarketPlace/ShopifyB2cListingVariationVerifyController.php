@@ -4,25 +4,27 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
-use App\Models\Temu2Pricing;
+use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-class Temu2ListingVariationVerifyController extends Controller
+class ShopifyB2cListingVariationVerifyController extends Controller
 {
     public function index()
     {
-        return view('market-places.temu2_listing_variation_verify');
+        return view('market-places.shopify_b2c_listing_variation_verify');
     }
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Missing = CP Master child not on the parent Temu 2 listing (goods_id group).
-     * Extra   = SKU on the parent Temu 2 listing that is not a CP Master child.
+     * Listed source: shopify_skus (same as /shopify-b2c-pricing Missing column).
+     * Missing = CP Master child not in Shopify.
+     * Extra   = Shopify SKU in this parent family that is not a CP Master child.
      */
     public function data(Request $request)
     {
         $listedSkuSet = $this->buildListedSkuLookup();
+        $pmParentByNorm = $this->buildProductMasterParentLookup();
 
         $childRows = ProductMaster::query()
             ->whereNull('deleted_at')
@@ -56,7 +58,7 @@ class Temu2ListingVariationVerifyController extends Controller
 
         $formattedData = [];
         foreach ($parentGroups as $parentKey => $children) {
-            $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet);
+            $diff = $this->diffParentListing($parentKey, $children, $listedSkuSet, $pmParentByNorm);
 
             $requiredCount = count($children);
             $availableCount = $diff['available_count'];
@@ -96,9 +98,9 @@ class Temu2ListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
-                'last_pulled_at' => Temu2Pricing::query()->max('updated_at'),
-                'has_listings_cache' => Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => (int) ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
+                'last_pulled_at' => ShopifySku::query()->max('updated_at'),
+                'has_listings_cache' => ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
@@ -108,19 +110,19 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Temu 2 listings come from the temu2_pricing Excel upload (no API pull).
-     * This endpoint refreshes meta from the current cache so the UI matches other pages.
+     * Shopify B2C listings come from shopify_skus (synced for /shopify-b2c-pricing).
+     * This endpoint refreshes meta from the current cache.
      */
     public function pullListings(Request $request)
     {
         try {
-            $count = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
-            $lastPulledAt = Temu2Pricing::query()->max('updated_at');
+            $count = (int) ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $lastPulledAt = ShopifySku::query()->max('updated_at');
 
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Temu 2 listings in temu2_pricing. Upload pricing on Temu 2 Analytics first.',
+                    'message' => 'No Shopify SKUs in shopify_skus. Sync Shopify data used by Shopify B2C - Analytics (/shopify-b2c-pricing) first.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
@@ -128,12 +130,12 @@ class Temu2ListingVariationVerifyController extends Controller
 
             return response()->json([
                 'status' => 200,
-                'message' => "Temu 2 listings ready. {$count} SKUs in temu2_pricing. Parent Vs Listed SKU updated.",
+                'message' => "Shopify B2C listings ready. {$count} SKUs in shopify_skus. Parent Vs Listed SKU updated.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Temu 2 Listing Variation Verify: pull listings failed', [
+            Log::error('Shopify B2C Listing Variation Verify: pull listings failed', [
                 'error' => $e->getMessage(),
             ]);
 
@@ -145,16 +147,9 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Compare CP Master children to SKUs on the parent Temu 2 listing (shared goods_id).
-     *
      * @param  array<int, array{parent: string, sku: string, child_sku_available: ?bool}>  $children
-     * @param  array{
-     *   set: array<string, true>,
-     *   empty: bool,
-     *   sku_to_goods_id: array<string, string>,
-     *   goods_id_to_skus: array<string, list<string>>,
-     *   parent_to_goods_id: array<string, string>
-     * }  $lookup
+     * @param  array{set: array<string, true>, empty: bool, sku_to_listed: array<string, string>}  $lookup
+     * @param  array<string, string>  $pmParentByNorm
      * @return array{
      *   known: bool,
      *   available_count: int,
@@ -162,11 +157,11 @@ class Temu2ListingVariationVerifyController extends Controller
      *   extra_skus: list<string>
      * }
      */
-    private function diffParentListing(string $parentKey, array $children, array $lookup): array
+    private function diffParentListing(string $parentKey, array $children, array $lookup, array $pmParentByNorm): array
     {
         $requiredNormToSku = [];
         foreach ($children as $child) {
-            $norm = $this->normalizeSku($child['sku']);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku']);
             if ($norm !== '' && ! isset($requiredNormToSku[$norm])) {
                 $requiredNormToSku[$norm] = $child['sku'];
             }
@@ -181,75 +176,38 @@ class Temu2ListingVariationVerifyController extends Controller
             ];
         }
 
-        // Prefer PARENT-row goods_id; else most common goods_id among listed required children.
-        $goodsId = null;
-        $parentNorm = $this->normalizeSku($parentKey);
-        if ($parentNorm !== '' && isset($lookup['parent_to_goods_id'][$parentNorm])) {
-            $goodsId = $lookup['parent_to_goods_id'][$parentNorm];
-        } else {
-            $goodsIdCounts = [];
-            foreach ($requiredNormToSku as $norm => $_sku) {
-                if (! isset($lookup['sku_to_goods_id'][$norm])) {
-                    continue;
-                }
-                $candidate = $lookup['sku_to_goods_id'][$norm];
-                $goodsIdCounts[$candidate] = ($goodsIdCounts[$candidate] ?? 0) + 1;
-            }
-            if ($goodsIdCounts !== []) {
-                arsort($goodsIdCounts);
-                $goodsId = (string) array_key_first($goodsIdCounts);
-            }
-        }
-
-        // No shared listing found — fall back to flat listed-SKU check (missing only).
-        if ($goodsId === null || $goodsId === '') {
-            $availableCount = 0;
-            $missingSkus = [];
-            foreach ($requiredNormToSku as $norm => $sku) {
-                if (isset($lookup['set'][$norm])) {
-                    $availableCount++;
-                } else {
-                    $missingSkus[] = $sku;
-                }
-            }
-
-            return [
-                'known' => true,
-                'available_count' => $availableCount,
-                'missing_skus' => $missingSkus,
-                'extra_skus' => [],
-            ];
-        }
-
-        $listedOnParent = [];
-        foreach ($lookup['goods_id_to_skus'][$goodsId] ?? [] as $listedSku) {
-            $trimmed = trim((string) $listedSku);
-            if ($trimmed === '' || preg_match('/^PARENT\s+/i', $trimmed)) {
-                continue;
-            }
-            $norm = $this->normalizeSku($trimmed);
-            if ($norm === '') {
-                continue;
-            }
-            if (! isset($listedOnParent[$norm])) {
-                $listedOnParent[$norm] = $trimmed;
-            }
-        }
-
         $availableCount = 0;
         $missingSkus = [];
         foreach ($requiredNormToSku as $norm => $sku) {
-            if (isset($listedOnParent[$norm])) {
+            if (isset($lookup['set'][$norm])) {
                 $availableCount++;
             } else {
                 $missingSkus[] = $sku;
             }
         }
 
+        $parentNorm = ShopifySku::normalizeSkuForShopifyLookup($parentKey);
+        $childPrefix = $this->commonPrefix(array_keys($requiredNormToSku));
         $extraSkus = [];
-        foreach ($listedOnParent as $norm => $sku) {
-            if (! isset($requiredNormToSku[$norm])) {
-                $extraSkus[] = $sku;
+
+        foreach ($lookup['sku_to_listed'] as $norm => $listedSku) {
+            if (isset($requiredNormToSku[$norm])) {
+                continue;
+            }
+            if (preg_match('/^PARENT/i', trim((string) $listedSku))) {
+                continue;
+            }
+
+            $pmParent = $pmParentByNorm[$norm] ?? null;
+            if ($pmParent !== null && $pmParent !== $parentKey) {
+                continue;
+            }
+            if ($pmParent === $parentKey) {
+                continue;
+            }
+
+            if ($this->skuBelongsToParentFamily($norm, $parentNorm, $childPrefix)) {
+                $extraSkus[] = $listedSku;
             }
         }
 
@@ -265,74 +223,56 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Same SKU normalize as Temu 2 Analytics (PCS folding + space collapse).
-     */
-    private function normalizeSku(?string $sku): string
-    {
-        $sku = strtoupper(trim((string) $sku));
-        $sku = str_replace("\xC2\xA0", ' ', $sku);
-        $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
-        $sku = preg_replace('/\s+/', ' ', $sku);
-
-        return $sku;
-    }
-
-    /**
-     * @return array{
-     *   set: array<string, true>,
-     *   empty: bool,
-     *   sku_to_goods_id: array<string, string>,
-     *   goods_id_to_skus: array<string, list<string>>,
-     *   parent_to_goods_id: array<string, string>
-     * }
+     * @return array{set: array<string, true>, empty: bool, sku_to_listed: array<string, string>}
      */
     private function buildListedSkuLookup(): array
     {
         $set = [];
-        $skuToGoodsId = [];
-        $goodsIdToSkus = [];
-        $parentToGoodsId = [];
+        $skuToListed = [];
 
-        $rows = Temu2Pricing::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get(['sku', 'goods_id']);
-
-        foreach ($rows as $row) {
-            $sku = trim((string) ($row->sku ?? ''));
+        foreach (ShopifySku::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+            $sku = trim((string) $sku);
             if ($sku === '') {
                 continue;
             }
-
-            $goodsId = trim((string) ($row->goods_id ?? ''));
-            $norm = $this->normalizeSku($sku);
-
-            if ($norm !== '') {
-                $set[$norm] = true;
-                if ($goodsId !== '' && ! isset($skuToGoodsId[$norm])) {
-                    $skuToGoodsId[$norm] = $goodsId;
-                }
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm === '') {
+                continue;
             }
-
-            if ($goodsId !== '') {
-                $goodsIdToSkus[$goodsId][] = $sku;
-
-                if (preg_match('/^PARENT\s+(.+)$/i', $sku, $m)) {
-                    $parentNorm = $this->normalizeSku(trim($m[1]));
-                    if ($parentNorm !== '' && ! isset($parentToGoodsId[$parentNorm])) {
-                        $parentToGoodsId[$parentNorm] = $goodsId;
-                    }
-                }
+            $set[$norm] = true;
+            if (! isset($skuToListed[$norm])) {
+                $skuToListed[$norm] = $sku;
             }
         }
 
         return [
             'set' => $set,
             'empty' => empty($set),
-            'sku_to_goods_id' => $skuToGoodsId,
-            'goods_id_to_skus' => $goodsIdToSkus,
-            'parent_to_goods_id' => $parentToGoodsId,
+            'sku_to_listed' => $skuToListed,
         ];
+    }
+
+    /**
+     * @return array<string, string> normalized sku => parent
+     */
+    private function buildProductMasterParentLookup(): array
+    {
+        $map = [];
+
+        $rows = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->whereRaw('UPPER(TRIM(sku)) NOT LIKE ?', ['PARENT%'])
+            ->get(['sku', 'parent']);
+
+        foreach ($rows as $row) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+            if ($norm === '' || isset($map[$norm])) {
+                continue;
+            }
+            $map[$norm] = trim((string) ($row->parent ?? ''));
+        }
+
+        return $map;
     }
 
     /**
@@ -344,11 +284,55 @@ class Temu2ListingVariationVerifyController extends Controller
             return null;
         }
 
-        $norm = $this->normalizeSku($sku);
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
         if ($norm === '') {
             return false;
         }
 
         return isset($lookup['set'][$norm]);
+    }
+
+    /**
+     * @param  list<string>  $norms
+     */
+    private function commonPrefix(array $norms): string
+    {
+        if ($norms === []) {
+            return '';
+        }
+
+        $prefix = $norms[0];
+        foreach ($norms as $norm) {
+            $max = min(strlen($prefix), strlen($norm));
+            $i = 0;
+            while ($i < $max && $prefix[$i] === $norm[$i]) {
+                $i++;
+            }
+            $prefix = substr($prefix, 0, $i);
+            if ($prefix === '') {
+                return '';
+            }
+        }
+
+        return $prefix;
+    }
+
+    private function skuBelongsToParentFamily(string $skuNorm, string $parentNorm, string $childPrefix): bool
+    {
+        if ($parentNorm !== '' && str_starts_with($skuNorm, $parentNorm)) {
+            return true;
+        }
+
+        $skuCompact = str_replace(' ', '', $skuNorm);
+        $parentCompact = str_replace(' ', '', $parentNorm);
+        if ($parentCompact !== '' && str_starts_with($skuCompact, $parentCompact)) {
+            return true;
+        }
+
+        if (strlen($childPrefix) >= 4 && str_starts_with($skuNorm, $childPrefix)) {
+            return true;
+        }
+
+        return false;
     }
 }

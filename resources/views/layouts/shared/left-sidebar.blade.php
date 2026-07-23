@@ -83,6 +83,19 @@
                 </a>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('variations.verify.masters') }}" class="side-nav-link variations-verify-masters-nav">
+                    <i class="ri-layout-grid-line"></i>
+                    <span>Variations Verify Masters</span>
+                    @php
+                        $variationsVerifyMismatchTotal = \App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::totalMismatchCountForSidebar();
+                    @endphp
+                    @if($variationsVerifyMismatchTotal > 0)
+                        <span class="badge rounded-pill ms-auto variations-verify-mismatch-badge" title="Sum of Mismatch across all Listing Variation Verify channels">{{ number_format($variationsVerifyMismatchTotal) }}</span>
+                    @endif
+                </a>
+            </li>
+
             {{-- Marketplace Manager (Shopify ↔ marketplace sync hub) --}}
             <li class="side-nav-item">
                 <a href="{{ route('marketplace.manager.index') }}" class="side-nav-link">
@@ -1471,6 +1484,10 @@
                                     </li>
 
                                     <li>
+                                        <a href="{{ route('shopify.b2c.listing.variation.verify') }}">Shopify B2C Listing Variation Verify</a>
+                                    </li>
+
+                                    <li>
                                         <a href="{{ url('/shopify-b2c-pricing') }}">
                                             Shopify B2C - Analytics</a>
                                     </li>
@@ -1492,6 +1509,9 @@
                                         <a href="{{ url('/shopify-b2b-pricing') }}">
                                             Business Analytics</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('shopify.b2b.listing.variation.verify') }}">Shopify B2B Listing Variation Verify</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1507,6 +1527,10 @@
 
                                     <li>
                                         <a href="{{ route('listing.macys') }}">Listing Macy's</a>
+                                    </li>
+
+                                    <li>
+                                        <a href="{{ route('macys.listing.variation.verify') }}">Macys Listing Variation Verify</a>
                                     </li>
 
                                     <li>
@@ -1569,6 +1593,9 @@
                                     <li>
                                         <a href="{{ url('/purchasing-power-sales') }}">Purchasing Power Sales</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('purchasing.power.listing.variation.verify') }}">Purchasing Power Listing Variation Verify</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1587,6 +1614,9 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.wayfair') }}">Listing Wayfair</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('wayfair.listing.variation.verify') }}">Wayfair Listing Variation Verify</a>
                                     </li>
                                 </ul>
                             </div>
@@ -1933,6 +1963,7 @@
 
                         <li><a href="{{ route('aliexpress.pricing.view') }}">Aliexpress - Analytics</a>
                         </li>
+                        <li><a href="{{ route('aliexpress.listing.variation.verify') }}">AliExpress Listing Variation Verify</a></li>
                         <li><a href="{{ route('aliexpress.lmp') }}">Aliexpress LMP</a></li>
                     </ul>
                 </div>
@@ -1948,6 +1979,7 @@
                 <div class="collapse" id="sidebarFaire">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('faire.pricing.view') }}">Faire - Analytics</a></li>
+                        <li><a href="{{ route('faire.listing.variation.verify') }}">Faire Listing Variation Verify</a></li>
                     </ul>
                 </div>
             </li>
@@ -1967,6 +1999,8 @@
                         {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}
                         <li><a href="{{ route('tiktok.pricing') }}">TikTok 1 Shop - Analytics</a>
+                        </li>
+                        <li><a href="{{ route('tiktok2.listing.variation.verify') }}">TikTok 2 Listing Variation Verify</a>
                         </li>
                         <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop - Analytics</a>
                         </li>
@@ -2017,6 +2051,7 @@
                         <li><a href="{{ route('pls.sales') }}">PLS Sales (30 Days)</a></li>
 
                         <li><a href="{{ route('listing.pls') }}">Listing PLS</a></li>
+                        <li><a href="{{ route('pls.listing.variation.verify') }}">PLS Listing Variation Verify</a></li>
                     </ul>
                 </div>
             </li>
@@ -2066,7 +2101,9 @@
                     <ul class="side-nav-third-level">
                         <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
                         <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
-                        <li><a href="{{ route('shein.pricing.view') }}">Shein Pricing</a></li>                    </ul>
+                        <li><a href="{{ route('shein.pricing.view') }}">Shein Pricing</a></li>
+                        <li><a href="{{ route('shein.listing.variation.verify') }}">Shein Listing Variation Verify</a></li>
+                    </ul>
                 </div>
             </li>
 
@@ -2118,12 +2155,28 @@
                 <div class="collapse" id="sidebarBestbuyUSA">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('bestbuy.pricing') }}">Best Buy Pricing</a></li>
+                        <li><a href="{{ route('bestbuy.listing.variation.verify') }}">Bestbuy Listing Variation Verify</a></li>
                         <li><a href="{{ route('zero.bestbuyusa') }}">Bestbuy USA 0 view</a></li>
 
                         <li><a href="{{ route('listing.bestbuyusa') }}">Listing Bestbuy USA</a>
                         </li>
 
 
+                    </ul>
+                </div>
+            </li>
+
+            <!-- Newegg -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarNewegg" aria-expanded="false"
+                    aria-controls="sidebarNewegg">
+                    <span>Newegg</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarNewegg">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('newegg.pricing.view') }}">Newegg Pricing</a></li>
+                        <li><a href="{{ route('newegg.listing.variation.verify') }}">Newegg Listing Variation Verify</a></li>
                     </ul>
                 </div>
             </li>
@@ -2781,6 +2834,8 @@
 
                         <li><a href="{{ route('newegg.pricing.view') }}">Newegg Pricing</a></li>
 
+                        <li><a href="{{ route('newegg.listing.variation.verify') }}">Newegg Listing Variation Verify</a></li>
+
                         <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
 
                         <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>
@@ -2985,6 +3040,13 @@
 
     /* Missing Listing — Missing L count (same total as /all-marketplace-master). */
     .side-nav a.missing-listing-nav > .missing-listing-badge {
+        background-color: #a71d2a !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+
+    /* Variations Verify Masters — sum of all channel mismatch counts. */
+    .side-nav a.variations-verify-masters-nav > .variations-verify-mismatch-badge {
         background-color: #a71d2a !important;
         color: #fff !important;
         font-weight: 700;

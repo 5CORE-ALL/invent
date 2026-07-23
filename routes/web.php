@@ -181,8 +181,20 @@ use App\Http\Controllers\MarketPlace\EbayListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay3ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\TikTokListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\TikTok2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Temu2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Temu2VariationVerifyController;
+use App\Http\Controllers\MarketPlace\MacysListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\ShopifyB2cListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\ShopifyB2bListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\BestbuyListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\SheinListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\FaireListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\AliexpressListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\WayfairListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\PurchasingPowerListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\PlsListingVariationVerifyController;
+use App\Http\Controllers\MarketPlace\NeweggListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
 use App\Http\Controllers\MarketPlace\PlsController;
@@ -3287,6 +3299,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'getColumnVisibility']);
     Route::post('/newegg-daily-sales-column-visibility', [NeweggSalesController::class, 'saveColumnVisibility']);
 
+    // Newegg Listing Variation Verify — listings from newegg_pricing (/newegg-pricing-view)
+    Route::get('/newegg-listing-variation-verify', [NeweggListingVariationVerifyController::class, 'index'])->name('newegg.listing.variation.verify');
+    Route::get('/newegg-listing-variation-verify/data', [NeweggListingVariationVerifyController::class, 'data'])->name('newegg.listing.variation.verify.data');
+    Route::post('/newegg-listing-variation-verify/pull-listings', [NeweggListingVariationVerifyController::class, 'pullListings'])->name('newegg.listing.variation.verify.pull');
+
     // Newegg Pricing & Inventory Routes
     Route::get('/newegg-pricing-view', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'index'])->name('newegg.pricing.view');
     Route::get('/newegg-pricing-data', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'getData'])->name('newegg.pricing.data');
@@ -3310,6 +3327,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/wayfair-daily-sales-column-visibility', [WayfairSalesController::class, 'saveColumnVisibility']);
     Route::get('/wayfair/sku-sales-data', [WayfairSalesController::class, 'getSkuSalesData'])->name('wayfair.sku.sales.data');
     Route::get('/wayfair/test-calculation', [WayfairSalesController::class, 'testCalculation'])->name('wayfair.test.calculation');
+
+    // Wayfair Listing Variation Verify — listings from wayfair_pricing_prices (/wayfair-pricing)
+    Route::get('/wayfair-listing-variation-verify', [WayfairListingVariationVerifyController::class, 'index'])->name('wayfair.listing.variation.verify');
+    Route::get('/wayfair-listing-variation-verify/data', [WayfairListingVariationVerifyController::class, 'data'])->name('wayfair.listing.variation.verify.data');
+    Route::post('/wayfair-listing-variation-verify/pull-listings', [WayfairListingVariationVerifyController::class, 'pullListings'])->name('wayfair.listing.variation.verify.pull');
 
     Route::get('/wayfair-pricing', [WayfairController::class, 'wayfairPricingView'])->name('wayfair.pricing.view');
     Route::get('/wayfair/pricing-data', [WayfairController::class, 'getWayfairPricingData'])->name('wayfair.pricing.data');
@@ -3341,6 +3363,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiendamia-catalog-metrics', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getCatalogMetrics']);
 
     // Best Buy Pricing Routes
+    // Bestbuy Listing Variation Verify — listings from bestbuy_usa_products + bestbuy_price_data (/bestbuy-pricing)
+    Route::get('/bestbuy-listing-variation-verify', [BestbuyListingVariationVerifyController::class, 'index'])->name('bestbuy.listing.variation.verify');
+    Route::get('/bestbuy-listing-variation-verify/data', [BestbuyListingVariationVerifyController::class, 'data'])->name('bestbuy.listing.variation.verify.data');
+    Route::post('/bestbuy-listing-variation-verify/pull-listings', [BestbuyListingVariationVerifyController::class, 'pullListings'])->name('bestbuy.listing.variation.verify.pull');
+
     Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
     Route::get('/bestbuy-data-json', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyDataJson'])->name('bestbuy.data.json');
     Route::post('/bestbuy-save-nr', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveNrToDatabase'])->name('bestbuy.save.nr');
@@ -3357,6 +3384,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bestbuy-lmp-delete', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'deleteBestbuyLmp'])->name('bestbuy.lmp.delete');
 
     // Macy's Pricing Routes (Tabulator)
+    // Macys Listing Variation Verify (Parent / Required / Parent Vs Listed SKU) — listings from macy_products + macys_price_data (/macys-pricing)
+    Route::get('/macys-listing-variation-verify', [MacysListingVariationVerifyController::class, 'index'])->name('macys.listing.variation.verify');
+    Route::get('/macys-listing-variation-verify/data', [MacysListingVariationVerifyController::class, 'data'])->name('macys.listing.variation.verify.data');
+    Route::post('/macys-listing-variation-verify/pull-listings', [MacysListingVariationVerifyController::class, 'pullListings'])->name('macys.listing.variation.verify.pull');
+
     Route::get('/macys-pricing', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysTabulatorView'])->name('macys.pricing');
     Route::get('/macys-data-json', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysDataJson'])->name('macys.data.json');
     Route::post('/macys-update-nr-req', [\App\Http\Controllers\MarketPlace\MacyController::class, 'updateNrReq'])->name('macys.update.nr.req');
@@ -3369,6 +3401,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/macy-lmp-add', [\App\Http\Controllers\MarketPlace\MacyController::class, 'addMacyLmp'])->name('macy.lmp.add');
     Route::post('/macy-lmp-update', [\App\Http\Controllers\MarketPlace\MacyController::class, 'updateMacyLmp'])->name('macy.lmp.update');
     Route::post('/macy-lmp-delete', [\App\Http\Controllers\MarketPlace\MacyController::class, 'deleteMacyLmp'])->name('macy.lmp.delete');
+
+    // Purchasing Power Listing Variation Verify — purchasing_power_products + Mirakl offers (/purchasing-power-pricing)
+    Route::get('/purchasing-power-listing-variation-verify', [PurchasingPowerListingVariationVerifyController::class, 'index'])->name('purchasing.power.listing.variation.verify');
+    Route::get('/purchasing-power-listing-variation-verify/data', [PurchasingPowerListingVariationVerifyController::class, 'data'])->name('purchasing.power.listing.variation.verify.data');
+    Route::post('/purchasing-power-listing-variation-verify/pull-listings', [PurchasingPowerListingVariationVerifyController::class, 'pullListings'])->name('purchasing.power.listing.variation.verify.pull');
 
     // Purchasing Power Pricing Routes (Tabulator)
     Route::get('/purchasing-power-pricing', [\App\Http\Controllers\MarketPlace\PurchasingPowerController::class, 'pricingView'])->name('purchasing.power.pricing');
@@ -3449,6 +3486,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-listing-variation-verify/data', [TikTokListingVariationVerifyController::class, 'data'])->name('tiktok.listing.variation.verify.data');
     Route::post('/tiktok-listing-variation-verify/pull-listings', [TikTokListingVariationVerifyController::class, 'pullListings'])->name('tiktok.listing.variation.verify.pull');
 
+    // TikTok 2 Listing Variation Verify (Parent / Required / Parent Vs Listed SKU) — listings from tiktok_products_two (/tiktok-2-pricing)
+    Route::get('/tiktok-2-listing-variation-verify', [TikTok2ListingVariationVerifyController::class, 'index'])->name('tiktok2.listing.variation.verify');
+    Route::get('/tiktok-2-listing-variation-verify/data', [TikTok2ListingVariationVerifyController::class, 'data'])->name('tiktok2.listing.variation.verify.data');
+    Route::post('/tiktok-2-listing-variation-verify/pull-listings', [TikTok2ListingVariationVerifyController::class, 'pullListings'])->name('tiktok2.listing.variation.verify.pull');
+    // Alias (no hyphen after tiktok) → canonical URL
+    Route::redirect('/tiktok2-listing-variation-verify', '/tiktok-2-listing-variation-verify');
+    Route::redirect('/tiktok2-listing-variation-verify/data', '/tiktok-2-listing-variation-verify/data');
+
     // TikTok Pricing Routes (Tabulator)
     Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');
     Route::get('/tiktok-2-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2TabulatorView'])->name('tiktok2.pricing');
@@ -3475,11 +3520,21 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'setColumnVisibility'])->name('tiktok.pricing.column.set');
 
     // Shopify B2C Tabulator Routes
+    // Shopify B2C Listing Variation Verify — listings from shopify_skus (/shopify-b2c-pricing)
+    Route::get('/shopify-b2c-listing-variation-verify', [ShopifyB2cListingVariationVerifyController::class, 'index'])->name('shopify.b2c.listing.variation.verify');
+    Route::get('/shopify-b2c-listing-variation-verify/data', [ShopifyB2cListingVariationVerifyController::class, 'data'])->name('shopify.b2c.listing.variation.verify.data');
+    Route::post('/shopify-b2c-listing-variation-verify/pull-listings', [ShopifyB2cListingVariationVerifyController::class, 'pullListings'])->name('shopify.b2c.listing.variation.verify.pull');
+
     Route::get('/shopify-b2c-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cTabulatorView'])->name('shopify.b2c.pricing');
     Route::get('/shopify-b2c-data-json', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cDataJson'])->name('shopify.b2c.data.json');
     Route::post('/shopify-b2c-update-listed-live', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'updateShopifyB2cListedLive'])->name('shopify.b2c.update.listed.live');
     Route::get('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getColumnVisibility'])->name('shopify.b2c.pricing.column.get');
     Route::post('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'setColumnVisibility'])->name('shopify.b2c.pricing.column.set');
+
+    // Shopify B2B Listing Variation Verify — listings from shopify_skus (/shopify-b2b-pricing)
+    Route::get('/shopify-b2b-listing-variation-verify', [ShopifyB2bListingVariationVerifyController::class, 'index'])->name('shopify.b2b.listing.variation.verify');
+    Route::get('/shopify-b2b-listing-variation-verify/data', [ShopifyB2bListingVariationVerifyController::class, 'data'])->name('shopify.b2b.listing.variation.verify.data');
+    Route::post('/shopify-b2b-listing-variation-verify/pull-listings', [ShopifyB2bListingVariationVerifyController::class, 'pullListings'])->name('shopify.b2b.listing.variation.verify.pull');
 
     // Shopify B2B Tabulator Routes (sales from /shopify-b2b/daily-sales; price/SPRICE via pricing-master-cvr sb2b)
     Route::get('/shopify-b2b-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2bController::class, 'shopifyB2bTabulatorView'])->name('shopify.b2b.pricing');
@@ -3563,6 +3618,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/missing-listing/dar/submit',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'submitDar'])->name('missing.listing.dar.submit');
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
+
+    // Variations Verify Masters — active channel_master rows (Channel Image + Channels)
+    Route::get('/variations-verify-masters', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'index'])->name('variations.verify.masters');
+    Route::get('/variations-verify-masters/data', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'data'])->name('variations.verify.masters.data');
+    Route::post('/variations-verify-masters/update-nr-req', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'updateNrReq'])->name('variations.verify.masters.update.nr.req');
 
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
@@ -4928,6 +4988,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/aliexpress-lmp/upload', [AliexpressController::class, 'uploadAliexpressLmp'])->name('aliexpress.lmp.upload');
     Route::post('/aliexpress-lmp/save', [AliexpressController::class, 'saveAliexpressLmp'])->name('aliexpress.lmp.save');
     Route::get('/aliexpress-lmp/sample', [AliexpressController::class, 'downloadAliexpressLmpSample'])->name('aliexpress.lmp.sample');
+    // AliExpress Listing Variation Verify — listings from aliexpress_pricing_prices (/aliexpress-pricing)
+    Route::get('/aliexpress-listing-variation-verify', [AliexpressListingVariationVerifyController::class, 'index'])->name('aliexpress.listing.variation.verify');
+    Route::get('/aliexpress-listing-variation-verify/data', [AliexpressListingVariationVerifyController::class, 'data'])->name('aliexpress.listing.variation.verify.data');
+    Route::post('/aliexpress-listing-variation-verify/pull-listings', [AliexpressListingVariationVerifyController::class, 'pullListings'])->name('aliexpress.listing.variation.verify.pull');
+
     Route::get('/aliexpress-pricing', [AliexpressController::class, 'aliexpressPricingView'])->name('aliexpress.pricing.view');
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
     Route::get('/aliexpress/pricing-price-sample', [AliexpressController::class, 'downloadPricingPriceSample'])->name('aliexpress.pricing.price.sample');
@@ -5043,6 +5108,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shein-column-visibility', [SheinController::class, 'saveSheinColumnVisibility'])->name('shein.save.column.visibility');
     Route::get('/shein-column-visibility', [SheinController::class, 'getSheinColumnVisibility'])->name('shein.get.column.visibility');
 
+    // Shein Listing Variation Verify — listings from shein_pricing_prices (/shein-pricing)
+    Route::get('/shein-listing-variation-verify', [SheinListingVariationVerifyController::class, 'index'])->name('shein.listing.variation.verify');
+    Route::get('/shein-listing-variation-verify/data', [SheinListingVariationVerifyController::class, 'data'])->name('shein.listing.variation.verify.data');
+    Route::post('/shein-listing-variation-verify/pull-listings', [SheinListingVariationVerifyController::class, 'pullListings'])->name('shein.listing.variation.verify.pull');
+
     // Shein Pricing Page
     Route::get('/shein-pricing', [SheinController::class, 'sheinPricingView'])->name('shein.pricing.view');
     Route::get('/shein/pricing-data', [SheinController::class, 'getSheinPricingData'])->name('shein.pricing.data');
@@ -5070,6 +5140,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/faire/upload-daily-data', [FaireController::class, 'uploadDailyDataChunk'])->name('faire.upload.daily.data');
     Route::get('/faire/daily-data', [FaireController::class, 'getDailyData'])->name('faire.get.daily.data');
     Route::get('/faire-tabulator', [FaireController::class, 'faireTabulatorView'])->name('faire.tabulator.view');
+    // Faire Listing Variation Verify — listings from faire_pricing_prices (/faire-pricing)
+    Route::get('/faire-listing-variation-verify', [FaireListingVariationVerifyController::class, 'index'])->name('faire.listing.variation.verify');
+    Route::get('/faire-listing-variation-verify/data', [FaireListingVariationVerifyController::class, 'data'])->name('faire.listing.variation.verify.data');
+    Route::post('/faire-listing-variation-verify/pull-listings', [FaireListingVariationVerifyController::class, 'pullListings'])->name('faire.listing.variation.verify.pull');
+
     Route::get('/faire-pricing', [FaireController::class, 'fairePricingView'])->name('faire.pricing.view');
     Route::get('/faire/pricing-data', [FaireController::class, 'getFairePricingData'])->name('faire.pricing.data');
     Route::get('/faire/pricing-price-sample', [FaireController::class, 'downloadFairePricingPriceSample'])->name('faire.pricing.price.sample');
@@ -5087,6 +5162,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pls-sales', [PlsController::class, 'salesView'])->name('pls.sales');
     Route::get('/pls-sales-data-json', [PlsController::class, 'salesDataJson']);
     
+    // PLS Listing Variation Verify — listings from pls_products (/pls-pricing)
+    Route::get('/pls-listing-variation-verify', [PlsListingVariationVerifyController::class, 'index'])->name('pls.listing.variation.verify');
+    Route::get('/pls-listing-variation-verify/data', [PlsListingVariationVerifyController::class, 'data'])->name('pls.listing.variation.verify.data');
+    Route::post('/pls-listing-variation-verify/pull-listings', [PlsListingVariationVerifyController::class, 'pullListings'])->name('pls.listing.variation.verify.pull');
+
     // PLS Pricing
     Route::get('/pls-pricing', [PlsController::class, 'pricingView'])->name('pls.pricing');
     Route::get('/pls-pricing-data-json', [PlsController::class, 'pricingDataJson']);

@@ -37,6 +37,7 @@ return [
     ['value' => 'cvr_LQS_masters', 'text' => 'LQS - CVR', 'group' => 'Marketing Masters'],
     // Channel
     ['value' => 'channel_master', 'text' => 'Channel Master', 'group' => 'Channel'],
+    ['value' => 'variations_verify_masters', 'text' => 'Variations Verify Masters', 'group' => 'Channel'],
     ['value' => 'channel_promotion_master', 'text' => 'Promotion Master', 'group' => 'Channel'],
     ['value' => 'return_analysis_channel', 'text' => 'Return Analysis (Channel)', 'group' => 'Channel'],
     ['value' => 'expenses_analysis', 'text' => 'Expenses Analysis', 'group' => 'Channel'],
@@ -100,9 +101,12 @@ return [
     ['value' => 'shopifyb2c_zero_view', 'text' => 'Shopify B2C 0 View', 'group' => 'Marketplace'],
     ['value' => 'shopifyb2c_low_visibility', 'text' => 'Shopify B2C Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_shopifyb2c', 'text' => 'Listing Shopify B2C', 'group' => 'Marketplace'],
+    ['value' => 'shopify_b2c_listing_variation_verify', 'text' => 'Shopify B2C Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'shopify_b2b', 'text' => 'Shopify B2B', 'group' => 'Marketplace'],
+    ['value' => 'shopify_b2b_listing_variation_verify', 'text' => 'Shopify B2B Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'macys', 'text' => 'Macy\'s', 'group' => 'Marketplace'],
     ['value' => 'macys_pricing_tabulator', 'text' => "Macy's Pricing Tabulator", 'group' => 'Marketplace'],
+    ['value' => 'macys_listing_variation_verify', 'text' => 'Macys Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'macys_zero_view', 'text' => 'Macy\'s 0 View', 'group' => 'Marketplace'],
     ['value' => 'macy_low_visibility', 'text' => 'Macy\'s Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_macys', 'text' => 'Listing Macy\'s', 'group' => 'Marketplace'],
@@ -111,9 +115,13 @@ return [
     ['value' => 'neweggb2c_low_visibility', 'text' => 'Newegg B2C Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_Neweggb2c', 'text' => 'Listing Newegg B2C', 'group' => 'Marketplace'],
     ['value' => 'listing_audit_Neweggb2c', 'text' => 'Listing Audit Newegg B2C', 'group' => 'Marketplace'],
+    ['value' => 'newegg_listing_variation_verify', 'text' => 'Newegg Listing Variation Verify', 'group' => 'Marketplace'],
 
+    ['value' => 'purchasing_power', 'text' => 'Purchasing Power', 'group' => 'Marketplace'],
+    ['value' => 'purchasing_power_listing_variation_verify', 'text' => 'Purchasing Power Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'wayfair', 'text' => 'Wayfair', 'group' => 'Marketplace'],
     ['value' => 'listing_wayfair', 'text' => 'Listing Wayfair', 'group' => 'Marketplace'],
+    ['value' => 'wayfair_listing_variation_verify', 'text' => 'Wayfair Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'reverb', 'text' => 'Reverb', 'group' => 'Marketplace'],
     ['value' => 'listing_reverb', 'text' => 'Listing Reverb', 'group' => 'Marketplace'],
 
@@ -144,14 +152,17 @@ return [
 
     ['value' => 'aliexpress', 'text' => 'Aliexpress', 'group' => 'Marketplace'],
     ['value' => 'listing_aliexpress', 'text' => 'Listing Aliexpress', 'group' => 'Marketplace'],
+    ['value' => 'aliexpress_listing_variation_verify', 'text' => 'AliExpress Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'ebayvariation', 'text' => 'eBay Variation', 'group' => 'Marketplace'],
     ['value' => 'listing_ebayvariation', 'text' => 'Listing eBay Variation', 'group' => 'Marketplace'],
 
     ['value' => 'faire', 'text' => 'Faire', 'group' => 'Marketplace'],
+    ['value' => 'faire_listing_variation_verify', 'text' => 'Faire Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'tiktokshop', 'text' => 'Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'listing_tiktokshop', 'text' => 'Listing Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'tiktok_listing_variation_verify', 'text' => 'TikTok 1 Listing Variation Verify', 'group' => 'Marketplace'],
+    ['value' => 'tiktok2_listing_variation_verify', 'text' => 'TikTok 2 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'tiktok_pricing', 'text' => 'TikTok Pricing', 'group' => 'Marketplace'],
 
     ['value' => 'mercariwship', 'text' => 'Mercari w Ship', 'group' => 'Marketplace'],
@@ -161,6 +172,7 @@ return [
     ['value' => 'business5core', 'text' => 'Business 5Core', 'group' => 'Marketplace'],
     ['value' => 'pls', 'text' => 'PLS', 'group' => 'Marketplace'],
     ['value' => 'listing_pls', 'text' => 'Listing PLS', 'group' => 'Marketplace'],
+    ['value' => 'pls_listing_variation_verify', 'text' => 'PLS Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'autods', 'text' => 'Auto DS', 'group' => 'Marketplace'],
     ['value' => 'listing_autods', 'text' => 'Listing Auto DS', 'group' => 'Marketplace'],
@@ -176,6 +188,7 @@ return [
 
     ['value' => 'shein', 'text' => 'Shein', 'group' => 'Marketplace'],
     ['value' => 'listing_shein', 'text' => 'Listing Shein', 'group' => 'Marketplace'],
+    ['value' => 'shein_listing_variation_verify', 'text' => 'Shein Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'spocket', 'text' => 'Spocket', 'group' => 'Marketplace'],
     ['value' => 'listing_spocket', 'text' => 'Listing Spocket', 'group' => 'Marketplace'],
@@ -207,6 +220,7 @@ return [
     ['value' => 'dhgate', 'text' => 'DHGate', 'group' => 'Marketplace'],
     ['value' => 'bestbuyusa', 'text' => 'Bestbuy USA', 'group' => 'Marketplace'],
     ['value' => 'listing_bestbuyusa', 'text' => 'Listing Bestbuy USA', 'group' => 'Marketplace'],
+    ['value' => 'bestbuy_listing_variation_verify', 'text' => 'Bestbuy Listing Variation Verify', 'group' => 'Marketplace'],
 
     ['value' => 'swgearexchange', 'text' => 'SW Gear Exchange', 'group' => 'Marketplace'],
     ['value' => 'listing_swgearexchange', 'text' => 'Listing SW Gear Exchange', 'group' => 'Marketplace'],
