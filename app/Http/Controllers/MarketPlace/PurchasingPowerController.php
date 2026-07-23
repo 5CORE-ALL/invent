@@ -11,6 +11,7 @@ use App\Models\PurchasingPowerDataView;
 use App\Models\PurchasingPowerProduct;
 use App\Models\PurchasingPowerSale;
 use App\Models\ShopifySku;
+use App\Services\PurchasingPowerApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -63,8 +64,8 @@ class PurchasingPowerController extends Controller
         $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
 
-        // Mirakl seller-portal offers export (Default price) — same sheet Macy pricing uses.
-        // Connect/API catalog prices often diverge from portal Default price (e.g. $24.47 vs $32.99).
+        // Fallback only: Macy offers export (macys_price_data) — NOT the PP listed price.
+        // Correct PP listed price/qty come from MCM OF21 → purchasing_power_products.
         $offerSheetBySku = MacysPriceData::query()
             ->where(function ($q) use ($skus) {
                 $upper = array_values(array_unique(array_map(static fn ($s) => strtoupper((string) $s), $skus)));
@@ -106,13 +107,40 @@ class PurchasingPowerController extends Controller
             $row['L30']  = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
 
             $row['PP L30']   = $salesQty[strtoupper($pm->sku)] ?? $ppMetric->m_l30 ?? 0;
-            // Prc: portal offers sheet first (matches seller Default price), else live product row.
-            $row['PP Price'] = $offerSheet
-                ? floatval($offerSheet->price ?? 0)
-                : floatval($ppMetric->price ?? 0);
-            $row['PP INV']   = $offerSheet && $offerSheet->quantity !== null
-                ? (int) $offerSheet->quantity
-                : (int) ($ppMetric->stock ?? 0);
+
+            // Prc / PP Stock: Purchasing Power MCM OF21 listed price
+            // (purchasingpowerus-prod.mirakl.net /api/offers → purchasing_power_products).
+            // Do not prefer macys_price_data — that is Macy's sheet and shows wrong Prc (e.g. $20.38 vs $12.99).
+            $mcmPrice = ($ppMetric && $ppMetric->price !== null && $ppMetric->price !== '')
+                ? round((float) $ppMetric->price, 2)
+                : null;
+            $mcmStock = $ppMetric && $ppMetric->stock !== null
+                ? (int) $ppMetric->stock
+                : null;
+
+            if ($mcmPrice !== null && $mcmPrice > 0) {
+                $row['PP Price'] = $mcmPrice;
+                $row['PP Price Source'] = 'PP MCM OF21 → purchasing_power_products.price';
+            } elseif ($offerSheet && floatval($offerSheet->price ?? 0) > 0) {
+                $row['PP Price'] = round(floatval($offerSheet->price), 2);
+                $row['PP Price Source'] = 'Fallback: macys_price_data (Macy offers sheet)';
+            } else {
+                $row['PP Price'] = round(floatval($ppMetric->price ?? 0), 2);
+                $row['PP Price Source'] = $ppMetric
+                    ? 'PP MCM OF21 → purchasing_power_products.price'
+                    : 'none';
+            }
+
+            if ($mcmStock !== null) {
+                $row['PP INV'] = $mcmStock;
+                $row['PP Stock Source'] = 'PP MCM OF21 → purchasing_power_products.stock';
+            } elseif ($offerSheet && $offerSheet->quantity !== null) {
+                $row['PP INV'] = (int) $offerSheet->quantity;
+                $row['PP Stock Source'] = 'Fallback: macys_price_data.quantity (Macy offers sheet)';
+            } else {
+                $row['PP INV'] = 0;
+                $row['PP Stock Source'] = 'none';
+            }
 
             $row['A Price'] = $amazon ? floatval($amazon->price ?? 0) : null;
 
@@ -148,14 +176,13 @@ class PurchasingPowerController extends Controller
                 }
             }
 
-            // LP / Ship from ProductMaster
+            // LP from ProductMaster. Ship is intentionally excluded from all PP formulas.
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
             $lp = 0;
             foreach ($values as $k => $v) {
                 if (strtolower($k) === 'lp') { $lp = floatval($v); break; }
             }
             if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
-            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
             $price           = floatval($row['PP Price'] ?? 0);
             $units_l30       = floatval($row['PP L30']   ?? 0);
@@ -173,9 +200,9 @@ class PurchasingPowerController extends Controller
 
             $row['percentage']          = $percentage;
             $row['LP_productmaster']    = $lp;
-            $row['Ship_productmaster']  = $ship;
+            $row['Ship_productmaster']  = 0; // not used in PP formulas
 
-            // SPRICE metrics
+            // SPRICE metrics (Ship excluded)
             $sprice = $row['SPRICE'] ?? 0;
             $sgpft  = round($sprice > 0 ? (($sprice * $percentage - $lp) / $sprice) * 100 : 0, 2);
             $row['SGPFT'] = $sgpft;
@@ -414,49 +441,135 @@ class PurchasingPowerController extends Controller
 
     public function salesDataJson(Request $request)
     {
-        // Sourced from `apicentral.shopify_order_items` so this page stays in sync with the
-        // Shopify Orders dashboard and the all-marketplace-master Purchasing Power row.
-        // Identification mirrors the shopify-orders page: source_name / tags contain
-        // "purchasing power".
-        //
-        // Window: last 30 calendar days in Pacific time, INCLUSIVE — exactly matches the
-        // L30 window used by getPurchasingPowerChannelData() / computePurchasingPowerMetricsFromShopify()
-        // on the all-marketplace-master page so the totals on both pages match.
-        $todayPst   = \Carbon\Carbon::now('America/Los_Angeles');
-        $l30Start   = $todayPst->copy()->subDays(29)->startOfDay();
-        $l30End     = $todayPst->copy()->endOfDay();
+        try {
+            $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
+            $percentage = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
 
-        $rows = DB::connection('apicentral')
-            ->table('shopify_order_items')
-            ->whereBetween('order_date', [$l30Start, $l30End])
-            ->where(function ($q) {
-                $q->where('source_name', 'LIKE', '%purchasing power%')
-                  ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-                  ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-                  ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-            })
-            ->orderBy('order_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->get();
+            $todayPst = \Carbon\Carbon::now('America/Los_Angeles');
+            $l30Start = $todayPst->copy()->subDays(29)->startOfDay();
+            $l30End = $todayPst->copy()->endOfDay();
 
-        $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
-        $percentage = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
+            /** @var PurchasingPowerApiService $ppApi */
+            $ppApi = app(PurchasingPowerApiService::class);
+            $result = $ppApi->fetchOrders($l30Start, $l30End);
+            $normalizedRows = collect($ppApi->flattenOrdersToLineRows($result['orders'] ?? []));
+            $data = $this->mapPurchasingPowerSalesRows($normalizedRows, $percentage, 'pp_mcm_or11');
+
+            return response()->json($data)
+                ->header('X-PP-Sales-Source', 'pp_mcm_or11')
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
+        } catch (\Throwable $e) {
+            Log::error('PP salesDataJson failed: '.$e->getMessage(), [
+                'exception' => get_class($e),
+            ]);
+
+            return response()->json([
+                'error' => true,
+                'message' => 'Failed to load Purchasing Power sales: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * L30 / L60 rollups from Purchasing Power MCM OR11 (not apicentral).
+     */
+    public function salesStats(Request $request)
+    {
+        $todayPst = \Carbon\Carbon::now('America/Los_Angeles');
+        $l30Start = $todayPst->copy()->subDays(29)->startOfDay();
+        $l30End = $todayPst->copy()->endOfDay();
+        $l60Start = $todayPst->copy()->subDays(59)->startOfDay();
+        $l60End = $todayPst->copy()->subDays(30)->endOfDay();
+
+        try {
+            /** @var PurchasingPowerApiService $ppApi */
+            $ppApi = app(PurchasingPowerApiService::class);
+
+            $aggregate = function (\Carbon\Carbon $start, \Carbon\Carbon $end) use ($ppApi): array {
+                $result = $ppApi->fetchOrders($start, $end);
+                $lines = $ppApi->flattenOrdersToLineRows($result['orders'] ?? []);
+                $revenue = 0.0;
+                $qty = 0;
+                $orderIds = [];
+                foreach ($lines as $line) {
+                    $lineQty = max(0, (int) ($line->quantity ?? 0));
+                    if ($lineQty <= 0) {
+                        continue;
+                    }
+                    $unit = (float) ($line->unit_price ?? 0);
+                    $amount = $line->amount !== null ? (float) $line->amount : ($unit * $lineQty);
+                    $revenue += $amount;
+                    $qty += $lineQty;
+                    if (! empty($line->order_id)) {
+                        $orderIds[(string) $line->order_id] = true;
+                    } elseif (! empty($line->order_number)) {
+                        $orderIds[(string) $line->order_number] = true;
+                    }
+                }
+
+                return [
+                    'revenue' => round($revenue, 2),
+                    'qty' => $qty,
+                    'orders' => count($orderIds),
+                ];
+            };
+
+            $l30 = $aggregate($l30Start, $l30End);
+            $l60 = $aggregate($l60Start, $l60End);
+            $source = 'pp_mcm_or11';
+        } catch (\Throwable $e) {
+            Log::error('PP salesStats failed: '.$e->getMessage());
+
+            return response()->json([
+                'error' => true,
+                'message' => 'Failed to load Purchasing Power sales stats: '.$e->getMessage(),
+                'l30' => ['revenue' => 0, 'qty' => 0, 'orders' => 0],
+                'l60' => ['revenue' => 0, 'qty' => 0, 'orders' => 0],
+                'growth_pct' => 0,
+                'source' => 'error',
+            ], 500);
+        }
+
+        $growthPct = $l60['revenue'] > 0
+            ? round((($l30['revenue'] - $l60['revenue']) / $l60['revenue']) * 100, 2)
+            : 0.0;
+
+        return response()->json([
+            'l30' => $l30,
+            'l60' => $l60,
+            'growth_pct' => $growthPct,
+            'source' => $source,
+            'l30_window' => [$l30Start->toDateString(), $l30End->toDateString()],
+            'l60_window' => [$l60Start->toDateString(), $l60End->toDateString()],
+        ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function mapPurchasingPowerSalesRows($rows, float $percentage, string $source = 'pp_mcm_or11')
+    {
         $pct = $percentage / 100;
-
         $skus = $rows->pluck('sku')->filter()->map(fn ($sku) => trim((string) $sku))->unique()->values()->all();
         $productMasters = collect();
-        if (!empty($skus)) {
+        if (! empty($skus)) {
             $productMasters = ProductMaster::whereIn('sku', $skus)
                 ->get()
                 ->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
         }
 
-        $data = $rows->map(function ($r) use ($pct, $percentage, $productMasters) {
+        return $rows->map(function ($r) use ($pct, $percentage, $productMasters, $source) {
             $skuKey = strtoupper(trim((string) ($r->sku ?? '')));
             $pm = $skuKey !== '' ? ($productMasters[$skuKey] ?? null) : null;
 
+            // Ship intentionally excluded from Purchasing Power profit formulas.
             $lp = 0.0;
-            $ship = 0.0;
             if ($pm) {
                 $values = is_array($pm->Values)
                     ? $pm->Values
@@ -468,30 +581,26 @@ class PurchasingPowerController extends Controller
                             break;
                         }
                     }
-                    if (isset($values['ship'])) {
-                        $ship = (float) $values['ship'];
-                    }
                 }
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
                 }
-                if ($ship === 0.0 && isset($pm->ship)) {
-                    $ship = (float) $pm->ship;
-                }
             }
 
-            $unitPrice = (float) ($r->price ?? 0);
-            $qty       = max(0, (int) ($r->quantity ?? 0));
-            $amount    = $unitPrice * $qty;
-            
-            $pftEach   = ($unitPrice * $pct) - $lp;
-            $pft       = round($pftEach * $qty, 2);
-            $gpft      = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
-            $cogs      = round($lp * $qty, 2);
-            $groi      = $lp > 0 ? round(($pftEach / $lp) * 100, 2) : 0;
+            $unitPrice = (float) ($r->unit_price ?? 0);
+            $qty = max(0, (int) ($r->quantity ?? 0));
+            $amount = $r->amount !== null && $r->amount !== ''
+                ? (float) $r->amount
+                : ($unitPrice * $qty);
 
-            $orderDate = null;
-            if (!empty($r->order_date)) {
+            $pftEach = ($unitPrice * $pct) - $lp;
+            $pft = round($pftEach * $qty, 2);
+            $gpft = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
+            $cogs = round($lp * $qty, 2);
+            $groi = $lp > 0 ? round(($pftEach / $lp) * 100, 2) : 0;
+
+            $orderDate = '';
+            if (! empty($r->order_date)) {
                 try {
                     $orderDate = \Carbon\Carbon::parse($r->order_date)
                         ->timezone('America/Los_Angeles')
@@ -501,98 +610,39 @@ class PurchasingPowerController extends Controller
                 }
             }
 
-            $status = $r->financial_status ?: ($r->fulfillment_status ?: '');
-
             return [
-                'id'                   => $r->id ?? null,
-                'date_created'         => $orderDate ?: '',
-                'order_number'         => $r->order_number,
-                'order_id'             => $r->order_id ?? ($r->order_number ?? null),
-                'status'               => $status,
-                'product_sku'          => $r->sku,
-                'mirakl_product_sku'   => null,
-                'offer_sku'            => $r->sku,
-                'product_name'         => $r->product_title ?? null,
-                'quantity'             => $qty,
-                'unit_price'           => round($unitPrice, 2),
-                'amount'               => round($amount, 2),
-                'commission_rule'      => null,
-                'commission'           => 0.0,
-                'amount_transferred'   => 0.0,
-                'shipping_company'     => $r->tracking_company ?? null,
-                'tracking_number'      => $r->tracking_number ?? null,
-                'tracking_url'         => null,
-                'customer'             => $r->customer_name ?? '',
-                'city'                 => $r->shipping_city ?? null,
-                'state'                => $r->shipping_province ?? null,
-                'country'              => $r->shipping_country ?? null,
-                'category_label'       => null,
-                'lp'                   => round($lp, 2),
-                'ship'                 => round($ship, 2),
-                'cogs'                 => $cogs,
-                'pft'                  => $pft,
-                'gpft_pct'             => $gpft,
-                'groi_pct'             => $groi,
-                'margin_pct'           => $percentage,
+                'id' => $r->id ?? null,
+                'date_created' => $orderDate,
+                'order_number' => $r->order_number ?? null,
+                'order_id' => $r->order_id ?? ($r->order_number ?? null),
+                'status' => $r->status ?? '',
+                'product_sku' => $r->sku,
+                'mirakl_product_sku' => $r->mirakl_product_sku ?? null,
+                'offer_sku' => $r->sku,
+                'product_name' => $r->product_name ?? null,
+                'quantity' => $qty,
+                'unit_price' => round($unitPrice, 2),
+                'amount' => round($amount, 2),
+                'commission_rule' => $r->commission_rule ?? null,
+                'commission' => round((float) ($r->commission ?? 0), 2),
+                'amount_transferred' => round((float) ($r->amount_transferred ?? 0), 2),
+                'shipping_company' => $r->shipping_company ?? null,
+                'tracking_number' => $r->tracking_number ?? null,
+                'tracking_url' => $r->tracking_url ?? null,
+                'customer' => $r->customer ?? '',
+                'city' => $r->city ?? null,
+                'state' => $r->state ?? null,
+                'country' => $r->country ?? null,
+                'category_label' => $r->category_label ?? null,
+                'lp' => round($lp, 2),
+                'ship' => 0.0, // not used in PP formulas
+                'cogs' => $cogs,
+                'pft' => $pft,
+                'gpft_pct' => $gpft,
+                'groi_pct' => $groi,
+                'margin_pct' => $percentage,
+                '_source' => $source,
             ];
         });
-
-        return response()->json($data)
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-            ->header('Pragma', 'no-cache')
-            ->header('Expires', '0');
-    }
-
-    /**
-     * Returns L30 and L60 sales rollups for the Purchasing Power page badges. Same
-     * windows / identification as `getPurchasingPowerChannelData()` on
-     * /all-marketplace-master, so the two pages always agree.
-     */
-    public function salesStats(Request $request)
-    {
-        $ppWhere = function ($q) {
-            $q->where('source_name', 'LIKE', '%purchasing power%')
-              ->orWhere('source_name', 'LIKE', '%purchasingpower%')
-              ->orWhere('tags', 'LIKE', '%Purchasing Power%')
-              ->orWhere('tags', 'LIKE', '%PurchasingPower%');
-        };
-
-        $todayPst  = \Carbon\Carbon::now('America/Los_Angeles');
-        $l30Start  = $todayPst->copy()->subDays(29)->startOfDay();
-        $l30End    = $todayPst->copy()->endOfDay();
-        $l60Start  = $todayPst->copy()->subDays(59)->startOfDay();
-        $l60End    = $todayPst->copy()->subDays(30)->endOfDay();
-
-        $aggregate = function (\Carbon\Carbon $start, \Carbon\Carbon $end) use ($ppWhere) {
-            $row = DB::connection('apicentral')
-                ->table('shopify_order_items')
-                ->whereBetween('order_date', [$start, $end])
-                ->where($ppWhere)
-                ->where('quantity', '>', 0)
-                ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue, COALESCE(SUM(quantity), 0) as qty, COUNT(DISTINCT order_number) as orders')
-                ->first();
-            return [
-                'revenue' => round((float) ($row->revenue ?? 0), 2),
-                'qty'     => (int) ($row->qty ?? 0),
-                'orders'  => (int) ($row->orders ?? 0),
-            ];
-        };
-
-        $l30 = $aggregate($l30Start, $l30End);
-        $l60 = $aggregate($l60Start, $l60End);
-        $growthPct = $l60['revenue'] > 0
-            ? round((($l30['revenue'] - $l60['revenue']) / $l60['revenue']) * 100, 2)
-            : 0.0;
-
-        return response()->json([
-            'l30' => $l30,
-            'l60' => $l60,
-            'growth_pct' => $growthPct,
-            'l30_window' => [$l30Start->toDateString(), $l30End->toDateString()],
-            'l60_window' => [$l60Start->toDateString(), $l60End->toDateString()],
-        ])
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-            ->header('Pragma', 'no-cache')
-            ->header('Expires', '0');
     }
 }

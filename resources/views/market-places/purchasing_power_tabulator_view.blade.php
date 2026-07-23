@@ -131,10 +131,10 @@
                     </button>
 
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = $ppPercentage / 100, default 0.65 for Purchasing Power) --}}
+                         Formula: sprice = (LP × (1 + ROI%/100)) / margin   (Ship excluded for Purchasing Power; margin = $ppPercentage / 100) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $ppPercentage }}% on every selected row (back-solves so SROI column equals the target)">
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ $ppPercentage }}% on every selected row (Ship not used)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             Target ROI%:
                         </label>
@@ -142,16 +142,16 @@
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
                             title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $ppPercentage }}% for every selected row">
+                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ $ppPercentage }}% for every selected row (Ship not used)">
                             <i class="fas fa-calculator"></i> Apply S PRC
                         </button>
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
+                         Formula: sprice = LP / (margin − GPFT%/100). Ship excluded. Target GPFT% must be < margin*100. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / ({{ $ppPercentage }}% − Target GPFT%/100) on every selected row">
+                        title="Target GPFT% — sets S PRC = LP / ({{ $ppPercentage }}% − Target GPFT%/100) on every selected row (Ship not used)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             Target GPFT%:
                         </label>
@@ -159,7 +159,7 @@
                             placeholder="e.g. 30" step="0.1" style="width: 80px;"
                             title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the Purchasing Power take-home margin ({{ $ppPercentage }}%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / ({{ $ppPercentage }}% − Target GPFT%/100) for every selected row">
+                            title="Compute & save S PRC = LP / ({{ $ppPercentage }}% − Target GPFT%/100) for every selected row (Ship not used)">
                             <i class="fas fa-calculator"></i> Apply S PRC
                         </button>
                     </div>
@@ -399,11 +399,12 @@
         /*
          * Target ROI% / Target GPFT% bulk apply (Purchasing Power, margin = $ppPercentage / 100)
          * --------------------------------------------------------------------------------------
+         * Ship is intentionally excluded from all Purchasing Power formulas.
          * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered target:
-         *     SROI%  = ((sprice * margin − lp − ship) / lp)     * 100
-         *           → sprice = (lp * (1 + ROI%/100) + ship) / margin
-         *     SGPFT% = ((sprice * margin − lp − ship) / sprice) * 100
-         *           → sprice = (lp + ship) / (margin − GPFT%/100)
+         *     SROI%  = ((sprice * margin − lp) / lp)     * 100
+         *           → sprice = (lp * (1 + ROI%/100)) / margin
+         *     SGPFT% = ((sprice * margin − lp) / sprice) * 100
+         *           → sprice = lp / (margin − GPFT%/100)
          * Optimistic SGPFT / SPFT / SROI are written client-side, then the existing
          * bulk /pp-save-sprice-batch endpoint reconciles them server-side. Rounding
          * is plain 2-decimal — no .99 / .49 retail snapping — because snapping would
@@ -444,14 +445,13 @@
 
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
 
-                const candidate = (lp * roiMultiplier + ship) / PP_MARGIN;
+                const candidate = (lp * roiMultiplier) / PP_MARGIN;
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * PP_MARGIN - lp - ship) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * PP_MARGIN - lp - ship) / lp)     * 10000) / 100 : 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * PP_MARGIN - lp) / newSprice) * 10000) / 100 : 0;
+                const sroi  = lp > 0       ? Math.round(((newSprice * PP_MARGIN - lp) / lp)     * 10000) / 100 : 0;
 
                 row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
                 updates.push({ sku, sprice: newSprice });
@@ -506,14 +506,13 @@
 
                 const lp = parseFloat(rowData['LP_productmaster']) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
 
-                const candidate = (lp + ship) / denom;
+                const candidate = lp / denom;
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * PP_MARGIN - lp - ship) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * PP_MARGIN - lp - ship) / lp)     * 10000) / 100 : 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * PP_MARGIN - lp) / newSprice) * 10000) / 100 : 0;
+                const sroi  = lp > 0       ? Math.round(((newSprice * PP_MARGIN - lp) / lp)     * 10000) / 100 : 0;
 
                 row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
                 updates.push({ sku, sprice: newSprice });
@@ -624,9 +623,9 @@
 
                 const percentage = {{ $ppPercentage }} / 100;
                 const lp   = parseFloat(rowData['LP_productmaster']) || 0;
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp - ship) / newSprice) * 10000) / 100 : 0;
-                const sroi  = lp > 0    ? Math.round(((newSprice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
+                // Ship excluded from Purchasing Power formulas
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
+                const sroi  = lp > 0    ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
 
                 row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
                 updates.push({ sku, sprice: newSprice });
@@ -653,9 +652,9 @@
                 if (!amazonPrice || amazonPrice <= 0) { noAmzCount++; return; }
 
                 const lp   = parseFloat(rowData['LP_productmaster']) || 0;
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const sgpft = Math.round(((amazonPrice * percentage - lp - ship) / amazonPrice) * 10000) / 100;
-                const sroi  = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
+                // Ship excluded from Purchasing Power formulas
+                const sgpft = Math.round(((amazonPrice * percentage - lp) / amazonPrice) * 10000) / 100;
+                const sroi  = lp > 0 ? Math.round(((amazonPrice * percentage - lp) / lp) * 10000) / 100 : 0;
                 row.update({ SPRICE: amazonPrice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
                 updates.push({ sku, sprice: amazonPrice });
                 updatedCount++;
@@ -790,10 +789,13 @@
                 },
                 { title: 'PP L30',   field: 'PP L30',  hozAlign: 'center', width: 50, sorter: 'number' },
                 { title: 'PP Stock', field: 'PP INV',  hozAlign: 'center', width: 60, sorter: 'number',
+                    headerTooltip: 'Purchasing Power stock from MCM OF21 (purchasing_power_products.stock). Hover a cell for its source.',
                     formatter: function(cell) {
+                        const d = cell.getRow().getData();
                         const v = parseInt(cell.getValue()) || 0;
+                        const source = d['PP Stock Source'] || 'unknown';
                         const color = v === 0 ? '#a00211' : v < 5 ? '#ffc107' : '#28a745';
-                        return `<span style="color:${color};font-weight:600;">${v}</span>`;
+                        return `<span title="Source: ${source}" style="color:${color};font-weight:600;">${v}</span>`;
                     }
                 },
                 {
@@ -809,12 +811,18 @@
                 },
                 {
                     title: 'Prc', field: 'PP Price', hozAlign: 'center', sorter: 'number', width: 70,
+                    headerTooltip: 'Purchasing Power listed price from MCM OF21 (purchasing_power_products). Hover a cell for its source.',
                     formatter: function(cell) {
+                        const d = cell.getRow().getData();
                         const v = parseFloat(cell.getValue() || 0);
-                        const amz = parseFloat(cell.getRow().getData()['A Price']) || 0;
-                        if (v === 0) return `<span style="color:#a00211;font-weight:600;">$0.00 <i class="fas fa-exclamation-triangle"></i></span>`;
+                        const amz = parseFloat(d['A Price']) || 0;
+                        const source = d['PP Price Source'] || 'unknown';
+                        const tip = `Source: ${source}`;
+                        if (v === 0) {
+                            return `<span title="${tip}" style="color:#a00211;font-weight:600;">$0.00 <i class="fas fa-exclamation-triangle"></i></span>`;
+                        }
                         const color = amz > 0 ? (v < amz ? '#a00211' : v > amz ? '#28a745' : '') : '';
-                        return `<span style="color:${color};font-weight:${color ? '600' : 'normal'};">$${v.toFixed(2)}</span>`;
+                        return `<span title="${tip}" style="color:${color};font-weight:${color ? '600' : 'normal'};">$${v.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -1029,9 +1037,9 @@
             const newSprice = parseFloat(cell.getValue()) || 0;
             const percentage = {{ $ppPercentage }} / 100;
             const lp   = d.LP_productmaster || 0;
-            const ship = d.Ship_productmaster || 0;
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp - ship) / newSprice) * 10000) / 100 : 0;
-            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
+            // Ship excluded from Purchasing Power formulas
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp) / newSprice) * 10000) / 100 : 0;
+            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp) / lp) * 10000) / 100 : 0;
             row.update({ SGPFT: sgpft, SPFT: sgpft, SROI: sroi, has_custom_sprice: true });
 
             // Auto-save immediately — no Send button needed

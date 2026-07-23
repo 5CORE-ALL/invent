@@ -25,7 +25,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Purchasing Power Sales (Last 30 Days)',
-        'sub_title'  => 'Live from Shopify orders — PST timezone',
+        'sub_title'  => 'Live from Purchasing Power MCM OR11 — PST timezone',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -63,7 +63,7 @@
 
                 <!-- Summary Badges (margin from marketplace_percentages.marketplace = Purchase; default 65%) -->
                 <div class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary — last 30 days, sourced live from Shopify orders (Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
+                    <h6 class="mb-3">Summary — last 30 days, sourced live from Purchasing Power MCM OR11 (Purchase margin: {{ number_format($ppMargin ?? 65, 2) }}%)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color:white;font-weight:bold;">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-qty-badge" style="color:white;font-weight:bold;">Total Qty: 0</span>
@@ -127,7 +127,7 @@
         // so the L60 number matches the master row exactly.
         function loadL60Stats() {
             $.ajax({
-                url: '/pp-sales-stats',
+                url: '{{ route('pp.sales.stats') }}',
                 method: 'GET',
                 cache: false,
                 headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
@@ -138,6 +138,9 @@
                     $('#growth-badge')
                         .text(`Growth: ${growth.toFixed(2)}%`)
                         .css('background-color', growth >= 0 ? '#198754' : '#dc3545');
+                    if (res && res.source === 'pp_mcm_or11') {
+                        // live PP MCM source — no warning toast
+                    }
                 },
                 error: function () {
                     $('#l60-sales-badge').text('L60 Sales: —');
@@ -184,13 +187,23 @@
 
         // Initialize Tabulator
         table = new Tabulator('#pp-sales-table', {
-            ajaxURL: '/pp-sales-data-json',
+            ajaxURL: '{{ route('pp.sales.data.json') }}',
             ajaxParams: { _ts: Date.now() },
             ajaxConfig: {
                 method: 'GET',
                 headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
             },
-            ajaxSorting: false,
+            ajaxResponse: function (url, params, response) {
+                if (response && response.error) {
+                    showToast(response.message || 'Failed to load sales data', 'error');
+                    return [];
+                }
+                return Array.isArray(response) ? response : [];
+            },
+            ajaxError: function (error) {
+                const msg = (error && error.message) || 'Failed to load Purchasing Power sales data';
+                showToast(msg, 'error');
+            },
             layout: 'fitDataStretch',
             pagination: true,
             paginationSize: 100,
@@ -432,7 +445,14 @@
             else { groiEl.css({ backgroundColor: '#dc3545', color: '#fff' }); }
         }
 
-        table.on('dataLoaded', function () { setTimeout(updateSummary, 100); });
+        let ppSalesSourceToastShown = false;
+        table.on('dataLoaded', function (data) {
+            setTimeout(updateSummary, 100);
+            if (!ppSalesSourceToastShown && Array.isArray(data) && data.length && data[0]._source === 'pp_mcm_or11') {
+                ppSalesSourceToastShown = true;
+                showToast('Loaded from Purchasing Power MCM orders API (OR11)', 'success');
+            }
+        });
         table.on('dataFiltered', function () { setTimeout(updateSummary, 100); });
         table.on('renderComplete', function () { setTimeout(updateSummary, 100); });
 
