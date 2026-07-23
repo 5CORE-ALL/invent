@@ -2308,11 +2308,20 @@ GQL;
             // Get the stored spreadsheet ID (if configured to use the same sheet)
             $spreadsheetId = config('services.google_apps_script.verification_adjustment_sheet_id');
 
+            // Explicit emails to grant editor access (in case Workspace blocks "anyone with link")
+            $shareEmails = array_values(array_unique(array_filter([
+                Auth::user()?->email,
+                'inventory@5core.com',
+                'ritu.kaur013@gmail.com',
+                'president@5core.com',
+            ])));
+
             // Prepare payload
             $payload = [
                 'data' => $data,
                 'sheetTitle' => 'Verification Adjustment',
-                'spreadsheetId' => $spreadsheetId // Empty string means create new
+                'spreadsheetId' => $spreadsheetId, // Empty string means create new
+                'shareEmails' => $shareEmails,
             ];
 
             // Send data to Google Apps Script

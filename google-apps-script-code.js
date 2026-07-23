@@ -1,6 +1,9 @@
 /**
  * Inventory Management - Google Sheets Export Service
  * This script receives data from your Laravel app and writes it to Google Sheets
+ *
+ * IMPORTANT: After editing, redeploy the Apps Script Web App
+ * (Deploy → Manage deployments → Edit → New version → Deploy)
  */
 
 function doPost(e) {
@@ -10,6 +13,7 @@ function doPost(e) {
     var rows = data.data || [];
     var sheetTitle = data.sheetTitle || 'Sheet1';
     var spreadsheetId = data.spreadsheetId || '';
+    var shareEmails = data.shareEmails || [];
     
     if (rows.length === 0) {
       return ContentService.createTextOutput(JSON.stringify({
@@ -78,6 +82,9 @@ function doPost(e) {
       
       Logger.log('Wrote ' + rows.length + ' rows to sheet');
     }
+
+    // Permanent open access: anyone with the link can edit (all emails can open)
+    ensureOpenAccess(spreadsheet, shareEmails);
     
     // Return success response
     return ContentService.createTextOutput(JSON.stringify({
@@ -97,6 +104,42 @@ function doPost(e) {
   }
 }
 
+/**
+ * Make sheet openable for every email:
+ * 1) Anyone with the link can edit
+ * 2) Also add any explicit emails as editors (covers Workspace policies that block link sharing)
+ */
+function ensureOpenAccess(spreadsheet, shareEmails) {
+  var file = DriveApp.getFileById(spreadsheet.getId());
+
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+    Logger.log('Sharing set to Anyone with the link (edit)');
+  } catch (linkError) {
+    // Some Workspace orgs block "anyone with link" — fall back to domain link
+    Logger.log('Anyone-with-link failed, trying domain: ' + linkError);
+    try {
+      file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.EDIT);
+      Logger.log('Sharing set to Domain with the link (edit)');
+    } catch (domainError) {
+      Logger.log('Domain sharing also failed: ' + domainError);
+    }
+  }
+
+  if (shareEmails && shareEmails.length) {
+    for (var i = 0; i < shareEmails.length; i++) {
+      var email = String(shareEmails[i] || '').trim().toLowerCase();
+      if (!email) continue;
+      try {
+        file.addEditor(email);
+        Logger.log('Added editor: ' + email);
+      } catch (emailError) {
+        Logger.log('Could not add editor ' + email + ': ' + emailError);
+      }
+    }
+  }
+}
+
 // Test function (optional - for debugging)
 function testDoPost() {
   var testData = {
@@ -107,7 +150,8 @@ function testDoPost() {
           { Parent: 'TEST-PARENT', SKU: 'TEST-002', INV: 20, L30: 15 }
         ],
         sheetTitle: 'Test Sheet',
-        spreadsheetId: '' // Leave empty to create new
+        spreadsheetId: '', // Leave empty to create new
+        shareEmails: ['inventory@5core.com', 'ritu.kaur013@gmail.com']
       })
     }
   };
