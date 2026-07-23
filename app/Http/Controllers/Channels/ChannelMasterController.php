@@ -14354,10 +14354,10 @@ class ChannelMasterController extends Controller
             $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'ads_cvr', 'cvr'];
             $shouldAvg = in_array($metric, $avgMetrics);
 
-            // Determine date range. Today's California snapshot IS included so the chart's
-            // last point matches the live table value (which is also "today, in progress").
-            // The day-over-day dot color (see getChannelMetricDotTrends) still uses only
-            // completed PT days, so an in-progress today doesn't flatten that signal.
+            // Snapshots are captured on California calendar "today", but marketplace APIs
+            // only expose completed Pacific days — so a row saved on D still holds metrics
+            // through D-1. Chart X-axis uses that as-of date (see groupBy below).
+            // Fetch +1 day of rows so after shifting labels we still cover the requested range.
             $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc');
 
             if (!$isAll) {
@@ -14365,7 +14365,7 @@ class ChannelMasterController extends Controller
             }
 
             if ($days > 0) {
-                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $startDate = now('America/Los_Angeles')->subDays($days + 1)->toDateString();
                 $query->where('snapshot_date', '>=', $startDate);
             }
 
@@ -14375,12 +14375,12 @@ class ChannelMasterController extends Controller
                 return response()->json(['success' => true, 'data' => []]);
             }
 
-            // Group by snapshot_date for "all" aggregation.
-            // Snapshots are saved with America/Los_Angeles dates (see saveChannelDailySummaries),
-            // so we parse and format in that zone to ensure the chart's X-axis labels (Jun 14,
-            // Jun 15, …) are California/Pacific dates regardless of the app/server timezone.
+            // Group by marketplace as-of date (snapshot_date − 1 Pacific day).
+            // Example: row saved 2026-07-22 → chart label "Jul 21" (last day APIs have closed).
             $grouped = $history->groupBy(function ($row) {
-                return Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->format('Y-m-d');
+                return Carbon::parse($row->snapshot_date, 'America/Los_Angeles')
+                    ->subDay()
+                    ->format('Y-m-d');
             })->sortKeys();
 
             $chartData = [];
@@ -15263,12 +15263,17 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Save channel-wise daily summaries for historical tracking
+     * Save channel-wise daily summaries for historical tracking.
+     *
+     * snapshot_date = California calendar day when this page load captured the row.
+     * Marketplace APIs (Amazon/eBay/etc.) only return completed Pacific days, so the
+     * metrics inside still reflect data through yesterday PT. The Active Channel chart
+     * labels points as (snapshot_date − 1 day) for that reason.
      */
     private function saveChannelDailySummaries($channelData)
     {
         try {
-            // Use California/Pacific timezone for date storage
+            // Capture-day in California/Pacific (not India). Chart displays as-of = this − 1 day.
             $today = now('America/Los_Angeles')->toDateString();
             
             foreach ($channelData as $row) {
