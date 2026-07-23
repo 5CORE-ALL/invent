@@ -2361,12 +2361,24 @@ class OverallAmazonController extends Controller
             // Auto-save daily summary in background (non-blocking)
             $this->saveDailySummaryIfNeeded($data['data'] ?? []);
 
+            // Prevent browser/proxy from caching LMP (and other live grid fields).
+            // Without this, two users on the same server can see different LMP after a
+            // normal refresh because GET /amazon-data-json was served from disk cache.
             return response()->json([
                 'data' => $data['data'] ?? []
+            ])->withHeaders([
+                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to fetch data'], 500);
+            return response()->json(['error' => 'Failed to fetch data'], 500)
+                ->withHeaders([
+                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma' => 'no-cache',
+                    'Expires' => '0',
+                ]);
         }
     }
 

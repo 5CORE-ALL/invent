@@ -3912,6 +3912,10 @@
 
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
+                // Bust browser/proxy GET cache so LMP always matches DB after refresh
+                ajaxParams: function() {
+                    return { _ts: Date.now() };
+                },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
                 pagination: true,
