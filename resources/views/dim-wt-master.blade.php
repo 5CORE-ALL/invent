@@ -1051,6 +1051,8 @@
             let productUniqueParents = [];
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
+            // When set (via multi-select + Action column Edit), save updates all these products
+            let bulkEditList = null;
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1517,11 +1519,22 @@
                     row.appendChild(actionCell);
                     
                     // Add event listener for edit button
+                    // Multi-select + pencil = bulk edit (no separate Bulk Edit button)
                     const editBtn = actionCell.querySelector('.edit-btn');
                     if (editBtn) editBtn.addEventListener('click', function() {
                         const sku = this.getAttribute('data-sku');
                         const product = tableData.find(d => d.SKU === sku);
                         if (!product) return;
+                        const selected = getSelectedNonParentProducts();
+                        const clickedInSelection = selected.some(p =>
+                            (p.id != null && product.id != null && String(p.id) === String(product.id)) ||
+                            (p.SKU && product.SKU && String(p.SKU) === String(product.SKU))
+                        );
+                        if (selected.length > 1 && clickedInSelection) {
+                            bulkEditList = selected;
+                        } else {
+                            bulkEditList = null;
+                        }
                         editDimWt(product);
                     });
 
@@ -2517,8 +2530,25 @@
                 });
             }
 
-            // Selection helper retained for row checkboxes (no bulk toolbar actions currently)
+            // Selection helper retained for row checkboxes (bulk via Action column Edit)
             function updatePushButtonState() {}
+
+            /** Checked non-parent products (for bulk edit via Action column pencil). */
+            function getSelectedNonParentProducts() {
+                const selected = [];
+                const seenIds = new Set();
+                document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
+                    const sku = cb.getAttribute('data-sku');
+                    if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
+                    const item = tableData.find(d => d.SKU === sku);
+                    if (!item) return;
+                    const idKey = item.id != null ? String(item.id) : ('sku:' + String(item.SKU));
+                    if (seenIds.has(idKey)) return;
+                    seenIds.add(idKey);
+                    selected.push(item);
+                });
+                return selected;
+            }
 
             // Calculate CTN (CBM) = CTN L (CM) × CTN W (CM) × CTN H (CM) / 1000000
             function calculateCtnCbm(ctnL, ctnW, ctnH) {
@@ -2563,10 +2593,12 @@
                 return data;
             }
 
-            // Edit Dimensions & Weight Master
+            // Edit Dimensions & Weight Master (single, or bulk when multi-selected via pencil)
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
-                document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 1)
+                    ? ('Bulk Edit (' + bulkEditList.length + ' items)')
+                    : 'Edit Dimensions & Weight Master';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -2636,6 +2668,7 @@
             async function saveDimWt() {
                 const saveBtn = document.getElementById('saveDimWtBtn');
                 const originalText = saveBtn.innerHTML;
+                const bulkTargets = (bulkEditList && bulkEditList.length > 1) ? bulkEditList.slice() : null;
                 
                 try {
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
@@ -2666,6 +2699,69 @@
                         ctn_qty: document.getElementById('editCtnQty').value.trim() || null,
                         ctn_cbm_each: ctnCbmEach > 0 ? ctnCbmEach : null,
                     };
+
+                    const instructionsRaw = document.getElementById('editInstructionsItemPkg').value;
+                    const verifiedEl = document.getElementById('editVerified');
+                    const verifiedValue = verifiedEl && verifiedEl.value === '1' ? 1 : 0;
+
+                    if (bulkTargets && bulkTargets.length > 1) {
+                        let successCount = 0;
+                        let failCount = 0;
+                        for (const product of bulkTargets) {
+                            if (isParentSkuString(product.SKU)) continue;
+                            const formData = {
+                                ...baseFormData,
+                                product_id: product.id,
+                                sku: product.SKU,
+                                parent: product.Parent || ''
+                            };
+                            try {
+                                const response = await fetch('/dim-wt-master/update', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': csrfToken
+                                    },
+                                    body: JSON.stringify(formData)
+                                });
+                                const data = await response.json().catch(() => ({}));
+                                if (!response.ok) {
+                                    failCount++;
+                                    continue;
+                                }
+                                try {
+                                    await saveInstructionsItemPkg(product.id, product.SKU, instructionsRaw);
+                                } catch (pkgErr) {
+                                    console.error('Bulk instructions save error:', pkgErr);
+                                }
+                                try {
+                                    await makeRequest('/product_master/update-verified', 'POST', {
+                                        sku: product.SKU,
+                                        verified_data: verifiedValue
+                                    });
+                                    product.verified_data = verifiedValue;
+                                    if (!product.Values) product.Values = {};
+                                    product.Values.verified_data = verifiedValue;
+                                } catch (verErr) {
+                                    console.error('Bulk verified save error:', verErr);
+                                }
+                                successCount++;
+                            } catch (e) {
+                                failCount++;
+                            }
+                        }
+                        bulkEditList = null;
+                        document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+                        if (failCount === 0) {
+                            showToast('success', successCount + ' item(s) updated successfully!');
+                        } else {
+                            showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
+                        }
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
+                        modal.hide();
+                        loadData();
+                        return;
+                    }
                     
                     const formData = {
                         ...baseFormData,
@@ -2695,7 +2791,7 @@
                             await saveInstructionsItemPkg(
                                 document.getElementById('editProductId').value,
                                 singleSku,
-                                document.getElementById('editInstructionsItemPkg').value
+                                instructionsRaw
                             );
                         } catch (pkgErr) {
                             showToast('warning', 'Dimensions saved, but Instructions item PKG could not be saved: ' + (pkgErr.message || ''));
@@ -2707,8 +2803,6 @@
 
                         // Save verified status (non-parent SKUs only)
                         try {
-                            const verifiedEl = document.getElementById('editVerified');
-                            const verifiedValue = verifiedEl && verifiedEl.value === '1' ? 1 : 0;
                             await makeRequest('/product_master/update-verified', 'POST', {
                                 sku: singleSku,
                                 verified_data: verifiedValue
@@ -2954,6 +3048,11 @@
             setupImport();
             setupSkuExport();
             setupSelectAll();
+            // Reset bulk edit state when edit modal is closed (e.g. without saving)
+            document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
+                bulkEditList = null;
+                document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+            });
         });
     </script>
     <script>

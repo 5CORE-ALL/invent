@@ -14588,11 +14588,16 @@ class ChannelMasterController extends Controller
                 ];
             }
 
-            // For single-channel: show exact DB values (no scaling) so graph matches table data.
-            // For "all" channels: scale to match badge total if needed.
+            // For single-channel: show exact DB snapshot values (no scaling).
+            // For "all" channels: scale so the latest point matches the live badge total.
+            // Prefer badge_value from the page (exact sum of the table the user sees); fall back
+            // to marketplace_daily_metrics only when the frontend did not send one.
             // Never scale listing CVR: it is a ratio (Σ qty / Σ views); uniform scaling would distort history.
             if (!empty($chartData) && $isAll && $metric !== 'cvr') {
-                $tableRef = $this->getAllChannelsTableReference($metric);
+                $badgeValue = $request->input('badge_value');
+                $tableRef = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
+                    ? (float) $badgeValue
+                    : $this->getAllChannelsTableReference($metric);
                 if ($tableRef !== null && $tableRef != 0) {
                     $chartLatest = (float) end($chartData)['value'];
                     if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {

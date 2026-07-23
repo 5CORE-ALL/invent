@@ -942,9 +942,6 @@
                                 <button type="button" class="btn btn-primary" id="pushDataBtn" disabled>
                                     <i class="fas fa-cloud-upload-alt me-1"></i> Push Data
                                 </button>
-                                <button type="button" class="btn btn-warning" id="bulkEditBtn" disabled title="Edit selected SKUs in bulk">
-                                    <i class="fas fa-edit me-1"></i> Bulk Edit
-                                </button>
                                 <button type="button" class="btn btn-dark" id="slabRatesBtn" title="Slab — apply rates by weight slab">
                                     <i class="fas fa-layer-group me-1"></i> Slab
                                 </button>
@@ -2328,6 +2325,7 @@
                     row.appendChild(actionCell);
                     
                     // Add event listener for edit button
+                    // Multi-select + pencil = bulk edit (no separate Bulk Edit button)
                     const editBtn = actionCell.querySelector('.edit-btn');
                     editBtn.addEventListener('click', function() {
                         const id = this.getAttribute('data-id');
@@ -2340,10 +2338,18 @@
                             const key = normalizeSkuKey(sku);
                             product = tableData.find(d => normalizeSkuKey(d.SKU) === key);
                         }
-                        if (product) {
+                        if (!product) return;
+                        const selected = getSelectedNonParentProducts();
+                        const clickedInSelection = selected.some(p =>
+                            (p.id != null && product.id != null && String(p.id) === String(product.id)) ||
+                            (p.SKU && product.SKU && normalizeSkuKey(p.SKU) === normalizeSkuKey(product.SKU))
+                        );
+                        if (selected.length > 1 && clickedInSelection) {
+                            bulkEditList = selected;
+                        } else {
                             bulkEditList = null;
-                            editDimWt(product);
                         }
+                        editDimWt(product);
                     });
 
                     // Add event listener for history button
@@ -4346,17 +4352,10 @@
                 });
             }
 
-            // Update Push Button State and Bulk Edit button
+            // Update Push Button State
             function updatePushButtonState() {
                 const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
                 const pushBtn = document.getElementById('pushDataBtn');
-                const bulkEditBtn = document.getElementById('bulkEditBtn');
-                // Count non-parent selected (parent SKUs excluded from bulk edit)
-                let nonParentCount = 0;
-                checkedBoxes.forEach(cb => {
-                    const sku = (cb.getAttribute('data-sku') || '').toUpperCase();
-                    if (sku && !sku.includes('PARENT')) nonParentCount++;
-                });
                 if (checkedBoxes.length > 0) {
                     pushBtn.disabled = false;
                     pushBtn.innerHTML = `<i class="fas fa-cloud-upload-alt me-1"></i> Push Data (${checkedBoxes.length})`;
@@ -4364,44 +4363,23 @@
                     pushBtn.disabled = true;
                     pushBtn.innerHTML = '<i class="fas fa-cloud-upload-alt me-1"></i> Push Data';
                 }
-                if (nonParentCount > 0) {
-                    if (bulkEditBtn) {
-                        bulkEditBtn.disabled = false;
-                        bulkEditBtn.innerHTML = nonParentCount > 1
-                            ? `<i class="fas fa-edit me-1"></i> Bulk Edit (${nonParentCount})`
-                            : '<i class="fas fa-edit me-1"></i> Bulk Edit';
-                    }
-                } else {
-                    if (bulkEditBtn) {
-                        bulkEditBtn.disabled = true;
-                        bulkEditBtn.innerHTML = '<i class="fas fa-edit me-1"></i> Bulk Edit';
-                    }
-                }
             }
 
-            // Bulk Edit: open edit modal with first selected item; save updates all selected
-            function setupBulkEdit() {
-                const bulkEditBtn = document.getElementById('bulkEditBtn');
-                if (!bulkEditBtn) return;
-                bulkEditBtn.addEventListener('click', function() {
-                    const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
-                    const selected = [];
-                    const seenIds = new Set();
-                    checkedBoxes.forEach(checkbox => {
-                        const sku = checkbox.getAttribute('data-sku');
-                        if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
-                        const item = findProductByRowRef(checkbox);
-                        if (!item || seenIds.has(String(item.id))) return;
-                        seenIds.add(String(item.id));
-                        selected.push(item);
-                    });
-                    if (selected.length === 0) {
-                        showToast('warning', 'Please select at least one non-parent SKU to bulk edit');
-                        return;
-                    }
-                    bulkEditList = selected;
-                    editDimWt(selected[0]);
+            /** Checked non-parent products (for bulk edit via Action column pencil). */
+            function getSelectedNonParentProducts() {
+                const selected = [];
+                const seenIds = new Set();
+                document.querySelectorAll('.row-checkbox:checked').forEach(checkbox => {
+                    const sku = checkbox.getAttribute('data-sku');
+                    if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
+                    const item = findProductByRowRef(checkbox);
+                    if (!item) return;
+                    const idKey = item.id != null ? String(item.id) : ('sku:' + normalizeSkuKey(item.SKU));
+                    if (seenIds.has(idKey)) return;
+                    seenIds.add(idKey);
+                    selected.push(item);
                 });
+                return selected;
             }
 
             // Push Data functionality
@@ -4589,7 +4567,7 @@
             function editDimWt(product) {
                 const modalEl = document.getElementById('editDimWtModal');
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 0)
+                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 1)
                     ? ('Bulk Edit (' + bulkEditList.length + ' items)')
                     : 'Edit Shipping Master';
                 
@@ -4675,7 +4653,7 @@
                 const saveBtn = document.getElementById('saveDimWtBtn');
                 if (!saveBtn) return;
                 const originalText = saveBtn.innerHTML;
-                const bulkTargets = (bulkEditList && bulkEditList.length > 0) ? bulkEditList.slice() : null;
+                const bulkTargets = (bulkEditList && bulkEditList.length > 1) ? bulkEditList.slice() : null;
                 
                 try {
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
@@ -5046,7 +5024,6 @@
             setupExcelExport();
             setupImport();
             setupSelectAll();
-            setupBulkEdit();
             setupPushData();
             setupSlabRates();
             setupMissingIndicatorClicks();

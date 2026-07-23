@@ -1140,6 +1140,7 @@
                             const badge = invAtLpEl.closest('.badge');
                             if (badge) {
                                 badge.title = 'View trend - Sum of (Shopify inventory × LP): $' + val.toLocaleString('en-US');
+                                badge.setAttribute('data-exact-value', String(val));
                             }
                         }
                         // Update TAT badge (inv / Sales)
@@ -1152,7 +1153,12 @@
                                 totalSales += (typeof parseNumber === 'function' ? parseNumber(s) : parseFloat(String(s).replace(/[^0-9.-]/g, ''))) || 0;
                             });
                             const tat = totalSales > 0 ? invVal / totalSales : 0;
+                            const tatRounded = tat > 0 ? parseFloat(tat.toFixed(2)) : 0;
                             tatEl.textContent = tat > 0 ? tat.toFixed(2) : '0';
+                            const tatBadge = tatEl.closest('.badge');
+                            if (tatBadge) {
+                                tatBadge.setAttribute('data-exact-value', String(tatRounded));
+                            }
                         }
                         if (!dotTrendsLoadedOnce) {
                             dotTrendsLoadedOnce = true;
@@ -3481,85 +3487,143 @@
                 const netProfit = totalPft - totalAdSpend;
                 const avgNroi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
 
+                // Store the exact numeric value on the badge so chart scaling matches the
+                // live table total (compact text like "326K" must not be parsed as 326).
+                function setBadgeExact($inner, exactVal) {
+                    const $badge = $inner.closest('.badge-chart-link');
+                    if ($badge.length) {
+                        if (exactVal === null || exactVal === undefined || isNaN(exactVal)) {
+                            $badge.removeAttr('data-exact-value');
+                        } else {
+                            $badge.attr('data-exact-value', exactVal);
+                        }
+                    }
+                }
+                function toCompact(val) {
+                    const v = Math.round(val);
+                    if (Math.abs(v) >= 1000000) return (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    if (Math.abs(v) >= 1000) return Math.round(v / 1000) + 'K';
+                    return String(v);
+                }
+
                 // Update badges
                 $('#total-channels').text(totalChannels);
                 (function() {
                     const val = Math.round(totalL30Sales);
-                    let compact;
-                    if (Math.abs(val) >= 1000000) {
-                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                    } else if (Math.abs(val) >= 1000) {
-                        compact = Math.round(val / 1000) + 'K';
-                    } else {
-                        compact = String(val);
-                    }
-                    $('#total-l30-sales').text(compact);
-                    $('#total-l30-sales').closest('.badge').attr('title',
+                    const $el = $('#total-l30-sales');
+                    $el.text(toCompact(val));
+                    $el.closest('.badge').attr('title',
                         'Sum of Sales column (channel rolling L30 / window varies). $' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
                 })();
                 // Show NYS when no channel had any sales yesterday — clearer than "$0".
-                $('#total-y-sales').text(totalYSales > 0
-                    ? '$' + Math.round(totalYSales).toLocaleString('en-US')
-                    : 'NYS');
-                $('#total-l30-orders').text(Math.round(totalL30Orders).toLocaleString('en-US'));
-                $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
-                $('#avg-gprofit').text(Math.round(avgGprofit) + '%');
+                (function() {
+                    const $el = $('#total-y-sales');
+                    if (totalYSales > 0) {
+                        const val = Math.round(totalYSales);
+                        $el.text('$' + val.toLocaleString('en-US'));
+                        setBadgeExact($el, val);
+                    } else {
+                        $el.text('NYS');
+                        setBadgeExact($el, null);
+                    }
+                })();
+                (function() {
+                    const val = Math.round(totalL30Orders);
+                    const $el = $('#total-l30-orders');
+                    $el.text(val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const val = Math.round(totalQty);
+                    const $el = $('#total-qty');
+                    $el.text(val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const val = Math.round(avgGprofit);
+                    const $el = $('#avg-gprofit');
+                    $el.text(val + '%');
+                    setBadgeExact($el, val);
+                })();
                 $('#total-gross-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
-                $('#avg-groi').text(Math.round(avgGroi) + '%');
+                (function() {
+                    const val = Math.round(avgGroi);
+                    const $el = $('#avg-groi');
+                    $el.text(val + '%');
+                    setBadgeExact($el, val);
+                })();
                 (function() {
                     const val = Math.round(totalAdSpend);
-                    let compact;
-                    if (Math.abs(val) >= 1000000) {
-                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                    } else if (Math.abs(val) >= 1000) {
-                        compact = Math.round(val / 1000) + 'K';
-                    } else {
-                        compact = String(val);
-                    }
-                    $('#total-ad-spend').text(compact);
-                    $('#total-ad-spend').closest('.badge').attr('title',
+                    const $el = $('#total-ad-spend');
+                    $el.text(toCompact(val));
+                    $el.closest('.badge').attr('title',
                         'View trend - Total Ad Spend: $' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
                 })();
-                $('#ads-percent-badge').text(avgAdsPercent.toFixed(1) + '%');
+                (function() {
+                    const val = Math.round(avgAdsPercent * 10) / 10;
+                    const $el = $('#ads-percent-badge');
+                    $el.text(val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
                 (function() {
                     const val = Math.round(totalViews);
-                    let compact;
-                    if (Math.abs(val) >= 1000000) {
-                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                    } else if (Math.abs(val) >= 1000) {
-                        compact = Math.round(val / 1000) + 'K';
-                    } else {
-                        compact = String(val);
-                    }
-                    $('#total-views-badge').text(compact);
-                    $('#total-views-badge').closest('.badge').attr('title',
+                    const $el = $('#total-views-badge');
+                    $el.text(toCompact(val));
+                    $el.closest('.badge').attr('title',
                         'View trend - Total Views (listing/Map traffic): ' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
                 })();
                 // Listing CVR (overall): Σ Qty / Σ Total Views — units-based to match the per-channel
                 // /temu-decrease badge (qty / views), not ad conversion; see badge title.
                 // 2 decimals so the badge value shifts day-over-day instead of holding the same
                 // rounded number for 3+ days (rolling-window CVR moves <0.05% per day).
                 const cvrPct = totalViews > 0 ? (totalQty / totalViews) * 100 : null;
-                $('#cvr-pct-badge').text(cvrPct !== null ? Math.round(cvrPct) + '%' : '-');
+                (function() {
+                    const $el = $('#cvr-pct-badge');
+                    if (cvrPct !== null) {
+                        const val = Math.round(cvrPct);
+                        $el.text(val + '%');
+                        setBadgeExact($el, val);
+                    } else {
+                        $el.text('-');
+                        setBadgeExact($el, null);
+                    }
+                })();
                 // NPFT $ = gross profit $ − total ad spend (= L30 × (G% − Ad Spend/Sales) in aggregate)
                 (function() {
                     const val = Math.round(netProfit);
-                    let compact;
-                    if (Math.abs(val) >= 1000000) {
-                        compact = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                    } else if (Math.abs(val) >= 1000) {
-                        compact = Math.round(val / 1000) + 'K';
-                    } else {
-                        compact = String(val);
-                    }
-                    $('#total-pft').text(compact);
-                    $('#total-pft').closest('.badge').attr('title',
+                    const $el = $('#total-pft');
+                    $el.text(toCompact(val));
+                    $el.closest('.badge').attr('title',
                         'Net profit $ = sum(rolling Sales×Gprofit% − Ad spend): $' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
                 })();
-                $('#avg-npft').text(Math.round(avgNpft) + '%');
-                $('#avg-nroi').text(Math.round(avgNroi) + '%');
-                $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
-                $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
+                (function() {
+                    const val = Math.round(avgNpft);
+                    const $el = $('#avg-npft');
+                    $el.text(val + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const val = Math.round(avgNroi);
+                    const $el = $('#avg-nroi');
+                    $el.text(val + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const val = Math.round(totalNMap);
+                    const $el = $('#total-nmap');
+                    $el.text(val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    const val = Math.round(totalMiss);
+                    const $el = $('#total-miss');
+                    $el.text(val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                })();
 
                 // Reviews badge: weighted avg rating (sum(rating*reviews)/sum(reviews)), total reviews (sum)
                 let ratingSum = 0, reviewsSum = 0;
@@ -4371,12 +4435,28 @@
                 }
             });
 
+            // Parse compact badge text (e.g. "326K", "1.7M", "$12,345", "46%") into a number.
+            function parseBadgeDisplayValue(raw) {
+                if (raw === undefined || raw === null) return null;
+                let text = String(raw).replace(/[,$%\s]/g, '').trim();
+                if (!text || text === 'NYS' || text === '-' || text === 'N/A') return null;
+                const suffix = text.slice(-1).toUpperCase();
+                let mult = 1;
+                if (suffix === 'K') { mult = 1000; text = text.slice(0, -1); }
+                else if (suffix === 'M') { mult = 1000000; text = text.slice(0, -1); }
+                const n = parseFloat(text);
+                return (isNaN(n) ? null : n * mult);
+            }
+
             // Badge click handler — show overall (all channels) metric trend
             $(document).on('click', '.badge-chart-link', function() {
                 const metricKey = $(this).data('metric');
-                // Extract the displayed badge value so the chart can match it exactly
-                const badgeText = $(this).find('span').text().replace(/[,$%]/g, '').trim();
-                const badgeValue = parseFloat(badgeText) || null;
+                // Prefer data-exact-value (set when badges update) so compact "326K" is not
+                // misread as 326. Fall back to parsing the visible text (supports K/M).
+                let badgeValue = parseFloat($(this).attr('data-exact-value'));
+                if (isNaN(badgeValue)) {
+                    badgeValue = parseBadgeDisplayValue($(this).find('span').first().text());
+                }
                 showMetricChart('All', metricKey, badgeValue);
             });
 
