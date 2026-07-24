@@ -1258,6 +1258,8 @@ class Kernel extends ConsoleKernel
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L60', 'temu-ads-data-sync-l60', '15:50');
         $retryFiveTimesUntil('temu:fetch-ads-api-reports --period=L7', 'temu-ads-api-reports-l7', '15:55');
+        // Recommended supply prices → temu_r_pricing (closest API to Traffic Boost / R Pricing)
+        $retryFiveTimesUntil('temu:fetch-recommended-prices', 'temu-recommended-prices', '16:05');
 
         /*
         |--------------------------------------------------------------------------
