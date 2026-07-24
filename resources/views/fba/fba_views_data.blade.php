@@ -1460,7 +1460,7 @@
                 }
 
                 // SPft% — identical rule to PRFT%: net = parseFloat(SGPFT%) − window._fbaGlobalAdsPercent, then round for display
-                // Imperative DOM updater that mirrors what the Accept column formatter renders
+                // Imperative DOM updater that mirrors what the Check column formatter renders
                 // for a given status. Used by AJAX flows that touch the live button without
                 // round-tripping through row.update().
                 function applyAcceptBtnStatus($el, status) {
@@ -1472,40 +1472,46 @@
                        .attr('data-status', status || '');
                 }
 
-                // Centralized state for the Accept-column dot so the column formatter and
-                // the imperative AJAX status updates stay in sync. Two visual states only:
-                //   green dot — status === 'pushed' or 'applied' (call succeeded)
-                //   yellow dot — everything else (default, processing, error → still needs a push)
-                // Inner content is always a single colored circle; the spinner is overlaid only
-                // while a push is in flight. The button keeps its data-* attributes and title so
-                // the existing click / double-click handlers work unchanged.
+                // Same check-icon states as amazon-tabulator-view Accept/Push column.
                 function buildAcceptBtnState(status) {
-                    const baseStyle = 'background:transparent;border:none;padding:2px 6px;cursor:pointer;line-height:1;';
-                    const dot = function(color) {
-                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${color};vertical-align:middle;"></span>`;
+                    const baseStyle = 'border: none; background: none; padding: 0; cursor: pointer;';
+                    const iconStyle = function(color) {
+                        return baseStyle + ' color: ' + color + ';';
                     };
-                    const dotWithSpinner = function(color) {
-                        return `<span style="position:relative;display:inline-block;width:14px;height:14px;vertical-align:middle;">` +
-                                   `<span style="position:absolute;inset:0;border-radius:50%;background:${color};"></span>` +
-                                   `<i class="fas fa-spinner fa-spin" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#212529;font-size:9px;"></i>` +
-                               `</span>`;
-                    };
-                    const GREEN = '#28a745';
-                    const YELLOW = '#ffc107';
 
                     if (status === 'processing') {
-                        return { html: dotWithSpinner(YELLOW), style: baseStyle, title: 'Price pushing in progress…' };
+                        return {
+                            html: '<i class="fas fa-spinner fa-spin"></i>',
+                            style: iconStyle('#ffc107'),
+                            title: 'Pushing to Amazon...'
+                        };
                     }
                     if (status === 'pushed') {
-                        return { html: dot(GREEN), style: baseStyle, title: 'Price pushed to Amazon (Double-click to mark as Applied)' };
+                        return {
+                            html: '<i class="fa-solid fa-check-double"></i>',
+                            style: iconStyle('#28a745'),
+                            title: 'Price pushed to Amazon (Double-click to mark as Applied)'
+                        };
                     }
                     if (status === 'applied') {
-                        return { html: dot(GREEN), style: baseStyle, title: 'Price applied to Amazon (Double-click to change)' };
+                        return {
+                            html: '<i class="fa-solid fa-check-double"></i>',
+                            style: iconStyle('#28a745'),
+                            title: 'Price applied to Amazon (Double-click to change)'
+                        };
                     }
                     if (status === 'error') {
-                        return { html: dot(YELLOW), style: baseStyle, title: 'Error applying price — click to retry' };
+                        return {
+                            html: '<i class="fa-solid fa-x"></i>',
+                            style: iconStyle('#dc3545'),
+                            title: 'Error pushing to Amazon — click to retry'
+                        };
                     }
-                    return { html: dot(YELLOW), style: baseStyle, title: 'Push price to Amazon' };
+                    return {
+                        html: '<i class="fas fa-check"></i>',
+                        style: iconStyle('#28a745'),
+                        title: 'Push to Amazon'
+                    };
                 }
 
                 function fbaSpftPercentFromRow(rowData) {
@@ -2721,7 +2727,7 @@
                             headerSort: false,
                             titleFormatter: function(column) {
                                 return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
-                                    <span>Accept</span>
+                                    <span>Check</span>
                                     <button type="button" class="btn btn-sm" id="apply-all-btn" title="Apply All Selected Prices to Amazon" style="border: none; background: none; padding: 0; cursor: pointer; color: #28a745;">
                                         <i class="fas fa-check-double" style="font-size: 1.2em;"></i>
                                     </button>
@@ -2740,7 +2746,7 @@
                                 }
 
                                 const s = buildAcceptBtnState(status);
-                                return `<button type="button" class="apply-price-btn" data-sku="${fbaSku}" data-price="${sprice}" data-status="${status || ''}" title="${s.title}" style="${s.style}">${s.html}</button>`;
+                                return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${fbaSku}" data-price="${sprice}" data-status="${status || ''}" title="${s.title}" style="${s.style}">${s.html}</button>`;
                             },
                             cellClick: function(e, cell) {
                                 const $target = $(e.target);

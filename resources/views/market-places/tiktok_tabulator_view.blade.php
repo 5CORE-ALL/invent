@@ -556,30 +556,30 @@
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <div class="d-flex flex-wrap gap-2 ebay2-summary-badge-row" role="group" aria-label="Summary metrics">
-                        <span class="badge bg-primary fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_sales"
+                        <span class="badge bg-primary fs-6 p-2 tt-badge-chart" data-metric="total_sales"
                             id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click or hover (½s) for daily trend">Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_gpft" id="avg-gpft-badge"
-                            style="color: black; font-weight: bold; cursor: pointer;" title="Click or hover for daily trend">GPFT:
+                            title="Click for daily trend">Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2 tt-badge-chart" data-metric="avg_gpft" id="avg-gpft-badge"
+                            style="color: black; font-weight: bold; cursor: pointer;" title="Click for daily trend">GPFT:
                             0%</span>
-                        <span class="badge bg-success fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="total_l30"
+                        <span class="badge bg-success fs-6 p-2 tt-badge-chart" data-metric="total_l30"
                             id="total-l30-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click or hover for daily trend">L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2 tt-hover-chart" id="zero-sold-count-badge" data-metric="zero_sold_count"
+                            title="Click for daily trend">L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" data-metric="zero_sold_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter · Hover ½s for daily trend">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2 tt-hover-chart" id="more-sold-count-badge" data-metric="sold_count"
+                            title="Click to filter">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" data-metric="sold_count"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
-                            title="Click to filter · Hover ½s for daily trend">&gt; 0 Sold: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2 tt-badge-chart tt-hover-chart" data-metric="avg_roi"
+                            title="Click to filter">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-secondary fs-6 p-2 tt-badge-chart" data-metric="avg_roi"
                             id="roi-percent-badge" style="color: black; font-weight: bold; cursor: pointer;"
-                            title="Click or hover for daily trend">ROI%: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2 tt-hover-chart" id="missing-count-badge" data-metric="missing_count"
+                            title="Click for daily trend">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" data-metric="missing_count"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter · Hover ½s for daily trend">Missing L: 0</span>
-                        <span class="badge fs-6 p-2 tt-hover-chart" id="inv-tt-stock-badge" data-metric="nmap_count"
+                            title="Click to filter">Missing L: 0</span>
+                        <span class="badge fs-6 p-2" id="inv-tt-stock-badge" data-metric="nmap_count"
                             style="color: white; font-weight: bold; cursor: pointer; background-color: #a71d2a;"
-                            title="Click to filter · Hover ½s for daily trend">N Map: 0</span>
+                            title="Click to filter">N Map: 0</span>
                     </div>
                 </div>
             </div>
@@ -1269,27 +1269,6 @@
                 loadTtBadgeChart();
             }
 
-            let ttBadgeHoverTimer = null;
-            $(document).on('mouseenter', '.tt-hover-chart', function() {
-                const metric = $(this).data('metric');
-                if (!metric) return;
-                ttBadgeHoverTimer = setTimeout(function() {
-                    openTtBadgeChartModal(metric, { keepRange: false });
-                }, 500);
-            });
-            $(document).on('mouseleave', '.tt-hover-chart', function() {
-                if (ttBadgeHoverTimer) {
-                    clearTimeout(ttBadgeHoverTimer);
-                    ttBadgeHoverTimer = null;
-                }
-            });
-            $(document).on('mousedown', '.tt-hover-chart', function() {
-                if (ttBadgeHoverTimer) {
-                    clearTimeout(ttBadgeHoverTimer);
-                    ttBadgeHoverTimer = null;
-                }
-            });
-
             function renderTtBadgeChart(points) {
                 if (!Array.isArray(points) || !points.length) return false;
                 const labels = points.map(p => p.date);
@@ -1832,10 +1811,6 @@
             let adsBadgeFilter = null;
 
             function ttDismissBadgeChartModal() {
-                if (ttBadgeHoverTimer) {
-                    clearTimeout(ttBadgeHoverTimer);
-                    ttBadgeHoverTimer = null;
-                }
                 const modalEl = document.getElementById('ttBadgeChartModal');
                 if (!modalEl) return;
                 const inst = bootstrap.Modal.getInstance(modalEl);
@@ -2465,11 +2440,13 @@
                         }
                     },
                     {
-                        title: "TT 1 Ship",
+                        // TikTok 1 → tt_ship (TT 1 Ship). TikTok 2 → ship_bb (BB Ship).
+                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "TT 1 Ship",
                         field: "TT Ship",
                         hozAlign: "center",
                         sorter: "number",
                         width: 70,
+                        visible: true,
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -3060,7 +3037,8 @@
                         width: 60
                     },
                     {
-                        title: "Ship",
+                        // Same source as TT Ship / BB Ship; keep hidden to avoid a duplicate column.
+                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "Ship",
                         field: "Ship_productmaster",
                         hozAlign: "center",
                         sorter: "number",
@@ -3955,6 +3933,10 @@
                 });
 
             // Update summary badges
+            // GPFT / ROI use L30-weighted totals (same as Tiendamia / Amazon / Newegg):
+            //   GPFT% = totalPft / totalSales * 100
+            //   ROI%  = totalPft / totalCogs  * 100
+            // (not a simple average of per-SKU GPFT%/ROI%, which can show +PFT with −ROI)
             function updateSummary() {
                 const data = table.getData('active').filter(row => !ttIsParentRow(row));
                 const badgeRows = (ttAllSkuRows && ttAllSkuRows.length) ? ttAllSkuRows : table.getData('all')
@@ -3962,24 +3944,24 @@
 
                 let totalSales = 0,
                     totalPft = 0,
-                    totalGpft = 0,
+                    totalCogs = 0,
                     totalPrice = 0,
                     priceCount = 0;
                 let totalInv = 0,
                     totalL30 = 0,
                     zeroSoldCount = 0,
                     moreSoldCount = 0;
-                let totalRoi = 0,
-                    roiCount = 0;
                 let missingCount = 0,
                     invTTStockCount = 0;
 
                 data.forEach(row => {
                     const l30 = parseFloat(row['TT L30']) || 0;
                     const profit = parseFloat(row['Profit']) || 0;
-                    totalSales += parseFloat(row['Sales L30']) || 0;
+                    const lp = parseFloat(row['LP_productmaster']) || 0;
+                    const sales = parseFloat(row['Sales L30']) || 0;
+                    totalSales += sales;
                     totalPft += l30 * profit;
-                    totalGpft += parseFloat(row['GPFT%']) || 0;
+                    totalCogs += l30 * lp;
 
                     const price = parseFloat(row['TT Price']) || 0;
                     if (price > 0) {
@@ -3988,13 +3970,7 @@
                     }
 
                     totalInv += parseFloat(row.INV) || 0;
-                    totalL30 += parseFloat(row['TT L30']) || 0;
-
-                    const roi = parseFloat(row['ROI%']) || 0;
-                    if (roi !== 0) {
-                        totalRoi += roi;
-                        roiCount++;
-                    }
+                    totalL30 += l30;
                 });
 
                 badgeRows.forEach(row => {
@@ -4008,9 +3984,9 @@
                     if (ttRowIsNMap(row)) invTTStockCount++;
                 });
 
-                const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
+                const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
                 const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-                const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
+                const avgRoi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
                 $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
                 $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
@@ -4135,10 +4111,10 @@
                     return 'advt';
                 }
 
-                // basics — product / inventory / listing (before pricing so "TT Ship" isn't misfiled)
+                // basics — product / inventory / listing (before pricing so "TT Ship" / "BB Ship" isn't misfiled)
                 if (
                     /^(image_path|Parent|\(Child\) sku|links_column|INV|L30|TT Dil%|TT L30|TT Stock|TT Ship|Missing|MAP|NR|variation_req|video_req|video_uploaded|nrp)$/i.test(f) ||
-                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|missing\s*l?|map|nra|variation|video\s*req|video\s*uploaded|nr\/?req)\b/i.test(tl)
+                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|bb\s*ship|missing\s*l?|map|nra|variation|video\s*req|video\s*uploaded|nr\/?req)\b/i.test(tl)
                 ) {
                     return 'basics';
                 }

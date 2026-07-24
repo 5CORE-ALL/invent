@@ -551,9 +551,9 @@ class TikTokPricingController extends Controller
             // Add values from product_master
             $values = $productMaster->Values ?: [];
             $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
-            // TikTok 1 → tt_ship only (no fallback). TikTok 2 → normal ship only.
+            // TikTok 1 → tt_ship only (no fallback). TikTok 2 → Ship BB (Values ship_bb) only.
             $ttShip = $isTiktokTwo
-                ? ($values["ship"] ?? 0)
+                ? (isset($values["ship_bb"]) ? floatval($values["ship_bb"]) : (isset($productMaster->ship_bb) ? floatval($productMaster->ship_bb) : 0))
                 : ($values["tt_ship"] ?? 0);
             $processedItem["Ship_productmaster"] = $ttShip;
             $processedItem["TT Ship"] = $ttShip;
@@ -1601,9 +1601,9 @@ class TikTokPricingController extends Controller
                 if ($productMaster) {
                     $pmValues = $productMaster->Values ?: [];
                     $lp = $pmValues['lp'] ?? 0;
-                    // TikTok 1 → tt_ship only (no fallback). TikTok 2 → normal ship only.
+                    // TikTok 1 → tt_ship only (no fallback). TikTok 2 → Ship BB (Values ship_bb) only.
                     $ttShip = $isTiktokTwo
-                        ? ($pmValues['ship'] ?? 0)
+                        ? (isset($pmValues['ship_bb']) ? floatval($pmValues['ship_bb']) : (isset($productMaster->ship_bb) ? floatval($productMaster->ship_bb) : 0))
                         : ($pmValues['tt_ship'] ?? 0);
                     $ship = $ttShip;
                     if ($sprice > 0) {
@@ -1708,23 +1708,20 @@ class TikTokPricingController extends Controller
             
             // No cache - always update when page loads
             
-            // Filter: INV > 0 && not parent (TikTok doesn't have REQ filter)
-            $filteredData = collect($products)->filter(function($p) {
-                $invCheck = floatval($p['INV'] ?? 0) > 0;
-                $notParent = !(isset($p['Parent']) && str_starts_with($p['Parent'], 'PARENT'));
-                
-                return $invCheck && $notParent;
+            // Match JS updateSummary(): all non-parent SKU rows (default "All INV" badge set).
+            // Do NOT restrict to INV > 0 — that under-counted sales/PFT vs the live ROI%/GPFT badges.
+            $filteredData = collect($products)->filter(function ($p) {
+                return !(isset($p['Parent']) && str_starts_with((string) $p['Parent'], 'PARENT'));
             });
             
             if ($filteredData->isEmpty()) {
                 return; // No valid products
             }
             
-            // Initialize counters (EXACT JavaScript variable names)
+            // Initialize counters (mirror JS updateSummary — L30-weighted like Tiendamia/Amazon)
             $totalSkuCount = $filteredData->count();
             $totalPft = 0;
             $totalSales = 0;
-            $totalGpft = 0;
             $totalPrice = 0;
             $priceCount = 0;
             $totalInv = 0;
@@ -1734,8 +1731,6 @@ class TikTokPricingController extends Controller
             $totalDil = 0;
             $dilCount = 0;
             $totalCogs = 0;
-            $totalRoi = 0;
-            $roiCount = 0;
             $missingCount = 0;
             $mapCount = 0;
             $invTTStockCount = 0;
@@ -1744,9 +1739,10 @@ class TikTokPricingController extends Controller
             foreach ($filteredData as $row) {
                 $profit = floatval($row['Profit'] ?? 0);
                 $l30 = floatval($row['TT L30'] ?? 0);
+                $lp = floatval($row['LP_productmaster'] ?? 0);
                 $totalPft += ($l30 * $profit);
                 $totalSales += floatval($row['Sales L30'] ?? 0);
-                $totalGpft += floatval($row['GPFT%'] ?? 0);
+                $totalCogs += $lp * $l30;
                 
                 $price = floatval($row['TT Price'] ?? 0);
                 if ($price > 0) {
@@ -1755,7 +1751,7 @@ class TikTokPricingController extends Controller
                 }
                 
                 $totalInv += floatval($row['INV'] ?? 0);
-                $totalL30 += floatval($row['TT L30'] ?? 0);
+                $totalL30 += $l30;
                 
                 if ($l30 == 0) {
                     $zeroSoldCount++;
@@ -1767,16 +1763,6 @@ class TikTokPricingController extends Controller
                 if ($dil > 0) {
                     $totalDil += $dil;
                     $dilCount++;
-                }
-                
-                // COGS = LP × TT L30
-                $lp = floatval($row['LP_productmaster'] ?? 0);
-                $totalCogs += $lp * $l30;
-                
-                $roi = floatval($row['ROI%'] ?? 0);
-                if ($roi != 0) {
-                    $totalRoi += $roi;
-                    $roiCount++;
                 }
                 
                 $isMissing = (strtoupper(trim((string)($row['Missing'] ?? ''))) === 'M');
@@ -1813,11 +1799,11 @@ class TikTokPricingController extends Controller
                 }
             }
             
-            // Calculate averages (EXACT JavaScript logic)
-            $avgGpft = $totalSkuCount > 0 ? $totalGpft / $totalSkuCount : 0;
+            // Aggregate % (same as Tiendamia / Amazon / Newegg badges — not simple avg of row %)
+            $avgGpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
             $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
             $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
-            $avgRoi = $roiCount > 0 ? $totalRoi / $roiCount : 0;
+            $avgRoi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
             
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [
@@ -1851,7 +1837,7 @@ class TikTokPricingController extends Controller
                 
                 // Active Filters
                 'filters_applied' => [
-                    'inventory' => 'more',  // INV > 0
+                    'inventory' => 'all', // matches default badge filter (All INV)
                 ],
             ];
             
@@ -1863,7 +1849,7 @@ class TikTokPricingController extends Controller
                 ],
                 [
                     'summary_data' => $summaryData,
-                    'notes' => 'Auto-saved daily snapshot (INV > 0)',
+                    'notes' => 'Auto-saved daily snapshot (All INV, L30-weighted GPFT/ROI)',
                 ]
             );
             
