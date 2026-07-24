@@ -105,12 +105,13 @@ class TemuRecommendedPriceService
      */
     public function probe(string|int $goodsId): array
     {
+        // Temu official usage: 10 = low traffic, 20 = restricted traffic (Traffic Boost)
         $variants = [
-            ['label' => 'type=1 + language=en', 'type' => 1, 'lang' => 'en', 'extra' => []],
-            ['label' => 'type=1 no language', 'type' => 1, 'lang' => '', 'extra' => ['omit_language' => true]],
-            ['label' => 'type=2 no language', 'type' => 2, 'lang' => '', 'extra' => ['omit_language' => true]],
-            ['label' => 'no type no language', 'type' => 1, 'lang' => '', 'extra' => ['omit_type' => true, 'omit_language' => true]],
-            ['label' => 'type=1 language=en-US', 'type' => 1, 'lang' => 'en-US', 'extra' => []],
+            ['label' => 'type=10 (low traffic)', 'type' => 10, 'lang' => '', 'extra' => ['omit_language' => true]],
+            ['label' => 'type=20 (restricted / Traffic Boost)', 'type' => 20, 'lang' => '', 'extra' => ['omit_language' => true]],
+            ['label' => 'type=10 + language=en', 'type' => 10, 'lang' => 'en', 'extra' => []],
+            ['label' => 'type=20 + language=en', 'type' => 20, 'lang' => 'en', 'extra' => []],
+            ['label' => 'type=1 (INVALID — causes 150010002)', 'type' => 1, 'lang' => '', 'extra' => ['omit_language' => true]],
         ];
 
         $out = [];
