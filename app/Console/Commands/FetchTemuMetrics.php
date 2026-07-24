@@ -15,14 +15,15 @@ class FetchTemuMetrics extends Command
      *
      * @var string
      */
-    protected $signature = 'app:fetch-temu-metrics';
+    protected $signature = 'app:fetch-temu-metrics
+                            {--only= : Run only one step: skus|goods|qty|price|ads}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Fetch Temu SKUs, goods IDs, quantities, base prices, and ads analytics';
 
     /**
      * Execute the console command.
@@ -35,38 +36,54 @@ class FetchTemuMetrics extends Command
         // Verify credentials first
         if (!$this->verifyCredentials()) {
             $this->error('Invalid Temu API credentials. Please check your .env file.');
-            return;
+            return 1;
+        }
+
+        $only = strtolower(trim((string) $this->option('only')));
+        if ($only !== '' && ! in_array($only, ['skus', 'goods', 'qty', 'price', 'ads'], true)) {
+            $this->error('Invalid --only value. Use: skus|goods|qty|price|ads');
+            return 1;
         }
 
         try {
-            // Step 1: Fetch SKUs and basic data
-            $this->info('Step 1/5: Fetching SKUs...');
-            $this->fetchSkus();
-            
-            // Step 2: Fetch Goods IDs
-            $this->info('Step 2/5: Fetching Goods IDs...');
-            $this->fetchGoodsId();
-            
-            // Step 3: Fetch L30 & L60 Order Quantities
-            $this->info('Step 3/5: Fetching Order Quantities (L30 & L60)...');
-            $this->fetchQuantity();
-            
-            // Step 4: Fetch Prices
-            $this->info('Step 4/5: Fetching Prices...');
-            $this->fetchBasePrice();
-            
-            // Step 5: Fetch Product Analytics (Views/Impressions/Clicks)
-            $this->info('Step 5/5: Fetching Product Analytics Data...');
-            $this->fetchProductAnalyticsData();
+            $runAll = $only === '';
 
-            // Debug summary
-            $this->debugSkuStatus();
+            if ($runAll || $only === 'skus') {
+                $this->info('Step 1/5: Fetching SKUs...');
+                $this->fetchSkus();
+            }
 
-            Log::info('Completed FetchTemuMetrics command successfully');
+            if ($runAll || $only === 'goods') {
+                $this->info('Step 2/5: Fetching Goods IDs...');
+                $this->fetchGoodsId();
+            }
+
+            if ($runAll || $only === 'qty') {
+                $this->info('Step 3/5: Fetching Order Quantities (L30 & L60)...');
+                $this->fetchQuantity();
+            }
+
+            if ($runAll || $only === 'price') {
+                $this->info('Step 4/5: Fetching Prices...');
+                $this->fetchBasePrice();
+            }
+
+            if ($runAll || $only === 'ads') {
+                $this->info('Step 5/5: Fetching Product Analytics Data...');
+                $this->fetchProductAnalyticsData();
+            }
+
+            if ($runAll) {
+                $this->debugSkuStatus();
+            }
+
+            Log::info('Completed FetchTemuMetrics command successfully', ['only' => $only ?: 'all']);
             $this->info('✅ Completed FetchTemuMetrics command successfully');
+            return 0;
         } catch (\Exception $e) {
             Log::error('Error in FetchTemuMetrics command: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Error in FetchTemuMetrics command: ' . $e->getMessage());
+            return 1;
         }
     }
 
@@ -82,36 +99,10 @@ class FetchTemuMetrics extends Command
             return false;
         }
 
-        $this->info("Credentials found - App Key: " . substr($appKey, 0, 10) . "...");
-        $this->line("Full App Key: " . $appKey);
-        $this->line("Access Token: " . substr($accessToken, 0, 15) . "...");
-        $this->line("Full Access Token: " . $accessToken);
-        $this->line("Secret Key: " . substr($appSecret, 0, 10) . "...");
-        $this->line("Full Secret: " . $appSecret);
-        
-        // Verify exact match with expected values
-        $expectedAppKey = "6262ed18350450f708c3ed19faee7fdu";
-        $expectedSecret = "26971aaf2ddd3c16213d88a5da1f8f65aa724832";
-        $expectedToken = "upldldgr3z4kkxevvrenm6kk3sd1hufnahzenwyiwz4priye9uzfbfwntks";
-        
-        if ($appKey !== $expectedAppKey) {
-            $this->error("⚠️ APP_KEY MISMATCH!");
-            $this->line("Expected: " . $expectedAppKey);
-            $this->line("Got:      " . $appKey);
-        }
-        if ($appSecret !== $expectedSecret) {
-            $this->error("⚠️ SECRET_KEY MISMATCH!");
-            $this->line("Expected: " . $expectedSecret);
-            $this->line("Got:      " . $appSecret);
-        }
-        if ($accessToken !== $expectedToken) {
-            $this->error("⚠️ ACCESS_TOKEN MISMATCH!");
-            $this->line("Expected: " . $expectedToken);
-            $this->line("Got:      " . $accessToken);
-        }
-        
+        $this->info('Credentials found (App Key: ' . substr($appKey, 0, 8) . '…)');
+
         // Test API connection with a simple call
-        $this->info("Testing API connection...");
+        $this->info('Testing API connection...');
         try {
             $requestBody = [
                 "type" => "temu.local.sku.list.retrieve",                
@@ -247,71 +238,142 @@ class FetchTemuMetrics extends Command
         $this->info('Fetching base prices...');
 
         try {
-            $skus = TemuMetric::whereNotNull('sku_id')->pluck('sku_id')->toArray();
-            
-            if (empty($skus)) {
-                $this->warn("No sku_id found in database. Run fetchSkus() first.");
-                Log::warning("No sku_id found for fetchBasePrice");
+            // Official API: bg.local.goods.sku.list.price.query
+            // Requires querySupplierPriceBaseList[{ goodsId, skuIdList }] — NOT top-level skuIdList.
+            $rows = TemuMetric::query()
+                ->whereNotNull('sku_id')
+                ->where('sku_id', '!=', '')
+                ->whereNotNull('goods_id')
+                ->where('goods_id', '!=', '')
+                ->get(['sku', 'sku_id', 'goods_id']);
+
+            if ($rows->isEmpty()) {
+                $this->warn('No rows with both goods_id and sku_id. Run fetchSkus() + fetchGoodsId() first.');
+                Log::warning('No sku_id+goods_id pairs for fetchBasePrice');
                 return;
             }
 
-            foreach ($skus as $skuId) {
+            // Group skuIds under each goodsId (batch-friendly)
+            $byGoods = [];
+            foreach ($rows as $row) {
+                $gid = (string) $row->goods_id;
+                $sid = (int) $row->sku_id;
+                if ($gid === '' || $sid <= 0) {
+                    continue;
+                }
+                $byGoods[$gid][$sid] = true;
+            }
+
+            $goodsChunks = array_chunk($byGoods, 20, true); // up to 20 goods per request
+            $updatedCount = 0;
+            $errorCount = 0;
+
+            foreach ($goodsChunks as $chunkIndex => $goodsMap) {
+                $queryList = [];
+                foreach ($goodsMap as $goodsId => $skuIdSet) {
+                    $queryList[] = [
+                        'goodsId' => (int) $goodsId,
+                        'skuIdList' => array_map('intval', array_keys($skuIdSet)),
+                    ];
+                }
+
                 $requestBody = [
-                    "type" => "bg.local.goods.sku.list.price.query",
-                    "skuIdList" => [(string)$skuId], // Changed from skuIds to skuIdList and ensure string
+                    'type' => 'bg.local.goods.sku.list.price.query',
+                    'querySupplierPriceBaseList' => $queryList,
+                    'language' => 'en',
                 ];
 
                 $signedRequest = $this->generateSignValue($requestBody);
 
-                $response = Http::withHeaders([
-                    'Content-Type' => 'application/json',
-                ])->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+                $response = Http::timeout(60)
+                    ->withHeaders(['Content-Type' => 'application/json'])
+                    ->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
 
                 if ($response->failed()) {
-                    $this->error("Price request failed for SKU: {$skuId} | " . $response->body());
-                    Log::error("Price request failed for SKU: {$skuId}", [
-                        'response' => $response->body(),
-                        'request' => $signedRequest
+                    $this->error('Price batch request failed (chunk '.($chunkIndex + 1).')');
+                    Log::error('Price batch request failed', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
                     ]);
+                    $errorCount += count($queryList);
                     continue;
                 }
 
                 $data = $response->json();
-
-                if (!($data['success'] ?? false)) {
+                if (! ($data['success'] ?? false)) {
                     $errorCode = $data['errorCode'] ?? 'N/A';
                     $errorMsg = $data['errorMsg'] ?? 'Unknown';
-                    $this->error("Temu Price API error [{$errorCode}] for SKU: {$skuId} | {$errorMsg}");
-                    Log::error("Temu Price API error for SKU: {$skuId}", [
+                    $this->error("Temu Price API error [{$errorCode}]: {$errorMsg} (chunk ".($chunkIndex + 1).')');
+                    Log::error('Temu Price API batch error', [
                         'error_code' => $errorCode,
                         'error_msg' => $errorMsg,
-                        'full_response' => $data,
-                        'request_body' => $requestBody
+                        'chunk' => $chunkIndex + 1,
                     ]);
+                    $errorCount += count($queryList);
+                    usleep(200000);
                     continue;
                 }
 
-                $priceInfoList = $data['result']['skuPriceInfoList'] ?? [];
-                if (empty($priceInfoList)) {
-                    $this->warn("No price info found for SKU: {$skuId}");
-                    Log::warning("No price info found for SKU: {$skuId}");
+                // Response: result.openapiGoodsSupplierPriceDTOList[].openapiSkuSupplierPriceDTOList[]
+                //   { skuId, supplierPrice: { amount, currency } }
+                $goodsPriceList = $data['result']['openapiGoodsSupplierPriceDTOList']
+                    ?? $data['result']['skuPriceInfoList']
+                    ?? [];
+
+                if (empty($goodsPriceList)) {
+                    $this->warn('No price list in response for chunk '.($chunkIndex + 1));
+                    usleep(200000);
                     continue;
                 }
 
-                $priceInfo = $priceInfoList[0];
+                foreach ($goodsPriceList as $goodsBlock) {
+                    // New shape
+                    $skuPriceList = $goodsBlock['openapiSkuSupplierPriceDTOList'] ?? null;
+                    if (is_array($skuPriceList)) {
+                        foreach ($skuPriceList as $skuPrice) {
+                            $skuId = $skuPrice['skuId'] ?? null;
+                            $amount = $skuPrice['supplierPrice']['amount']
+                                ?? $skuPrice['supplierPrice']['val']
+                                ?? $skuPrice['basePrice']
+                                ?? null;
+                            if ($skuId === null || $amount === null || ! is_numeric($amount)) {
+                                continue;
+                            }
+                            $n = TemuMetric::where('sku_id', (string) $skuId)->update([
+                                'base_price' => (float) $amount,
+                                'price_last_updated' => now(),
+                            ]);
+                            if ($n) {
+                                $updatedCount += $n;
+                            }
+                        }
+                        continue;
+                    }
 
-                TemuMetric::where('sku_id', (string) $skuId)->update([
-                    'base_price' => $priceInfo['basePrice'] ?? null,
-                    'currency'   => $priceInfo['currency'] ?? null,
-                    'price_last_updated' => now(),
-                ]);
+                    // Legacy fallback shape: { skuId / sku_id, basePrice, currency }
+                    $skuId = $goodsBlock['skuId'] ?? $goodsBlock['sku_id'] ?? null;
+                    $amount = $goodsBlock['basePrice']
+                        ?? ($goodsBlock['supplierPrice']['amount'] ?? null);
+                    if ($skuId !== null && $amount !== null && is_numeric($amount)) {
+                        $n = TemuMetric::where('sku_id', (string) $skuId)->update([
+                            'base_price' => (float) $amount,
+                            'price_last_updated' => now(),
+                        ]);
+                        if ($n) {
+                            $updatedCount += $n;
+                        }
+                    }
+                }
 
-                $this->info("Price updated for SKU: {$skuId}");
-                Log::info("Price updated for SKU: {$skuId}", ['price' => $priceInfo['basePrice'] ?? null]);
+                $this->info('Price chunk '.($chunkIndex + 1).'/'.count($goodsChunks).' OK');
+                usleep(250000); // rate limit
             }
 
-            $this->info("Base Prices updated successfully.");
-            Log::info('Completed fetchBasePrice successfully');
+            $this->info("✅ Base prices updated: {$updatedCount} row(s)".($errorCount ? " ({$errorCount} chunk error(s))" : ''));
+            Log::info('Completed fetchBasePrice successfully', [
+                'updated' => $updatedCount,
+                'errors' => $errorCount,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error in fetchBasePrice: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Error in fetchBasePrice: ' . $e->getMessage());
