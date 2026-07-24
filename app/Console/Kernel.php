@@ -1028,10 +1028,10 @@ class Kernel extends ConsoleKernel
 
         // Shopify label/tracking → AliExpress declare/modify shipment (settings-gated).
         $schedule->job(new \App\Jobs\SyncAliexpressTrackingJob(true, 40))
-            ->everyFifteenMinutes()
+            ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('aliexpress-sync-tracking')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(4)
             ->appendOutputTo($log);
 
         // AliExpress receipt address → fill missing Shopify shipping + customer address.
@@ -1087,10 +1087,10 @@ class Kernel extends ConsoleKernel
 
         // Shopify label/tracking → Reverb mark shipped (settings-gated).
         $schedule->job(new \App\Jobs\SyncReverbTrackingJob(true, 40))
-            ->everyFifteenMinutes()
+            ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('reverb-sync-tracking')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(4)
             ->appendOutputTo($log);
 
         // Reverb shipping address → fill missing Shopify shipping + customer address.
@@ -1150,10 +1150,10 @@ class Kernel extends ConsoleKernel
 
         // Shopify label/tracking → Newegg Ship Order (settings-gated).
         $schedule->job(new \App\Jobs\SyncNeweggTrackingJob(true, 40))
-            ->everyFifteenMinutes()
+            ->everyFiveMinutes()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-tracking')
-            ->withoutOverlapping(20)
+            ->withoutOverlapping(4)
             ->appendOutputTo($log);
 
         // Newegg ShipTo / buyer → fill missing Shopify shipping + customer address.

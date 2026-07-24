@@ -97,7 +97,7 @@
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_reverb]" value="1" {{ ($settings['order']['push_tracking_to_reverb'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically push Shopify tracking numbers to Reverb</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 15 minutes the app reads Shopify fulfillments (after you print/download a label) and marks the order shipped on Reverb — no manual push needed.</div>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and marks the order shipped on Reverb — no manual push needed.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">

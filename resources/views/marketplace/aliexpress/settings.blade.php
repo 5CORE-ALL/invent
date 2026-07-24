@@ -95,7 +95,7 @@
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_aliexpress]" value="1" {{ ($settings['order']['push_tracking_to_aliexpress'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically push Shopify tracking numbers to AliExpress</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 15 minutes the app reads Shopify fulfillments (after you print/download a label) and declares tracking on AliExpress — no manual push needed.</div>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and declares tracking on AliExpress — no manual push needed.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
