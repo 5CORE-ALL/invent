@@ -368,19 +368,28 @@ class FbaManualDataService
      */
     public function calculateFbaShipCalculation($sku, $fbaFeeManual = 0, $sendCost = 0)
     {
-        // Normalize SKU by removing FBA suffix
-        $baseSku = preg_replace('/\s*FBA\s*/i', '', $sku);
-        $baseSku = strtoupper(trim($baseSku));
+        // Normalize whitespace only — do NOT strip mid-SKU "FBA" (e.g. "GS EL FBA New")
+        $normalizedSku = strtoupper(preg_replace('/\s+/', ' ', trim((string) $sku)));
+        // Strip trailing FBA suffix only (e.g. "FOO FBA" → "FOO"), never mid-name FBA
+        $baseSku = strtoupper(trim(preg_replace('/(?:\s+FBA)+\s*$/i', '', $normalizedSku)));
 
-        // Get Fulfillment Fee from FbaReportsMaster - Optimized query
-        $fbaReport = \App\Models\FbaReportsMaster::where(function($query) use ($baseSku) {
-                // Try exact match with FBA variations
-                $query->where('seller_sku', $baseSku . ' FBA')
-                      ->orWhere('seller_sku', $baseSku . 'FBA')
-                      ->orWhere('seller_sku', $baseSku . ' fba')
-                      ->orWhere('seller_sku', $baseSku);
-            })
-            ->first();
+        // Prefer exact SKU match first, then trailing-FBA / base variations
+        $candidates = array_values(array_unique(array_filter([
+            $sku,
+            $normalizedSku,
+            $baseSku !== '' ? $baseSku . ' FBA' : null,
+            $baseSku !== '' ? $baseSku . 'FBA' : null,
+            $baseSku !== '' ? $baseSku . ' fba' : null,
+            $baseSku !== '' && $baseSku !== $normalizedSku ? $baseSku : null,
+        ], fn ($v) => $v !== null && $v !== '')));
+
+        $fbaReport = null;
+        foreach ($candidates as $candidate) {
+            $fbaReport = \App\Models\FbaReportsMaster::where('seller_sku', $candidate)->first();
+            if ($fbaReport) {
+                break;
+            }
+        }
 
         $fulfillmentFee = $fbaReport ? floatval($fbaReport->fulfillment_fee ?? 0) : 0;
         $fbaFeeManualValue = floatval($fbaFeeManual);
