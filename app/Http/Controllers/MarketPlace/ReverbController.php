@@ -1313,6 +1313,38 @@ class ReverbController extends Controller
         }
     }
 
+    /**
+     * Update SPRICE push status (pushed / applied / error) — Amazon/eBay dblclick pattern.
+     */
+    public function updateReverbSpriceStatus(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku')));
+        $status = (string) $request->input('status');
+
+        if ($sku === '' || ! in_array($status, ['pushed', 'applied', 'error'], true)) {
+            return response()->json(['success' => false, 'error' => 'Invalid SKU or status'], 400);
+        }
+
+        $view = ReverbViewData::firstOrNew(['sku' => $sku]);
+        $values = is_array($view->values) ? $view->values : (json_decode($view->values ?? '{}', true) ?: []);
+        if (! is_array($values)) {
+            $values = [];
+        }
+
+        $values['SPRICE_STATUS'] = $status;
+        $values['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        if (auth()->check()) {
+            $values['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+            $values['SPRICE_PUSHED_BY_ID'] = auth()->id();
+        }
+
+        $view->sku = $sku;
+        $view->values = $values;
+        $view->save();
+
+        return response()->json(['success' => true, 'message' => 'Status updated successfully']);
+    }
+
     public function updateReverbListedLive(Request $request)
     {
         $request->validate([

@@ -1254,8 +1254,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
      
+        // Stores full raw into temu_ads_api_reports + syncs impressions/clicks to temu_metrics
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L30', 'temu-ads-data-sync-l30', '15:40');
         $retryFiveTimesUntil('temu:fetch-ads-data --period=L60', 'temu-ads-data-sync-l60', '15:50');
+        $retryFiveTimesUntil('temu:fetch-ads-api-reports --period=L7', 'temu-ads-api-reports-l7', '15:55');
 
         /*
         |--------------------------------------------------------------------------

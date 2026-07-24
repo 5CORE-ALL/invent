@@ -290,6 +290,15 @@
                         <option value="zero">0 Sold</option>
                     </select>
 
+                    <select id="status-filter" class="form-select form-select-sm flex-shrink-0" style="width: 120px;"
+                            title="Filter by price push status (same as Amazon)">
+                        <option value="all">Status</option>
+                        <option value="not-pushed">Not Pushed</option>
+                        <option value="pushed">Pushed</option>
+                        <option value="applied">Applied</option>
+                        <option value="error">Error</option>
+                    </select>
+
                     <select id="roi-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;">
                         <option value="all">ROI%</option>
                         <option value="lt40">&lt; 40%</option>
@@ -338,6 +347,34 @@
                     <button id="bulk-mode-btn" class="btn btn-sm btn-primary flex-shrink-0 text-nowrap" title="Toggle bulk price editing — reveal checkboxes, then choose Decrease / Increase / Same Price">
                         <i class="fas fa-sliders-h"></i> Bulk Mode
                     </button>
+
+                    {{-- Amazon-style: selection count + Bulk Push Prices (visible when SKUs selected) --}}
+                    <span class="badge bg-primary fs-6 p-2 flex-shrink-0" id="reverb-selected-rows-count" style="display: none;">
+                        0 selected
+                    </span>
+                    <div class="dropdown d-inline-block flex-shrink-0" id="reverb-bulk-actions-container" style="display: none;">
+                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
+                            id="reverbBulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Bulk push SPRICE to Reverb">
+                            <i class="fas fa-upload"></i> Bulk Push
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="reverbBulkActionsDropdown" style="min-width: 220px;">
+                            <li class="px-3 py-2">
+                                <div style="font-weight: 600; margin-bottom: 8px; color: #495057;">
+                                    <i class="fas fa-upload"></i> Bulk Push Prices
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="reverb" id="bulkPushReverb" checked disabled>
+                                    <label class="form-check-label" for="bulkPushReverb" style="color: #e85d04; font-weight: 500;">
+                                        Reverb
+                                    </label>
+                                </div>
+                                <button class="btn btn-sm btn-primary w-100" id="execute-bulk-push-reverb" type="button">
+                                    <i class="fas fa-paper-plane"></i> Push Selected
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                     {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
                          Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = row.percentage, default 0.85) --}}
                     <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-light flex-shrink-0"
@@ -402,6 +439,9 @@
                         </button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
+                        <button id="bulk-push-reverb-btn" class="btn btn-warning btn-sm" title="Bulk push SPRICE to Reverb for selected SKUs">
+                            <i class="fas fa-upload"></i> Bulk Push Prices
                         </button>
                     </div>
                 </div>
@@ -1077,6 +1117,14 @@
             $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
             // Keep the bulk panel visible whenever Bulk Price Mode is on (even with 0 selected).
             $('#discount-input-container').toggle(bulkModeActive || count > 0);
+            // Amazon-style toolbar: show count + Bulk Push when any SKU is selected
+            if (count > 0) {
+                $('#reverb-selected-rows-count').text(count + ' selected').show();
+                $('#reverb-bulk-actions-container').show();
+            } else {
+                $('#reverb-selected-rows-count').hide();
+                $('#reverb-bulk-actions-container').hide();
+            }
         }
 
         // Update select all checkbox state
@@ -2649,39 +2697,58 @@
                     field: "push_price",
                     hozAlign: "center",
                     headerSort: false,
-                    width: 70,
+                    width: 55,
+                    // Amazon/eBay icon states: ✓ ready, ✓✓ pushed/applied, ✕ error
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData['(Child) sku'];
                         const sprice = parseFloat(rowData.SPRICE || 0);
-                        const status = rowData.SPRICE_STATUS;
+                        const status = rowData.SPRICE_STATUS || null;
                         const pushedValue = rowData.SPRICE_PUSHED_VALUE;
                         const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
                         const pushedBy = rowData.SPRICE_PUSHED_BY;
 
-                        if (!sku || sprice <= 0) {
-                            return `<span class="text-muted" style="font-size:11px;">-</span>`;
+                        if (!sku || !sprice || sprice <= 0) {
+                            return '<span style="color:#999;">N/A</span>';
                         }
 
-                        let btnClass = 'btn-primary';
-                        let icon = 'fa-upload';
-                        let title = `Push $${sprice.toFixed(2)} to Reverb`;
+                        let icon = '<i class="fas fa-check"></i>';
+                        let iconColor = '#28a745';
+                        let titleText = `Push $${sprice.toFixed(2)} to Reverb`;
 
-                        if (status === 'pushed' || status === 'applied') {
-                            btnClass = 'btn-success';
-                            icon = 'fa-check';
+                        if (status === 'processing') {
+                            icon = '<i class="fas fa-spinner fa-spin"></i>';
+                            iconColor = '#ffc107';
+                            titleText = 'Price pushing in progress...';
+                        } else if (status === 'pushed') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            iconColor = '#28a745';
+                            titleText = 'Price pushed to Reverb (Double-click to mark as Applied)';
+                        } else if (status === 'applied') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            iconColor = '#28a745';
+                            titleText = 'Price applied to Reverb';
                         } else if (status === 'error') {
-                            btnClass = 'btn-danger';
-                            icon = 'fa-exclamation-triangle';
+                            icon = '<i class="fa-solid fa-x"></i>';
+                            iconColor = '#dc3545';
+                            titleText = 'Error pushing price to Reverb — click to retry';
                         }
 
-                        const tipParts = [];
-                        if (pushedValue !== null && pushedValue !== undefined) tipParts.push(`Pushed: $${parseFloat(pushedValue).toFixed(2)}`);
+                        const tipParts = [titleText];
+                        if (pushedValue !== null && pushedValue !== undefined) {
+                            tipParts.push(`Last: $${parseFloat(pushedValue).toFixed(2)}`);
+                        }
                         if (updatedAt) tipParts.push(updatedAt);
                         if (pushedBy) tipParts.push(`by ${pushedBy}`);
-                        if (tipParts.length) title = tipParts.join(' | ');
 
-                        return `<button type="button" class="btn btn-sm ${btnClass} reverb-push-price-btn" data-sku="${sku}" title="${title}" style="padding:2px 8px; font-size:12px;"><i class="fas ${icon}"></i></button>`;
+                        return `<button type="button" class="btn btn-sm reverb-push-price-btn btn-circle"
+                            data-sku="${String(sku).replace(/"/g, '&quot;')}"
+                            data-price="${sprice}"
+                            data-status="${status || ''}"
+                            title="${tipParts.join(' | ').replace(/"/g, '&quot;')}"
+                            style="border:none;background:none;color:${iconColor};padding:0;cursor:pointer;font-size:16px;">
+                            ${icon}
+                        </button>`;
                     }
                 }
             ]
@@ -2835,70 +2902,192 @@
             });
         });
 
-        // Push SPRICE to Reverb (uses existing /cvr-master-push-price endpoint, marketplace=reverb)
-        $(document).on('click', '.reverb-push-price-btn', function(e) {
-            e.stopPropagation();
-            const $btn = $(this);
-            const sku = $btn.data('sku');
-            const $rowEl = $btn.closest('.tabulator-row');
-            const row = table.getRow($rowEl[0]);
-            if (!row) return;
-            const rowData = row.getData();
-            const price = parseFloat(rowData.SPRICE || 0);
+        // Push one SKU SPRICE to Reverb (Amazon-style icon click — no confirm)
+        function pushReverbPriceForRow(row, sku, price) {
+            return new Promise(function(resolve) {
+                row.update({ SPRICE_STATUS: 'processing' })
+                    .then(function() { return row.reformat(); })
+                    .catch(function() { try { row.reformat(); } catch (e) {} });
 
-            if (!price || price <= 0) {
-                showToast('Set a valid SPRICE (> 0) before pushing', 'error');
-                return;
-            }
-
-            if (!confirm(`Push price $${price.toFixed(2)} to REVERB for SKU: ${sku}?`)) {
-                return;
-            }
-
-            const originalHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-            $.ajax({
-                url: '/cvr-master-push-price',
-                method: 'POST',
-                data: {
-                    sku: sku,
-                    price: price,
-                    marketplace: 'reverb',
-                    _token: '{{ csrf_token() }}'
-                },
-                success: function(response) {
-                    if (response && response.success) {
-                        showToast(response.message || `Price pushed to Reverb for ${sku}`, 'success');
+                $.ajax({
+                    url: '/cvr-master-push-price',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        price: price,
+                        marketplace: 'reverb',
+                        _token: csrfToken()
+                    },
+                    success: function(response) {
+                        if (response && response.success) {
+                            row.update({
+                                SPRICE_STATUS: 'pushed',
+                                SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
+                                SPRICE_PUSHED_VALUE: price
+                            }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                            resolve({ ok: true, sku: sku, message: response.message || 'Pushed' });
+                        } else {
+                            row.update({
+                                SPRICE_STATUS: 'error',
+                                SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
+                            }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                            resolve({
+                                ok: false,
+                                sku: sku,
+                                message: (response && response.message) ? response.message : 'Failed'
+                            });
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Failed to push price to Reverb';
                         row.update({
-                            SPRICE_STATUS: 'pushed',
-                            SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
-                            SPRICE_PUSHED_VALUE: price
+                            SPRICE_STATUS: 'error',
+                            SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
                         }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
-                    } else {
-                        const msg = (response && response.message) ? response.message : 'Failed to push price';
-                        showToast(msg, 'error');
-                        row.update({ SPRICE_STATUS: 'error', SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString() })
-                            .then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                        resolve({ ok: false, sku: sku, message: msg });
                     }
-                },
-                error: function(xhr) {
-                    let errorMsg = 'Failed to push price to Reverb';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMsg = xhr.responseJSON.message;
-                    }
-                    showToast(errorMsg, 'error');
-                    row.update({ SPRICE_STATUS: 'error', SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString() })
-                        .then(function() { row.reformat(); }).catch(function() { row.reformat(); });
-                },
-                complete: function() {
-                    $btn.prop('disabled', false);
-                    // reformat above will re-render the button with the new status; restore just in case
-                    if ($btn.html().indexOf('fa-spinner') !== -1) {
-                        $btn.html(originalHtml);
-                    }
-                }
+                });
             });
+        }
+
+        // Single-row push: ✓ / ✓✓ / ✕  (Amazon/eBay pattern)
+        // Short delay so dblclick (pushed → applied) does not also fire a re-push.
+        let reverbPushClickTimer = null;
+        $(document).on('click', '.reverb-push-price-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const $btn = $(this);
+            const currentStatus = $btn.attr('data-status') || '';
+            const sku = $btn.attr('data-sku') || $btn.data('sku');
+
+            // Double-click → mark Applied (Amazon/eBay)
+            if (e.originalEvent && e.originalEvent.detail === 2) {
+                if (reverbPushClickTimer) {
+                    clearTimeout(reverbPushClickTimer);
+                    reverbPushClickTimer = null;
+                }
+                if (currentStatus !== 'pushed' || !sku) return;
+
+                $.ajax({
+                    url: '/reverb-update-sprice-status',
+                    method: 'POST',
+                    data: { sku: sku, status: 'applied', _token: csrfToken() },
+                    success: function(response) {
+                        if (response && response.success) {
+                            const $rowEl = $btn.closest('.tabulator-row');
+                            const row = table.getRow($rowEl[0]);
+                            if (row) {
+                                row.update({
+                                    SPRICE_STATUS: 'applied',
+                                    SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
+                                }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                            }
+                            showToast('Status updated to Applied', 'success');
+                        }
+                    },
+                    error: function() {
+                        showToast('Failed to update status', 'error');
+                    }
+                });
+                return;
+            }
+
+            if (currentStatus === 'processing' || $btn.prop('disabled')) return;
+
+            if (reverbPushClickTimer) clearTimeout(reverbPushClickTimer);
+            reverbPushClickTimer = setTimeout(function() {
+                reverbPushClickTimer = null;
+                const $rowEl = $btn.closest('.tabulator-row');
+                const row = table.getRow($rowEl[0]);
+                if (!row) return;
+                const price = parseFloat(row.getData().SPRICE || $btn.attr('data-price') || 0);
+
+                if (!sku || !price || price <= 0) {
+                    showToast('Set a valid SPRICE (> 0) before pushing', 'error');
+                    return;
+                }
+
+                $btn.prop('disabled', true);
+                pushReverbPriceForRow(row, sku, price).then(function(result) {
+                    $btn.prop('disabled', false);
+                    if (result.ok) {
+                        showToast(result.message || `Price pushed to Reverb for ${sku}`, 'success');
+                    } else {
+                        showToast(result.message || `Failed to push ${sku}`, 'error');
+                    }
+                });
+            }, 280);
+        });
+
+        // Bulk Push Prices for selected SKUs (Amazon-style — toolbar + Bulk Mode bar)
+        async function executeBulkPushReverb($triggerBtn) {
+            if (selectedSkus.size === 0) {
+                showToast('Select at least one SKU first (turn on Bulk Mode)', 'error');
+                return;
+            }
+
+            const jobs = [];
+            selectedSkus.forEach(function(sku) {
+                const rows = table.searchRows('(Child) sku', '=', sku);
+                if (!rows.length) return;
+                const row = rows[0];
+                const price = parseFloat(row.getData().SPRICE || 0);
+                if (!price || price <= 0) return;
+                jobs.push({ row: row, sku: sku, price: price });
+            });
+
+            if (jobs.length === 0) {
+                showToast('No selected SKUs have SPRICE > 0 to push', 'warning');
+                return;
+            }
+
+            if (!confirm('Push ' + jobs.length + ' price(s) to Reverb?')) {
+                return;
+            }
+
+            const $btn = ($triggerBtn && $triggerBtn.length) ? $triggerBtn : $('#bulk-push-reverb-btn');
+            const $dropdownBtn = $('#reverbBulkActionsDropdown');
+            const originalBtnHtml = $btn.html();
+            const originalDropHtml = $dropdownBtn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+            $dropdownBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+            $('#execute-bulk-push-reverb').prop('disabled', true);
+
+            let okCount = 0;
+            let failCount = 0;
+            const concurrency = 5;
+            let idx = 0;
+            async function runNext() {
+                if (idx >= jobs.length) return;
+                const job = jobs[idx++];
+                const result = await pushReverbPriceForRow(job.row, job.sku, job.price);
+                if (result.ok) okCount++; else failCount++;
+                await runNext();
+            }
+            await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, function() { return runNext(); }));
+
+            $btn.prop('disabled', false).html(originalBtnHtml || '<i class="fas fa-upload"></i> Bulk Push Prices');
+            $dropdownBtn.prop('disabled', false).html(originalDropHtml || '<i class="fas fa-upload"></i> Bulk Push');
+            $('#execute-bulk-push-reverb').prop('disabled', false);
+
+            if (failCount === 0) {
+                showToast('Pushed ' + okCount + ' price(s) to Reverb', 'success');
+            } else {
+                showToast('Pushed ' + okCount + ', failed ' + failCount, failCount === jobs.length ? 'error' : 'warning');
+            }
+            updateSummary();
+        }
+
+        $('#bulk-push-reverb-btn').on('click', function() {
+            executeBulkPushReverb($(this));
+        });
+        $(document).on('click', '#execute-bulk-push-reverb', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            executeBulkPushReverb($(this));
         });
 
         // Apply filters
@@ -3003,6 +3192,21 @@
                 });
             }
 
+            // Status filter — same as Amazon SPRICE push status
+            const statusFilter = $('#status-filter').val();
+            if (statusFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const status = data.SPRICE_STATUS || null;
+                    if (statusFilter === 'not-pushed') {
+                        return status !== 'pushed';
+                    }
+                    if (statusFilter === 'pushed') return status === 'pushed';
+                    if (statusFilter === 'applied') return status === 'applied';
+                    if (statusFilter === 'error') return status === 'error';
+                    return true;
+                });
+            }
+
             // < Amz filter - show prices less than Amazon price
             if (lessAmzFilterActive) {
                 table.addFilter(function(data) {
@@ -3056,7 +3260,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter, #sold-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #reverb-stock-filter, #sold-filter, #status-filter').on('change', function() {
             applyFilters();
         });
 

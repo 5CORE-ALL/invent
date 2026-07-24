@@ -376,6 +376,18 @@ public function getInventory1()
  */
 public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
 {
+    $detailed = $this->fetchAdsDataDetailed($goodsId, $startTs, $endTs);
+
+    return ($detailed['ok'] ?? false) ? ($detailed['result'] ?? null) : null;
+}
+
+/**
+ * Same as fetchAdsData but returns error details for storage/UI.
+ *
+ * @return array{ok: bool, result: ?array, error_code: mixed, error_msg: ?string, http_status: ?int}
+ */
+public function fetchAdsDataDetailed($goodsId, $startTs = null, $endTs = null): array
+{
     if ($startTs === null) {
         $startTs = Carbon::now()->subDays(30)->startOfDay()->timestamp * 1000;
     }
@@ -383,18 +395,21 @@ public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
         $endTs = Carbon::yesterday()->endOfDay()->timestamp * 1000;
     }
 
+    // Temu expects numeric goodsId (same as updateTitle / other goods APIs)
+    $goodsIdParam = is_numeric($goodsId) ? (int) $goodsId : $goodsId;
+
     $requestBody = [
         'type' => 'temu.searchrec.ad.reports.goods.query',
-        'goodsId' => $goodsId,
-        'startTs' => $startTs,
-        'endTs' => $endTs,
+        'goodsId' => $goodsIdParam,
+        'startTs' => (int) $startTs,
+        'endTs' => (int) $endTs,
     ];
 
     $signedRequest = $this->generateSignValue($requestBody);
 
     $request = Http::withHeaders([
         'Content-Type' => 'application/json',
-    ]);
+    ])->timeout(60);
 
     if (config('filesystems.default') === 'local') {
         $request = $request->withoutVerifying();
@@ -402,31 +417,69 @@ public function fetchAdsData($goodsId, $startTs = null, $endTs = null)
 
     try {
         $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+        $httpStatus = $response->status();
 
         if ($response->failed()) {
             Log::error("Temu Ads API request failed for Goods ID: {$goodsId}", [
-                'status' => $response->status(),
-                'body' => $response->body()
+                'status' => $httpStatus,
             ]);
-            return null;
+
+            return [
+                'ok' => false,
+                'result' => null,
+                'error_code' => $httpStatus,
+                'error_msg' => 'HTTP '.$httpStatus,
+                'http_status' => $httpStatus,
+            ];
         }
 
         $data = $response->json();
-
-        if (!($data['success'] ?? false)) {
-            Log::error("Temu Ads API error for Goods ID: {$goodsId}", [
-                'error' => $data['errorMsg'] ?? 'Unknown error',
-                'errorCode' => $data['errorCode'] ?? null
-            ]);
-            return null;
+        if (! is_array($data)) {
+            return [
+                'ok' => false,
+                'result' => null,
+                'error_code' => null,
+                'error_msg' => 'Invalid JSON response',
+                'http_status' => $httpStatus,
+            ];
         }
 
-        return $data['result'] ?? null;
+        if (! ($data['success'] ?? false)) {
+            $errorCode = $data['errorCode'] ?? null;
+            $errorMsg = (string) ($data['errorMsg'] ?? 'Unknown error');
+            Log::error("Temu Ads API error for Goods ID: {$goodsId}", [
+                'error' => $errorMsg,
+                'errorCode' => $errorCode,
+            ]);
+
+            return [
+                'ok' => false,
+                'result' => null,
+                'error_code' => $errorCode,
+                'error_msg' => trim($errorCode !== null ? "{$errorCode}: {$errorMsg}" : $errorMsg),
+                'http_status' => $httpStatus,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'result' => $data['result'] ?? null,
+            'error_code' => null,
+            'error_msg' => null,
+            'http_status' => $httpStatus,
+        ];
     } catch (\Exception $e) {
         Log::error("Exception fetching Temu ads data for Goods ID: {$goodsId}", [
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ]);
-        return null;
+
+        return [
+            'ok' => false,
+            'result' => null,
+            'error_code' => null,
+            'error_msg' => $e->getMessage(),
+            'http_status' => null,
+        ];
     }
 }
 

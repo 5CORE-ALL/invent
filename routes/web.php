@@ -42,6 +42,7 @@ use App\Http\Controllers\Campaigns\EbayPMPAdsController;
 use App\Http\Controllers\Campaigns\EbayCampaignAdsController;
 use App\Http\Controllers\Campaigns\Ebay2CampaignAdsController;
 use App\Http\Controllers\Campaigns\Temu2AdsController;
+use App\Http\Controllers\Campaigns\TemuAdsController;
 use App\Http\Controllers\Campaigns\Ebay3CampaignAdsController;
 use App\Http\Controllers\Campaigns\EbayRunningAdsController;
 use App\Http\Controllers\Campaigns\GoogleSerpCampaignsController;
@@ -3433,6 +3434,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-daily-data-totals-json', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'reverbDailyDataTotalsJson'])->name('reverb.daily.data.totals.json');
     Route::post('/reverb-update-listed-live', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbListedLive'])->name('reverb.update.listed.live');
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
+    Route::post('/reverb-update-sprice-status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbSpriceStatus'])->name('reverb.update.sprice.status');
     Route::post('/reverb-save-links', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveLinks'])->name('reverb.save.links');
     Route::post('/reverb-save-recommended-bid', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveRecommendedBid'])->name('reverb.save.recommended.bid');
     Route::post('/reverb-save-bump-req', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveBumpReq'])->name('reverb.save.bump.req');
@@ -4391,6 +4393,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-decrease-column-visibility', [TemuController::class, 'saveTemu2DecreaseColumnVisibility']);
     Route::get('/temu2-decrease-column-visibility', [TemuController::class, 'getTemu2DecreaseColumnVisibility']);
     Route::post('/temu2-decrease/save-links', [TemuController::class, 'saveTemu2DecreaseLinks'])->name('temu2.decrease.save.links');
+
+    // Temu Ads (API) — temu.searchrec.ad.reports.goods.query raw store + Tabulator
+    Route::controller(TemuAdsController::class)->group(function () {
+        Route::get('/temu/ads', 'index')->name('temu.ads');
+        Route::get('/temu/ads/data', 'getTemuAdsData')->name('temu.ads.data');
+        Route::post('/temu/ads/refresh', 'refresh')->name('temu.ads.refresh');
+    });
 
     // Temu 2 Ads — raw temu2_campaign_reports (upload + Tabulator, no matching)
     Route::controller(Temu2AdsController::class)->group(function () {
