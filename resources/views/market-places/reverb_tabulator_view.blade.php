@@ -224,8 +224,8 @@
                         <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amazon Sess30 — raw, not ÷10)">Views: 0</span>
                         <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amazon formula as A_L30 ÷ Sess30">CVR: 0%</span>
                         <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
-                        <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty = 0">0 Sold: 0</span>
-                        <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with reverb_daily_qty &gt; 0">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-danger flex-shrink-0" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 = 0 (same as Amazon 0 Sold on A_L30)">0 Sold: 0</span>
+                        <span class="badge flex-shrink-0" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="SKUs with RV L30 &gt; 0 (same as Amazon Sold &gt;0 on A_L30)">&gt; 0 Sold: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge flex-shrink-0" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                         <span class="badge bg-danger flex-shrink-0" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing listings (REQ + INV&gt;0 + RV Price = 0)">M L: 0</span>
@@ -278,13 +278,13 @@
                     {{-- Sold dropdown (mirrors Amazon tabulator + /doba + /shopify-b2c + /macys
                          + /purchasing-power + /wayfair). Backed by `reverb_daily_qty`:
                            all  → no filter
-                           sold → reverb_daily_qty > 0
-                           zero → reverb_daily_qty = 0
+                           sold → RV L30 > 0  (same as Amazon A_L30 Sold filter)
+                           zero → RV L30 = 0
                          Single source of truth. The #zero-sold-count-badge / #more-sold-count-badge
                          click handlers (and the ?badge=zero_sold|more_sold URL deep-link) all
                          drive this dropdown value, so badges + dropdown + URL stay in sync. --}}
                     <select id="sold-filter" class="form-select form-select-sm flex-shrink-0" style="width: 110px;"
-                            title="Filter by Reverb L30 sold quantity (reverb_daily_qty)">
+                            title="Filter by RV L30 sold quantity (same role as Amazon A_L30 Sold filter)">
                         <option value="all">Sold</option>
                         <option value="sold">Sold &gt; 0</option>
                         <option value="zero">0 Sold</option>
@@ -2990,14 +2990,17 @@
                 });
             }
 
-            // Sold filter (reverb_daily_qty) — driven by the #sold-filter dropdown.
-            // Badge clicks and the ?badge=zero_sold|more_sold URL deep-link both write into
+            // Sold filter (RV L30) — same as Amazon Sold filter on A_L30.
+            // Badge clicks and ?badge=zero_sold|more_sold URL deep-link both write into
             // this dropdown, so there is exactly one source of truth.
             const soldFilter = $('#sold-filter').val();
-            if (soldFilter === 'zero') {
-                table.addFilter("reverb_daily_qty", "=", 0);
-            } else if (soldFilter === 'sold') {
-                table.addFilter("reverb_daily_qty", ">", 0);
+            if (soldFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const rvL30 = parseFloat(data['RV L30']) || 0;
+                    if (soldFilter === 'zero') return rvL30 === 0;
+                    if (soldFilter === 'sold') return rvL30 > 0;
+                    return true;
+                });
             }
 
             // < Amz filter - show prices less than Amazon price
@@ -3130,6 +3133,7 @@
                 totalViewsRaw += parseFloat(row['Views']) || 0;
 
                 const rdQty = parseInt(row.reverb_daily_qty, 10) || 0;
+                const rvL30 = parseFloat(row['RV L30']) || 0;
                 const lp = parseFloat(row['LP_productmaster']) || 0;
                 const ship = parseFloat(row['Ship_productmaster']) || 0; // normal ship
                 const rvPrice = parseFloat(row['RV Price']) || 0;
@@ -3138,14 +3142,15 @@
 
                 totalRdQty += rdQty;
 
-                // Only rows with actual sales + a live price contribute (matches /temu-decrease hasSales)
-                if (rdQty > 0 && rvPrice > 0) {
-                    totalProfitLive += rdQty * (rvPrice * takeRate - lp - ship);
-                    totalRevenueQtyPrice += rdQty * rvPrice;
-                    totalLpSold += rdQty * lp;
+                // Weighted profit/sales use RV L30 (Amazon uses A_L30)
+                if (rvL30 > 0 && rvPrice > 0) {
+                    totalProfitLive += rvL30 * (rvPrice * takeRate - lp - ship);
+                    totalRevenueQtyPrice += rvL30 * rvPrice;
+                    totalLpSold += rvL30 * lp;
                 }
 
-                if (rdQty === 0) {
+                // Sold badges count by RV L30 (matches Sold filter + Amazon A_L30)
+                if (rvL30 === 0) {
                     zeroSoldCount++;
                 } else {
                     moreSoldCount++;
