@@ -217,10 +217,10 @@
                         <span class="badge flex-shrink-0" id="rd-sum-qty-amount-badge" style="background-color: #5dade2; color: #111; font-weight: bold;" title="Sales from full reverb_daily_data table: SUM(quantity × amount), rounded to whole dollars">Sales: $0</span>
                         <span class="badge bg-dark flex-shrink-0" id="rd-daily-overview-badge" style="font-weight: bold;" title="Total units: SUM(quantity) across all reverb_daily_data order rows">Orders: —</span>
                         <span class="badge bg-info flex-shrink-0" id="gpft-list-badge" style="color: black; font-weight: bold;" title="Weighted GPFT% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×RV Price) — same method as /temu-decrease, using normal ship">GPFT: 0%</span>
-                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;" title="Ads% = Bump fees ÷ Sales (L30) × 100 — same as /all-marketplace-master. Cut from NPFT/NROI like Amazon.">Ads%: 0%</span>
-                        <span class="badge flex-shrink-0" id="npft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="NPFT% = GPFT% − Ads% (same as Amazon PFT / NPFT)">NPFT: 0%</span>
+                        <span class="badge flex-shrink-0" id="rd-ads-percent-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Reverb Ads% (Bump fees ÷ L30 Sales) — from /all-marketplace-master (same source Amazon Ads badge uses)">Ads: {{ isset($reverbAdsPercent) ? round((float) $reverbAdsPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge bg-info flex-shrink-0" id="npft-badge" style="color: black; font-weight: bold;" title="PFT% = GPFT% − Ads% (same as /amazon-tabulator-view)">PFT: 0%</span>
                         <span class="badge flex-shrink-0" id="groi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Weighted GROI% = Σ[sold_qty×(RV Price×take%−LP−Ship)] ÷ Σ(sold_qty×LP) — same method as /temu-decrease, using normal ship">GROI: 0%</span>
-                        <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as Amazon)">NROI: 0%</span>
+                        <span class="badge flex-shrink-0" id="nroi-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="NROI% = (Total PFT − Ad Spend) ÷ COGS × 100; Ad Spend = Ads% × Sales (same as /amazon-tabulator-view)">NROI: 0%</span>
                         <span class="badge flex-shrink-0" id="total-views-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Sum of Views for currently filtered rows (same as Amazon Sess30 — raw, not ÷10)">Views: 0</span>
                         <span class="badge flex-shrink-0" id="avg-cvr-badge" style="background-color: #20c997; color: #000; font-weight: bold;" title="Overall CVR = Σ(RV L30) ÷ Σ(Views) × 100 — same Amazon formula as A_L30 ÷ Sess30">CVR: 0%</span>
                         <span class="badge flex-shrink-0" id="rd-qty-sum-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Sum of RD Qty column (reverb_daily_qty) for currently filtered rows">RD Qty: 0</span>
@@ -549,13 +549,69 @@
     // Columns that stay hidden even when "Show All Columns" is used.
     const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
     let table = null;
-    // Reverb Ads% (Bump fees ÷ Sales) — loaded from the daily totals endpoint.
-    // Same role as Amazon channel Ads%: NPFT = GPFT − Ads%, NROI cuts Ads% from profit.
-    let reverbAdsPct = 0;
+    // Reverb channel Ads% (TACOS) — same stored value as /all-marketplace-master (Amazon pattern).
+    // Used for PFT% = GPFT% − Ads%, SNPFT = SGPFT − Ads%, and NROI/SNROI.
+    const REVERB_CHANNEL_ADS_PCT = {{ isset($reverbAdsPercent) ? (float) $reverbAdsPercent : 0 }};
+    let reverbAdsPct = REVERB_CHANNEL_ADS_PCT;
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
     let selectedSkus = new Set();
+
+    /** Take-home margin factor (Reverb ~0.85). */
+    function reverbTakeRate(rowData) {
+        const pct = parseFloat(rowData && rowData.percentage);
+        return (isFinite(pct) && pct > 0 && pct <= 1) ? pct : 0.85;
+    }
+
+    /**
+     * Net SNROI — same shape as Amazon amazonComputeNetSroi / NROI badge:
+     *   (gross profit $ − ad spend $) / COGS × 100
+     * where ad spend $ = SPRICE × Ads%/100 and COGS = LP.
+     */
+    function reverbComputeNetSroi(rowData) {
+        if (!rowData) return null;
+        const sprice = parseFloat(rowData.SPRICE);
+        const lp = parseFloat(rowData['LP_productmaster']);
+        if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
+        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+        const margin = reverbTakeRate(rowData);
+        const adsFrac = (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0) / 100;
+        const grossPft = (sprice * margin) - ship - lp;
+        const adSpend = sprice * adsFrac;
+        return ((grossPft - adSpend) / lp) * 100;
+    }
+
+    /** Net NROI on live RV Price (Amazon NROI column shape). */
+    function reverbComputeNetRoi(rowData) {
+        if (!rowData) return null;
+        const price = parseFloat(rowData['RV Price']);
+        const lp = parseFloat(rowData['LP_productmaster']);
+        if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+        const margin = reverbTakeRate(rowData);
+        const adsFrac = (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0) / 100;
+        const grossPft = (price * margin) - ship - lp;
+        const adSpend = price * adsFrac;
+        return ((grossPft - adSpend) / lp) * 100;
+    }
+
+    /** Amazon PFT% / SNPFT color bands. */
+    function reverbPftColor(percent) {
+        if (percent < 10) return '#a00211';
+        if (percent >= 10 && percent < 20) return '#3591dc';
+        if (percent >= 20 && percent < 30) return '#ffc107';
+        if (percent >= 30 && percent < 50) return '#28a745';
+        return '#e83e8c';
+    }
+
+    /** Amazon ROI% / SNROI / Sroi color bands. */
+    function reverbRoiColor(percent) {
+        if (percent < 50) return '#a00211';
+        if (percent >= 50 && percent < 75) return '#ffc107';
+        if (percent >= 75 && percent <= 125) return '#28a745';
+        return '#e83e8c';
+    }
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -729,7 +785,7 @@
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
                 const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft  = sgpft;
+                const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
                 const sroi  = lp > 0 ? Math.round(((newSprice * margin - lp - ship) / lp) * 100 * 100) / 100 : 0;
 
                 row.update({
@@ -801,7 +857,7 @@
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
                 const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft  = sgpft;
+                const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
                 const sroi  = lp > 0 ? Math.round(((newSprice * margin - lp - ship) / lp) * 100 * 100) / 100 : 0;
 
                 row.update({
@@ -899,7 +955,7 @@
         // Columns hidden while the "Missing L" badge filter is active
         const missingHiddenColumnFields = [
             'RV Price',
-            'GPFT%', 'PFT %', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SPFT', 'SROI', 'SNPFT', 'SNROI',
+            'GPFT%', 'ROI%', 'NPFT', 'NROI', 'SPRICE', 'SGPFT', 'SROI', 'SNPFT', 'SNROI',
             'RV L30', 'reverb_daily_qty', 'reverb_daily_qty_x_subtotal', 'reverb_daily_qty_x_amount', 'R Stock',
             'Views', 'CVR',
             'L30', 'RV Dil%', 'MAP', 'Profit', 'Sales L30', 'LP_productmaster', 'Ship_productmaster'
@@ -1114,7 +1170,7 @@
                         const ship = rowData['Ship_productmaster'] || 0;
 
                         const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                        const spft = sgpft;
+                        const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
                         const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
 
                         // Update SPRICE and calculated values in table
@@ -1175,7 +1231,7 @@
                         const ship = rowData['Ship_productmaster'] || 0;
                         
                         const sgpft = amazonPrice > 0 ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100 : 0;
-                        const spft = sgpft;
+                        const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
                         const sroi = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
                         
                         // Update the row with SPRICE and calculated values
@@ -2366,63 +2422,36 @@
                     width: 50
                 },
                 {
-                    title: "PFT%",
-                    field: "PFT %",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
                     title: "ROI%",
                     field: "ROI%",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
+                        if (value === null || value === undefined || value === '') return '';
                         const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        if (isNaN(percent)) return '';
+                        // Same color bands as /amazon-tabulator-view GROI% / SNROI
+                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
                 {
-                    title: "NPFT",
+                    title: "PFT %",
                     field: "NPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const ads = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
+                        return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
+                    },
                     formatter: function(cell) {
-                        // Amazon-style: NPFT% = GPFT% − Ads%
-                        const value = cell.getRow().getData()['GPFT%'];
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value) - (parseFloat(reverbAdsPct) || 0);
-                        let color = '';
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        // Amazon-style: PFT% = GPFT% − Ads%
+                        const raw = cell.getRow().getData()['GPFT%'];
+                        if (raw === null || raw === undefined || raw === '') return '';
+                        const gpft = parseFloat(raw);
+                        if (isNaN(gpft)) return '';
+                        const percent = gpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0);
+                        return `<span style="color: ${reverbPftColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2430,26 +2459,17 @@
                     title: "NROI",
                     field: "NROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aNet = reverbComputeNetRoi(aRow.getData());
+                        const bNet = reverbComputeNetRoi(bRow.getData());
+                        return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                             - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                    },
                     formatter: function(cell) {
                         // Amazon-style: (gross PFT$ − Ads%×Price) / LP × 100
-                        const row = cell.getRow().getData();
-                        const rvPrice = parseFloat(row['RV Price']) || 0;
-                        const lp = parseFloat(row['LP_productmaster']) || 0;
-                        const ship = parseFloat(row['Ship_productmaster']) || 0;
-                        const pct = parseFloat(row.percentage);
-                        const takeRate = !isNaN(pct) && pct > 0 && pct <= 1 ? pct : 0.85;
-                        if (lp <= 0 || rvPrice <= 0) return '';
-                        const adsFrac = (parseFloat(reverbAdsPct) || 0) / 100;
-                        const grossPft = (rvPrice * takeRate) - lp - ship;
-                        const adSpend = rvPrice * adsFrac;
-                        const percent = ((grossPft - adSpend) / lp) * 100;
-                        let color = '';
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const percent = reverbComputeNetRoi(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
+                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2564,43 +2584,20 @@
                     width: 50
                 },
                 {
-                    title: "SPFT",
-                    field: "SPFT",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "SROI",
+                    title: "Sroi",
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        // Gross SROI (Amazon "Sroi" / SGROI) — Ads% not cut here
+                        const row = cell.getRow().getData();
+                        const sprice = parseFloat(row.SPRICE) || 0;
+                        if (sprice <= 0) return '';
                         const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
+                        if (value === null || value === undefined || value === '') return '';
                         const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        if (isNaN(percent)) return '';
+                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2608,19 +2605,24 @@
                     title: "SNPFT",
                     field: "SNPFT",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const ads = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
+                        const aVal = parseFloat(aRow.getData().SGPFT);
+                        const bVal = parseFloat(bRow.getData().SGPFT);
+                        const aSpft = isNaN(aVal) ? 0 : (aVal - ads);
+                        const bSpft = isNaN(bVal) ? 0 : (bVal - ads);
+                        return aSpft - bSpft;
+                    },
                     formatter: function(cell) {
-                        // Amazon-style: SNPFT = SGPFT − Ads%
-                        const value = cell.getRow().getData().SGPFT;
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value) - (parseFloat(reverbAdsPct) || 0);
-                        let color = '';
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        // Amazon-style: SNPFT = SGPFT − Ads% (blank when no SPRICE)
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData.SPRICE) || 0;
+                        const rawGpft = rowData.SGPFT;
+                        if (sprice <= 0 || rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
+                        const sgpft = parseFloat(rawGpft);
+                        if (isNaN(sgpft)) return '';
+                        const percent = sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0);
+                        return `<span style="color: ${reverbPftColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2628,26 +2630,17 @@
                     title: "SNROI",
                     field: "SNROI",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aNet = reverbComputeNetSroi(aRow.getData());
+                        const bNet = reverbComputeNetSroi(bRow.getData());
+                        return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                             - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                    },
                     formatter: function(cell) {
-                        // Amazon-style: (S PFT$ − Ads%×SPRICE) / LP × 100
-                        const row = cell.getRow().getData();
-                        const sprice = parseFloat(row.SPRICE) || 0;
-                        const lp = parseFloat(row['LP_productmaster']) || 0;
-                        const ship = parseFloat(row['Ship_productmaster']) || 0;
-                        const pct = parseFloat(row.percentage);
-                        const takeRate = !isNaN(pct) && pct > 0 && pct <= 1 ? pct : 0.85;
-                        if (lp <= 0 || sprice <= 0) return '';
-                        const adsFrac = (parseFloat(reverbAdsPct) || 0) / 100;
-                        const grossPft = (sprice * takeRate) - lp - ship;
-                        const adSpend = sprice * adsFrac;
-                        const percent = ((grossPft - adSpend) / lp) * 100;
-                        let color = '';
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        // Amazon-style: (gross $ − Ads%×SPRICE) / LP × 100
+                        const percent = reverbComputeNetSroi(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
+                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2811,7 +2804,7 @@
                 const ship = rowData['Ship_productmaster'] || 0;
                 
                 const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft = sgpft;
+                const spft = Math.round((sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0)) * 100) / 100;
                 const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
                 
                 row.update({
@@ -3064,7 +3057,7 @@
             applyFilters();
         });
 
-        /** Full reverb_daily_data table totals (matches SQL on entire table, not pricing-grid SKU sum). */
+        /** Full reverb_daily_data table totals for Sales/Orders badges (Ads% stays SSR like Amazon). */
         function loadReverbDailyTotalsBadges() {
             $.getJSON(REVERB_DAILY_TOTALS_URL)
                 .done(function(d) {
@@ -3076,12 +3069,10 @@
                         'Sales: $' + Math.round(totalSales).toLocaleString()
                     );
                     $('#rd-daily-overview-badge').text('Orders: ' + (d.sum_quantity || 0));
-                    // Ads% (Reverb) = Bump fees ÷ Sales — same as /all-marketplace-master Ads%/TACOS.
-                    // NPFT/NROI subtract this like Amazon (GPFT − Ads%, (PFT − Ad Spend) / COGS).
-                    const bumpFees = parseFloat(d.sum_bump_fee) || 0;
-                    const adsPct = totalSales > 0 ? (bumpFees / totalSales) * 100 : 0;
-                    reverbAdsPct = adsPct;
-                    $('#rd-ads-percent-badge').text('Ads%: ' + adsPct.toFixed(1) + '%');
+                    // Ads% is channel-master SSR (REVERB_CHANNEL_ADS_PCT) — same pattern as Amazon.
+                    // Keep badge in sync; do not overwrite with a different live recomputation.
+                    reverbAdsPct = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
+                    $('#rd-ads-percent-badge').text('Ads: ' + reverbAdsPct.toFixed(1) + '%');
                     updateSummary();
                 })
                 .fail(function(xhr) {
@@ -3188,14 +3179,15 @@
 
             $('#gpft-list-badge').text(`GPFT: ${Math.round(gpftPct)}%`);
             $('#groi-badge').text(`GROI: ${Math.round(groiPct)}%`);
-            // Amazon-style: NPFT = GPFT − Ads%; NROI = (PFT$ − Ads%×Sales) / COGS × 100
-            const adsPct = parseFloat(reverbAdsPct) || 0;
-            const npftPct = gpftPct - adsPct;
+            // Amazon-style: PFT = GPFT − Ads%; NROI = (PFT$ − Ads%×Sales) / COGS × 100
+            const adsPct = parseFloat(REVERB_CHANNEL_ADS_PCT) || 0;
+            const pftPct = gpftPct - adsPct;
             const adSpendEst = (adsPct / 100) * totalRevenueQtyPrice;
             const nroiPct = totalLpSold > 0
                 ? ((totalProfitLive - adSpendEst) / totalLpSold) * 100
                 : (groiPct - adsPct);
-            $('#npft-badge').text(`NPFT: ${Math.round(npftPct)}%`);
+            $('#rd-ads-percent-badge').text('Ads: ' + adsPct.toFixed(1) + '%');
+            $('#npft-badge').text(`PFT: ${Math.round(pftPct)}%`);
             $('#nroi-badge').text(`NROI: ${Math.round(nroiPct)}%`);
             // Amazon formula: Σ units ÷ Σ views × 100 (no Views÷10)
             const overallCvr = totalViewsRaw > 0 ? (totalRvL30 / totalViewsRaw) * 100 : 0;
@@ -3323,10 +3315,10 @@
             }, 100);
         });
 
+        // Badges only — Ads% is SSR (Amazon pattern); do not refetch Ads on every paint
         table.on('renderComplete', function() {
             setTimeout(function() {
                 updateSummary();
-                loadReverbDailyTotalsBadges();
             }, 100);
         });
 

@@ -689,6 +689,20 @@ class ReverbController extends Controller
         exit;
     }
 
+    /**
+     * Reverb channel Ads% (Bump ÷ L30 Sales) — same stored value as /all-marketplace-master.
+     * Used for PFT/NPFT = GPFT − Ads% and NROI/SNROI (Amazon-style).
+     */
+    private function getReverbChannelAdsPercent(): float
+    {
+        $ads = ChannelMasterCalculatedData::where('channel', 'Reverb')->value('ads_percentage');
+        if ($ads === null) {
+            $ads = ChannelMasterCalculatedData::where('channel', 'like', 'Reverb%')->value('ads_percentage');
+        }
+
+        return (float) ($ads ?? 0);
+    }
+
     // Reverb Tabulator View and Methods
     public function reverbTabulatorView(Request $request)
     {
@@ -708,10 +722,14 @@ class ReverbController extends Controller
             }
         );
 
+        // Ads% from channel master (same source Amazon tabulator uses for Ads badge)
+        $reverbAdsPercent = $this->getReverbChannelAdsPercent();
+
         return view("market-places.reverb_tabulator_view", [
             "mode" => $mode,
             "demo" => $demo,
             "reverbPercentage" => $percentage,
+            "reverbAdsPercent" => $reverbAdsPercent,
         ]);
     }
 
@@ -813,6 +831,9 @@ class ReverbController extends Controller
             }
         );
         $percentageValue = $percentage / 100;
+        // Channel Ads% (same as /amazon-tabulator-view AMAZON_CHANNEL_ADS_PCT)
+        $adsPct = $this->getReverbChannelAdsPercent();
+        $adsFrac = $adsPct / 100;
 
         // Fetch all product master records (excluding parent rows)
         $productMasterRows = ProductMaster::all()
@@ -1046,7 +1067,6 @@ class ReverbController extends Controller
                 
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
-                $processedItem["SPFT"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
                 // Bump Req like NRA: column first, fallback to values
                 $processedItem["bump_req"] = $viewData->bump_req ?? $valuesArr["bump_req"] ?? 'REQ';
@@ -1064,7 +1084,7 @@ class ReverbController extends Controller
             $lp = floatval($processedItem["LP_productmaster"]);
             $ship = floatval($processedItem["Ship_productmaster"]);
 
-            // GPFT%
+            // GPFT% (gross — before ads)
             if ($price > 0) {
                 $gpft_percentage = (($price * $percentageValue - $lp - $ship) / $price) * 100;
                 $processedItem["GPFT%"] = round($gpft_percentage, 0);
@@ -1072,15 +1092,38 @@ class ReverbController extends Controller
                 $processedItem["GPFT%"] = 0;
             }
 
-            // PFT%
-            $processedItem["PFT %"] = $processedItem["GPFT%"];
+            // PFT% / NPFT = GPFT% − Ads% (Amazon-style net profit %)
+            $processedItem["PFT %"] = round($processedItem["GPFT%"] - $adsPct, 0);
+            $processedItem["NPFT"] = $processedItem["PFT %"];
+            $processedItem["ads_pct"] = round($adsPct, 2);
 
-            // ROI%
+            // ROI% (gross)
             if ($lp > 0) {
                 $roi_percentage = (($price * $percentageValue - $lp - $ship) / $lp) * 100;
                 $processedItem["ROI%"] = round($roi_percentage, 0);
             } else {
                 $processedItem["ROI%"] = 0;
+            }
+
+            // NROI = (gross PFT$ − Ads%×Price) / LP × 100
+            if ($lp > 0 && $price > 0) {
+                $grossPft = ($price * $percentageValue) - $lp - $ship;
+                $adSpend = $price * $adsFrac;
+                $processedItem["NROI"] = round((($grossPft - $adSpend) / $lp) * 100, 0);
+            } else {
+                $processedItem["NROI"] = 0;
+            }
+
+            // SPFT / SNPFT = SGPFT − Ads%; SNROI nets Ads% from suggested price (Amazon-style)
+            $sgpftVal = floatval($processedItem["SGPFT"] ?? 0);
+            $spriceVal = floatval($processedItem["SPRICE"] ?? 0);
+            $processedItem["SPFT"] = $sgpftVal > 0 || $spriceVal > 0 ? round($sgpftVal - $adsPct, 0) : 0;
+            $processedItem["SNPFT"] = $processedItem["SPFT"];
+            if ($lp > 0 && $spriceVal > 0) {
+                $sGross = ($spriceVal * $percentageValue) - $lp - $ship;
+                $processedItem["SNROI"] = round((($sGross - ($spriceVal * $adsFrac)) / $lp) * 100, 0);
+            } else {
+                $processedItem["SNROI"] = 0;
             }
 
             // Profit
@@ -1155,6 +1198,8 @@ class ReverbController extends Controller
     public function saveSpriceUpdates(Request $request)
     {
         try {
+            $adsPct = $this->getReverbChannelAdsPercent();
+
             // Handle both single SKU and batch updates
             $updates = [];
             
@@ -1200,7 +1245,7 @@ class ReverbController extends Controller
                     $ship = $pmValues['ship'] ?? 0;
                     $percentage = 0.85; // 85% margin for Reverb
 
-                    // Calculate SGPFT
+                    // Calculate SGPFT (gross)
                     if ($sprice > 0) {
                         $sgpft = (($sprice * $percentage - $lp - $ship) / $sprice) * 100;
                         $values['SGPFT'] = round($sgpft, 0);
@@ -1208,10 +1253,10 @@ class ReverbController extends Controller
                         $values['SGPFT'] = 0;
                     }
 
-                    // Calculate SPFT (same as SGPFT for now)
-                    $values['SPFT'] = $values['SGPFT'] . '%';
+                    // SPFT = SGPFT − Ads% (Amazon-style net)
+                    $values['SPFT'] = round(((float) $values['SGPFT']) - $adsPct, 0) . '%';
 
-                    // Calculate SROI
+                    // SROI (gross — FE SNROI column cuts Ads%)
                     if ($lp > 0) {
                         $sroi = (($sprice * $percentage - $lp - $ship) / $lp) * 100;
                         $values['SROI'] = round($sroi, 0) . '%';
