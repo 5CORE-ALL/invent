@@ -341,7 +341,6 @@ class FetchTemuMetrics extends Command
                             }
                             $n = TemuMetric::where('sku_id', (string) $skuId)->update([
                                 'base_price' => (float) $amount,
-                                'price_last_updated' => now(),
                             ]);
                             if ($n) {
                                 $updatedCount += $n;
@@ -357,7 +356,6 @@ class FetchTemuMetrics extends Command
                     if ($skuId !== null && $amount !== null && is_numeric($amount)) {
                         $n = TemuMetric::where('sku_id', (string) $skuId)->update([
                             'base_price' => (float) $amount,
-                            'price_last_updated' => now(),
                         ]);
                         if ($n) {
                             $updatedCount += $n;
@@ -683,7 +681,6 @@ class FetchTemuMetrics extends Command
                         [
                             'sku_id' => (string) $skuId,
                             'base_price' => $price,
-                            'price_last_updated' => now()
                         ]
                     );
                     $totalProcessed++;
