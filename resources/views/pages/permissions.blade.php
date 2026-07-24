@@ -398,6 +398,7 @@
                                 ['value' => 'faire', 'text' => 'Faire'],
                                 ['value' => 'tiktokshop', 'text' => 'Tiktok Shop'],
                                 ['value' => 'listing_tiktokshop', 'text' => 'Listing Tiktok Shop'],
+                                ['value' => 'listing_tiktokshop2', 'text' => 'Listing TikTok 2'],
                                 ['value' => 'mercariwship', 'text' => 'Mercari w Ship'],
                                 ['value' => 'fbmarketplace', 'text' => 'FB Marketplace'],
                                 ['value' => 'listing_fbmarketplace', 'text' => 'Listing FB Marketplace'],

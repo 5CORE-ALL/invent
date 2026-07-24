@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Amazon', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing TikTok 2', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -9,13 +9,13 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE SHELL ========== */
-        #amazon-listing-wrap {
+        #tiktokshop2-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
             width: 100%;
         }
 
-        #amazon-listing-wrap .tabulator {
+        #tiktokshop2-listing-wrap .tabulator {
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 13px;
@@ -23,33 +23,33 @@
             width: 100% !important;
         }
 
-        .card-body:has(#amazon-listing-toolbar) {
+        .card-body:has(#tiktokshop2-listing-toolbar) {
             width: 100%;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-tableholder {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-tableholder {
             background: #fff;
         }
 
         /* ========== HEADER ========== */
-        #amazon-listing-wrap .tabulator .tabulator-header {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header {
             background: #00d5d5;
             border-bottom: 1px solid #ffffff;
         }
 
-        #amazon-listing-wrap .tabulator-col .tabulator-col-sorter {
+        #tiktokshop2-listing-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -67,13 +67,13 @@
             color: #000 !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             height: auto !important;
             min-height: 34px;
             padding: 0;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col {
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
@@ -83,13 +83,13 @@
             font-weight: bold;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
 
         /* Header filters */
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
             width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -100,26 +100,26 @@
             box-shadow: none;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
         /* ========== ROWS / CELLS ========== */
-        #amazon-listing-wrap .tabulator .tabulator-row {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-row {
             min-height: 36px;
             border-bottom: 1px solid #f1f5f9;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 5px 6px !important;
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
 
-        #amazon-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
-        #amazon-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+        #tiktokshop2-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #tiktokshop2-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
@@ -128,38 +128,38 @@
             vertical-align: middle;
         }
 
-        #amazon-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+        #tiktokshop2-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
             display: none;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-row:hover {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-row:hover {
             background-color: #f8fafc !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
             background-color: #fcfcfd;
         }
 
-        #amazon-listing-wrap .tabulator-row.parent-row,
-        #amazon-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+        #tiktokshop2-listing-wrap .tabulator-row.parent-row,
+        #tiktokshop2-listing-wrap .tabulator-row.parent-row .tabulator-cell {
             background-color: rgba(69, 233, 255, 0.15) !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
-        #amazon-listing-wrap .tabulator-row.parent-row:hover,
-        #amazon-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+        #tiktokshop2-listing-wrap .tabulator-row.parent-row:hover,
+        #tiktokshop2-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: rgba(69, 233, 255, 0.28) !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */
-        #amazon-listing-wrap .tabulator .tabulator-footer {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -167,14 +167,14 @@
             flex-wrap: wrap;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
             margin-right: 6px;
             font-size: 12px;
             color: #475569;
             font-weight: 600;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 4px 8px;
@@ -184,7 +184,7 @@
             min-height: 36px;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             font-size: 14px !important;
             font-weight: 500 !important;
             min-width: 36px !important;
@@ -200,13 +200,13 @@
             text-align: center !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
             background: #f1f5f9 !important;
             border-color: #cbd5e1 !important;
             color: #1e293b !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
             background: #4361ee !important;
             border-color: #4361ee !important;
             color: #fff !important;
@@ -214,19 +214,19 @@
             box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
             opacity: 0.4 !important;
             cursor: not-allowed !important;
         }
 
-        #amazon-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+        #tiktokshop2-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
             margin: 0 0.5rem;
             font-size: 12px;
             color: #334155;
         }
 
         /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
-        #amazon-listing-toolbar {
+        #tiktokshop2-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
@@ -236,7 +236,7 @@
             box-sizing: border-box;
         }
 
-        #amazon-listing-toolbar .amazon-listing-toolbar-row {
+        #tiktokshop2-listing-toolbar .tiktokshop2-listing-toolbar-row {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
@@ -247,7 +247,7 @@
             box-sizing: border-box;
         }
 
-        #amazon-listing-toolbar .listing-stat-badges {
+        #tiktokshop2-listing-toolbar .listing-stat-badges {
             display: inline-flex;
             flex: 0 0 auto;
             align-items: stretch;
@@ -256,22 +256,22 @@
             padding: 0;
         }
 
-        #amazon-listing-toolbar .listing-stat-badge {
+        #tiktokshop2-listing-toolbar .listing-stat-badge {
             flex: 0 0 auto;
             justify-content: center;
             margin: 0 !important;
             border-radius: 0;
         }
 
-        #amazon-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+        #tiktokshop2-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
             border-radius: 8px 0 0 8px;
         }
 
-        #amazon-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+        #tiktokshop2-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
             border-radius: 0 8px 8px 0;
         }
 
-        #amazon-listing-toolbar .filter-select {
+        #tiktokshop2-listing-toolbar .filter-select {
             flex: 0 0 auto;
             min-width: 0;
             width: 92px !important;
@@ -287,20 +287,20 @@
             line-height: 1.2;
         }
 
-        #amazon-listing-toolbar .filter-select:focus {
+        #tiktokshop2-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #amazon-listing-toolbar .toolbar-actions {
+        #tiktokshop2-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
             align-items: center;
             margin-left: 0;
         }
 
-        #amazon-listing-toolbar .listing-io-btn {
+        #tiktokshop2-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
             font-size: 14px;
@@ -313,16 +313,16 @@
             line-height: 1;
         }
 
-        #amazon-listing-toolbar .listing-io-btn::after {
+        #tiktokshop2-listing-toolbar .listing-io-btn::after {
             display: none;
         }
 
-        #amazon-listing-toolbar .listing-io-menu {
+        #tiktokshop2-listing-toolbar .listing-io-menu {
             min-width: 42px;
             padding: 4px;
         }
 
-        #amazon-listing-toolbar .listing-io-menu .dropdown-item {
+        #tiktokshop2-listing-toolbar .listing-io-menu .dropdown-item {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -333,7 +333,7 @@
             font-size: 14px;
         }
 
-        #amazon-listing-toolbar .listing-io-menu .dropdown-item:hover {
+        #tiktokshop2-listing-toolbar .listing-io-menu .dropdown-item:hover {
             background: #f1f5f9;
         }
 
@@ -366,8 +366,8 @@
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
-        #amazon-listing-wrap select.nr-req-dropdown,
-        #amazon-listing-wrap select.listed-dropdown {
+        #tiktokshop2-listing-wrap select.nr-req-dropdown,
+        #tiktokshop2-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
             font-weight: 700;
@@ -378,32 +378,32 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #amazon-listing-wrap select.nr-req-dropdown:focus,
-        #amazon-listing-wrap select.listed-dropdown:focus {
+        #tiktokshop2-listing-wrap select.nr-req-dropdown:focus,
+        #tiktokshop2-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
         }
 
-        #amazon-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #amazon-listing-wrap select.nr-req-dropdown option.req-option {
+        #tiktokshop2-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #tiktokshop2-listing-wrap select.nr-req-dropdown option.req-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #amazon-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #amazon-listing-wrap select.nr-req-dropdown option.nr-option {
+        #tiktokshop2-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #tiktokshop2-listing-wrap select.nr-req-dropdown option.nr-option {
             background-color: #dc3545;
             color: #fff;
         }
 
-        #amazon-listing-wrap select.listed-dropdown[data-val="Listed"],
-        #amazon-listing-wrap select.listed-dropdown option.listed-option {
+        #tiktokshop2-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #tiktokshop2-listing-wrap select.listed-dropdown option.listed-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #amazon-listing-wrap select.listed-dropdown[data-val="Pending"],
-        #amazon-listing-wrap select.listed-dropdown option.pending-option {
+        #tiktokshop2-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #tiktokshop2-listing-wrap select.listed-dropdown option.pending-option {
             background-color: #dc3545;
             color: #fff;
         }
@@ -447,13 +447,13 @@
         }
 
         /* ========== LINK CELL ========== */
-        #amazon-listing-wrap a.listing-item-link {
+        #tiktokshop2-listing-wrap a.listing-item-link {
             font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        #amazon-listing-wrap a.listing-item-link:hover {
+        #tiktokshop2-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
         }
@@ -486,7 +486,7 @@
         }
 
         /* ========== PLACEHOLDER ========== */
-        #amazon-listing-wrap .tabulator-placeholder {
+        #tiktokshop2-listing-wrap .tabulator-placeholder {
             color: #64748b;
             font-weight: 600;
             padding: 24px;
@@ -496,14 +496,14 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Amazon', 'sub_title' => 'Amazon'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing TikTok 2', 'sub_title' => 'TikTok 2'])
 
     <div class="row">
         <div class="col-12">
             <div class="card position-relative">
                 <div class="card-body">
-                    <div id="amazon-listing-toolbar" class="mb-3">
-                        <div class="amazon-listing-toolbar-row">
+                    <div id="tiktokshop2-listing-toolbar" class="mb-3">
+                        <div class="tiktokshop2-listing-toolbar-row">
                             <div class="listing-stat-badges">
                                 <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
@@ -553,7 +553,7 @@
                                         </button>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item" href="{{ route('listing_amazon.export') }}" title="Export">
+                                        <a class="dropdown-item" href="{{ route('listing_tiktokshop2.export') }}" title="Export">
                                             <i class="fas fa-file-export text-success"></i>
                                         </a>
                                     </li>
@@ -582,8 +582,8 @@
                         </div>
                     </div>
 
-                    <div id="amazon-listing-wrap">
-                        <div id="amazonListing-table"></div>
+                    <div id="tiktokshop2-listing-wrap">
+                        <div id="tiktokshop2Listing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -606,7 +606,7 @@
     <script>
         document.body.style.zoom = "80%";
 
-        let amazonListingTable = null;
+        let tiktokshop2ListingTable = null;
         let allListingData = [];
 
         function isParentSku(sku) {
@@ -645,10 +645,10 @@
         function normalizeListingRows(rows) {
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
-                const itemId = String(item.asin || '').trim();
-                // Automated: NRL from AmazonDataView; Listed from amazon_datsheets price > 0
+                const itemId = String(item.eBay_item_id || '').trim();
+                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = (item.listed === 'Listed') ? 'Listed' : 'Pending';
+                const listed = itemId ? 'Listed' : 'Pending';
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -657,7 +657,7 @@
                     L30: parseFloat(item.L30) || 0,
                     nr_req: nrReq,
                     listed: listed,
-                    asin: itemId || null,
+                    eBay_item_id: itemId || null,
                     buyer_link: item.buyer_link || '',
                     seller_link: item.seller_link || '',
                     is_parent: isParentSku(item.sku)
@@ -675,12 +675,12 @@
 
         function calculateTotals() {
             try {
-                if (!amazonListingTable) {
+                if (!tiktokshop2ListingTable) {
                     resetMetricsToZero();
                     return;
                 }
 
-                const rows = amazonListingTable.getData('active') || [];
+                const rows = tiktokshop2ListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -696,8 +696,8 @@
 
                         if (item.nr_req === 'REQ') {
                             metrics.reqTotal++;
-                            // No Link: REQ rows with no amazon ASIN (dynamic link unavailable)
-                            if (!String(item.asin || '').trim()) {
+                            // No Link: REQ rows with no ebay item id (dynamic link unavailable)
+                            if (!String(item.eBay_item_id || '').trim()) {
                                 metrics.withoutLinkTotal++;
                             }
                         }
@@ -737,7 +737,7 @@
         }
 
         function applyListingFilters() {
-            if (!amazonListingTable) return;
+            if (!tiktokshop2ListingTable) return;
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
@@ -745,7 +745,7 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            amazonListingTable.setFilter(function (data) {
+            tiktokshop2ListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
@@ -755,7 +755,7 @@
 
                 if (nrReqFilter !== 'all' && data.nr_req !== nrReqFilter) return false;
 
-                const hasItemLink = !!String(data.asin || '').trim();
+                const hasItemLink = !!String(data.eBay_item_id || '').trim();
                 if (linkFilter === 'with-link' && !hasItemLink) return false;
                 if (linkFilter === 'without-link' && hasItemLink) return false;
 
@@ -773,9 +773,9 @@
 
             const value = data.nr_req || 'REQ';
             if (value === 'NR') {
-                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From amazon NRL (AmazonDataView)">NRL</span>`;
+                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From channel DataView NRL">NRL</span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--req" title="From amazon NRL (AmazonDataView)">REQ</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--req" title="From channel DataView NRL">REQ</span>`;
         }
 
         function showBsModal(id) {
@@ -798,56 +798,47 @@
             }
         }
 
-        function formatAmazonItemLink(cell, type) {
+        function formatEbayItemLink(cell, type) {
             const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
-            const itemId = String(data.asin || '').trim();
-            if (!itemId) {
-                return `<span class="text-muted" title="No amazon ASIN">—</span>`;
-            }
-
             const isBuyer = type === 'buyer';
-            const href = isBuyer
-                ? ('https://www.amazon.com/dp/' + encodeURIComponent(itemId))
-                : ('https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(itemId));
-            const label = isBuyer ? 'Buyer' : 'Seller';
-            const title = isBuyer
-                ? ('Buyer link — Amazon ASIN ' + itemId)
-                : ('Seller Central inventory — Amazon ASIN ' + itemId);
-
-            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
-                title="${escapeHtml(title)}" onclick="event.stopPropagation();">
-                <i class="fas fa-external-link-alt me-1"></i>${label}
+            const stored = String(isBuyer ? (data.buyer_link || '') : (data.seller_link || '')).trim();
+            if (stored) {
+                const label = isBuyer ? 'Buyer' : 'Seller';
+                return `<a href="${escapeHtml(stored)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
+                title="${escapeHtml(label + ' link')}" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt"></i> ${label}
             </a>`;
+            }
+            return '<span class="listing-link-empty">—</span>';
         }
 
         function formatBuyerLink(cell) {
-            return formatAmazonItemLink(cell, 'buyer');
+            return formatEbayItemLink(cell, 'buyer');
         }
 
         function formatSellerLink(cell) {
-            return formatAmazonItemLink(cell, 'seller');
+            return formatEbayItemLink(cell, 'seller');
         }
 
         function formatListed(cell) {
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            // Missing Listing: amazon_datsheets price > 0 = Listed (same as Active Channel / amazon-tabulator)
-            if (data.listed === 'Listed') {
-                return `<span class="listing-listed-tick" title="Listed (amazon_datsheets price > 0)" aria-label="Listed">
+            // Missing Listing: channel listing id / price signal = Listed
+            const itemId = String(data.eBay_item_id || '').trim();
+            if (itemId) {
+                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — not listed on amazon datasheet">Missing L</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
         }
 
         $(document).ready(function () {
             showLoader();
 
-            amazonListingTable = new Tabulator('#amazonListing-table', {
-                ajaxURL: '/listing_amazon/view-data',
+            tiktokshop2ListingTable = new Tabulator('#tiktokshop2Listing-table', {
+                ajaxURL: '/listing_tiktokshop2/view-data',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     allListingData = normalizeListingRows(rows);
@@ -926,29 +917,29 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 110,
-                        headerTooltip: 'Automatic from AmazonDataView NRL (same source as /amazon-tabulator-view)',
+                        headerTooltip: 'Automatic from channel DataView NRL',
                         formatter: formatNrReq
                     },
                     {
                         title: 'Buyer Link',
-                        field: 'asin',
+                        field: 'eBay_item_id',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic buyer link: https://www.amazon.com/dp/{asin}',
+                        headerTooltip: 'Buyer link from listing status',
                         formatter: formatBuyerLink
                     },
                     {
                         title: 'Seller Link',
-                        field: 'seller_asin_link',
+                        field: 'seller_item_link',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic seller link: Seller Central inventory by ASIN',
+                        headerTooltip: 'Dynamic seller link: https://www.ebay.com/sh/lst/active?keyword={item_id}&source=filterbar&action=search',
                         formatter: formatSellerLink
                     },
                     {
@@ -958,20 +949,20 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 130,
-                        headerTooltip: 'Automatic from amazon_datsheets price > 0 (same Missing Listing logic as /amazon-tabulator-view)',
+                        headerTooltip: 'Automatic from channel listing signal (EbayTwo Missing L pattern)',
                         formatter: formatListed
                     }
                 ]
             });
 
-            amazonListingTable.on('dataProcessed', function () {
+            tiktokshop2ListingTable.on('dataProcessed', function () {
                 hideLoader();
                 applyListingFilters();
             });
-            amazonListingTable.on('dataFiltered', function () {
+            tiktokshop2ListingTable.on('dataFiltered', function () {
                 calculateTotals();
             });
-            amazonListingTable.on('dataLoadError', function () {
+            tiktokshop2ListingTable.on('dataLoadError', function () {
                 hideLoader();
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
@@ -994,7 +985,7 @@
 
                 showLoader();
                 $.ajax({
-                    url: "{{ route('listing_amazon.import') }}",
+                    url: "{{ route('listing_tiktokshop2.import') }}",
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1014,7 +1005,7 @@
                             }
                         }
                         showNotification('success', message);
-                        amazonListingTable.setData('/listing_amazon/view-data');
+                        tiktokshop2ListingTable.setData('/listing_tiktokshop2/view-data');
                     },
                     error: function (xhr) {
                         hideLoader();

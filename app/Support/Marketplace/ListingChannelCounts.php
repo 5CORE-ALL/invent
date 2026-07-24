@@ -35,6 +35,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiendamiaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
@@ -80,6 +81,8 @@ class ListingChannelCounts
         'shein' => ListingSheinController::class,
         'tiktokshop' => ListingTiktokShopController::class,
         'tiktok' => ListingTiktokShopController::class,
+        'tiktokshop2' => ListingTiktokShopTwoController::class,
+        'tiktok2' => ListingTiktokShopTwoController::class,
         'faire' => ListingFaireController::class, // counts via ChannelListingRegistry
         'mercariwship' => ListingMercariWShipController::class,
         'mercariwoship' => ListingMercariWoShipController::class,
@@ -132,8 +135,8 @@ class ListingChannelCounts
         'shein' => '/listing-shein',
         'tiktokshop' => '/listing-tiktokshop',
         'tiktok' => '/listing-tiktokshop',
-        'tiktokshop2' => '/listing-tiktokshop',
-        'tiktok2' => '/listing-tiktokshop',
+        'tiktokshop2' => '/listing-tiktokshop2',
+        'tiktok2' => '/listing-tiktokshop2',
         'faire' => null, // counts-only (no listing page route)
         'mercariwoship' => '/listing-mercariwoship',
         'mercariwship' => null,

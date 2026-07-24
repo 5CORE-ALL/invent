@@ -15,6 +15,7 @@ use App\Models\SheinMetric;
 use App\Models\TemuMetric;
 use App\Models\TiendamiaProduct;
 use App\Models\TikTokProduct;
+use App\Models\TikTokProductTwo;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairPricingPrice;
 use App\Models\ProductMaster;
@@ -96,6 +97,14 @@ class ChannelListingRegistry
                 'dataView' => \App\Models\TiktokShopDataView::class,
                 'status' => \App\Models\TiktokShopListingStatus::class,
                 'listed' => ['type' => 'column', 'model' => TikTokProduct::class, 'column' => 'product_id', 'reject_sku' => true],
+                'id_field' => 'product_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
+            'tiktokshop2' => [
+                'dataView' => \App\Models\TiktokTwoShopDataView::class,
+                'status' => \App\Models\TiktokTwoShopListingStatus::class,
+                'listed' => ['type' => 'column', 'model' => TikTokProductTwo::class, 'column' => 'product_id', 'reject_sku' => true],
                 'id_field' => 'product_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,

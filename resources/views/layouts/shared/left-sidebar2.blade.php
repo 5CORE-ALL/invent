@@ -1672,6 +1672,8 @@
                                     <ul class="side-nav-third-level">
                                             <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
                                             </li>
+                                            <li><a href="{{ route('listing.tiktokshop2') }}">Listing TikTok 2</a>
+                                            </li>
                                     </ul>
                                 </div>
                             </li>

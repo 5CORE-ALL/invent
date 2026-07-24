@@ -718,6 +718,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // TikTok 1 / 2 per-SKU Price snapshots for /tiktok-pricing Price charts
+        $ist($schedule->command('tiktok:collect-metrics')
+            ->dailyAt('19:20')
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $schedule->command('ebay:store-utilization-counts')
             ->dailyAt('21:40')
             ->timezone('Asia/Kolkata')

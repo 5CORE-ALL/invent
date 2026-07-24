@@ -37,6 +37,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiendamiaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
@@ -13588,6 +13589,9 @@ class ChannelMasterController extends Controller
 
                 case 'tiktok shop':
                     return app(ListingTiktokShopController::class)->getNrReqCount()['Listed'] ?? 0;
+
+                case 'tiktok 2':
+                    return app(ListingTiktokShopTwoController::class)->getNrReqCount()['Listed'] ?? 0;
 
                 case 'shopify wholesale/ds':
                     return app(ListingShopifyWholesaleController::class)->getNrReqCount()['Listed'] ?? 0;

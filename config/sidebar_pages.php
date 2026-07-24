@@ -161,6 +161,7 @@ return [
     ['value' => 'faire_listing_variation_verify', 'text' => 'Faire Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'tiktokshop', 'text' => 'Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'listing_tiktokshop', 'text' => 'Listing Tiktok Shop', 'group' => 'Marketplace'],
+    ['value' => 'listing_tiktokshop2', 'text' => 'Listing TikTok 2', 'group' => 'Marketplace'],
     ['value' => 'tiktok_listing_variation_verify', 'text' => 'TikTok 1 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'tiktok2_listing_variation_verify', 'text' => 'TikTok 2 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'tiktok_pricing', 'text' => 'TikTok Pricing', 'group' => 'Marketplace'],

@@ -15,11 +15,14 @@ use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
 use App\Models\TiktokShopListingStatus;
 use App\Models\TiktokSkuCompetitor;
+use App\Models\TiktokSkuDailyData;
 use App\Services\LmpSkuGroupService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonChannelSummary;
@@ -57,9 +60,11 @@ class TikTokPricingController extends Controller
             $response = $this->getViewTikTokTabularData($request, 'v2');
             $data = json_decode($response->getContent(), true);
 
-            $this->saveDailySummaryIfNeeded($data['data'] ?? [], 'tiktok2');
+            $rows = $data['data'] ?? [];
+            $this->saveDailySummaryIfNeeded($rows, 'tiktok2');
+            $this->saveSkuDailySnapshotsIfNeeded($rows, 'tiktok2');
 
-            return response()->json($data['data'] ?? []);
+            return response()->json($rows);
         } catch (\Exception $e) {
             Log::error('Error fetching TikTok 2 data for Tabulator: ' . $e->getMessage());
 
@@ -93,6 +98,7 @@ class TikTokPricingController extends Controller
             'tiktokPricingClientConfig' => [
                 'dataJson' => '/tiktok-2-data-json',
                 'badgeChart' => route('tiktok2.badge.chart.data'),
+                'metricsHistory' => route('tiktok2.metrics.history'),
                 'saveSprice' => '/tiktok-2-save-sprice',
                 'saveNrp' => route('tiktok2.save.nrp'),
                 'saveLinks' => '/tiktok-2-save-links',
@@ -112,11 +118,13 @@ class TikTokPricingController extends Controller
             $response = $this->getViewTikTokTabularData($request, 'v1');
             $data = json_decode($response->getContent(), true);
 
-            // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? [], 'tiktok');
+            $rows = $data['data'] ?? [];
+            // Auto-save daily summary + per-SKU price snapshots (for Price chart)
+            $this->saveDailySummaryIfNeeded($rows, 'tiktok');
+            $this->saveSkuDailySnapshotsIfNeeded($rows, 'tiktok');
 
             // Tabulator expects an array; totalDistinctCampaigns is fetched separately via /tiktok-distinct-campaign-count
-            return response()->json($data['data'] ?? []);
+            return response()->json($rows);
         } catch (\Exception $e) {
             Log::error('Error fetching TikTok data for Tabulator: ' . $e->getMessage());
             
@@ -223,6 +231,107 @@ class TikTokPricingController extends Controller
         $request->merge(['channel' => 'tiktok2']);
 
         return $this->tiktokBadgeChartData($request);
+    }
+
+    /**
+     * Per-SKU Price history for /tiktok-pricing (same role as /ebay-metrics-history).
+     */
+    public function tiktokMetricsHistory(Request $request)
+    {
+        return $this->getTiktokMetricsHistory($request, 'tiktok');
+    }
+
+    /**
+     * Per-SKU Price history for /tiktok-2-pricing.
+     */
+    public function tiktok2MetricsHistory(Request $request)
+    {
+        return $this->getTiktokMetricsHistory($request, 'tiktok2');
+    }
+
+    /**
+     * Return daily price points for one SKU from tiktok_sku_daily_data,
+     * overlaying today's live product price (California calendar day).
+     */
+    private function getTiktokMetricsHistory(Request $request, string $channel = 'tiktok')
+    {
+        if (! in_array($channel, ['tiktok', 'tiktok2'], true)) {
+            $channel = 'tiktok';
+        }
+
+        $days = (int) $request->input('days', 30);
+        $sku = trim((string) $request->input('sku', ''));
+        $skuNorm = $sku !== '' ? strtoupper($sku) : null;
+
+        if (! $skuNorm) {
+            return response()->json([]);
+        }
+
+        $endDate = Carbon::now('America/Los_Angeles')->startOfDay();
+        $startDate = null;
+        if ($days !== 0) {
+            if ($days < 7) {
+                $days = 7;
+            }
+            $startDate = $endDate->copy()->subDays($days - 1);
+        }
+
+        $dataByDate = [];
+
+        try {
+            if (Schema::hasTable('tiktok_sku_daily_data')) {
+                $query = TiktokSkuDailyData::query()
+                    ->where('channel', $channel)
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                    ->where('record_date', '<=', $endDate->toDateString())
+                    ->orderBy('record_date', 'asc');
+                if ($startDate) {
+                    $query->where('record_date', '>=', $startDate->toDateString());
+                }
+
+                foreach ($query->get() as $record) {
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round((float) ($data['price'] ?? 0), 2),
+                        'stock' => (int) ($data['stock'] ?? 0),
+                        'sold' => (int) ($data['sold'] ?? 0),
+                        'tt_l30' => (int) ($data['tt_l30'] ?? $data['sold'] ?? 0),
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok metrics history read failed: ' . $e->getMessage());
+        }
+
+        // Overlay live product price for California today (matches Prc column).
+        try {
+            $liveModel = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
+            $live = $liveModel::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                ->first();
+            if ($live) {
+                $todayKey = $endDate->toDateString();
+                $dataByDate[$todayKey] = [
+                    'date' => $todayKey,
+                    'date_formatted' => $endDate->format('M d'),
+                    'price' => round((float) ($live->price ?? 0), 2),
+                    'stock' => (int) ($live->stock ?? 0),
+                    'sold' => (int) ($live->sold ?? 0),
+                    'tt_l30' => (int) ($live->sold ?? 0),
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok live price overlay failed: ' . $e->getMessage());
+        }
+
+        ksort($dataByDate);
+
+        return response()->json(array_values($dataByDate));
     }
 
     /**
@@ -1692,6 +1801,67 @@ class TikTokPricingController extends Controller
         Cache::put($key, $visibility, now()->addDays(365));
         
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Snapshot per-SKU TT Price (and stock/L30) for Price charts — California day.
+     * Called on tabulator data load so charts work even before the nightly cron.
+     */
+    private function saveSkuDailySnapshotsIfNeeded($products, string $channel = 'tiktok'): void
+    {
+        if (! in_array($channel, ['tiktok', 'tiktok2'], true)) {
+            $channel = 'tiktok';
+        }
+        if (! Schema::hasTable('tiktok_sku_daily_data')) {
+            return;
+        }
+
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $cacheKey = "tiktok_sku_daily_snap_{$channel}_{$today}";
+            // Refresh at most once per 30 minutes per channel (page may reload often).
+            if (Cache::has($cacheKey)) {
+                return;
+            }
+
+            $saved = 0;
+            foreach ($products as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (! empty($row['is_parent']) || (isset($row['Parent']) && str_starts_with((string) $row['Parent'], 'PARENT'))) {
+                    continue;
+                }
+                $sku = strtoupper(trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? '')));
+                if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                    continue;
+                }
+
+                $dailyData = [
+                    'price' => round((float) ($row['TT Price'] ?? 0), 2),
+                    'stock' => (int) ($row['TT Stock'] ?? 0),
+                    'sold' => (int) ($row['TT L30'] ?? 0),
+                    'tt_l30' => (int) ($row['TT L30'] ?? 0),
+                ];
+
+                TiktokSkuDailyData::updateOrCreate(
+                    [
+                        'sku' => $sku,
+                        'channel' => $channel,
+                        'record_date' => $today,
+                    ],
+                    [
+                        'daily_data' => $dailyData,
+                    ]
+                );
+                $saved++;
+            }
+
+            Cache::put($cacheKey, 1, now()->addMinutes(30));
+            Log::info("TikTok SKU daily snapshots saved for {$today} ({$channel})", ['sku_count' => $saved]);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok SKU daily snapshot save failed: ' . $e->getMessage());
+        }
     }
 
     /**

@@ -163,6 +163,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiendamiaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
@@ -3506,6 +3507,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-distinct-campaign-count', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokDistinctCampaignCount'])->name('tiktok.distinct.campaign.count');
     Route::get('/tiktok-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokBadgeChartData'])->name('tiktok.badge.chart.data');
     Route::get('/tiktok-2-badge-chart-data', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2BadgeChartData'])->name('tiktok2.badge.chart.data');
+    // Per-SKU Price chart history (same role as /ebay-metrics-history)
+    Route::get('/tiktok-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokMetricsHistory'])->name('tiktok.metrics.history');
+    Route::get('/tiktok-2-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2MetricsHistory'])->name('tiktok2.metrics.history');
     Route::post('/tiktok-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTokCsv'])->name('tiktok.upload.csv');
     Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
     Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
@@ -5043,6 +5047,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_tiktokshop/save-status', [ListingTiktokShopController::class, 'saveStatus']);
     Route::post('/listing_tiktokshop/import', [ListingTiktokShopController::class, 'import'])->name('listing_tiktokshop.import');
     Route::get('/listing_tiktokshop/export', [ListingTiktokShopController::class, 'export'])->name('listing_tiktokshop.export');
+
+    // listing TikTok 2
+    Route::get('/listing-tiktokshop2', [ListingTiktokShopTwoController::class, 'listingTiktokShopTwo'])->name('listing.tiktokshop2');
+    Route::get('/listing_tiktokshop2/view-data', [ListingTiktokShopTwoController::class, 'getViewListingTiktokShopTwoData']);
+    Route::post('/listing_tiktokshop2/save-status', [ListingTiktokShopTwoController::class, 'saveStatus']);
+    Route::post('/listing_tiktokshop2/import', [ListingTiktokShopTwoController::class, 'import'])->name('listing_tiktokshop2.import');
+    Route::get('/listing_tiktokshop2/export', [ListingTiktokShopTwoController::class, 'export'])->name('listing_tiktokshop2.export');
 
     Route::get('walmartPricingCVR', [TiktokShopController::class, 'tiktokPricingCVR'])->name('tiktok.pricing.cvr');
     Route::post('/update-all-tiktok-skus', [TiktokShopController::class, 'updateAllTiktokSkus']);

@@ -654,6 +654,68 @@
         </div>
     </div>
 
+    <!-- Per-SKU Price chart (same pattern as /ebay-tabulator-view #skuMetricsModal) -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="skuChartModalTitle">TikTok - <span id="modalSkuName"></span> - Metrics</span>
+                        <span id="skuChartModalSuffix">(Rolling L30 · PT)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm bg-white"
+                            style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;"
+                            data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="skuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="skuMetricsChart"></canvas>
+                        </div>
+                        <div id="skuChartRefPanel"
+                            style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto;">
+                            <div class="sku-ref-col" data-metric="0"
+                                style="min-width: 62px; text-align: center; padding: 4px 4px;">
+                                <div
+                                    style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;">
+                                    <span id="skuChartRefDot" class="sku-col-dot"
+                                        style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd; flex-shrink: 0;"></span>
+                                    <span id="skuChartRefLabel">Price</span>
+                                </div>
+                                <div style="font-size: 6px; font-weight: 700; color: #dc3545;">High</div>
+                                <div id="skuCol0High" style="font-size: 10px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #6c757d;">Med</div>
+                                <div id="skuCol0Med" style="font-size: 10px; font-weight: 700; color: #6c757d;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #198754;">Low</div>
+                                <div id="skuCol0Low" style="font-size: 10px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="skuChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="chart-no-data-message" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data available for this SKU. Data will appear after
+                            the page loads on separate days or after running <code>tiktok:collect-metrics</code>.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Links Modal -->
     <div class="modal fade" id="tiktokEditLinksModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -827,6 +889,7 @@
         [
             'dataJson' => '/tiktok-data-json',
             'badgeChart' => '/tiktok-badge-chart-data',
+            'metricsHistory' => '/tiktok-metrics-history',
             'saveSprice' => '/tiktok-save-sprice',
             'saveNrp' => route('tiktok.save.nrp'),
             'saveLinks' => '/tiktok-save-links',
@@ -858,6 +921,12 @@
         let increaseModeActive = false;
         let samePriceModeActive = false;
         let selectedSkus = new Set();
+
+        // Per-SKU Price chart (ebay-tabulator-view pattern)
+        let skuMetricsChart = null;
+        let skuChartFirstSeriesStats = null;
+        let currentSku = null;
+        let currentSkuChartMetric = 'price';
 
         // ── Sku Link LMP (mirrors /shein-pricing; shared sku.link.lmp.* routes) ──
         const linkedSkuAddUrl = @json(route('sku.link.lmp.linked-skus.add'));
@@ -1449,6 +1518,297 @@
                 ttBadgeChartDays = days;
                 $('#ttBadgeChartModalTitle').text(ttBadgeChartModalTitle());
                 loadTtBadgeChart();
+            });
+
+            // ── Per-SKU Price chart (same UX as /ebay-tabulator-view) ──
+            function skuChartFmtVal(v) {
+                return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
+            }
+
+            function initSkuMetricsChart() {
+                const canvas = document.getElementById('skuMetricsChart');
+                if (!canvas || typeof Chart === 'undefined') {
+                    return;
+                }
+                if (skuMetricsChart) {
+                    return;
+                }
+                const ctx = canvas.getContext('2d');
+                const medianLinePlugin = {
+                    id: 'skuMedianLine',
+                    afterDraw(chart) {
+                        if (!skuChartFirstSeriesStats || skuChartFirstSeriesStats.median === undefined) return;
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(skuChartFirstSeriesStats.median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
+                const valueLabelsPlugin = {
+                    id: 'skuValueLabels',
+                    afterDatasetsDraw(chart) {
+                        if (!chart.data.datasets.length) return;
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        c.save();
+                        c.font = 'bold 6px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        const seriesColor = dataset.borderColor || '#6c757d';
+                        const valueFmt = (skuChartFirstSeriesStats && skuChartFirstSeriesStats.valueFmt)
+                            ? skuChartFirstSeriesStats.valueFmt
+                            : skuChartFmtVal;
+                        meta.data.forEach((point, i) => {
+                            const val = dataset.data[i];
+                            if (val == null || !point) return;
+                            const offsetY = (i % 2 === 0) ? -6 : -10;
+                            c.fillStyle = seriesColor;
+                            c.fillText(valueFmt(val), point.x, point.y + offsetY);
+                        });
+                        c.restore();
+                    }
+                };
+                skuMetricsChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'Price (USD)',
+                            data: [],
+                            borderColor: '#adb5bd',
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderWidth: 1.5,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            yAxisID: 'y',
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            title: { display: false },
+                            tooltip: {
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false,
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 10 },
+                                padding: 6,
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Price: ' + skuChartFmtVal(context.parsed.y || 0);
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    autoSkip: true,
+                                    maxTicksLimit: 30,
+                                    font: { size: 8 }
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                beginAtZero: true,
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function(v) {
+                                        return '$' + (Number(v) === v && v % 1 !== 0
+                                            ? v.toFixed(2)
+                                            : Math.round(v).toLocaleString('en-US'));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function loadSkuMetricsData(sku, days = 30) {
+                $('#skuChartLoading').show();
+                $('#skuChartContainer').hide();
+                $('#chart-no-data-message').hide();
+                const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
+                const historyUrl = (TTP_CFG && TTP_CFG.metricsHistory)
+                    ? TTP_CFG.metricsHistory
+                    : '/tiktok-metrics-history';
+                fetch(`${historyUrl}?days=${daysNum}&sku=${encodeURIComponent(sku)}`)
+                    .then(response => {
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        return response.json();
+                    })
+                    .then(data => {
+                        $('#skuChartLoading').hide();
+                        if (!skuMetricsChart) return;
+
+                        function setSkuRefCol(dsIdx, high, med, low, fmt) {
+                            const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                            const hEl = document.getElementById('skuCol' + dsIdx + 'High');
+                            const mEl = document.getElementById('skuCol' + dsIdx + 'Med');
+                            const lEl = document.getElementById('skuCol' + dsIdx + 'Low');
+                            if (hEl) {
+                                hEl.textContent = fmt(high);
+                                hEl.style.color = high === 0 ? refGreen : high > 0 ? refRed : refGray;
+                            }
+                            if (mEl) {
+                                mEl.textContent = fmt(med);
+                                mEl.style.color = med === 0 ? refGreen : med > 0 ? refRed : refGray;
+                            }
+                            if (lEl) {
+                                lEl.textContent = fmt(low);
+                                lEl.style.color = low === 0 ? refGreen : low > 0 ? refRed : refGray;
+                            }
+                        }
+                        function statsForArr(arr) {
+                            const valid = arr.filter(v => v != null && !isNaN(v));
+                            if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                            const min = Math.min(...valid);
+                            const max = Math.max(...valid);
+                            const sorted = [...valid].sort((a, b) => a - b);
+                            const mid = Math.floor(sorted.length / 2);
+                            const median = sorted.length % 2 !== 0
+                                ? sorted[mid]
+                                : (sorted[mid - 1] + sorted[mid]) / 2;
+                            return { min, max, median };
+                        }
+                        function clearRefPanel() {
+                            skuChartFirstSeriesStats = null;
+                            ['skuCol0High', 'skuCol0Med', 'skuCol0Low'].forEach(function(id) {
+                                const el = document.getElementById(id);
+                                if (el) el.textContent = '-';
+                            });
+                        }
+
+                        if (!data || data.length === 0) {
+                            clearRefPanel();
+                            skuMetricsChart.data.labels = [];
+                            skuMetricsChart.data.datasets.forEach(dataset => { dataset.data = []; });
+                            skuMetricsChart.update('active');
+                            $('#chart-no-data-message').show();
+                            return;
+                        }
+
+                        const labels = data.map(d => d.date_formatted || d.date || '');
+                        const values = data.map(d => Number(d.price) || 0);
+                        const refDotEl = document.getElementById('skuChartRefDot');
+                        const refLabelEl = document.getElementById('skuChartRefLabel');
+                        if (refLabelEl) refLabelEl.textContent = 'Price';
+                        if (refDotEl) refDotEl.style.background = '#adb5bd';
+
+                        skuMetricsChart.data.labels = labels;
+                        skuMetricsChart.data.datasets[0].data = values;
+                        skuMetricsChart.data.datasets[0].label = 'Price (USD)';
+                        skuMetricsChart.data.datasets[0].borderColor = '#adb5bd';
+                        skuMetricsChart.data.datasets[0].backgroundColor = 'rgba(108,117,125,0.08)';
+
+                        if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
+                            skuMetricsChart.options.scales.y.ticks.callback = function(v) {
+                                return '$' + (Number(v) === v && v % 1 !== 0
+                                    ? v.toFixed(2)
+                                    : Math.round(v).toLocaleString('en-US'));
+                            };
+                        }
+                        if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip &&
+                            skuMetricsChart.options.plugins.tooltip.callbacks) {
+                            skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) {
+                                return 'Price: ' + skuChartFmtVal(context.parsed.y || 0);
+                            };
+                        }
+
+                        const s0 = statsForArr(values);
+                        setSkuRefCol(0, s0.max, s0.median, s0.min, skuChartFmtVal);
+
+                        const refRed = '#dc3545';
+                        const refGray = '#6c757d';
+                        const dotColors = values.map((v, i) => {
+                            if (i === 0) return refGray;
+                            return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
+                        });
+                        skuChartFirstSeriesStats = {
+                            values,
+                            median: s0.median,
+                            dataMin: s0.min,
+                            dataMax: s0.max,
+                            dotColors,
+                            valueFmt: skuChartFmtVal
+                        };
+                        skuMetricsChart.data.datasets[0].pointBackgroundColor = dotColors;
+                        skuMetricsChart.data.datasets[0].pointBorderColor = dotColors;
+                        skuMetricsChart.data.datasets[0].pointBorderWidth = 1.5;
+
+                        $('#skuChartContainer').show();
+                        skuMetricsChart.update('active');
+                    })
+                    .catch(error => {
+                        $('#skuChartLoading').hide();
+                        skuChartFirstSeriesStats = null;
+                        ['skuCol0High', 'skuCol0Med', 'skuCol0Low'].forEach(function(id) {
+                            const el = document.getElementById(id);
+                            if (el) el.textContent = '-';
+                        });
+                        $('#chart-no-data-message').show();
+                        console.error('Error loading SKU metrics data:', error);
+                    });
+            }
+
+            initSkuMetricsChart();
+
+            $(document).on('click', '.view-sku-chart', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const el = this;
+                const sku = el.getAttribute('data-sku');
+                if (!sku) return;
+                currentSkuChartMetric = el.getAttribute('data-metric') || 'price';
+                currentSku = sku;
+                const channelLabel = (TTP_CFG.summaryChannel === 'tiktok2') ? 'TikTok 2' : 'TikTok';
+                $('#skuChartModalTitle').html(
+                    channelLabel + ' - <span id="modalSkuName">' + $('<div>').text(sku).html() + '</span> - Metrics'
+                );
+                $('#sku-chart-days-filter').val('30');
+                $('#skuChartModalSuffix').text('Price (Rolling L30 · PT)');
+                $('#skuChartLoading').show();
+                $('#skuChartContainer').hide();
+                $('#chart-no-data-message').hide();
+                if (!skuMetricsChart) initSkuMetricsChart();
+                loadSkuMetricsData(sku, 30);
+                const modalEl = document.getElementById('skuMetricsModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    $('#skuMetricsModal').modal('show');
+                }
+            });
+
+            $('#sku-chart-days-filter').on('change', function() {
+                const days = $(this).val();
+                const daysNum = parseInt(days, 10);
+                const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
+                $('#skuChartModalSuffix').text('Price (Rolling ' + rangeLabel + ' · PT)');
+                if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
             });
 
             // Swap the discount-input panel between %/$ and Same Price modes.
@@ -2734,17 +3094,33 @@
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
-                                'PARENT ');
+                            const sku = rowData['(Child) sku'] || '';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase()
+                                .startsWith('PARENT');
                             if (isParent && (raw === null || raw === undefined || raw === '' ||
                                     raw === '-')) return '<span style="color:#6c757d;">-</span>';
                             const value = parseFloat(raw || 0);
                             if (isParent && isNaN(value))
                             return '<span style="color:#6c757d;">-</span>';
+                            const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
+                            const priceColor = (lmpPrice > 0 && value > lmpPrice) ? '#dc3545' : 'inherit';
+                            const priceWeight = (lmpPrice > 0 && value > lmpPrice) ? '700' : '700';
+
                             if (value === 0) {
+                                if (sku && !isParent) {
+                                    return `<span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: #a00211; font-weight: 700; cursor: pointer;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                                }
                                 return `<span style="color: #a00211; font-weight: 700;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
-                            return `<span style="font-weight: 700;">$${value.toFixed(2)}</span>`;
+
+                            const priceFormatted = '$' + value.toFixed(2);
+                            if (sku && !isParent) {
+                                return `<span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>`;
+                            }
+                            if (lmpPrice > 0 && value > lmpPrice) {
+                                return `<span style="color: #dc3545; font-weight: 700;">${priceFormatted}</span>`;
+                            }
+                            return `<span style="font-weight: 700;">${priceFormatted}</span>`;
                         },
                         width: 70
                     },

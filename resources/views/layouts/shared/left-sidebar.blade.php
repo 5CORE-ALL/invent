@@ -1148,6 +1148,9 @@
 
 
                                     <li>
+                                        <a href="{{ route('listing.amazon') }}">Listing Amazon</a>
+                                    </li>
+                                    <li>
 
                                         <a href="{{ url('/amazon-tabulator-view') }}">Analytics Amz
                                         </a>
@@ -1163,11 +1166,6 @@
                                         <a href="{{ url('/amazonpricing-cvr-tabular') }}">FBM SEO Amz
                                         </a>
                                     </li>
-
-
-                                    {{-- <li>
-                                        <a href="{{ route('listing.amazon') }}">Listing Amz FBM</a>
-                                    </li> --}}
 
 
                                     {{-- <li>
@@ -1993,6 +1991,8 @@
                 <div class="collapse" id="sidebarTiktokShop">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
+                        </li>
+                        <li><a href="{{ route('listing.tiktokshop2') }}">Listing TikTok 2</a>
                         </li>
                         <li><a href="{{ route('tiktok.listing.variation.verify') }}">TikTok 1 Listing Variation Verify</a>
                         </li>
