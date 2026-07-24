@@ -360,36 +360,19 @@
                     </select>
 
                     <select id="tl30-filter" class="form-select form-select-sm flex-shrink-0" style="width: 90px;"
-                        title="Excludes 0 inventory items">
+                        title="Filter by TT L30 (excludes 0 inventory items)">
                         <option value="all">T L30</option>
                         <option value="0">0</option>
-                        <option value="0-10">0-10</option>
-                        <option value="10+">10+</option>
+                        <option value="more">&gt;0</option>
                     </select>
 
-                    <!-- DIL Filter -->
-                    <div class="dropdown manual-dropdown-container flex-shrink-0">
-                        <button class="btn btn-light dropdown-toggle btn-sm" type="button" id="dilFilterDropdown">
-                            <span class="status-circle default"></span> DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter active" href="#" data-column="dil_percent"
-                                    data-color="all">
-                                    <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
-                                    data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
-                                    data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
-                                    data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent"
-                                    data-color="pink">
-                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
-                        </ul>
-                    </div>
+                    <!-- DIL Filter — same options/thresholds as amazon-tabulator-view -->
+                    <select id="dil-filter" class="form-select form-select-sm flex-shrink-0" style="width: auto;">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
+                    </select>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block flex-shrink-0">
@@ -466,8 +449,11 @@
                         </button>
                     </div>
 
-                    <span class="badge bg-primary fs-6 p-2" id="tt-selected-row-badge"
-                        title="Number of selected rows">Row: 0</span>
+                    <span class="badge bg-dark fs-6 p-2 text-nowrap" id="tt-rows-count-badge"
+                        style="color: white; font-weight: bold;"
+                        title="Number of rows currently shown after filters">Rows: 0</span>
+                    <span class="badge bg-primary fs-6 p-2 text-nowrap" id="tt-selected-row-badge"
+                        title="Number of selected rows">Sel: 0</span>
 
                 </div>
 
@@ -864,7 +850,8 @@
         const ADS_ONLY_COLUMN_FIELDS = ['NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold',
             'ad_clicks', 'acos', 'status', 'campaign_name'
         ];
-        const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit'];
+        // "TT Ship" field is a duplicate of Ship_productmaster — hide it; show one Ship column + checkbox.
+        const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit', 'TT Ship'];
         let table = null;
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
@@ -1917,45 +1904,22 @@
             });
 
             // ========== MANUAL DROPDOWN FUNCTIONALITY ==========
-            $(document).on('click', '.manual-dropdown-container .btn', function(e) {
-                e.stopPropagation();
-                const container = $(this).closest('.manual-dropdown-container');
-
-                $('.manual-dropdown-container').not(container).removeClass('show');
-                container.toggleClass('show');
-            });
-
-            $(document).on('click', '.column-filter', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const $item = $(this);
-                const column = $item.data('column');
-                const color = $item.data('color');
-                const container = $item.closest('.manual-dropdown-container');
-                const button = container.find('.btn');
-
-                container.find('.column-filter').removeClass('active');
-                $item.addClass('active');
-
-                const statusCircle = $item.find('.status-circle').clone();
-                const text = $item.text().trim();
-                button.html('').append(statusCircle).append(' DIL%');
-
-                container.removeClass('show');
-                applyFilters();
-            });
-
-            $(document).on('click', function() {
-                $('.manual-dropdown-container').removeClass('show');
-            });
-
             // Update selected count display
             function updateSelectedCount() {
                 const count = selectedSkus.size;
                 $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-                $('#tt-selected-row-badge').text(`Row: ${count}`);
+                $('#tt-selected-row-badge').text(`Sel: ${count}`);
                 $('#discount-input-container').toggle(count > 0);
+            }
+
+            // Visible (filtered) SKU row count — same as eBay / Amazon rows-count badge
+            function updateRowsCountBadge() {
+                if (!table) {
+                    $('#tt-rows-count-badge').text('Rows: 0');
+                    return;
+                }
+                const visibleRowCount = table.getData('active').filter(row => !ttIsParentRow(row)).length;
+                $('#tt-rows-count-badge').text('Rows: ' + visibleRowCount.toLocaleString());
             }
 
             // Update select all checkbox state
@@ -2393,8 +2357,8 @@
                             if (INV === 0 && !isParent)
                             return '<span style="color: #6c757d;">0%</span>';
                             let color = '';
-                            if (dil < 16.66) color = '#a00211';
-                            else if (dil >= 16.66 && dil < 25) color = '#ffc107';
+                            // Same bands as DIL filter / amazon filter: red <25, green 25-50, pink 50+
+                            if (dil < 25) color = '#a00211';
                             else if (dil >= 25 && dil < 50) color = '#28a745';
                             else color = '#e83e8c';
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
@@ -2440,13 +2404,13 @@
                         }
                     },
                     {
-                        // TikTok 1 → tt_ship (TT 1 Ship). TikTok 2 → ship_bb (BB Ship).
-                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "TT 1 Ship",
+                        // Duplicate of Ship_productmaster — kept for data compat, always hidden.
+                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "TT Ship",
                         field: "TT Ship",
                         hozAlign: "center",
                         sorter: "number",
                         width: 70,
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const raw = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -3037,17 +3001,25 @@
                         width: 60
                     },
                     {
-                        // Same source as TT Ship / BB Ship; keep hidden to avoid a duplicate column.
-                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "Ship",
+                        // TikTok 1 → tt_ship. TikTok 2 → ship_bb. Visible + Columns checkbox on both pages.
+                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "TT Ship",
                         field: "Ship_productmaster",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
+                            const raw = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith(
+                                'PARENT ');
+                            if (isParent && (raw === '-' || raw === null || raw === undefined ||
+                                    raw === '')) return '<span style="color:#6c757d;">-</span>';
+                            const value = parseFloat(raw || 0);
+                            if (isParent && isNaN(value))
+                            return '<span style="color:#6c757d;">-</span>';
                             return `$${value.toFixed(2)}`;
                         },
-                        width: 60
+                        width: 70
                     },
                     {
                         title: "SPRICE",
@@ -3629,7 +3601,7 @@
                 const cvrFilter = $('#cvr-filter').val();
                 const roiFilter = $('#roi-filter').val();
                 const adClickFilter = $('#ad-click-filter').val();
-                const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+                const dilFilter = $('#dil-filter').val() || 'all';
 
                 table.clearFilter();
 
@@ -3730,7 +3702,7 @@
                     });
                 }
 
-                // T L30 filter (parent rows always visible; excludes 0 inventory items for child rows only)
+                // T L30 filter: 0 / >0 (parent rows always visible; excludes 0 inventory for child rows)
                 const tl30Filter = $('#tl30-filter').val();
                 if (tl30Filter !== 'all') {
                     table.addFilter(function(data) {
@@ -3739,13 +3711,12 @@
                         if (inv <= 0) return false;
                         const ttL30 = parseFloat(data['TT L30']) || 0;
                         if (tl30Filter === '0') return ttL30 === 0;
-                        if (tl30Filter === '0-10') return ttL30 > 0 && ttL30 <= 10;
-                        if (tl30Filter === '10+') return ttL30 > 10;
+                        if (tl30Filter === 'more') return ttL30 > 0;
                         return true;
                     });
                 }
 
-                // DIL filter (parent rows always visible)
+                // DIL filter — same as amazon-tabulator-view (L30 / INV * 100)
                 if (dilFilter !== 'all') {
                     table.addFilter(function(data) {
                         if (isParentRow(data)) return true;
@@ -3753,8 +3724,7 @@
                         const l30 = parseFloat(data['L30']) || 0;
                         const dil = inv === 0 ? 0 : (l30 / inv) * 100;
 
-                        if (dilFilter === 'red') return dil < 16.66;
-                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'red') return dil < 25;
                         if (dilFilter === 'green') return dil >= 25 && dil < 50;
                         if (dilFilter === 'pink') return dil >= 50;
                         return true;
@@ -3927,7 +3897,7 @@
                 updateTtSummaryBadgeStyles();
             }
 
-            $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter')
+            $('#row-type-filter, #inventory-filter, #gpft-filter, #cvr-filter, #roi-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter, #dil-filter')
                 .on('change', function() {
                     applyFilters();
                 });
@@ -3988,6 +3958,7 @@
                 const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
                 const avgRoi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
+                updateRowsCountBadge();
                 $('#total-sales-amt-badge').text(`Sales: $${Math.round(totalSales).toLocaleString()}`);
                 $('#avg-gpft-badge').text(`GPFT: ${Math.round(avgGpft)}%`);
                 $('#total-l30-badge').text(`L30: ${totalL30.toLocaleString()}`);
@@ -4111,18 +4082,18 @@
                     return 'advt';
                 }
 
-                // basics — product / inventory / listing (before pricing so "TT Ship" / "BB Ship" isn't misfiled)
+                // basics — product / inventory / listing (Ship checkbox lives here)
                 if (
-                    /^(image_path|Parent|\(Child\) sku|links_column|INV|L30|TT Dil%|TT L30|TT Stock|TT Ship|Missing|MAP|NR|variation_req|video_req|video_uploaded|nrp)$/i.test(f) ||
-                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|bb\s*ship|missing\s*l?|map|nra|variation|video\s*req|video\s*uploaded|nr\/?req)\b/i.test(tl)
+                    /^(image_path|Parent|\(Child\) sku|links_column|INV|L30|TT Dil%|TT L30|TT Stock|TT Ship|Ship_productmaster|Missing|MAP|NR|variation_req|video_req|video_uploaded|nrp)$/i.test(f) ||
+                    /\b(image|parent|sku|links|inv|ov\s*l30|^dil$|tt\s*l30|tt\s*stock|tt\s*1?\s*ship|bb\s*ship|^ship$|missing\s*l?|map|nra|variation|video\s*req|video\s*uploaded|nr\/?req)\b/i.test(tl)
                 ) {
                     return 'basics';
                 }
 
                 // pricing
                 if (
-                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|Ship_productmaster|SPRICE|SGPFT|SPFT|SROI|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
-                    /\b(prc|lmp|^diff$|gpft|pft|roi|profit|sales|^lp$|^ship$|sprice|sgpft|spft|sroi|sku\s*link)\b/i.test(tl) ||
+                    /^(TT Price|lmp_price|lmp_diff_pct|GPFT%|PFT %|ROI%|Profit|T Profit|Sales L30|LP_productmaster|SPRICE|SGPFT|SPFT|SROI|linked_lmp_skus|linked_lmp_sku_add)$/i.test(f) ||
+                    /\b(prc|lmp|^diff$|gpft|pft|roi|profit|sales|^lp$|sprice|sgpft|spft|sroi|sku\s*link)\b/i.test(tl) ||
                     /^\+$/.test(t)
                 ) {
                     return 'pricing';
@@ -4198,6 +4169,8 @@
                             .includes(field)) ? false : col.isVisible();
                     }
                 });
+                // Mark ship-column migration done so later toggles are honored.
+                visibility.ship_col_migrated = true;
 
                 fetch(TTP_CFG.columnSet, {
                     method: 'POST',
@@ -4245,6 +4218,21 @@
                                 if (col) col.hide();
                             } catch (e) {}
                         });
+                        // Ship column + Columns checkbox (both TikTok pages).
+                        // One-time migrate: legacy prefs hid Ship_productmaster as a duplicate.
+                        try {
+                            const shipCol = table.getColumn('Ship_productmaster');
+                            if (shipCol) {
+                                const v = visibility && typeof visibility === 'object' ? visibility : {};
+                                const migrated = v.ship_col_migrated === true || v.ship_col_migrated === 1 ||
+                                    v.ship_col_migrated === '1' || v.ship_col_migrated === 'true';
+                                const shipOn = v['Ship_productmaster'] === true || v['Ship_productmaster'] === 1 ||
+                                    v['Ship_productmaster'] === '1' || v['Ship_productmaster'] === 'true';
+                                if (!migrated || shipOn) {
+                                    shipCol.show();
+                                }
+                            }
+                        } catch (e) {}
                         // Checkbox column always first & visible
                         try {
                             const selectCol = table.getColumn('_select');
