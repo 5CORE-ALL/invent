@@ -27,7 +27,6 @@ use App\Models\TemuViewDataL7;
 use App\Models\TemuViewDataL7ToL14;
 use App\Models\Temu2ViewData;
 use App\Models\TemuAdData;
-use App\Models\TemuRPricing;
 use App\Models\TemuLmp;
 use App\Models\TemuListingStatus;
 use App\Models\TemuCampaignReport;
@@ -3027,7 +3026,9 @@ class TemuController extends Controller
                 $normalizedSkuMap[$normalizeSku($sku)] = $sku;
             }
 
-            // 3. Fetch ALL Temu / Temu 2 pricing (same columns; Temu 2 uses temu2_pricing)
+            // 3. Listing / price source:
+            //    Temu 1 → temu_metrics (API: base_price, goods_id, sku_id) — no sheet
+            //    Temu 2 → temu2_pricing (sheet; no Temu 2 metrics API yet)
             $pricingSelect = [
                 'sku',
                 'product_name',
@@ -3041,9 +3042,30 @@ class TemuController extends Controller
                 'sku_id',
                 'date_created',
             ];
-            $allPricingData = $isTemu2Pricing
-                ? Temu2Pricing::select($pricingSelect)->get()
-                : TemuPricing::select($pricingSelect)->get();
+
+            if ($isTemu2Pricing) {
+                $allPricingData = Temu2Pricing::select($pricingSelect)->get();
+            } else {
+                $allPricingData = TemuMetric::query()
+                    ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'recommended_base_price'])
+                    ->get()
+                    ->map(static function ($m) {
+                        return (object) [
+                            'sku' => $m->sku,
+                            'product_name' => '',
+                            'category' => '',
+                            'variation' => '',
+                            'quantity' => 0,
+                            'base_price' => $m->base_price,
+                            'status' => '',
+                            'detail_status' => '',
+                            'goods_id' => $m->goods_id,
+                            'sku_id' => $m->sku_id,
+                            'date_created' => '',
+                            'recommended_base_price' => $m->recommended_base_price,
+                        ];
+                    });
+            }
 
             // Build pricing data with normalized matching
             $pricingData = collect();
@@ -3063,15 +3085,10 @@ class TemuController extends Controller
             // Flip for quick lookup
             $temuPricingSkusNormalized = $temuPricingSkusNormalized->flip();
 
-            // Side lookup: when this is the Temu 2 endpoint, also pull the Temu 1 base price
-            // (from temu_pricing) keyed by the same ProductMaster SKU. This drives the
-            // "Temu 1 Price" comparison column on the Temu 2 - Analytics page. Only the
-            // sku + base_price are read — that's all the column needs and it keeps the
-            // payload light. When this is the Temu 1 endpoint we skip the lookup; the
-            // Temu 1 column on the Temu 2 page is a one-way reference, not bi-directional.
+            // Side lookup: Temu 2 page "Temu 1 Price" from API metrics (not sheet)
             $temu1PricingBySku = [];
             if ($isTemu2Pricing) {
-                $temu1All = TemuPricing::select(['sku', 'base_price'])->get();
+                $temu1All = TemuMetric::select(['sku', 'base_price'])->get();
                 foreach ($temu1All as $row) {
                     $n = $normalizeSku($row->sku);
                     if (isset($normalizedSkuMap[$n])) {
@@ -3389,13 +3406,36 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('sku');
 
-            // Fetch R Pricing data (recommended_base_price) by SKU instead of goods_id
-            $rPricingData = TemuRPricing::select('sku', 'recommended_base_price')
-                ->whereNotNull('sku')
-                ->whereNotNull('recommended_base_price')
-                ->get()
-                ->keyBy('sku');
-            
+            // R Prc fallback indexes (Temu 1 already has recommended on $pricingData items)
+            $recommendedBySkuId = [];
+            $recommendedBySku = [];
+            if ($isTemu2Pricing) {
+                TemuMetric::query()
+                    ->select('sku', 'sku_id', 'recommended_base_price')
+                    ->whereNotNull('recommended_base_price')
+                    ->get()
+                    ->each(function ($row) use (&$recommendedBySkuId, &$recommendedBySku, $normalizeSku) {
+                        if ($row->sku_id !== null && $row->sku_id !== '') {
+                            $recommendedBySkuId[(string) $row->sku_id] = $row->recommended_base_price;
+                        }
+                        if ($row->sku !== null && $row->sku !== '') {
+                            $recommendedBySku[$normalizeSku($row->sku)] = $row->recommended_base_price;
+                        }
+                    });
+            } else {
+                foreach ($allPricingData as $row) {
+                    if (!isset($row->recommended_base_price) || $row->recommended_base_price === null) {
+                        continue;
+                    }
+                    if ($row->sku_id !== null && $row->sku_id !== '') {
+                        $recommendedBySkuId[(string) $row->sku_id] = $row->recommended_base_price;
+                    }
+                    if ($row->sku !== null && $row->sku !== '') {
+                        $recommendedBySku[$normalizeSku($row->sku)] = $row->recommended_base_price;
+                    }
+                }
+            }
+
             $amazonData = $isTemu2Pricing
                 ? collect()
                 : AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -3451,7 +3491,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $rPricingData, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3681,11 +3721,16 @@ class TemuController extends Controller
                 $ebay2Metric = $ebay2Data->get($sku);
                 $ebay2Price = $ebay2Metric ? floatval($ebay2Metric->ebay_price ?? 0) : 0;
                 
-                // Get recommended_base_price from R Pricing by SKU
-                $rPricingItem = $rPricingData->get($sku);
-                $recommendedBasePrice = $rPricingItem ? $rPricingItem->recommended_base_price : null;
-                
                 $normalizedCurrentSku = $normalizeSku($sku);
+
+                // Recommended base price from API metrics (prefer value already on listing row)
+                $pricingSkuId = $item && $item->sku_id !== null && $item->sku_id !== ''
+                    ? (string) $item->sku_id
+                    : null;
+                $recommendedBasePrice = ($item !== null ? ($item->recommended_base_price ?? null) : null)
+                    ?? ($pricingSkuId !== null && isset($recommendedBySkuId[$pricingSkuId])
+                        ? $recommendedBySkuId[$pricingSkuId]
+                        : ($recommendedBySku[$normalizedCurrentSku] ?? null));
                 
                 // nr_req / listed / links: Temu 2 → temu2_data_view JSON; Temu 1 → temu_listing_statuses
                 if ($isTemu2Pricing) {
@@ -3708,7 +3753,8 @@ class TemuController extends Controller
                     $seller_link = $statusValue['seller_link'] ?? null;
                 }
 
-                // Missing listing: not in temu_pricing, or in pricing with INV>0 and base price 0. Never when INV=0+base>0, or nr_req=NR.
+                // Missing listing: not in Temu API metrics (Temu 1) / temu2_pricing (Temu 2),
+                // or listed with INV>0 and base price 0. Never when INV=0+base>0, or nr_req=NR.
                 $inPricing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]);
                 $basePriceVal = (float) $basePrice;
                 $invVal = (float) $inventory;
@@ -4218,7 +4264,7 @@ class TemuController extends Controller
     }
 
     /**
-     * Update Temu Pricing (Base Price)
+     * Update Temu base price in temu_metrics (API source — not sheet).
      */
     public function updateTemuPrice(Request $request)
     {
@@ -4228,19 +4274,34 @@ class TemuController extends Controller
                 'base_price' => 'required|numeric|min:0'
             ]);
 
-            $pricing = TemuPricing::where('sku', $request->sku)->first();
+            $sku = $request->sku;
+            $metric = TemuMetric::where('sku', $sku)->first();
 
-            if (!$pricing) {
-                return response()->json(['error' => 'SKU not found'], 404);
+            if (!$metric) {
+                $normalizeSku = static function ($s) {
+                    $s = strtoupper(trim((string) $s));
+                    return preg_replace('/[^A-Z0-9]/', '', $s);
+                };
+                $target = $normalizeSku($sku);
+                $metric = TemuMetric::query()
+                    ->whereNotNull('sku')
+                    ->get(['id', 'sku', 'base_price', 'sku_id', 'goods_id'])
+                    ->first(function ($row) use ($normalizeSku, $target) {
+                        return $normalizeSku($row->sku) === $target;
+                    });
             }
 
-            $pricing->base_price = $request->base_price;
-            $pricing->save();
+            if (!$metric) {
+                return response()->json(['error' => 'SKU not found in temu_metrics'], 404);
+            }
+
+            $metric->base_price = $request->base_price;
+            $metric->save();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Price updated successfully',
-                'data' => $pricing
+                'data' => $metric
             ]);
         } catch (\Exception $e) {
             Log::error('Error updating Temu price: ' . $e->getMessage());
@@ -5222,132 +5283,6 @@ class TemuController extends Controller
         }
     }
 
-    /**
-     * Upload Temu R Pricing Data (Truncate then Insert)
-     */
-    public function uploadTemuRPricing(Request $request)
-    {
-        $request->validate([
-            'r_pricing_file' => 'required|mimes:xlsx,xls,csv|max:10240'
-        ]);
-
-        try {
-            $file = $request->file('r_pricing_file');
-            $spreadsheet = IOFactory::load($file->getPathname());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            if (count($rows) < 2) {
-                return back()->with('error', 'File is empty or has no data rows');
-            }
-
-            // Get headers from first row
-            $headers = array_map('trim', $rows[0]);
-            
-            // Header mapping
-            $headerMapping = [
-                'Category' => 'pricing_opportunity_type',
-                'Pricing opportunity type' => 'pricing_opportunity_type',
-                'Product name' => 'product_name',
-                'Goods ID' => 'goods_id',
-                'SKU ID' => 'sku_id',
-                'SKU' => 'sku',
-                'Variation' => 'variation',
-                'Product status' => 'product_status',
-                'Current base price' => 'current_base_price',
-                'Recommended base price' => 'recommended_base_price',
-                'Date created' => 'date_created',
-                'Action' => 'action',
-            ];
-
-            // Find column indices
-            $columnIndices = [];
-            foreach ($headers as $index => $header) {
-                if (isset($headerMapping[$header])) {
-                    $columnIndices[$headerMapping[$header]] = $index;
-                } else {
-                    foreach ($headerMapping as $key => $dbColumn) {
-                        if (stripos($header, $key) !== false && !isset($columnIndices[$dbColumn])) {
-                            $columnIndices[$dbColumn] = $index;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Handle the duplicate "Category" column issue
-            $categoryColumns = [];
-            foreach ($headers as $index => $header) {
-                if (stripos($header, 'Category') !== false) {
-                    $categoryColumns[] = $index;
-                }
-            }
-            
-            if (count($categoryColumns) >= 2) {
-                $columnIndices['pricing_opportunity_type'] = $categoryColumns[0];
-                $columnIndices['category'] = $categoryColumns[1];
-            } elseif (count($categoryColumns) == 1) {
-                $columnIndices['pricing_opportunity_type'] = $categoryColumns[0];
-            }
-
-            // Truncate existing data
-            TemuRPricing::truncate();
-
-            $importCount = 0;
-            $errors = [];
-            
-            // Determine starting row: skip header row (0) and description row if present (1)
-            // Check if row 1 looks like a description row (contains long text explanations)
-            $startRow = 1;
-            if (count($rows) > 1) {
-                $secondRow = $rows[1];
-                $firstCellInSecondRow = isset($secondRow[0]) ? (string) $secondRow[0] : '';
-                // If the first cell in row 2 contains "corresponding to" or is very long, it's a description row
-                if (strlen($firstCellInSecondRow) > 50 || stripos($firstCellInSecondRow, 'corresponding to') !== false) {
-                    $startRow = 2; // Skip both header (0) and description (1) rows
-                }
-            }
-
-            // Process data rows (skip header and description rows if present)
-            for ($i = $startRow; $i < count($rows); $i++) {
-                $row = $rows[$i];
-                
-                // Skip empty rows
-                if (empty(array_filter($row))) {
-                    continue;
-                }
-
-                try {
-                    $data = [
-                        'pricing_opportunity_type' => isset($columnIndices['pricing_opportunity_type']) ? ($row[$columnIndices['pricing_opportunity_type']] ?? null) : null,
-                        'product_name' => isset($columnIndices['product_name']) ? ($row[$columnIndices['product_name']] ?? null) : null,
-                        'goods_id' => isset($columnIndices['goods_id']) ? ($row[$columnIndices['goods_id']] ?? null) : null,
-                        'sku_id' => isset($columnIndices['sku_id']) ? ($row[$columnIndices['sku_id']] ?? null) : null,
-                        'sku' => isset($columnIndices['sku']) ? ($row[$columnIndices['sku']] ?? null) : null,
-                        'variation' => isset($columnIndices['variation']) ? ($row[$columnIndices['variation']] ?? null) : null,
-                        'product_status' => isset($columnIndices['product_status']) ? ($row[$columnIndices['product_status']] ?? null) : null,
-                        'category' => isset($columnIndices['category']) ? ($row[$columnIndices['category']] ?? null) : null,
-                        'current_base_price' => isset($columnIndices['current_base_price']) ? $this->sanitizePrice($row[$columnIndices['current_base_price']] ?? null) : null,
-                        'recommended_base_price' => isset($columnIndices['recommended_base_price']) ? $this->sanitizePrice($row[$columnIndices['recommended_base_price']] ?? null) : null,
-                        'date_created' => isset($columnIndices['date_created']) ? $this->parseDate($row[$columnIndices['date_created']] ?? null) : null,
-                        'action' => isset($columnIndices['action']) ? ($row[$columnIndices['action']] ?? null) : null,
-                    ];
-
-                    TemuRPricing::create($data);
-                    $importCount++;
-                } catch (\Exception $e) {
-                    $errors[] = "Row $i: " . $e->getMessage();
-                    Log::error("Temu R Pricing import error at row $i: " . $e->getMessage());
-                }
-            }
-
-            return back()->with('success', "Successfully imported $importCount R Pricing records!");
-
-        } catch (\Exception $e) {
-            Log::error('Temu R Pricing upload error: ' . $e->getMessage());
-            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
-        }
-    }
 
     /**
      * Temu LMP page: table + upload section
@@ -5507,107 +5442,6 @@ class TemuController extends Controller
         return response()->json(['success' => true, 'message' => 'LMP saved successfully']);
     }
 
-    /**
-     * Download Temu R Pricing Sample File
-     */
-    public function downloadTemuRPricingSample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row - matches Temu export format
-        $headers = [
-            'Category',
-            'Product name',
-            'Goods ID',
-            'SKU ID',
-            'Variation',
-            'Product status',
-            'Category',
-            'Current base price',
-            'Recommended base price',
-            'Date created',
-            'Action'
-        ];
-        
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data
-        $sampleData = [
-            [
-                'Restricted traffic',
-                '5Core Speaker Stand Tripod Tall Adjustable 36 Inch DJ Pole Mount Studio Monitor Stands',
-                '602829443984319',
-                '51138028138319',
-                'As shown',
-                'Active',
-                'Racks & Stands',
-                '16.33',
-                '15.15',
-                '2025-02-01 03:33:46',
-                ''
-            ],
-            [
-                'Restricted traffic',
-                '5Core Keyboard Stand Double X Style Adjustable Piano Riser BLUE',
-                '603179483820280',
-                '41560251076147',
-                'As shown',
-                'Active',
-                'Stands',
-                '43.26',
-                '23.98',
-                '2025-02-27 00:02:29',
-                ''
-            ],
-            [
-                'Restricted traffic',
-                '5Core XLR Microphone Dynamic Mic Karaoke Singing Studio Microfono Handheld Mics',
-                '602737303467588',
-                '49990198154200',
-                'Blue',
-                'Active',
-                'Vocal',
-                '11.29',
-                '9.62',
-                '2025-04-20 01:05:48',
-                ''
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(20);
-        $sheet->getColumnDimension('B')->setWidth(60);
-        $sheet->getColumnDimension('C')->setWidth(20);
-        $sheet->getColumnDimension('D')->setWidth(20);
-        $sheet->getColumnDimension('E')->setWidth(15);
-        $sheet->getColumnDimension('F')->setWidth(15);
-        $sheet->getColumnDimension('G')->setWidth(20);
-        $sheet->getColumnDimension('H')->setWidth(18);
-        $sheet->getColumnDimension('I')->setWidth(22);
-        $sheet->getColumnDimension('J')->setWidth(20);
-        $sheet->getColumnDimension('K')->setWidth(10);
-
-        // Style header row
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:K1')->applyFromArray($headerStyle);
-
-        // Output Download
-        $fileName = 'Temu_R_Pricing_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
 
     /**
      * Update Temu Cell Data (like APRICE - Amazon Price)

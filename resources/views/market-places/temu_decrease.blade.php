@@ -804,20 +804,6 @@
                                     <span>Up Ad Data</span>
                                 </button>
                             </li>
-                            <li>
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadRPricingModal">
-                                    <i class="fas fa-tags text-danger" style="width: 18px;"></i>
-                                    <span>Up R Pricing</span>
-                                </button>
-                            </li>
-                            <li>
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                                    <i class="fas fa-dollar-sign text-info" style="width: 18px;"></i>
-                                    <span>Up Pricing</span>
-                                </button>
-                            </li>
                         </ul>
                     </div>
                     <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary"
@@ -1255,117 +1241,6 @@
         </div>
     </div>
 
-    <!-- Upload R Pricing Modal -->
-    <div class="modal fade" id="uploadRPricingModal" tabindex="-1" aria-labelledby="uploadRPricingModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title" id="uploadRPricingModalLabel">
-                        <i class="fas fa-tags me-2"></i>Upload Temu R Pricing Data
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    
-                    <form id="uploadRPricingForm" action="{{ route('temu.rpricing.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="rPricingFile" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
-                            </label>
-                            <input type="file" class="form-control" id="rPricingFile" name="r_pricing_file" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
-                            </div>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            <strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading new data!
-                            <br>
-                            <a href="{{ route('temu.rpricing.sample') }}" class="alert-link">
-                                <i class="fas fa-download"></i> Download Sample File
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadRPricingForm" class="btn btn-danger">
-                        <i class="fas fa-upload me-1"></i>Up R Pricing
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Pricing Modal -->
-    <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title" id="uploadPricingModalLabel">
-                        <i class="fas fa-dollar-sign me-2"></i>Upload Temu Pricing Data
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    
-                    <form id="uploadPricingForm" method="POST" action="{{ route('temu.pricing.upload') }}" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="pricingFile" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
-                            </label>
-                            <input type="file" class="form-control" name="pricing_file" id="pricingFile" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
-                            </div>
-                        </div>
-                        <div class="alert alert-info">
-                            <i class="fas fa-lightbulb me-2"></i>
-                            <strong>Note:</strong> This will update pricing data.
-                            <br>
-                            <a href="{{ route('temu.pricing.sample') }}" class="alert-link">
-                                <i class="fas fa-download"></i> Download Sample File
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadPricingForm" class="btn btn-info">
-                        <i class="fas fa-upload me-1"></i>Up Pricing
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- SKU Metrics Chart Modal (UI matches Amazon: teal header, ref panel High/Med/Low, median line, value labels on points) -->
     <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">

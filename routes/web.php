@@ -4378,10 +4378,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Temu Ad Data Upload
     Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');
 
-    // Temu R Pricing Upload
-    Route::post('/temu-r-pricing/upload', [TemuController::class, 'uploadTemuRPricing'])->name('temu.rpricing.upload');
-    Route::get('/temu-r-pricing/sample', [TemuController::class, 'downloadTemuRPricingSample'])->name('temu.rpricing.sample');
-
     // Temu Decrease Page
     Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
