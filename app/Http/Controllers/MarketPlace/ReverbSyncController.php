@@ -1309,7 +1309,7 @@ class ReverbSyncController extends Controller
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
-            'push_tracking_to_reverb', 'tracking_send_notification',
+            'push_tracking_to_reverb', 'tracking_send_notification', 'sync_address_to_shopify',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_reverb', 'sync_title', 'sync_images',

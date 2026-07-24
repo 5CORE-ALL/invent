@@ -125,13 +125,16 @@ class MarketplaceSyncSettings extends Model
             ],
             'order' => [
                 'fetch_orders' => true,
-                'auto_import_to_shopify' => false,
+                // Newegg: keep order + address + tracking automation ON by default.
+                'auto_import_to_shopify' => $isNewegg,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
-                // Shopify label/tracking → declare shipment on AliExpress / Reverb / Newegg.
-                'push_tracking_to_aliexpress' => false,
-                'push_tracking_to_reverb' => false,
-                'push_tracking_to_newegg' => false,
+                // Shopify label/tracking → declare shipment (ON by default per channel).
+                'push_tracking_to_aliexpress' => $marketplace === 'aliexpress',
+                'push_tracking_to_reverb' => $isReverb,
+                'push_tracking_to_newegg' => $isNewegg,
+                // Marketplace address → fill missing Shopify shipping + customer fields.
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'aliexpress', 'reverb'], true),
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',

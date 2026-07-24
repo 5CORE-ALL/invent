@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 class ReverbOrderPushService
 {
+    use SyncsShopifyOrderAddress;
+
     public ?string $lastFailureReason = null;
 
     public ?int $lastApiStatus = null;
@@ -20,6 +22,190 @@ class ReverbOrderPushService
         protected ReverbOrderDetailService $orderDetailService,
         protected ReverbDetailFormatter $formatter
     ) {}
+
+    /**
+     * Push Reverb shipping address onto an already-imported Shopify order.
+     *
+     * @return array{success: bool, skipped?: bool, message: string, shopify_order_id?: string}
+     */
+    public function syncShippingAddressToShopify(ReverbOrderMetric $order): array
+    {
+        $shopifyOrderId = trim((string) ($order->shopify_order_id ?? ''));
+        if ($shopifyOrderId === '') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Order is not linked to Shopify yet — push the order first.',
+            ];
+        }
+
+        $orderRef = $order->orderRef();
+        if ($orderRef === '') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Reverb order id missing.',
+            ];
+        }
+
+        $lines = ReverbOrderMetric::query()
+            ->where(function ($q) use ($orderRef) {
+                $q->where('order_id', $orderRef)->orWhere('order_number', $orderRef);
+            })
+            ->orderBy('id')
+            ->get();
+
+        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
+        if ($orderRoot === []) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'No Reverb order payload available to build an address.',
+            ];
+        }
+
+        $detail = $this->formatter->formatOrder($orderRoot, $lines, $order);
+        $orderPayload = $this->formatter->buildShopifyOrderPayload($detail, $lines, ['reverb']);
+        $shipping = is_array($orderPayload['shipping_address'] ?? null)
+            ? $orderPayload['shipping_address']
+            : [];
+        $address1 = trim((string) ($shipping['address1'] ?? ''));
+
+        if ($address1 === '') {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'message' => 'Reverb still has no shipping address for this order.',
+            ];
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return [
+                'success' => false,
+                'message' => 'Shopify store credentials are not configured.',
+            ];
+        }
+
+        $billing = is_array($orderPayload['billing_address'] ?? null)
+            ? $orderPayload['billing_address']
+            : $shipping;
+        $shipping = $this->withShopifyCountryName($shipping);
+        $billing = $this->withShopifyCountryName($billing);
+
+        $update = [
+            'id' => (int) $shopifyOrderId,
+            'shipping_address' => $shipping,
+            'billing_address' => $billing,
+        ];
+
+        $customer = is_array($orderPayload['customer'] ?? null) ? $orderPayload['customer'] : [];
+        $email = trim((string) ($customer['email'] ?? ''));
+        if ($email !== '' && ! $this->payloadUsesPlaceholderEmail($orderPayload)) {
+            $update['email'] = $email;
+        }
+
+        $ok = $this->putShopifyOrder($config, $shopifyOrderId, ['order' => $update]);
+        if (! $ok) {
+            return [
+                'success' => false,
+                'message' => $this->lastFailureReason ?: 'Shopify address update failed.',
+                'shopify_order_id' => $shopifyOrderId,
+            ];
+        }
+
+        $this->syncShopifyCustomerFromAddress($config, $shopifyOrderId, $shipping, $customer);
+
+        return [
+            'success' => true,
+            'message' => 'Shopify shipping address updated.',
+            'shopify_order_id' => $shopifyOrderId,
+        ];
+    }
+
+    /**
+     * @return array{success: bool, checked: int, updated: int, skipped: int, failed: int, message: string}
+     */
+    public function syncPendingAddressesToShopify(int $limit = 40): array
+    {
+        $limit = max(1, min(200, $limit));
+
+        $rows = ReverbOrderMetric::query()
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->orderByDesc('id')
+            ->limit($limit * 5)
+            ->get(['id', 'order_id', 'order_number', 'shopify_order_id']);
+
+        $unique = [];
+        foreach ($rows as $row) {
+            $ref = $row->orderRef();
+            if ($ref === '' || isset($unique[$ref])) {
+                continue;
+            }
+            $unique[$ref] = $row;
+            if (count($unique) >= $limit) {
+                break;
+            }
+        }
+
+        $checked = 0;
+        $updated = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($unique as $line) {
+            $checked++;
+            $ref = $line->orderRef();
+
+            try {
+                $this->orderDetailService->fetchAndPersistOrderDetail($ref);
+                $line->refresh();
+            } catch (\Throwable $e) {
+                // Use cached payload.
+            }
+
+            if (! $this->shopifyOrderNeedsAddress((string) $line->shopify_order_id, [
+                ['reverb', 'customer'],
+            ])) {
+                $skipped++;
+                usleep(200000);
+
+                continue;
+            }
+
+            $result = $this->syncShippingAddressToShopify($line);
+            if (! empty($result['success']) && empty($result['skipped'])) {
+                $updated++;
+            } elseif (! empty($result['skipped'])) {
+                $skipped++;
+            } else {
+                $failed++;
+                Log::warning('ReverbOrderPushService: auto address sync failed', [
+                    'order_id' => $ref,
+                    'shopify_order_id' => $line->shopify_order_id,
+                    'message' => $result['message'] ?? null,
+                ]);
+            }
+            usleep(350000);
+        }
+
+        return [
+            'success' => $failed === 0,
+            'checked' => $checked,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Address sync: checked {$checked}, updated {$updated}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    public static function canAutoSyncAddress(?array $settings = null): bool
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('reverb');
+
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+    }
 
     /**
      * @return array<string, mixed>

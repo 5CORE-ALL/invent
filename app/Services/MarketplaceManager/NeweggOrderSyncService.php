@@ -88,6 +88,17 @@ class NeweggOrderSyncService
             $this->dispatchImportsForNewOrders();
         }
 
+        // After order fetch, backfill missing Shopify addresses from Newegg ShipTo.
+        if (NeweggOrderPushService::canAutoSyncAddress()) {
+            try {
+                \App\Jobs\SyncNeweggAddressJob::dispatch(false, 25);
+            } catch (\Throwable $e) {
+                Log::warning('NeweggOrderSyncService: could not queue address sync', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return [
             'success' => true,
             'message' => "Synced {$upserted} Newegg order line(s) across {$pages} page(s).",

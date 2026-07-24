@@ -130,6 +130,145 @@ class NeweggOrderPushService
     }
 
     /**
+     * Auto-fill missing Shopify shipping/customer address from Newegg for linked orders.
+     *
+     * @return array{success: bool, checked: int, updated: int, skipped: int, failed: int, message: string}
+     */
+    public function syncPendingAddressesToShopify(int $limit = 40): array
+    {
+        $limit = max(1, min(200, $limit));
+
+        $rows = NeweggOrderMetric::query()
+            ->whereNotNull('shopify_order_id')
+            ->where('shopify_order_id', '!=', '')
+            ->orderByDesc('id')
+            ->limit($limit * 5)
+            ->get(['id', 'order_id', 'shopify_order_id', 'raw_payload']);
+
+        $unique = [];
+        foreach ($rows as $row) {
+            $ref = trim((string) $row->order_id);
+            if ($ref === '' || isset($unique[$ref])) {
+                continue;
+            }
+            $unique[$ref] = $row;
+            if (count($unique) >= $limit) {
+                break;
+            }
+        }
+
+        $checked = 0;
+        $updated = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($unique as $line) {
+            $checked++;
+
+            // Refresh Newegg ShipTo when possible so address automation stays current.
+            try {
+                $this->orderDetailService->fetchAndPersistOrderDetail((string) $line->order_id);
+                $line->refresh();
+            } catch (\Throwable $e) {
+                // Use cached payload.
+            }
+
+            if (! $this->shopifyOrderNeedsAddress((string) $line->shopify_order_id)) {
+                $skipped++;
+                usleep(200000);
+
+                continue;
+            }
+
+            $result = $this->syncShippingAddressToShopify($line);
+            if (! empty($result['success']) && empty($result['skipped'])) {
+                $updated++;
+            } elseif (! empty($result['skipped'])) {
+                $skipped++;
+            } else {
+                $failed++;
+                Log::warning('NeweggOrderPushService: auto address sync failed', [
+                    'order_id' => $line->order_id,
+                    'shopify_order_id' => $line->shopify_order_id,
+                    'message' => $result['message'] ?? null,
+                ]);
+            }
+            usleep(350000);
+        }
+
+        return [
+            'success' => $failed === 0,
+            'checked' => $checked,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Address sync: checked {$checked}, updated {$updated}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    public static function canAutoSyncAddress(?array $settings = null): bool
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('newegg');
+
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+    }
+
+    /**
+     * True when Shopify order is missing shipping address (or placeholder customer only).
+     */
+    protected function shopifyOrderNeedsAddress(string $shopifyOrderId): bool
+    {
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($shopifyOrderId === '') {
+            return false;
+        }
+
+        $config = $this->shopifyConfig();
+        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
+            return false;
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $config['token'],
+            ])->timeout(30)->get(
+                'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
+                ['fields' => 'id,shipping_address,billing_address,customer']
+            );
+
+            if ($response->status() === 429) {
+                sleep(2);
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $config['token'],
+                ])->timeout(30)->get(
+                    'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
+                    ['fields' => 'id,shipping_address,billing_address,customer']
+                );
+            }
+
+            if (! $response->successful()) {
+                // Retry sync path when we cannot confirm — safer for missing addresses.
+                return true;
+            }
+
+            $ship1 = trim((string) ($response->json('order.shipping_address.address1') ?? ''));
+            if ($ship1 === '') {
+                return true;
+            }
+
+            $first = strtolower(trim((string) ($response->json('order.customer.first_name') ?? '')));
+            $last = strtolower(trim((string) ($response->json('order.customer.last_name') ?? '')));
+            if ($first === 'newegg' && $last === 'customer') {
+                return true;
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            return true;
+        }
+    }
+
+    /**
      * @param  array{store_url: string, token: string}  $config
      * @param  array<string, mixed>  $address
      * @param  array<string, mixed>  $customer

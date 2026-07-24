@@ -1034,6 +1034,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
+        // AliExpress receipt address → fill missing Shopify shipping + customer address.
+        $schedule->job(new \App\Jobs\SyncAliexpressAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncInventoryToAlibaba)
             ->everyFourHours()
             ->timezone('Asia/Kolkata')
@@ -1082,6 +1090,14 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('reverb-sync-tracking')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        // Reverb shipping address → fill missing Shopify shipping + customer address.
+        $schedule->job(new \App\Jobs\SyncReverbAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sync-address')
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
@@ -1137,6 +1153,14 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('newegg-sync-tracking')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        // Newegg ShipTo / buyer → fill missing Shopify shipping + customer address.
+        $schedule->job(new \App\Jobs\SyncNeweggAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-address')
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 

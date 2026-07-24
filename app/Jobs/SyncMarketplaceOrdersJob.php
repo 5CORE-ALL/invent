@@ -84,12 +84,33 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 'marketplace' => $slug,
                 'output' => trim(Artisan::output()),
             ]);
+
+            // After order fetch/import, backfill missing Shopify addresses when enabled.
+            $this->queueAddressSyncIfEnabled($slug);
         } catch (\Throwable $e) {
             Log::error('SyncMarketplaceOrdersJob: failed', [
                 'marketplace' => $slug,
                 'error' => $e->getMessage(),
             ]);
             throw $e;
+        }
+    }
+
+    protected function queueAddressSyncIfEnabled(string $slug): void
+    {
+        try {
+            if ($slug === 'aliexpress' && \App\Services\MarketplaceManager\AliexpressOrderPushService::canAutoSyncAddress()) {
+                SyncAliexpressAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'reverb' && \App\Services\MarketplaceManager\ReverbOrderPushService::canAutoSyncAddress()) {
+                SyncReverbAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'newegg' && \App\Services\MarketplaceManager\NeweggOrderPushService::canAutoSyncAddress()) {
+                SyncNeweggAddressJob::dispatch(false, 25);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('SyncMarketplaceOrdersJob: could not queue address sync', [
+                'marketplace' => $slug,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }

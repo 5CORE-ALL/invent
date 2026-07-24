@@ -72,9 +72,10 @@
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'checked' : '' }}>
+                            <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import Newegg orders to Shopify</span>
                         </label>
+                        <div class="form-text ms-4">ON by default. New Newegg orders are queued to Shopify on the 15‑minute schedule.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
@@ -85,10 +86,17 @@
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="order[push_tracking_to_newegg]" value="1" {{ ($settings['order']['push_tracking_to_newegg'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Push Shopify tracking numbers to Newegg</span>
+                            <input class="form-check-input" type="checkbox" name="order[sync_address_to_shopify]" value="1" {{ ($settings['order']['sync_address_to_shopify'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically sync Newegg customer / shipping address to Shopify</span>
                         </label>
-                        <div class="form-text ms-4">When on, a 15‑minute job reads Shopify fulfillments (after you download a label) and marks the order shipped on Newegg. You can also push per order from the order detail page.</div>
+                        <div class="form-text ms-4">ON by default. Every 15 minutes the app fills missing Shopify shipping/billing/customer address from Newegg — no manual Pull needed.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[push_tracking_to_newegg]" value="1" {{ ($settings['order']['push_tracking_to_newegg'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically push Shopify tracking numbers to Newegg</span>
+                        </label>
+                        <div class="form-text ms-4">ON by default. Every 15 minutes the app reads Shopify fulfillments (after you print/download a label) and ships the order on Newegg — no manual push needed. You can still push per order from the order detail page.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
