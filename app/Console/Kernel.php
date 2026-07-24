@@ -21,6 +21,7 @@ use App\Console\Commands\DebugEbaySkuMetricsCommand;
 use App\Console\Commands\FetchTopDawgData;
 use App\Console\Commands\SyncTopDawgAll;
 use App\Console\Commands\FetchMacyProducts;
+use App\Console\Commands\SyncPurchasingPowerCommand;
 use App\Console\Commands\FetchWayfairData;
 use App\Console\Commands\SyncFbMarketplaceSheet;
 use App\Console\Commands\SyncFbShopSheet;
@@ -55,6 +56,7 @@ class Kernel extends ConsoleKernel
         SyncTopDawgAll::class,
         \App\Console\Commands\ProcessPendingReverbOrders::class,
         FetchMacyProducts::class,
+        SyncPurchasingPowerCommand::class,
         FetchWayfairData::class,
         SyncFbMarketplaceSheet::class,
         SyncFbShopSheet::class,
@@ -1130,6 +1132,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
+        // Shopify label/tracking → Newegg Ship Order (settings-gated).
+        $schedule->job(new \App\Jobs\SyncNeweggTrackingJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('newegg-sync-tracking')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         $schedule->command('newegg:sync-link-map')
             ->hourly()
             ->timezone('Asia/Kolkata')
@@ -1154,6 +1164,18 @@ class Kernel extends ConsoleKernel
             ->everyFiveMinutes()
             ->name('fetch-macy-products')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_FIVE)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | PURCHASING POWER (MCM OF21 prices/stock + OR11 orders)
+        |--------------------------------------------------------------------------
+        */
+        $ist($schedule->command('purchasing-power:sync --days=60')
+            ->everyFifteenMinutes()
+            ->name('purchasing-power-sync')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
             ->runInBackground()
             ->appendOutputTo($log));
 

@@ -83,6 +83,13 @@
                         </label>
                         <div class="form-text ms-4">When on, unpaid / payment-pending Newegg orders stay in our DB and are not queued or manually pushed to Shopify. Turn this off to import unpaid orders.</div>
                     </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[push_tracking_to_newegg]" value="1" {{ ($settings['order']['push_tracking_to_newegg'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Push Shopify tracking numbers to Newegg</span>
+                        </label>
+                        <div class="form-text ms-4">When on, a 15‑minute job reads Shopify fulfillments (after you download a label) and marks the order shipped on Newegg. You can also push per order from the order detail page.</div>
+                    </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
                         <select class="form-select form-select-sm" name="order[shopify_store]" style="max-width: 400px;">
@@ -147,6 +154,9 @@
             <button type="button" class="btn btn-outline-secondary ms-2" id="btn-sync-inventory-now">
                 <i class="ri-refresh-line"></i> Sync inventory now
             </button>
+            <button type="button" class="btn btn-outline-warning ms-2" id="btn-sync-tracking-now">
+                <i class="ri-truck-line"></i> Sync tracking now
+            </button>
             <span id="save-status" class="ms-2 small"></span>
         </form>
     </div>
@@ -208,6 +218,38 @@ document.getElementById('btn-sync-inventory-now')?.addEventListener('click', fun
     })
     .catch(function () {
         status.textContent = 'Sync request failed (network). Check that the marketplace-manager queue worker is running.';
+        status.className = 'ms-2 small text-danger';
+    })
+    .finally(function () { btn.disabled = false; });
+});
+
+document.getElementById('btn-sync-tracking-now')?.addEventListener('click', function () {
+    var btn = this;
+    var status = document.getElementById('save-status');
+    btn.disabled = true;
+    status.textContent = 'Queueing tracking sync…';
+    status.className = 'ms-2 small text-muted';
+    fetch('{{ route('marketplace.manager.newegg.sync.tracking') }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) {
+        return r.json().then(function (data) {
+            return { ok: r.ok, data: data };
+        }).catch(function () {
+            return { ok: false, data: { message: 'Server returned non-JSON.' } };
+        });
+    })
+    .then(function (res) {
+        var data = res.data || {};
+        status.textContent = data.message || (res.ok ? 'Queued.' : 'Failed');
+        status.className = 'ms-2 small ' + (res.ok && data.success !== false ? 'text-success' : 'text-danger');
+    })
+    .catch(function () {
+        status.textContent = 'Tracking sync request failed (network).';
         status.className = 'ms-2 small text-danger';
     })
     .finally(function () { btn.disabled = false; });

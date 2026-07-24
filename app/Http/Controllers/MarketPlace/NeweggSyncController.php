@@ -17,6 +17,7 @@ use App\Services\MarketplaceManager\NeweggLiveListingsService;
 use App\Services\MarketplaceManager\NeweggOrderDetailService;
 use App\Services\MarketplaceManager\NeweggOrderPushService;
 use App\Services\MarketplaceManager\NeweggOrderSyncService;
+use App\Services\MarketplaceManager\NeweggTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
@@ -734,6 +735,47 @@ class NeweggSyncController extends Controller
         ]);
     }
 
+    /**
+     * Push Shopify fulfillment tracking number to Newegg (Ship Order).
+     */
+    public function pushTrackingToNewegg(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('newegg')) {
+            return response()->json(['success' => false, 'message' => 'Newegg not connected.']);
+        }
+
+        $line = NeweggOrderMetric::query()->findOrFail($id);
+        $result = app(NeweggTrackingSyncService::class)->pushTrackingForOrder($line);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'skipped' => ! empty($result['skipped']),
+            'action' => $result['action'] ?? null,
+            'message' => $result['message'] ?? 'Tracking push finished.',
+            'shopify_tracking' => $result['shopify_tracking'] ?? null,
+            'shopify_carrier' => $result['shopify_carrier'] ?? null,
+            'ship_carrier' => $result['ship_carrier'] ?? null,
+        ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    /**
+     * Bulk push Shopify tracking → Newegg for linked orders.
+     */
+    public function syncTrackingNow(): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('newegg')) {
+            return response()->json(['success' => false, 'message' => 'Newegg not connected.']);
+        }
+
+        \App\Jobs\SyncNeweggTrackingJob::dispatch(false);
+
+        return response()->json([
+            'success' => true,
+            'queued' => true,
+            'message' => 'Tracking sync queued. It reads Shopify fulfillments and ships orders on Newegg.',
+        ]);
+    }
+
     public function fetchOrders(Request $request): JsonResponse
     {
         @set_time_limit(0);
@@ -1060,6 +1102,7 @@ class NeweggSyncController extends Controller
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
+            'push_tracking_to_newegg',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_newegg', 'sync_title', 'sync_images',

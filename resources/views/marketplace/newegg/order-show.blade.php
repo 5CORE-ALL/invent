@@ -53,6 +53,11 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-ae-order" data-id="{{ $line->id }}">
                         <i class="ri-download-cloud-line"></i> Pull from Newegg
                     </button>
+                    @if(!empty($shopify['shopify_order_id']))
+                        <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-newegg" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on Newegg">
+                            <i class="ri-truck-line"></i> Push tracking to Newegg
+                        </button>
+                    @endif
                 @endif
             </div>
         </div>
@@ -60,7 +65,8 @@
         @include('marketplace.newegg._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
-            <strong>Read-only view.</strong> <strong>Pull from Newegg</strong> refreshes shipping/buyer details and, if this order is already on Shopify, updates the Shopify shipping &amp; billing address.
+            <strong>Pull from Newegg</strong> refreshes shipping/buyer details and, if this order is already on Shopify, updates the Shopify address.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Newegg</strong> so Newegg is marked shipped with that tracking number.
         </div>
 
         @if($aeLiveError ?? null)
@@ -126,7 +132,14 @@
         </div>
 
         <div class="card mb-3">
-            <div class="card-header">Shipment information</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Shipment information</span>
+                @if($connected && !empty($shopify['shopify_order_id']))
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="btn-push-tracking-newegg-inline" data-id="{{ $line->id }}">
+                        <i class="ri-truck-line"></i> Push Shopify tracking
+                    </button>
+                @endif
+            </div>
             <div class="card-body p-0">
                 @include('marketplace.newegg._detail-table', ['showEmpty' => true, 'rows' => [
                     'Shipping time' => !empty($shipment['shipped_at']) ? \Carbon\Carbon::parse($shipment['shipped_at'])->format('M d, Y H:i') : null,
@@ -136,6 +149,11 @@
                     'Status message' => $shipment['status_message'] ?? null,
                 ]])
             </div>
+            @if($connected && !empty($shopify['shopify_order_id']) && empty($shipment['tracking']))
+                <div class="card-footer small text-muted">
+                    No tracking on Newegg yet. After Shopify shows a tracking number from your label, click <strong>Push Shopify tracking</strong>.
+                </div>
+            @endif
         </div>
 
         <div class="row g-3 mb-3">
@@ -366,6 +384,39 @@ document.getElementById('btn-pull-ae-order')?.addEventListener('click', function
         btn.disabled = false;
         btn.innerHTML = '<i class="ri-download-cloud-line"></i> Pull from Newegg';
     });
+});
+
+function pushTrackingToNewegg(btn) {
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Read the Shopify tracking number for this order and mark it shipped on Newegg?')) return;
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Pushing…';
+    fetch('{{ url('marketplace/newegg/orders') }}/' + id + '/push-tracking', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (res) {
+        alert((res.data && res.data.message) || (res.ok ? 'Done' : 'Failed'));
+        if (res.ok && res.data && res.data.success) location.reload();
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    });
+}
+
+document.getElementById('btn-push-tracking-newegg')?.addEventListener('click', function () {
+    pushTrackingToNewegg(this);
+});
+document.getElementById('btn-push-tracking-newegg-inline')?.addEventListener('click', function () {
+    pushTrackingToNewegg(this);
 });
 
 document.getElementById('btn-dry-run-shopify')?.addEventListener('click', function () {

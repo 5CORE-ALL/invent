@@ -563,6 +563,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/newegg/fetch-orders', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'fetchOrders'])->name('newegg.fetch.orders');
         Route::post('/newegg/sync-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncInventoryNow'])->name('newegg.sync.inventory');
         Route::post('/newegg/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncMismatchInventoryNow'])->name('newegg.sync.mismatch.inventory');
+        Route::post('/newegg/sync-tracking', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncTrackingNow'])->name('newegg.sync.tracking');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
             ->where('marketplace', 'aliexpress|alibaba|reverb|newegg');

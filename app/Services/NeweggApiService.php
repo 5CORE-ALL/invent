@@ -212,6 +212,150 @@ class NeweggApiService
         return filled($this->sellerId) && filled($this->apiKey) && filled($this->secretKey);
     }
 
+    public function getSellerId(): ?string
+    {
+        return filled($this->sellerId) ? (string) $this->sellerId : null;
+    }
+
+    /**
+     * Ship Order (Action 2) — mark SBS order shipped with tracking.
+     *   PUT /marketplace/ordermgmt/orderstatus/orders/{ordernumber}?sellerid=XXXX&version=304
+     *
+     * @param  list<array{seller_part_number: string, quantity: int, newegg_item_number?: string|null}>  $items
+     * @return array{success: bool, message: string, order_status?: string|null, blocked_by_cloudflare?: bool, raw?: string|null}
+     */
+    public function shipOrder(
+        string $orderNumber,
+        string $trackingNumber,
+        string $shipCarrier,
+        string $shipService,
+        array $items
+    ): array {
+        $orderNumber = trim($orderNumber);
+        $trackingNumber = trim($trackingNumber);
+        $shipCarrier = trim($shipCarrier);
+        $shipService = trim($shipService);
+        $sellerId = $this->getSellerId();
+
+        if ($orderNumber === '' || $trackingNumber === '' || $sellerId === null) {
+            return [
+                'success' => false,
+                'message' => 'Order number, tracking number, and seller ID are required.',
+            ];
+        }
+
+        if ($shipCarrier === '') {
+            $shipCarrier = 'Other Carrier';
+        }
+        if ($shipService === '') {
+            $shipService = 'Other Service';
+        }
+
+        $packageItems = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = trim((string) ($item['seller_part_number'] ?? ''));
+            $qty = max(1, (int) ($item['quantity'] ?? 1));
+            if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+                continue;
+            }
+            $row = [
+                'SellerPartNumber' => $sku,
+                'ShippedQty' => (string) $qty,
+            ];
+            $neItem = trim((string) ($item['newegg_item_number'] ?? ''));
+            if ($neItem !== '') {
+                $row['NeweggItemNumber'] = $neItem;
+            }
+            $packageItems[] = $row;
+        }
+
+        if ($packageItems === []) {
+            return [
+                'success' => false,
+                'message' => 'No shippable Newegg line items (Seller Part #) found for this order.',
+            ];
+        }
+
+        $itemList = count($packageItems) === 1
+            ? ['Item' => $packageItems[0]]
+            : ['Item' => $packageItems];
+
+        $body = [
+            'Action' => '2',
+            'Value' => [
+                'Shipment' => [
+                    'Header' => [
+                        'SellerID' => $sellerId,
+                        'SONumber' => $orderNumber,
+                    ],
+                    'PackageList' => [
+                        'Package' => [[
+                            'TrackingNumber' => $trackingNumber,
+                            'ShipCarrier' => $shipCarrier,
+                            'ShipService' => $shipService,
+                            'ItemList' => $itemList,
+                        ]],
+                    ],
+                ],
+            ],
+        ];
+
+        $res = $this->request(
+            'PUT',
+            '/marketplace/ordermgmt/orderstatus/orders/'.$orderNumber,
+            ['version' => '304'],
+            $body
+        );
+
+        if (! empty($res['blocked_by_cloudflare'])) {
+            return [
+                'success' => false,
+                'message' => 'Blocked by Cloudflare',
+                'blocked_by_cloudflare' => true,
+                'raw' => $res['raw'] ?? null,
+            ];
+        }
+
+        $json = is_array($res['json'] ?? null) ? $res['json'] : null;
+        $isSuccess = false;
+        if (is_array($json)) {
+            $flag = $json['IsSuccess'] ?? data_get($json, 'ResponseBody.IsSuccess');
+            $isSuccess = $flag === true || $flag === 'true' || $flag === 1 || $flag === '1';
+            $failCount = (int) (data_get($json, 'PackageProcessingSummary.FailCount') ?? 0);
+            if ($failCount > 0) {
+                $isSuccess = false;
+            }
+        }
+
+        if (! empty($res['ok']) && $isSuccess) {
+            return [
+                'success' => true,
+                'message' => 'Newegg order marked shipped.',
+                'order_status' => (string) (data_get($json, 'Result.OrderStatus') ?? ''),
+                'raw' => $res['raw'] ?? null,
+            ];
+        }
+
+        $error = $this->extractItemError($res);
+        if ($error === '' && is_array($json)) {
+            $code = (string) (data_get($json, '0.Code') ?? data_get($json, 'Errors.Error.Code') ?? '');
+            $msg = (string) (data_get($json, '0.Message') ?? data_get($json, 'Errors.Error.Message') ?? '');
+            $error = trim($code.($msg !== '' ? ': '.$msg : ''));
+        }
+        if ($error === '') {
+            $error = 'HTTP '.($res['status'] ?? 0).': '.mb_substr((string) ($res['raw'] ?? ''), 0, 300);
+        }
+
+        return [
+            'success' => false,
+            'message' => $error,
+            'raw' => $res['raw'] ?? null,
+        ];
+    }
+
     /**
      * Update inventory for one Seller Part # (USA B2C contentmgmt).
      *   PUT /marketplace/contentmgmt/item/inventoryandprice?sellerid=XXXX

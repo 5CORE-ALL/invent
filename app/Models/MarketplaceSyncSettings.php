@@ -128,9 +128,10 @@ class MarketplaceSyncSettings extends Model
                 'auto_import_to_shopify' => false,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
-                // Shopify label/tracking → declare shipment on AliExpress / Reverb.
+                // Shopify label/tracking → declare shipment on AliExpress / Reverb / Newegg.
                 'push_tracking_to_aliexpress' => false,
                 'push_tracking_to_reverb' => false,
+                'push_tracking_to_newegg' => false,
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
