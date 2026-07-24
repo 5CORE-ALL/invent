@@ -437,6 +437,28 @@ class EbayController extends Controller
         return response()->json(['success' => true, 'rule' => $settings]);
     }
 
+    /**
+     * CVR-based SPRICE multipliers — shared for ebay 1/2/3 tabulator views.
+     * Stored under key `ebay_sprice_cvr` in ebay_sbid_rules.
+     * CVR ≤ low → ×down_mult; CVR > high → ×up_mult.
+     */
+    public function getSpriceCvrMultRule()
+    {
+        return response()->json(\App\Support\SpriceCvrMultRule::settings());
+    }
+
+    public function saveSpriceCvrMultRule(Request $request)
+    {
+        $settings = \App\Support\SpriceCvrMultRule::sanitize($request->all());
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => \App\Support\SpriceCvrMultRule::KEY],
+            ['rule' => json_encode($settings), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $settings]);
+    }
+
        public function ebayViewData(Request $request)
     {
         return view("market-places.ebay_pricing_data");

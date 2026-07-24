@@ -368,6 +368,25 @@
                         <i class="fas fa-eye me-1"></i>Sbid (Views)
                     </button>
 
+                    {{-- Sprice×CVR — Apply SPRICE × 0.99 when CVR≤7, ×1.01 when CVR>13; gear edits thresholds --}}
+                    <div class="d-inline-flex align-items-center gap-1 pricing-filter-item p-1 border rounded"
+                        id="sprice-cvr-controls"
+                        style="background: #ffc107;"
+                        title="Adjust SPRICE by CVR: ≤7% → ×0.99, &gt;13% → ×1.01. Selected rows, or all visible eligible. Gear edits rule (shared).">
+                        <button type="button" id="apply-sprice-cvr-btn"
+                            class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
+                            style="background: transparent;">
+                            <i class="fas fa-percentage"></i> <span id="sprice-cvr-btn-label">Sprice×CVR</span>
+                        </button>
+                        <button type="button" id="open-sprice-cvr-modal-btn"
+                            class="btn btn-sm border-0 py-0 px-1 text-dark"
+                            style="background: transparent;"
+                            data-bs-toggle="modal" data-bs-target="#spriceCvrRuleModal"
+                            title="Edit CVR SPRICE multipliers (saved for everyone)">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                    </div>
+
                     {{-- Target ROI% bulk control — back-solves SPRICE so SNROI (Amazon NROI formula) = Target. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
@@ -713,6 +732,57 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="sbid-views-save-btn">
+                        <i class="fas fa-save me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="spriceCvrRuleModal" tabindex="-1" aria-labelledby="spriceCvrRuleModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background:#ffc107;">
+                    <h5 class="modal-title text-dark" id="spriceCvrRuleModalLabel">
+                        <i class="fas fa-percentage me-2"></i>Sprice × CVR Rule
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Adjusts existing <strong>SPRICE</strong> (falls back to eBay Price) by row CVR%.
+                        Shared across eBay 1 / 2 / 3.
+                    </p>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label fw-bold small" for="sprice-cvr-low-input">Low CVR ≤</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="sprice-cvr-low-input" class="form-control text-end" value="7" step="0.1" min="0" max="100">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small" for="sprice-cvr-down-input">→ Down ×</label>
+                            <input type="number" id="sprice-cvr-down-input" class="form-control form-control-sm text-end" value="0.99" step="0.01" min="0.01" max="2">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small" for="sprice-cvr-high-input">High CVR &gt;</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="sprice-cvr-high-input" class="form-control text-end" value="13" step="0.1" min="0" max="100">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small" for="sprice-cvr-up-input">→ Up ×</label>
+                            <input type="number" id="sprice-cvr-up-input" class="form-control form-control-sm text-end" value="1.01" step="0.01" min="0.01" max="2">
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Default: CVR ≤7 → ×0.99, CVR &gt;13 → ×1.01. Middle band unchanged.</div>
+                    <div id="sprice-cvr-modal-status" class="small mt-2 text-muted"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="sprice-cvr-save-btn">
                         <i class="fas fa-save me-1"></i>Save
                     </button>
                 </div>
@@ -2244,6 +2314,168 @@
                 return;
             }
             clearSpriceForSelected();
+        });
+
+        // Sprice × CVR — shared via /ebay/sprice-cvr-rule. ≤low → ×down, >high → ×up.
+        let spriceCvrRule = { low_cvr: 7, high_cvr: 13, down_mult: 0.99, up_mult: 1.01 };
+        const SPRICE_CVR_URL = @json(url('/ebay/sprice-cvr-rule'));
+
+        function formatCvrMult(v) {
+            const n = Number(v);
+            if (!isFinite(n)) return '0';
+            return String(+n.toFixed(4));
+        }
+
+        function refreshSpriceCvrUi() {
+            const r = spriceCvrRule;
+            const label = 'S×' + formatCvrMult(r.down_mult) + '/' + formatCvrMult(r.up_mult);
+            $('#sprice-cvr-btn-label').text(label);
+            $('#sprice-cvr-low-input').val(r.low_cvr);
+            $('#sprice-cvr-high-input').val(r.high_cvr);
+            $('#sprice-cvr-down-input').val(formatCvrMult(r.down_mult));
+            $('#sprice-cvr-up-input').val(formatCvrMult(r.up_mult));
+            $('#apply-sprice-cvr-btn').attr('title',
+                'CVR ≤' + r.low_cvr + '% → SPRICE × ' + formatCvrMult(r.down_mult) +
+                '; CVR >' + r.high_cvr + '% → SPRICE × ' + formatCvrMult(r.up_mult));
+        }
+
+        function loadSpriceCvrRule() {
+            $.ajax({
+                url: SPRICE_CVR_URL,
+                method: 'GET',
+                success: function(resp) {
+                    if (resp && typeof resp === 'object') {
+                        spriceCvrRule = {
+                            low_cvr: parseFloat(resp.low_cvr) || 7,
+                            high_cvr: parseFloat(resp.high_cvr) || 13,
+                            down_mult: parseFloat(resp.down_mult) || 0.99,
+                            up_mult: parseFloat(resp.up_mult) || 1.01
+                        };
+                    }
+                    refreshSpriceCvrUi();
+                },
+                error: function() { refreshSpriceCvrUi(); }
+            });
+        }
+
+        function saveSpriceCvrRuleFromModal() {
+            const payload = {
+                low_cvr: parseFloat(String($('#sprice-cvr-low-input').val()).replace(',', '.')),
+                high_cvr: parseFloat(String($('#sprice-cvr-high-input').val()).replace(',', '.')),
+                down_mult: parseFloat(String($('#sprice-cvr-down-input').val()).replace(',', '.')),
+                up_mult: parseFloat(String($('#sprice-cvr-up-input').val()).replace(',', '.'))
+            };
+            if (!isFinite(payload.low_cvr) || !isFinite(payload.high_cvr) ||
+                !isFinite(payload.down_mult) || !isFinite(payload.up_mult)) {
+                $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
+                    .text('Enter valid numbers for all fields');
+                return;
+            }
+            const $btn = $('#sprice-cvr-save-btn');
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
+            $.ajax({
+                url: SPRICE_CVR_URL,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: payload,
+                success: function(resp) {
+                    if (resp && resp.rule) spriceCvrRule = resp.rule;
+                    refreshSpriceCvrUi();
+                    $('#sprice-cvr-modal-status').removeClass('text-danger').addClass('text-success').text('Saved');
+                    showToast('Sprice × CVR rule saved', 'success');
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to save';
+                    $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger').text(msg);
+                    showToast(msg, 'error');
+                },
+                complete: function() { $btn.prop('disabled', false).html(btnHtml); }
+            });
+        }
+
+        loadSpriceCvrRule();
+        $('#spriceCvrRuleModal').on('show.bs.modal', function() {
+            refreshSpriceCvrUi();
+            $('#sprice-cvr-modal-status').removeClass('text-danger text-success').addClass('text-muted').text('');
+        });
+        $('#sprice-cvr-save-btn').on('click', saveSpriceCvrRuleFromModal);
+
+        $('#apply-sprice-cvr-btn').on('click', function() {
+            const $btn = $(this);
+            const rule = spriceCvrRule;
+            const btnHtml = '<i class="fas fa-percentage"></i> <span id="sprice-cvr-btn-label">' +
+                $('#sprice-cvr-btn-label').text() + '</span>';
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+
+            const useSelection = selectedSkus.size > 0;
+            const rowsToProcess = [];
+            const seen = new Set();
+
+            table.getRows('active').forEach(function(r) {
+                const rd = r.getData();
+                if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                const sku = rd['(Child) sku'];
+                if (!sku || seen.has(sku)) return;
+                if (useSelection && !selectedSkus.has(sku)) return;
+
+                const cvr = parseFloat(rd.SCVR) || 0;
+                let mult = null;
+                if (cvr <= rule.low_cvr) mult = rule.down_mult;
+                else if (cvr > rule.high_cvr) mult = rule.up_mult;
+                else return;
+
+                const existing = parseFloat(rd.SPRICE) || 0;
+                const ebayPrice = parseFloat(rd['eBay Price']) || 0;
+                const base = existing > 0 ? existing : ebayPrice;
+                if (base <= 0) return;
+
+                const sprice = +Number(base * mult).toFixed(2);
+                if (!isFinite(sprice) || sprice <= 0) return;
+                seen.add(sku);
+                rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
+            });
+
+            if (rowsToProcess.length === 0) {
+                showToast(useSelection
+                    ? 'No selected rows with CVR ≤' + rule.low_cvr + '% or >' + rule.high_cvr + '% and a price base'
+                    : 'No visible rows eligible (CVR ≤' + rule.low_cvr + '% or >' + rule.high_cvr + '% with SPRICE/Price)',
+                    'error');
+                return;
+            }
+
+            const scope = useSelection ? 'selected' : 'visible eligible';
+            if (!confirm(
+                'Adjust SPRICE by CVR for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
+                'CVR ≤' + rule.low_cvr + '% → ×' + formatCvrMult(rule.down_mult) + '\n' +
+                'CVR >' + rule.high_cvr + '% → ×' + formatCvrMult(rule.up_mult)
+            )) {
+                return;
+            }
+
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let successCount = 0;
+            let errorCount = 0;
+            const total = rowsToProcess.length;
+            const finish = function() {
+                if (successCount + errorCount !== total) return;
+                $btn.prop('disabled', false).html(btnHtml);
+                refreshSpriceCvrUi();
+                if (errorCount === 0) {
+                    showToast('Sprice × CVR saved for ' + successCount + ' SKU(s)', 'success');
+                } else {
+                    showToast('Saved ' + successCount + ' of ' + total + ' (' + errorCount + ' failed)', 'error');
+                }
+            };
+
+            rowsToProcess.forEach(function(item) {
+                saveSpriceWithRetry(item.sku, item.sprice, item.row)
+                    .then(function() { successCount++; finish(); })
+                    .catch(function() { errorCount++; finish(); });
+            });
         });
 
         /*

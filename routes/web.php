@@ -4917,6 +4917,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-one/sbid-slab-rule', [EbayController::class, 'saveSbidSlabRule'])->name('ebay-one.sbid-slab-rule.save');
     Route::get('/ebay-one/lmp-mult-rule', [EbayController::class, 'getLmpMultRule'])->name('ebay-one.lmp-mult-rule.get');
     Route::post('/ebay-one/lmp-mult-rule', [EbayController::class, 'saveLmpMultRule'])->name('ebay-one.lmp-mult-rule.save');
+    Route::get('/ebay/sprice-cvr-rule', [EbayController::class, 'getSpriceCvrMultRule'])->name('ebay.sprice-cvr-rule.get');
+    Route::post('/ebay/sprice-cvr-rule', [EbayController::class, 'saveSpriceCvrMultRule'])->name('ebay.sprice-cvr-rule.save');
     Route::post('/ebay-clear-sprice', [EbayController::class, 'clearEbaySprice']);
     Route::post('/ebay/save-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save-sprice');
 
