@@ -2754,6 +2754,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
@@ -2802,6 +2803,7 @@
                         field: "lmp_diff_pct",
                         hozAlign: "center",
                         width: 70,
+                        visible: true,
                         headerSortStartingDir: "desc",
                         sorter: function(a, b, aRow, bRow) {
                             const calc = function(rd) {
@@ -3239,6 +3241,7 @@
                         hozAlign: "left",
                         headerHozAlign: "center",
                         width: 220,
+                        visible: true,
                         headerSort: false,
                         cssClass: "linked-sku-col",
                         formatter: linkedLmpSkuFormatter,
@@ -3259,6 +3262,7 @@
                         hozAlign: "center",
                         headerHozAlign: "center",
                         width: 52,
+                        visible: true,
                         headerSort: false,
                         cssClass: "linked-sku-add-col",
                         formatter: linkedLmpSkuAddFormatter,
@@ -4171,6 +4175,7 @@
                 });
                 // Mark ship-column migration done so later toggles are honored.
                 visibility.ship_col_migrated = true;
+                visibility.lmp_col_migrated = true;
 
                 fetch(TTP_CFG.columnSet, {
                     method: 'POST',
@@ -4232,6 +4237,21 @@
                                     shipCol.show();
                                 }
                             }
+                        } catch (e) {}
+                        // LMP suite (LMP / Diff / Sku Link) — same on TT1 and TT2.
+                        // One-time migrate: tiktok2_pricing prefs previously hid lmp_price.
+                        try {
+                            const v = visibility && typeof visibility === 'object' ? visibility : {};
+                            const lmpMigrated = v.lmp_col_migrated === true || v.lmp_col_migrated === 1 ||
+                                v.lmp_col_migrated === '1' || v.lmp_col_migrated === 'true';
+                            ['lmp_price', 'lmp_diff_pct', 'linked_lmp_skus', 'linked_lmp_sku_add'].forEach(function(field) {
+                                const col = table.getColumn(field);
+                                if (!col) return;
+                                const on = v[field] === true || v[field] === 1 || v[field] === '1' || v[field] === 'true';
+                                if (!lmpMigrated || on || v[field] === undefined) {
+                                    col.show();
+                                }
+                            });
                         } catch (e) {}
                         // Checkbox column always first & visible
                         try {
