@@ -5,13 +5,13 @@ namespace App\Support;
 use Illuminate\Support\Facades\DB;
 
 /**
- * CVR-based SPRICE multipliers for ebay 1/2/3 tabulator views.
+ * CVR-based SPRICE multipliers for Shopify B2C, Temu, Amazon, and ebay 1/2/3 tabulator views.
  *
  *   CVR ≤ low_cvr  → SPRICE = base × down_mult  (default ≤7 → ×0.99)
  *   CVR > high_cvr → SPRICE = base × up_mult    (default >13 → ×1.01)
  *   otherwise      → skip (no change)
  *
- * Stored (shared across users & ebay accounts) in ebay_sbid_rules under key ebay_sprice_cvr.
+ * Stored (shared across users & marketplaces) in ebay_sbid_rules under key ebay_sprice_cvr.
  */
 final class SpriceCvrMultRule
 {
