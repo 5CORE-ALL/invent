@@ -3,12 +3,11 @@
 namespace App\Services;
 
 use App\Models\TemuMetric;
-use App\Models\TemuRPricing;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Fetch temu.local.goods.recommendedprice.query and upsert into temu_r_pricing.
+ * Fetch temu.local.goods.recommendedprice.query and store into temu_metrics.recommended_base_price.
  */
 class TemuRecommendedPriceService
 {
@@ -20,24 +19,39 @@ class TemuRecommendedPriceService
      * Call recommended-price API for a batch of goods IDs.
      *
      * @param  array<int, int|string>  $goodsIds
-     * @return array{ok: bool, goodsList: array, error_code: mixed, error_msg: ?string}
+     * @param  array<string, mixed>  $extra  Optional request overrides (language, recommendedPriceType, omit flags)
+     * @return array{ok: bool, goodsList: array, error_code: mixed, error_msg: ?string, request: array}
      */
-    public function fetchBatch(array $goodsIds, int $recommendedPriceType = 1, string $language = 'en'): array
+    public function fetchBatch(array $goodsIds, int $recommendedPriceType = 1, string $language = 'en', array $extra = []): array
     {
         $goodsIdList = array_values(array_unique(array_map(static function ($id) {
             return is_numeric($id) ? (int) $id : $id;
         }, $goodsIds)));
 
         if ($goodsIdList === []) {
-            return ['ok' => false, 'goodsList' => [], 'error_code' => null, 'error_msg' => 'Empty goodsIdList'];
+            return [
+                'ok' => false,
+                'goodsList' => [],
+                'error_code' => null,
+                'error_msg' => 'Empty goodsIdList',
+                'request' => [],
+            ];
         }
 
         $requestBody = [
             'type' => 'temu.local.goods.recommendedprice.query',
             'goodsIdList' => $goodsIdList,
-            'recommendedPriceType' => $recommendedPriceType,
-            'language' => $language,
         ];
+
+        $omitType = (bool) ($extra['omit_type'] ?? false);
+        $omitLang = (bool) ($extra['omit_language'] ?? false);
+
+        if (! $omitType) {
+            $requestBody['recommendedPriceType'] = $extra['recommendedPriceType'] ?? $recommendedPriceType;
+        }
+        if (! $omitLang && $language !== '') {
+            $requestBody['language'] = $extra['language'] ?? $language;
+        }
 
         $signed = $this->temuApiService->signRequest($requestBody);
         $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(60);
@@ -55,16 +69,21 @@ class TemuRecommendedPriceService
                     'goodsList' => [],
                     'error_code' => $data['errorCode'] ?? $response->status(),
                     'error_msg' => $data['errorMsg'] ?? ('HTTP '.$response->status()),
+                    'request' => $requestBody,
                 ];
             }
 
-            $goodsList = $data['result']['goodsList'] ?? [];
+            $goodsList = $data['result']['goodsList']
+                ?? $data['result']['openapiGoodsRecommendedPriceList']
+                ?? [];
 
             return [
                 'ok' => true,
                 'goodsList' => is_array($goodsList) ? $goodsList : [],
                 'error_code' => null,
                 'error_msg' => null,
+                'request' => $requestBody,
+                'raw_result_keys' => array_keys($data['result'] ?? []),
             ];
         } catch (\Throwable $e) {
             Log::error('TemuRecommendedPriceService::fetchBatch failed', ['error' => $e->getMessage()]);
@@ -74,16 +93,81 @@ class TemuRecommendedPriceService
                 'goodsList' => [],
                 'error_code' => null,
                 'error_msg' => $e->getMessage(),
+                'request' => $requestBody,
             ];
         }
     }
 
     /**
-     * Fetch all goods from temu_metrics and upsert recommended prices into temu_r_pricing.
+     * Probe a few request variants for one goods ID (for diagnosing 150010003 / permission errors).
      *
-     * @return array{total_goods: int, upserted: int, batches_ok: int, batches_fail: int}
+     * @return array<int, array{label: string, ok: bool, error_code: mixed, error_msg: ?string, sku_count: int}>
      */
-    public function fetchAndInsertAll(int $recommendedPriceType = 1, int $batchSize = 20): array
+    public function probe(string|int $goodsId): array
+    {
+        $variants = [
+            ['label' => 'type=1 + language=en', 'type' => 1, 'lang' => 'en', 'extra' => []],
+            ['label' => 'type=1 no language', 'type' => 1, 'lang' => '', 'extra' => ['omit_language' => true]],
+            ['label' => 'type=2 no language', 'type' => 2, 'lang' => '', 'extra' => ['omit_language' => true]],
+            ['label' => 'no type no language', 'type' => 1, 'lang' => '', 'extra' => ['omit_type' => true, 'omit_language' => true]],
+            ['label' => 'type=1 language=en-US', 'type' => 1, 'lang' => 'en-US', 'extra' => []],
+        ];
+
+        $out = [];
+        foreach ($variants as $v) {
+            $r = $this->fetchBatch([(int) $goodsId], (int) $v['type'], (string) $v['lang'], $v['extra']);
+            $skuCount = 0;
+            foreach ($r['goodsList'] as $g) {
+                $skuCount += count($g['skuList'] ?? []);
+            }
+            $out[] = [
+                'label' => $v['label'],
+                'ok' => $r['ok'],
+                'error_code' => $r['error_code'],
+                'error_msg' => $r['error_msg'],
+                'sku_count' => $skuCount,
+                'result_keys' => $r['raw_result_keys'] ?? [],
+            ];
+            usleep(200000);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Extract recommended amount from a sku row (flexible field names).
+     */
+    private function extractRecommendedAmount(array $skuRow): ?float
+    {
+        $candidates = [
+            $skuRow['recommendedSupplyPrice']['amount'] ?? null,
+            $skuRow['recommendedSupplyPrice']['val'] ?? null,
+            $skuRow['recommendSupplyPrice']['amount'] ?? null,
+            $skuRow['recommendedBasePrice']['amount'] ?? null,
+            $skuRow['recommendBasePrice']['amount'] ?? null,
+            $skuRow['recommendedPrice']['amount'] ?? null,
+            $skuRow['recommendedSupplyPrice'] ?? null,
+            $skuRow['recommendedBasePrice'] ?? null,
+        ];
+
+        foreach ($candidates as $amount) {
+            if (is_array($amount)) {
+                $amount = $amount['amount'] ?? $amount['val'] ?? null;
+            }
+            if ($amount !== null && is_numeric($amount)) {
+                return (float) $amount;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fetch all goods and update temu_metrics.recommended_base_price by sku_id.
+     *
+     * @return array{total_goods: int, upserted: int, batches_ok: int, batches_fail: int, last_error: ?string, empty_ok_batches: int}
+     */
+    public function fetchAndInsertAll(int $recommendedPriceType = 1, int $batchSize = 20, array $requestExtra = []): array
     {
         $goodsIds = TemuMetric::query()
             ->whereNotNull('goods_id')
@@ -93,67 +177,70 @@ class TemuRecommendedPriceService
             ->values()
             ->all();
 
-        // sku_id / sku / base_price lookup by goods_id + sku_id
-        $metricsByGoods = TemuMetric::query()
-            ->whereIn('goods_id', $goodsIds)
-            ->get(['sku', 'sku_id', 'goods_id', 'base_price'])
-            ->groupBy(fn ($m) => (string) $m->goods_id);
-
         $chunks = array_chunk($goodsIds, max(1, $batchSize));
         $upserted = 0;
         $batchesOk = 0;
         $batchesFail = 0;
+        $emptyOk = 0;
+        $lastError = null;
 
         foreach ($chunks as $chunk) {
-            $result = $this->fetchBatch($chunk, $recommendedPriceType);
+            $result = $this->fetchBatch($chunk, $recommendedPriceType, 'en', $requestExtra);
             if (! $result['ok']) {
                 $batchesFail++;
+                $lastError = '['.($result['error_code'] ?? '?').'] '.($result['error_msg'] ?? 'unknown');
                 Log::warning('Temu recommended price batch failed', [
                     'error_code' => $result['error_code'],
                     'error_msg' => $result['error_msg'],
                     'goods_count' => count($chunk),
+                    'sample_goods' => $chunk[0] ?? null,
                 ]);
                 usleep(250000);
                 continue;
             }
 
             $batchesOk++;
+            $batchUpserts = 0;
+
             foreach ($result['goodsList'] as $goods) {
                 $goodsId = (string) ($goods['goodsId'] ?? '');
-                if ($goodsId === '') {
-                    continue;
-                }
-
-                $metricRows = $metricsByGoods->get($goodsId) ?? collect();
 
                 foreach ($goods['skuList'] ?? [] as $skuRow) {
                     $skuId = isset($skuRow['skuId']) ? (string) $skuRow['skuId'] : null;
-                    $amount = $skuRow['recommendedSupplyPrice']['amount']
-                        ?? $skuRow['recommendedSupplyPrice']['val']
-                        ?? null;
+                    $amount = $this->extractRecommendedAmount(is_array($skuRow) ? $skuRow : []);
 
-                    if ($skuId === null || $skuId === '' || $amount === null || ! is_numeric($amount)) {
+                    if ($skuId === null || $skuId === '' || $amount === null) {
                         continue;
                     }
 
-                    $metric = $metricRows->first(function ($m) use ($skuId) {
-                        return (string) $m->sku_id === $skuId;
-                    });
+                    $n = TemuMetric::where('sku_id', $skuId)->update([
+                        'recommended_base_price' => $amount,
+                    ]);
 
-                    TemuRPricing::updateOrCreate(
-                        ['sku_id' => $skuId],
-                        [
-                            'goods_id' => $goodsId,
-                            'sku' => $metric->sku ?? null,
-                            'current_base_price' => $metric->base_price ?? null,
-                            'recommended_base_price' => (float) $amount,
-                            'pricing_opportunity_type' => 'Recommended price (API)',
-                            'action' => 'api_sync',
-                            'date_created' => now(),
-                        ]
-                    );
-                    $upserted++;
+                    // Fallback: match by goods_id if sku_id row missing
+                    if (! $n && $goodsId !== '') {
+                        $n = TemuMetric::where('goods_id', $goodsId)
+                            ->where(function ($q) use ($skuId) {
+                                $q->whereNull('sku_id')->orWhere('sku_id', $skuId);
+                            })
+                            ->limit(1)
+                            ->update(['recommended_base_price' => $amount]);
+                    }
+
+                    if ($n) {
+                        $upserted += $n;
+                        $batchUpserts += $n;
+                    }
                 }
+            }
+
+            if ($batchUpserts === 0) {
+                $emptyOk++;
+                Log::info('Temu recommended price batch OK but empty', [
+                    'goods_count' => count($chunk),
+                    'result_keys' => $result['raw_result_keys'] ?? [],
+                    'goods_list_count' => count($result['goodsList']),
+                ]);
             }
 
             usleep(250000);
@@ -164,6 +251,8 @@ class TemuRecommendedPriceService
             'upserted' => $upserted,
             'batches_ok' => $batchesOk,
             'batches_fail' => $batchesFail,
+            'empty_ok_batches' => $emptyOk,
+            'last_error' => $lastError,
         ];
     }
 }
