@@ -21,12 +21,28 @@
         #bullet-master-table tbody tr:nth-child(even){ background:#f8fafc; }
         #bullet-master-table tbody tr:hover{ background:#e8f0fe; }
         .table-img-cell img { width:36px; height:36px; object-fit:cover; border-radius:4px; }
-        .preview-cell { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
+        #bullet-master-table th.bp-preview-col,
+        #bullet-master-table td.bp-preview-col {
+            width:100px; min-width:100px; max-width:100px;
+            text-align:center; white-space:nowrap;
+        }
+        .preview-pm-wrap { display:flex; align-items:center; justify-content:center; width:100%; }
+        .preview-magnify-btn {
+            flex-shrink:0; box-sizing:border-box; width:30px; height:30px; padding:0; margin:0;
+            border:none; border-radius:6px; background:#0d6efd; color:#fff; font-size:14px; line-height:0;
+            display:inline-grid; place-items:center; cursor:pointer;
+            box-shadow:0 1px 3px rgba(13,110,253,.4);
+        }
+        .preview-magnify-btn i,
+        .preview-magnify-btn i::before {
+            display:block; margin:0; padding:0; line-height:1; width:auto; height:auto;
+        }
+        .preview-magnify-btn:hover { background:#0b5ed7; color:#fff; }
         .action-buttons-cell { white-space:nowrap; vertical-align:middle!important; }
         .action-buttons-group { display:flex; align-items:center; gap:6px; }
         .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; }
-        .view-btn { background:#17a2b8; color:#fff; }
         .edit-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        .edit-ai-count { font-weight:700; color:#334155; white-space:pre; }
         .shopify-row-pull-btn { background:#f59e0b; color:#fff; padding:5px 8px; }
         /* Title Master–style horizontal marketplace cells */
         .marketplaces-cell { vertical-align:middle!important; }
@@ -127,9 +143,9 @@
                                         <div class="d-flex align-items-center gap-2"><span>SKU</span><span id="skuCountBp">(0)</span></div>
                                         <input type="text" id="skuSearchBp" class="th-sub mt-1" placeholder="Search SKU">
                                     </th>
-                                    <th>
-                                        <div class="th-caption">Current Bullets (Preview) <span id="previewCountBp">(0)</span></div>
-                                        <input type="text" id="previewSearchBp" class="th-sub" placeholder="Search preview">
+                                    <th class="bp-preview-col">
+                                        <div class="th-caption">Preview <span id="previewCountBp">(0)</span></div>
+                                        <input type="text" id="previewSearchBp" class="th-sub" placeholder="Filter">
                                     </th>
                                     <th>Action</th>
                                     <th title="eBay1–3, Macy's, Amazon, Temu1, Temu2, Reverb, Wayfair, Best Buy">
@@ -262,7 +278,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title" id="viewRowModalTitle"><i class="fas fa-eye me-2"></i>Bullet Points</h5>
+                    <h5 class="modal-title" id="viewRowModalTitle"><i class="fas fa-magnifying-glass me-2"></i>Bullet Points</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body" id="viewRowContent"></div>
@@ -669,11 +685,16 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="text-center"><input type="checkbox" class="form-check-input row-select-bp" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
             <td>${esc(r.Parent || sku)}</td>
             <td>${esc(sku)}</td>
-            <td class="preview-cell" title="${esc(preview || '')}">${esc(trunc(preview, 64))}</td>
+            <td class="bp-preview-col">
+                <div class="preview-pm-wrap">
+                    <button type="button" class="preview-magnify-btn" data-view="${esc(sku)}" title="${esc(preview || 'Open bullet preview')}" aria-label="Open bullet preview">
+                        <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </td>
             <td class="action-buttons-cell">
                 <div class="action-buttons-group">
-                    <button type="button" class="action-btn view-btn" data-view="${esc(sku)}" title="View Bullet Points" aria-label="View Bullet Points"><i class="fas fa-eye" aria-hidden="true"></i></button>
-                    <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}"><i class="fas fa-edit"></i> Edit</button>
+                    <button type="button" class="action-btn edit-btn" data-edit="${esc(sku)}" title="Edit" aria-label="Edit"><i class="fas fa-edit"></i></button>
                     <button type="button" class="action-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify bullets for this SKU"><i class="fas fa-download"></i></button>
                 </div>
             </td>
@@ -731,7 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function bindRowEvents(root = document) {
-        root.querySelectorAll('.view-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
+        root.querySelectorAll('.preview-magnify-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
         root.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         root.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         root.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
@@ -803,7 +824,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!row) return;
         const titleEl = document.getElementById('viewRowModalTitle');
         if (titleEl) {
-            titleEl.innerHTML = `<i class="fas fa-eye me-2" aria-hidden="true"></i>${esc('Bullet Points - ' + sku)}`;
+            titleEl.innerHTML = `<i class="fas fa-magnifying-glass me-2" aria-hidden="true"></i>${esc('Bullet Points - ' + sku)}`;
         }
         document.getElementById('viewRowContent').innerHTML = buildViewModalHtml(sku, row);
         if (viewRowModal) viewRowModal.show();
@@ -898,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('editModalAiFields').innerHTML = [1,2,3,4,5].map(i => `
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
-                    <label class="form-label mb-1">Bullet ${i} <span id="editAiCount${i}" class="text-muted">0 chars</span></label>
+                    <label class="form-label mb-1">Bullet ${i}<span id="editAiCount${i}" class="edit-ai-count">    0 chars</span></label>
                     <div class="btn-group btn-group-sm" role="group" aria-label="AI bullet actions">
                         <button type="button" class="btn btn-outline-secondary edit-ai-revert d-none" data-idx="${i}"><i class="fas fa-rotate-left"></i> Revert</button>
                         <button type="button" class="btn btn-outline-primary edit-ai-change" data-idx="${i}"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
@@ -925,7 +946,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const len = t.value.length;
                 const el = document.getElementById('editAiCount' + idx);
                 if (el) {
-                    el.textContent = `${len} chars`;
+                    el.textContent = `    ${len} chars`;
+                    el.classList.add('edit-ai-count');
                     el.classList.toggle('text-muted', len === 0);
                 }
             };
