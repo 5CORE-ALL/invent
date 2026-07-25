@@ -3,6 +3,7 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    @include('partials.parent-row-highlight')
     <style>
         .card.dh-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
         .card.dh-master-card .card-body { padding: 1.25rem 1.5rem; }
@@ -407,6 +408,7 @@
                     paginationSizeSelector: [25, 50, 100, 200],
                     placeholder: 'No products found',
                     selectableRows: true,
+                    rowFormatter: window.pmParentRowFormatter,
                     columns: [
                         {
                             formatter: 'rowSelection',

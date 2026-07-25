@@ -6,6 +6,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     @include('partials.marketplace-master-button-colors')
+    @include('partials.parent-row-highlight')
 
     <style>
         .card.bp-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
@@ -37,12 +38,20 @@
         .preview-magnify-btn i::before {
             display:block; margin:0; padding:0; line-height:1; width:auto; height:auto;
         }
-        .preview-magnify-btn:hover { background:#0b5ed7; color:#fff; }
+        #compositeHtmlPreview {
+            border:1px solid #e2e8f0; border-radius:10px; padding:1rem; background:#fff;
+            max-height:min(70vh,640px); overflow:auto;
+        }
+        #compositeSectionBadges .badge { font-size:10px; margin-right:4px; margin-bottom:4px; }
         .action-buttons-cell { white-space:nowrap; vertical-align:middle!important; }
         .action-buttons-group { display:flex; align-items:center; gap:6px; }
         .action-btn { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:500; display:inline-flex; align-items:center; gap:4px; }
         .edit-btn { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
-        .edit-ai-count { font-weight:700; color:#334155; white-space:pre; }
+        .edit-ai-count {
+            font-weight:700; color:#334155;
+            margin-left:2.5rem;
+            letter-spacing:0.02em;
+        }
         .shopify-row-pull-btn { background:#f59e0b; color:#fff; padding:5px 8px; }
         /* Title Master–style horizontal marketplace cells */
         .marketplaces-cell { vertical-align:middle!important; }
@@ -70,6 +79,43 @@
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         .ai-edit-panel { border:1px solid #dee2e6; border-radius:8px; padding:10px; background:#f8fafc; }
         #editRowModal { z-index: 1055; }
+        #editRowModal .modal-dialog {
+            position: fixed;
+            top: 0; right: 0; bottom: 0; left: auto;
+            margin: 0;
+            height: 100vh;
+            max-height: 100vh;
+            width: min(520px, 100vw);
+            max-width: min(520px, 100vw);
+            transform: none;
+        }
+        #editRowModal.show .modal-dialog { transform: none; }
+        #editRowModal .modal-content {
+            height: 100vh;
+            max-height: 100vh;
+            border: 0;
+            border-radius: 0;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -8px 0 24px rgba(15, 23, 42, 0.18);
+        }
+        #editRowModal .modal-header,
+        #editRowModal .modal-footer {
+            flex-shrink: 0;
+            padding: 0.65rem 1rem;
+        }
+        #editRowModal .modal-body {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 0.75rem 1rem;
+        }
+        #editRowModal .ai-edit-panel { padding: 8px; margin-bottom: 0.5rem !important; }
+        #editRowModal #editModalAiPromptDetails { min-height: 52px; }
+        #editRowModal .edit-ai-bullet { min-height: 58px; max-height: 90px; resize: vertical; }
+        #editRowModal #modalTitleLabel { font-size: 1rem !important; }
+        #editRowModal .modal-body .mb-3 { margin-bottom: 0.65rem !important; }
+        #editRowModal .modal-body .g-2 { --bs-gutter-y: 0.45rem; }
         .modal-backdrop.edit-row-backdrop { z-index: 1050; }
         #aiPromptRulesModal { z-index: 1075; }
         .modal-backdrop.ai-prompt-rules-backdrop { z-index: 1070; }
@@ -176,7 +222,7 @@
     </div>
 
     <div class="modal fade" id="editRowModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+        <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Bullet Points</h5>
@@ -184,40 +230,39 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
-                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-2" style="display:none;">
                         <i class="fas fa-layer-group me-1"></i>
                         <strong>Bulk Edit:</strong> Saving will update
                         <strong id="bulkEditCount">0</strong> selected SKU(s).
                     </div>
-                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                    <div id="bulkSkuListWrap" class="mb-2" style="display:none;">
                         <div class="small text-muted mb-1">Applying to SKUs:</div>
-                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:80px; overflow:auto;"></div>
                     </div>
-                    <div class="mb-3 border-bottom pb-2">
+                    <div class="mb-2 border-bottom pb-2">
                         <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
                             <div class="small text-muted text-uppercase fw-semibold">Title</div>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="editModalAiPromptRulesBtn">
                                 <i class="fas fa-sliders-h me-1"></i>AI Prompt Rules
                             </button>
                         </div>
-                        <div id="modalTitleLabel" class="fw-semibold fs-5 text-dark lh-sm"></div>
-                        <div class="small text-muted mt-2"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
-                        <div class="small text-muted mt-1"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
+                        <div id="modalTitleLabel" class="fw-semibold text-dark lh-sm"></div>
+                        <div class="small text-muted mt-1"><strong>Product:</strong> <span id="modalProductLabel"></span>
+                            · <strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     </div>
-                    <div class="ai-edit-panel mb-3">
+                    <div class="ai-edit-panel mb-2">
                         <div class="mb-2">
                             <label for="editModalAiPromptDetails" class="form-label mb-1">AI Prompt Details / Keywords</label>
-                            <textarea class="form-control" id="editModalAiPromptDetails" rows="3" placeholder="Add product details, keywords, material, size, use cases, customer benefits, or anything AI should include."></textarea>
+                            <textarea class="form-control form-control-sm" id="editModalAiPromptDetails" rows="2" placeholder="Add product details, keywords, material, size, use cases, customer benefits, or anything AI should include."></textarea>
                             <div class="form-text">Optional, but recommended when product name is short or unclear.</div>
                         </div>
-                        <div class="d-flex align-items-center gap-2 mb-2">
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
                             <button class="btn btn-primary btn-sm" id="editModalAiGenerateBtn"><i class="fas fa-wand-magic-sparkles"></i> AI Generate</button>
-                            <button class="btn btn-outline-primary btn-sm" id="editModalAiRegenerateBtn"><i class="fas fa-rotate"></i> Regenerate Existing Bullet Points with AI</button>
+                            <button class="btn btn-outline-primary btn-sm" id="editModalAiRegenerateBtn"><i class="fas fa-rotate"></i> Regenerate with AI</button>
                             <span id="editModalAiLoading" style="display:none;"><i class="fas fa-spinner fa-spin"></i> Generating...</span>
                         </div>
                         <div id="editModalAiFields" class="row g-2"></div>
                     </div>
-                    <div class="small text-muted">Edit bullet fields and save them to the product master. Empty slots are allowed.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -286,6 +331,30 @@
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="viewCopyAllBtn" title="Copy all text below to clipboard">
                         <i class="fas fa-copy me-1"></i> Copy all
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="compositePreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-magnifying-glass me-2"></i>HTML Preview</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="compositePreviewSubtitle" class="small text-muted mb-2"></div>
+                    <div id="compositeSectionBadges" class="mb-3"></div>
+                    <div id="compositeHtmlPreview">
+                        <div class="text-muted text-center py-4">Loading…</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="compositeCopyBtn">
+                        <i class="fas fa-copy me-1"></i> Copy HTML
                     </button>
                 </div>
             </div>
@@ -406,7 +475,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let bulkEditSkus = [];
     let navParent = null;
     let parentPlayback = null;
-    let editRowModal, aiPromptRulesModal, editBulletChangeModal, viewRowModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
+    let editRowModal, aiPromptRulesModal, editBulletChangeModal, viewRowModal, compositeModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
+    let lastCompositeHtml = '';
     let lastViewModalPlainText = '';
     let shopifyPullPollTimer = null;
     let shopifyPullSelectedSkus = null;
@@ -677,17 +747,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function buildRowHtml(r) {
         const sku = String(r.SKU || '');
-        const preview = r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ');
         const bp = r.bullet_points || {};
         const statuses = r.bullet_push_statuses || {};
         const checked = selectedSkus.has(sku) ? 'checked' : '';
-        return `<tr data-sku="${esc(sku)}">
+        const parentCls = (window.isPmParentSku && window.isPmParentSku(sku)) ? ' pm-parent-row' : '';
+        return `<tr class="${parentCls.trim()}" data-sku="${esc(sku)}">
             <td class="text-center"><input type="checkbox" class="form-check-input row-select-bp" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
             <td>${esc(r.Parent || sku)}</td>
             <td>${esc(sku)}</td>
             <td class="bp-preview-col">
                 <div class="preview-pm-wrap">
-                    <button type="button" class="preview-magnify-btn" data-view="${esc(sku)}" title="${esc(preview || 'Open bullet preview')}" aria-label="Open bullet preview">
+                    <button type="button" class="preview-magnify-btn" data-html-preview="${esc(sku)}" aria-label="Open HTML preview">
                         <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
                     </button>
                 </div>
@@ -752,7 +822,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function bindRowEvents(root = document) {
-        root.querySelectorAll('.preview-magnify-btn[data-view]').forEach(b => b.addEventListener('click', () => openViewModal(b.dataset.view)));
+        root.querySelectorAll('.preview-magnify-btn[data-html-preview]').forEach(b => {
+            b.addEventListener('click', () => openCompositePreview(b.dataset.htmlPreview));
+        });
         root.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         root.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         root.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
@@ -828,6 +900,60 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         document.getElementById('viewRowContent').innerHTML = buildViewModalHtml(sku, row);
         if (viewRowModal) viewRowModal.show();
+    }
+
+    function renderSectionBadges(sections) {
+        const labels = {
+            images: 'Images',
+            bullet_points: 'Bullet Points',
+            description: 'Description',
+            features: 'Features',
+            specifications: 'Specifications',
+            package_includes: 'Package Includes',
+            about_us: 'About Us',
+        };
+        const wrap = document.getElementById('compositeSectionBadges');
+        if (!wrap) return;
+        wrap.innerHTML = Object.keys(labels).map(key => {
+            const on = !!(sections && sections[key]);
+            return '<span class="badge ' + (on ? 'bg-success' : 'bg-secondary') + '">' +
+                (on ? '✓ ' : '– ') + labels[key] + '</span>';
+        }).join('');
+    }
+
+    async function openCompositePreview(sku) {
+        sku = String(sku || '').trim();
+        const row = bySku.get(sku) || {};
+        const sub = document.getElementById('compositePreviewSubtitle');
+        const box = document.getElementById('compositeHtmlPreview');
+        if (sub) sub.textContent = sku + ' — ' + (row.Parent || row.title150 || '');
+        if (box) {
+            box.innerHTML = '<div class="text-muted text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>Building HTML preview…</div>';
+        }
+        renderSectionBadges({});
+        lastCompositeHtml = '';
+        if (compositeModal) compositeModal.show();
+        if (!sku) {
+            if (box) box.innerHTML = '<div class="text-danger text-center py-4">SKU missing</div>';
+            return;
+        }
+        try {
+            const res = await fetch('/a-plus-content/preview-html?sku=' + encodeURIComponent(sku), {
+                headers: { Accept: 'application/json' },
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load preview');
+            renderSectionBadges(json.sections || {});
+            lastCompositeHtml = json.html || '';
+            if (box) {
+                box.innerHTML = lastCompositeHtml
+                    || '<div class="text-muted text-center py-4">No HTML content available for this SKU.</div>';
+            }
+        } catch (e) {
+            if (box) {
+                box.innerHTML = '<div class="text-danger text-center py-4">' + esc(e.message || 'Preview failed') + '</div>';
+            }
+        }
     }
 
     function copyViewModalToClipboard() {
@@ -919,13 +1045,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('editModalAiFields').innerHTML = [1,2,3,4,5].map(i => `
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center">
-                    <label class="form-label mb-1">Bullet ${i}<span id="editAiCount${i}" class="edit-ai-count">    0 chars</span></label>
+                    <label class="form-label mb-1">Bullet ${i}<span id="editAiCount${i}" class="edit-ai-count">0 chars</span></label>
                     <div class="btn-group btn-group-sm" role="group" aria-label="AI bullet actions">
                         <button type="button" class="btn btn-outline-secondary edit-ai-revert d-none" data-idx="${i}"><i class="fas fa-rotate-left"></i> Revert</button>
                         <button type="button" class="btn btn-outline-primary edit-ai-change" data-idx="${i}"><i class="fas fa-wand-magic-sparkles"></i> Change</button>
                     </div>
                 </div>
-                <textarea class="form-control edit-ai-bullet" data-idx="${i}" rows="4">${esc(current[i-1] || '')}</textarea>
+                <textarea class="form-control form-control-sm edit-ai-bullet" data-idx="${i}" rows="2">${esc(current[i-1] || '')}</textarea>
             </div>
         `).join('');
         bindEditAICountersAndChanges();
@@ -946,7 +1072,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const len = t.value.length;
                 const el = document.getElementById('editAiCount' + idx);
                 if (el) {
-                    el.textContent = `    ${len} chars`;
+                    el.textContent = `${len} chars`;
                     el.classList.add('edit-ai-count');
                     el.classList.toggle('text-muted', len === 0);
                 }
@@ -1829,12 +1955,26 @@ document.addEventListener('DOMContentLoaded', () => {
             aiPromptRulesModal = new bootstrap.Modal(document.getElementById('aiPromptRulesModal'));
             editBulletChangeModal = new bootstrap.Modal(document.getElementById('editBulletChangeModal'));
             viewRowModal = new bootstrap.Modal(document.getElementById('viewRowModal'));
+            compositeModal = new bootstrap.Modal(document.getElementById('compositePreviewModal'));
             shopifyPullModal = new bootstrap.Modal(document.getElementById('shopifyPullModal'));
             shopifyPullConfirmModal = new bootstrap.Modal(document.getElementById('shopifyPullConfirmModal'));
             marketplacePushConfirmModal = new bootstrap.Modal(document.getElementById('marketplacePushConfirmModal'));
         } else {
             console.warn('Bootstrap JS not available; modals/toasts will be degraded.');
         }
+
+        const compositeCopyBtn = document.getElementById('compositeCopyBtn');
+        if (compositeCopyBtn) {
+            compositeCopyBtn.addEventListener('click', async function () {
+                try {
+                    await navigator.clipboard.writeText(lastCompositeHtml || '');
+                    toast(lastCompositeHtml ? 'Copied HTML to clipboard' : 'Nothing to copy', !!lastCompositeHtml);
+                } catch (_) {
+                    toast('Copy failed', false);
+                }
+            });
+        }
+
         parentPlayback = window.ParentPlayback.create({
             getAllData: function () { return tableData; },
             applyFilter: function (parent) {

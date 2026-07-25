@@ -4,6 +4,7 @@
     @vite(['node_modules/admin-resources/rwd-table/rwd-table.min.css'])
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     @include('partials.marketplace-master-button-colors')
+    @include('partials.parent-row-highlight')
     <style>
         .card.dm-master-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
         .card.dm-master-card .card-body { padding: 1.25rem 1.5rem; }
@@ -491,7 +492,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const pm = String(r.description_1500 || r.product_description || '').trim();
         const prev100 = preview100(r);
         const checked = selectedSkus.has(sku) ? ' checked' : '';
-        return `<tr data-sku="${esc(sku)}">
+        const parentCls = (window.isPmParentSku && window.isPmParentSku(sku)) ? ' pm-parent-row' : '';
+        return `<tr class="${parentCls.trim()}" data-sku="${esc(sku)}">
                 <td class="dm-sel-col"><input type="checkbox" class="form-check-input dm-row-sel" data-sku="${esc(sku)}"${checked} title="Select row"></td>
                 <td>${esc(r.Parent || r.title150 || sku)}</td>
                 <td>${esc(sku)}</td>

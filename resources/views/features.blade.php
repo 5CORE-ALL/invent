@@ -4,6 +4,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    @include('partials.parent-row-highlight')
     <style>
         .table-container {
             overflow-x: auto;
@@ -337,6 +338,9 @@
             data.forEach(item => {
                 const row = document.createElement('tr');
                 row.dataset.sku = item.SKU || '';
+                if (window.isPmParentSku && window.isPmParentSku(item.SKU)) {
+                    row.classList.add('pm-parent-row');
+                }
 
                 // Checkbox
                 const checkboxCell = document.createElement('td');
