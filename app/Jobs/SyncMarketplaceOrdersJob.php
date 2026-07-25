@@ -53,6 +53,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'aliexpress' => 'aliexpress:sync-orders',
             'alibaba' => 'alibaba:sync-orders',
             'newegg' => 'newegg:sync-orders',
+            'faire' => 'faire:sync-orders',
             default => null,
         };
 
@@ -105,6 +106,8 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncReverbAddressJob::dispatch(false, 25);
             } elseif ($slug === 'newegg' && \App\Services\MarketplaceManager\NeweggOrderPushService::canAutoSyncAddress()) {
                 SyncNeweggAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'faire' && \App\Services\MarketplaceManager\FaireOrderPushService::canAutoSyncAddress()) {
+                \App\Jobs\SyncFaireAddressJob::dispatch(false, 25);
             }
         } catch (\Throwable $e) {
             Log::warning('SyncMarketplaceOrdersJob: could not queue address sync', [

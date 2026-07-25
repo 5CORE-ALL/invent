@@ -8,6 +8,7 @@ use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
 use App\Models\MarketplaceSyncSettings;
+use App\Models\FaireMetric;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\ReverbProduct;
@@ -154,6 +155,9 @@ class MarketplaceManagerController extends Controller
                     : 0),
             'newegg' => Schema::hasTable('newegg_metric')
                 ? (int) NeweggMetric::query()->whereNotNull('sku')->count()
+                : 0,
+            'faire' => Schema::hasTable('faire_metric')
+                ? (int) FaireMetric::query()->whereNotNull('sku')->count()
                 : 0,
             default => 0,
         };

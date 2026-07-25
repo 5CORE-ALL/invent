@@ -1180,6 +1180,50 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Faire Marketplace Manager
+        $schedule->job(new \App\Jobs\SyncInventoryToFaire)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('faire'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('faire', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncFaireTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncFaireAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('faire:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
         // $schedule->command('shopify:retry-pending-orders')
             //     ->hourly()
             //     ->timezone('UTC')

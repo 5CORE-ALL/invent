@@ -26,6 +26,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_NEWEGG = 'newegg';
 
+    public const CHANNEL_FAIRE = 'faire';
+
     public static function shopifyQtyFromRow(?ShopifySku $row): ?int
     {
         if (! $row) {
@@ -830,6 +832,9 @@ final class MarketplaceListingStockResolver
             self::hydrateFromPricing($map, $keys, 'newegg');
             self::hydrateFromNeweggPricing($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_newegg');
+        } elseif ($channel === self::CHANNEL_FAIRE) {
+            self::hydrateFromPricing($map, $keys, 'faire');
+            self::hydrateFromMappings($map, $keys, 'inventory_faire');
         }
 
         return $map;
@@ -913,6 +918,21 @@ final class MarketplaceListingStockResolver
                 ->get(['sku', 'ne_stock'])
                 ->each(function ($row) use (&$map) {
                     self::put($map, (string) $row->sku, (int) $row->ne_stock);
+                });
+
+            return;
+        }
+
+        if ($channel === 'faire') {
+            if (! Schema::hasTable('faire_pricing_prices') || ! Schema::hasColumn('faire_pricing_prices', 'faire_stock')) {
+                return;
+            }
+            \App\Models\FairePricingPrice::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('faire_stock')
+                ->get(['sku', 'faire_stock'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->faire_stock);
                 });
 
             return;

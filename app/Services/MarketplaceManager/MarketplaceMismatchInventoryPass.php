@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AlibabaMetric;
 use App\Models\AliexpressMetric;
+use App\Models\FaireMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
@@ -31,7 +32,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'reverb', 'aliexpress', 'alibaba'], true)) {
+        if (! in_array($channel, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire'], true)) {
             return $empty;
         }
 
@@ -68,6 +69,7 @@ final class MarketplaceMismatchInventoryPass
             'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch),
             default => $empty,
         };
 
@@ -96,6 +98,7 @@ final class MarketplaceMismatchInventoryPass
             'reverb' => 'reverb_metric',
             'aliexpress' => 'aliexpress_metric',
             'alibaba' => 'alibaba_metric',
+            'faire' => 'faire_metric',
             default => null,
         };
         if ($table === null || ! Schema::hasTable($table)) {
@@ -107,6 +110,7 @@ final class MarketplaceMismatchInventoryPass
             'reverb' => ReverbMetric::query(),
             'aliexpress' => AliexpressMetric::query(),
             'alibaba' => AlibabaMetric::query(),
+            'faire' => FaireMetric::query(),
             default => null,
         };
         if ($query === null) {
@@ -141,6 +145,7 @@ final class MarketplaceMismatchInventoryPass
             'newegg' => MarketplaceListingStockResolver::CHANNEL_NEWEGG,
             'reverb' => MarketplaceListingStockResolver::CHANNEL_REVERB,
             'aliexpress' => MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
+            'faire' => MarketplaceListingStockResolver::CHANNEL_FAIRE,
             default => $channel,
         };
 
@@ -150,6 +155,7 @@ final class MarketplaceMismatchInventoryPass
             'newegg' => app(NeweggLiveListingsService::class)->peekCached(),
             'reverb' => app(ReverbLiveListingsService::class)->peekCached(),
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
+            'faire' => app(FaireLiveListingsService::class)->peekCached(),
             default => null,
         };
 

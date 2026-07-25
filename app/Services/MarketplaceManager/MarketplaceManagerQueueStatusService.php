@@ -18,13 +18,16 @@ final class MarketplaceManagerQueueStatusService
         'SyncInventoryToAliexpress' => 'Full inventory sync (Shopify → AliExpress)',
         'SyncInventoryToAlibaba' => 'Full inventory sync (Shopify → Alibaba)',
         'SyncInventoryToNewegg' => 'Full inventory sync (Shopify → Newegg)',
+        'SyncInventoryToFaire' => 'Full inventory sync (Shopify → Faire)',
         'WarmReverbLiveListingsCache' => 'Warm live Reverb listings cache',
         'WarmAliexpressLiveListingsCache' => 'Warm live AliExpress listings cache',
         'WarmNeweggLiveListingsCache' => 'Warm live Newegg listings cache',
+        'WarmFaireLiveListingsCache' => 'Warm live Faire listings cache',
         'ImportReverbManagerOrderToShopify' => 'Import order → Shopify',
         'ImportAliexpressOrderToShopify' => 'Import order → Shopify',
         'ImportAlibabaOrderToShopify' => 'Import order → Shopify',
         'ImportNeweggOrderToShopify' => 'Import order → Shopify',
+        'ImportFaireOrderToShopify' => 'Import order → Shopify',
         'SyncMarketplaceOrdersJob' => 'Fetch orders from marketplace',
     ];
 
@@ -34,6 +37,7 @@ final class MarketplaceManagerQueueStatusService
         'aliexpress' => AliexpressLinkMapSyncService::class,
         'alibaba' => AlibabaLinkMapSyncService::class,
         'newegg' => NeweggLinkMapSyncService::class,
+        'faire' => FaireLinkMapSyncService::class,
     ];
 
     /**

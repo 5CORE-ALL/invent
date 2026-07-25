@@ -566,13 +566,27 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/newegg/sync-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncInventoryNow'])->name('newegg.sync.inventory');
         Route::post('/newegg/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncMismatchInventoryNow'])->name('newegg.sync.mismatch.inventory');
         Route::post('/newegg/sync-tracking', [\App\Http\Controllers\MarketPlace\NeweggSyncController::class, 'syncTrackingNow'])->name('newegg.sync.tracking');
+        Route::get('/faire/connect', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'connect'])->name('faire.connect');
+        Route::post('/faire/test-connection', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'testConnection'])->name('faire.test');
+        Route::post('/faire/save-access-token', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'saveAccessToken'])->name('faire.save.token');
+        Route::post('/faire/revoke-access-token', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'revokeAccessToken'])->name('faire.revoke');
+        Route::post('/faire/exchange-auth-code', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'exchangeAuthCode'])->name('faire.exchange');
+        Route::post('/faire/refresh-products', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'refreshProducts'])->name('faire.refresh');
+        Route::get('/faire/refresh-products/status', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'refreshProductsStatus'])->name('faire.refresh.status');
+        Route::post('/faire/fetch-orders', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'fetchOrders'])->name('faire.fetch.orders');
+        Route::post('/faire/sync-inventory', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncInventoryNow'])->name('faire.sync.inventory');
+        Route::post('/faire/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncMismatchInventoryNow'])->name('faire.sync.mismatch.inventory');
+        Route::post('/faire/sync-tracking', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncTrackingNow'])->name('faire.sync.tracking');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'aliexpress|alibaba|reverb|newegg');
+            ->where('marketplace', 'aliexpress|alibaba|reverb|newegg|faire');
     });
 
-    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba|newegg'])->group(function () {
+    // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
+    Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
+
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, faire)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba|newegg|faire'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');

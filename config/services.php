@@ -656,6 +656,13 @@ return [
         'token' => env('FAIRE_TOKEN'),
         'refresh_token' => env('FAIRE_REFRESH_TOKEN'),
         'auth_code' => env('FAIRE_AUTH_CODE'),
+        'auth_mode' => env('FAIRE_AUTH_MODE', 'api_key'),
+        // External API v2 — use www host (bare faire.com 301 strips POST bodies)
+        'base_url' => env('FAIRE_BASE_URL', 'https://www.faire.com/external-api/v2'),
+        'auth_url' => env('FAIRE_AUTH_URL', 'https://faire.com/oauth2/authorize'),
+        'token_url' => env('FAIRE_TOKEN_URL', 'https://www.faire.com/api/external-api-oauth2/token'),
+        'http_timeout' => (int) env('FAIRE_HTTP_TIMEOUT', 60),
+        'connect_timeout' => (int) env('FAIRE_CONNECT_TIMEOUT', 15),
     ],
 
     /*

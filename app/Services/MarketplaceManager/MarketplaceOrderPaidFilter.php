@@ -50,10 +50,29 @@ class MarketplaceOrderPaidFilter
 
         return match ($marketplace) {
             'newegg' => self::isNeweggPaid($order),
+            'faire' => self::isFairePaid($order),
             'reverb' => self::isReverbPaid($order),
             'aliexpress', 'alibaba' => self::isAliFamilyPaid($order),
             default => true,
         };
+    }
+
+    protected static function isFairePaid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->status ?? '')));
+        $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];
+        if (is_array($raw['order'] ?? null)) {
+            $raw = $raw['order'];
+        }
+        $state = strtoupper(trim((string) ($raw['state'] ?? $raw['status'] ?? $status)));
+
+        // Faire unpaid / canceled-like states — treat everything else as importable.
+        $unpaid = ['NEW', 'CANCELED', 'CANCELLED', 'DRAFT', 'PENDING_RETAILER_CONFIRMATION'];
+        if ($state !== '' && in_array($state, $unpaid, true)) {
+            return false;
+        }
+
+        return true;
     }
 
     protected static function isNeweggPaid(object $order): bool

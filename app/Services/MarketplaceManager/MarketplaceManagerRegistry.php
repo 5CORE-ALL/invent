@@ -82,6 +82,14 @@ class MarketplaceManagerRegistry
                 'logo' => 'uploads/newegg.svg',
                 'enabled' => true,
             ],
+            [
+                'slug' => 'faire',
+                'label' => 'Faire',
+                'short' => 'FR',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/faire.svg',
+                'enabled' => true,
+            ],
         ];
     }
 

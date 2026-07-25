@@ -58,6 +58,13 @@ class MarketplaceSyncSettings extends Model
         return (bool) ($settings['listings']['create_products_on_newegg'] ?? false);
     }
 
+    public static function faireCanCreateProducts(?array $settings = null): bool
+    {
+        $settings ??= self::getFor('faire');
+
+        return (bool) ($settings['listings']['create_products_on_faire'] ?? false);
+    }
+
     public static function canFetchOrders(string $marketplace, ?array $settings = null): bool
     {
         $settings ??= self::getFor($marketplace);
@@ -92,6 +99,7 @@ class MarketplaceSyncSettings extends Model
         $isAlibaba = $marketplace === 'alibaba';
         $isReverb = $marketplace === 'reverb';
         $isNewegg = $marketplace === 'newegg';
+        $isFaire = $marketplace === 'faire';
 
         $sourceName = 'aliexpress';
         $sourceDisplay = 'AliExpress';
@@ -104,6 +112,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isNewegg) {
             $sourceName = 'newegg';
             $sourceDisplay = 'Newegg';
+        } elseif ($isFaire) {
+            $sourceName = 'faire';
+            $sourceDisplay = 'Faire';
         }
 
         return [
@@ -125,16 +136,17 @@ class MarketplaceSyncSettings extends Model
             ],
             'order' => [
                 'fetch_orders' => true,
-                // Newegg: keep order + address + tracking automation ON by default.
-                'auto_import_to_shopify' => $isNewegg,
+                // Newegg/Faire: keep order + address + tracking automation ON by default.
+                'auto_import_to_shopify' => $isNewegg || $isFaire,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
                 'push_tracking_to_aliexpress' => $marketplace === 'aliexpress',
                 'push_tracking_to_reverb' => $isReverb,
                 'push_tracking_to_newegg' => $isNewegg,
+                'push_tracking_to_faire' => $isFaire,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'aliexpress', 'reverb'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'aliexpress', 'reverb', 'faire'], true),
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
@@ -147,6 +159,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_alibaba' => false,
                 'create_products_on_reverb' => false,
                 'create_products_on_newegg' => false,
+                'create_products_on_faire' => false,
                 'sync_title' => false,
                 'sync_images' => false,
             ],
