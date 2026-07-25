@@ -4364,16 +4364,7 @@ class TemuController extends Controller
                 ], 400);
             }
 
-            // Keep local metrics in sync with pushed supplier price
-            $metric = TemuMetric::where('sku', $sku)->first();
-            if (! $metric && ! empty($result['sku_id'])) {
-                $metric = TemuMetric::where('sku_id', (string) $result['sku_id'])->first();
-            }
-            if ($metric) {
-                $metric->base_price = $price;
-                $metric->save();
-            }
-
+            // API-only: do not update local temu_metrics / app price
             return response()->json([
                 'success' => true,
                 'message' => $result['message'] ?? 'Price pushed to Temu',
@@ -4382,7 +4373,6 @@ class TemuController extends Controller
                     'price' => $price,
                     'goods_id' => $result['goods_id'] ?? $goodsId,
                     'sku_id' => $result['sku_id'] ?? $skuId,
-                    'base_price' => $price,
                 ],
             ]);
         } catch (\Throwable $e) {

@@ -6377,11 +6377,8 @@
                     },
                     success: function(response) {
                         if (response && response.success) {
-                            row.update({
-                                push_status: 'pushed',
-                                base_price: pushPrice,
-                                temu_price: pushPrice <= 26.99 ? +(pushPrice + 2.99).toFixed(2) : pushPrice
-                            });
+                            // API-only: do not change local Base Price / Temu Price columns
+                            row.update({ push_status: 'pushed' });
                             row.reformat();
                             resolve(response);
                         } else {
