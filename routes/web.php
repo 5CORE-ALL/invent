@@ -3955,6 +3955,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product-description/regenerate-marketplace', [DescriptionMasterController::class, 'regenerateDescriptionForMarketplace'])->name('product.description.regenerate.marketplace');
     Route::post('/product-description/with-images', [DescriptionMasterController::class, 'getDescriptionWithImages'])->name('product.description.with.images');
     Route::post('/product-description/pull-shopify', [DescriptionMasterController::class, 'pullShopifyDescription'])->name('product.description.pull.shopify');
+    Route::post('/product-description/shopify-pull-one', [DescriptionMasterController::class, 'pullShopifyDescriptionToMaster'])->name('product.description.shopify.pull.one');
+    Route::post('/product-description/shopify-pull/start', [DescriptionMasterController::class, 'startShopifyPullJob'])->name('product.description.shopify.pull.start');
+    Route::get('/product-description/shopify-pull/status', [DescriptionMasterController::class, 'shopifyPullJobStatus'])->name('product.description.shopify.pull.status');
+    Route::post('/product-description/shopify-pull/pause', [DescriptionMasterController::class, 'pauseShopifyPullJob'])->name('product.description.shopify.pull.pause');
+    Route::post('/product-description/shopify-pull/resume', [DescriptionMasterController::class, 'resumeShopifyPullJob'])->name('product.description.shopify.pull.resume');
+    Route::post('/product-description/shopify-pull/stop', [DescriptionMasterController::class, 'stopShopifyPullJob'])->name('product.description.shopify.pull.stop');
     Route::post('/product-description/pull-marketplace', [DescriptionMasterController::class, 'pullMarketplaceDescription'])->name('product.description.pull.marketplace');
     Route::post('/product-description/pull-all', [DescriptionMasterController::class, 'pullAllDescriptions'])->name('product.description.pull.all');
     Route::post('/product-description/save-marketplace', [DescriptionMasterController::class, 'saveMarketplaceDescription'])->name('product.description.save.marketplace');

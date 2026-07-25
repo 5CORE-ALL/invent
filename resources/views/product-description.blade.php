@@ -81,6 +81,7 @@
                     </div>
                     <div class="mb-3 dm-master-toolbar">
                         @include('partials.parent-playback-controls')
+                        <button type="button" id="pullShopifyBtn" class="btn btn-warning btn-sm"><i class="fas fa-download"></i> Shopify Pull</button>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
                         <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
@@ -230,6 +231,61 @@
         </div>
     </div>
 
+    <div class="modal fade" id="shopifyPullModal" tabindex="-1" aria-labelledby="shopifyPullModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff;">
+                    <h5 class="modal-title" id="shopifyPullModalTitle"><i class="fas fa-download me-2"></i>Shopify Description Pull</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning small mb-3">
+                        This imports descriptions from Shopify into Product Master only. It does not push anything back to Shopify.
+                    </div>
+                    <div class="small text-muted mb-2" id="shopifyPullScopeText">Scope: checked rows only.</div>
+                    <div id="shopifyPullPanel" class="border rounded bg-light p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Progress</strong>
+                            <span class="small text-muted" id="shopifyPullStatus">Ready</span>
+                        </div>
+                        <div class="progress mb-3" style="height: 12px;">
+                            <div id="shopifyPullProgress" class="progress-bar bg-warning" role="progressbar" style="width:0%"></div>
+                        </div>
+                        <div id="shopifyPullLog" class="small font-monospace bg-white border rounded p-2" style="max-height:280px; overflow:auto;"></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top bg-light">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" id="startShopifyPullBtn" class="btn btn-warning"><i class="fas fa-play"></i> Run in BG</button>
+                    <button type="button" id="pauseShopifyPullBtn" class="btn btn-outline-warning" style="display:none;"><i class="fas fa-pause"></i> Pause</button>
+                    <button type="button" id="resumeShopifyPullBtn" class="btn btn-outline-success" style="display:none;"><i class="fas fa-play"></i> Resume</button>
+                    <button type="button" id="stopShopifyPullBtn" class="btn btn-outline-danger" style="display:none;"><i class="fas fa-stop"></i> Stop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="shopifyPullConfirmModal" tabindex="-1" aria-labelledby="shopifyPullConfirmTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning-subtle">
+                    <h5 class="modal-title" id="shopifyPullConfirmTitle"><i class="fas fa-triangle-exclamation me-2"></i>Confirm Shopify Pull</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2" id="shopifyPullConfirmScope">Do you want to pull descriptions from Shopify?</p>
+                    <div class="alert alert-warning small mb-0">
+                        This action will update Product Master description fields from Shopify. It will not update Shopify.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="shopifyPullConfirmBtn"><i class="fas fa-download"></i> Yes, Pull Descriptions</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -289,7 +345,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let bulkEditSkus = [];
     let navParent = null;
     let parentPlayback = null;
-    let editModal, viewDescModal, marketplacePushConfirmModal;
+    let editModal, viewDescModal, marketplacePushConfirmModal, shopifyPullModal, shopifyPullConfirmModal;
+    let shopifyPullPollTimer = null;
+    let shopifyPullSelectedSkus = null;
+    let shopifyPullConfirmResolver = null;
     let marketplacePushConfirmResolver = null;
     let tableBodyBound = false;
     let lastViewPlainText = '';
@@ -501,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="action-buttons-cell">
                     <div class="action-buttons-group">
                         <button type="button" class="action-btn view-btn" data-view-row="${esc(sku)}" title="View descriptions (read-only)"><i class="fas fa-eye"></i></button>
-                        <button type="button" class="action-btn pull-btn" data-pull-shopify="${esc(sku)}" title="Fetch live descriptions from all marketplaces (saves each)"><i class="fas fa-cloud-download-alt"></i></button>
+                        <button type="button" class="action-btn pull-btn shopify-row-pull-btn" data-shopify-pull-sku="${esc(sku)}" title="Pull Shopify description for this SKU"><i class="fas fa-download"></i></button>
                         <button type="button" class="action-btn pm-tier-btn" data-edit-pm="${esc(sku)}" title="Edit descriptions &amp; push"><i class="fas fa-edit"></i></button>
                     </div>
                 </td>
@@ -572,10 +631,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 openViewModal(viewRow.getAttribute('data-view-row'));
                 return;
             }
-            const pullBtn = e.target.closest('[data-pull-shopify]');
+            const pullBtn = e.target.closest('[data-shopify-pull-sku]');
             if (pullBtn) {
                 e.preventDefault();
-                runPullAll(pullBtn.getAttribute('data-pull-shopify'), pullBtn);
+                startSingleShopifyPull(pullBtn.getAttribute('data-shopify-pull-sku'), pullBtn);
                 return;
             }
             const editPmBtn = e.target.closest('[data-edit-pm]');
@@ -1104,25 +1163,205 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    // Row Pull button: fetch ALL marketplaces' live descriptions for this SKU and save them (no modal).
-    function runPullAll(sku, btn) {
-        if (!sku) return;
-        if (btn) { btn.disabled = true; btn.dataset.o = btn.innerHTML; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
-        toast('Fetching all marketplaces for ' + sku + '…');
-        fetch('/product-description/pull-all', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify({ sku })
-        })
-            .then((r) => r.json())
-            .then((res) => {
-                toast(res.message || 'Pull complete', !!res.success);
-                loadData(currentPage);
-            })
-            .catch((e) => toast('Pull failed: ' + e.message, false))
-            .finally(() => {
-                if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.o || '<i class="fas fa-cloud-download-alt"></i>'; }
+    function getCheckedSkusForPull() {
+        return Array.from(selectedSkus).map((sku) => String(sku || '').trim()).filter(Boolean);
+    }
+
+    function appendShopifyPullLog(message, ok = true) {
+        const log = document.getElementById('shopifyPullLog');
+        if (!log) return;
+        const line = document.createElement('div');
+        line.className = ok ? 'text-success' : 'text-danger';
+        line.textContent = message;
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function setShopifyPullProgress(done, total, text) {
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        const bar = document.getElementById('shopifyPullProgress');
+        const status = document.getElementById('shopifyPullStatus');
+        if (bar) bar.style.width = pct + '%';
+        if (status) status.textContent = text || (done + '/' + total);
+    }
+
+    function isShopifyPullActive(status) {
+        return ['running', 'paused', 'stopping'].includes(String(status || ''));
+    }
+
+    function renderShopifyPullJob(job) {
+        job = job || {};
+        const status = job.status || 'idle';
+        const done = (job.current_index || 0);
+        const total = job.total || 0;
+        const pullBtn = document.getElementById('startShopifyPullBtn');
+        const pauseBtn = document.getElementById('pauseShopifyPullBtn');
+        const resumeBtn = document.getElementById('resumeShopifyPullBtn');
+        const stopBtn = document.getElementById('stopShopifyPullBtn');
+        const active = isShopifyPullActive(status);
+        if (pullBtn) pullBtn.style.display = active ? 'none' : '';
+        if (pauseBtn) pauseBtn.style.display = status === 'running' ? '' : 'none';
+        if (resumeBtn) resumeBtn.style.display = status === 'paused' ? '' : 'none';
+        if (stopBtn) stopBtn.style.display = active ? '' : 'none';
+        setShopifyPullProgress(done, total, job.last_message || status);
+        const log = document.getElementById('shopifyPullLog');
+        if (log && Array.isArray(job.messages)) {
+            log.innerHTML = '';
+            job.messages.forEach((m) => appendShopifyPullLog((m.time ? '[' + m.time + '] ' : '') + (m.message || ''), !!m.ok));
+        }
+    }
+
+    async function fetchShopifyPullStatus() {
+        const res = await fetch('/product-description/shopify-pull/status', {
+            headers: { Accept: 'application/json' },
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to load Shopify pull status');
+        return payload.job || {};
+    }
+
+    async function pollShopifyPullStatus() {
+        try {
+            const job = await fetchShopifyPullStatus();
+            renderShopifyPullJob(job);
+            if (isShopifyPullActive(job.status || 'idle')) {
+                startShopifyPullPolling();
+            } else {
+                stopShopifyPullPolling();
+                if (['completed', 'stopped'].includes(job.status || '')) {
+                    loadData(currentPage);
+                }
+            }
+        } catch (e) {
+            appendShopifyPullLog('Status check failed: ' + e.message, false);
+        }
+    }
+
+    function startShopifyPullPolling() {
+        if (shopifyPullPollTimer !== null) return;
+        shopifyPullPollTimer = window.setInterval(pollShopifyPullStatus, 3000);
+    }
+
+    function stopShopifyPullPolling() {
+        if (shopifyPullPollTimer === null) return;
+        window.clearInterval(shopifyPullPollTimer);
+        shopifyPullPollTimer = null;
+    }
+
+    async function openShopifyPullModal(skus = null) {
+        const checked = Array.isArray(skus) && skus.length
+            ? skus.map((sku) => String(sku || '').trim()).filter(Boolean)
+            : getCheckedSkusForPull();
+        if (!checked.length) {
+            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            return;
+        }
+        shopifyPullSelectedSkus = checked;
+        const scope = document.getElementById('shopifyPullScopeText');
+        if (scope) {
+            scope.textContent = checked.length === 1
+                ? ('Scope: checked SKU ' + checked[0] + '.')
+                : ('Scope: ' + checked.length + ' checked SKU(s) — ' + checked.slice(0, 12).join(', ') + (checked.length > 12 ? '…' : '') + '.');
+        }
+        if (shopifyPullModal) shopifyPullModal.show();
+        await pollShopifyPullStatus();
+    }
+
+    function confirmShopifyPull(scopeText) {
+        const scope = document.getElementById('shopifyPullConfirmScope');
+        if (scope) {
+            scope.textContent = 'Do you want to pull descriptions from Shopify for ' + scopeText + '?';
+        }
+        return new Promise((resolve) => {
+            shopifyPullConfirmResolver = resolve;
+            if (shopifyPullConfirmModal) shopifyPullConfirmModal.show();
+            else resolve(false);
+        });
+    }
+
+    async function startShopifyPullJobForSkus(skus, options = {}) {
+        skus = (skus || []).map((sku) => String(sku || '').trim()).filter(Boolean);
+        if (!skus.length) {
+            toast('No SKUs selected to pull from Shopify.', false);
+            return false;
+        }
+        const scopeText = options.scopeText || (skus.length + ' SKU(s)');
+        if (!await confirmShopifyPull(scopeText)) return false;
+        try {
+            const res = await fetch('/product-description/shopify-pull/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify({ skus }),
             });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start Shopify pull');
+            renderShopifyPullJob(payload.job);
+            startShopifyPullPolling();
+            toast(options.successMessage || payload.message || 'Background Shopify pull started.');
+            return true;
+        } catch (e) {
+            toast('Shopify pull start failed: ' + e.message, false);
+            if (String(e.message || '').includes('already')) pollShopifyPullStatus();
+            return false;
+        }
+    }
+
+    async function startSingleShopifyPull(sku, btn) {
+        sku = String(sku || '').trim();
+        if (!sku) {
+            toast('SKU missing for Shopify pull.', false);
+            return;
+        }
+        const oldHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+        const started = await startShopifyPullJobForSkus([sku], {
+            scopeText: 'SKU ' + sku,
+            successMessage: 'Shopify description sync started for ' + sku + '.',
+        });
+        if (!started && btn) {
+            btn.disabled = false;
+            btn.innerHTML = oldHtml || '<i class="fas fa-download"></i>';
+        } else if (btn) {
+            // Keep spinner until job finishes; polling reloads table.
+            setTimeout(() => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = oldHtml || '<i class="fas fa-download"></i>';
+                }
+            }, 2500);
+        }
+    }
+
+    async function startShopifyPullToLocal() {
+        const skus = (Array.isArray(shopifyPullSelectedSkus) && shopifyPullSelectedSkus.length)
+            ? shopifyPullSelectedSkus.slice()
+            : getCheckedSkusForPull();
+        if (!skus.length) {
+            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            return;
+        }
+        const scopeText = skus.length === 1 ? ('checked SKU ' + skus[0]) : (skus.length + ' checked SKU(s)');
+        await startShopifyPullJobForSkus(skus, { scopeText });
+    }
+
+    async function controlShopifyPull(action) {
+        try {
+            const res = await fetch('/product-description/shopify-pull/' + action, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body: JSON.stringify({}),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || ('Unable to ' + action + ' Shopify pull'));
+            renderShopifyPullJob(payload.job);
+            if (isShopifyPullActive((payload.job || {}).status || 'idle')) startShopifyPullPolling();
+            toast('Shopify pull ' + action + ' requested.');
+        } catch (e) {
+            toast('Shopify pull ' + action + ' failed: ' + e.message, false);
+        }
     }
 
     async function saveDescriptionsForSku(sku) {
@@ -1441,7 +1680,31 @@ document.addEventListener('DOMContentLoaded', () => {
     loadData(1);
     if (window.bootstrap) {
         marketplacePushConfirmModal = new bootstrap.Modal(document.getElementById('marketplacePushConfirmModal'));
+        shopifyPullModal = new bootstrap.Modal(document.getElementById('shopifyPullModal'));
+        shopifyPullConfirmModal = new bootstrap.Modal(document.getElementById('shopifyPullConfirmModal'));
     }
+
+    document.getElementById('pullShopifyBtn')?.addEventListener('click', () => {
+        const skus = getCheckedSkusForPull();
+        if (!skus.length) {
+            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            return;
+        }
+        openShopifyPullModal(skus);
+    });
+    document.getElementById('startShopifyPullBtn')?.addEventListener('click', startShopifyPullToLocal);
+    document.getElementById('pauseShopifyPullBtn')?.addEventListener('click', () => controlShopifyPull('pause'));
+    document.getElementById('resumeShopifyPullBtn')?.addEventListener('click', () => controlShopifyPull('resume'));
+    document.getElementById('stopShopifyPullBtn')?.addEventListener('click', () => controlShopifyPull('stop'));
+    document.getElementById('shopifyPullConfirmBtn')?.addEventListener('click', () => {
+        if (shopifyPullConfirmResolver) shopifyPullConfirmResolver(true);
+        shopifyPullConfirmResolver = null;
+        if (shopifyPullConfirmModal) shopifyPullConfirmModal.hide();
+    });
+    document.getElementById('shopifyPullConfirmModal')?.addEventListener('hidden.bs.modal', () => {
+        if (shopifyPullConfirmResolver) shopifyPullConfirmResolver(false);
+        shopifyPullConfirmResolver = null;
+    });
 
     parentPlayback = window.ParentPlayback.create({
         getAllData: function () { return tableData; },
@@ -1450,6 +1713,8 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTable();
         },
     });
+
+    pollShopifyPullStatus();
 });
     </script>
 @endsection

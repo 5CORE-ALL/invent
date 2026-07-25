@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\ProductMaster\Concerns\GuardsMarketplaceApiConfiguration;
 use App\Http\Controllers\ProductMaster\Concerns\RetriesMarketplacePush;
+use App\Jobs\RunShopifyDescriptionPullJob;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
 use App\Services\BestBuyApiService;
@@ -18,6 +19,7 @@ use App\Services\ShopifyPLSApiService;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\MarketplaceCharacterLimits;
 use App\Services\Support\ProductMasterMarketplaceMaps;
+use App\Services\Support\ShopifyDescriptionPullJobStore;
 use App\Services\TemuApiService;
 use App\Services\WayfairApiService;
 use Illuminate\Http\Request;
@@ -591,6 +593,192 @@ class DescriptionMasterController extends Controller
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * POST /product-description/shopify-pull-one — import Shopify description into Product Master + shopify_main metrics.
+     */
+    public function pullShopifyDescriptionToMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate(['sku' => 'required|string']);
+            $sku = $this->normalizeSku($validated['sku']);
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'Invalid SKU'], 422);
+            }
+
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                return response()->json(['success' => false, 'message' => 'SKU not found in Product Master'], 404);
+            }
+
+            $res = $this->stripBulletsIfNeeded('shopify_main', app(ShopifyApiService::class)->fetchProductDescriptionHtml($sku));
+            if (! ($res['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => (string) ($res['message'] ?? 'Fetch failed'),
+                ], 422);
+            }
+
+            $html = trim((string) ($res['html'] ?? ''));
+            $plain = $this->normalizeDescriptionPlainText($html);
+            $beforePlain = $this->normalizeDescriptionPlainText((string) (
+                $product->description_1000
+                ?? $product->description_1500
+                ?? $product->product_description
+                ?? ''
+            ));
+            $matchedBefore = $beforePlain !== '' && $beforePlain === $plain;
+
+            $update = [];
+            if (Schema::hasColumn('product_master', 'description_html')) {
+                $update['description_html'] = $html;
+            }
+            if (Schema::hasColumn('product_master', 'description_1000')) {
+                $update['description_1000'] = $this->truncateDescriptionForMarketplace($html, 'shopify_main');
+            }
+            if (Schema::hasColumn('product_master', 'product_description') && $plain !== '') {
+                $update['product_description'] = $this->truncateDescriptionForMarketplace($html, 'shopify_main');
+            }
+            if (Schema::hasColumn('product_master', 'description_1500') && $plain !== '') {
+                // Keep Preview (PM) filled when the 1500 tier was empty.
+                $existing1500 = trim((string) ($product->description_1500 ?? ''));
+                if ($existing1500 === '') {
+                    $update['description_1500'] = $this->truncateDescriptionForMarketplace($html, 'amazon');
+                }
+            }
+            if ($update !== []) {
+                $product->fill($update);
+                $product->save();
+            }
+
+            $stored = $this->prepareDescriptionForMetricsSave($html, 'shopify_main');
+            $this->saveDescriptionToMarketplaceTable('shopify_main', $sku, $stored);
+
+            Log::info('DescriptionMaster: pulled Shopify description to Product Master', [
+                'sku' => $sku,
+                'chars' => mb_strlen($plain),
+                'matched_before' => $matchedBefore,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'status' => $matchedBefore ? 'already_matched' : 'imported_to_product_master',
+                'message' => $matchedBefore
+                    ? 'Already matched Shopify description.'
+                    : 'Imported Shopify description to Product Master.',
+                'chars' => mb_strlen($plain),
+                'description_html' => $html,
+                'description_plain' => $plain,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DescriptionMaster: pullShopifyDescriptionToMaster failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function startShopifyPullJob(Request $request, ShopifyDescriptionPullJobStore $store)
+    {
+        $validated = $request->validate([
+            'skus' => 'required|array|min:1',
+            'skus.*' => 'required|string',
+        ]);
+
+        $current = $store->load();
+        if ($store->isActive($current)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A Shopify description pull is already running or paused.',
+                'job' => $current,
+            ], 409);
+        }
+
+        $job = $store->create($validated['skus'], 6);
+        try {
+            $this->dispatchShopifyDescriptionPullJob();
+        } catch (\Throwable $e) {
+            $store->markFailed('Could not queue worker: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue Shopify description pull worker. Is the queue worker running?',
+                'job' => $store->load(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Background Shopify description pull started.',
+            'job' => $job,
+        ]);
+    }
+
+    public function shopifyPullJobStatus(ShopifyDescriptionPullJobStore $store)
+    {
+        return response()->json([
+            'success' => true,
+            'job' => $store->load(),
+        ]);
+    }
+
+    public function pauseShopifyPullJob(ShopifyDescriptionPullJobStore $store)
+    {
+        $job = $store->update(function (array $state) {
+            if (($state['status'] ?? 'idle') === 'running') {
+                $state['status'] = 'paused';
+                $state['last_message'] = 'Pause requested. Current SKU will finish first.';
+            }
+
+            return $state;
+        });
+        $store->appendMessage('Pause requested. Current SKU will finish first.', false);
+
+        return response()->json(['success' => true, 'job' => $job]);
+    }
+
+    public function resumeShopifyPullJob(ShopifyDescriptionPullJobStore $store)
+    {
+        $job = $store->update(function (array $state) {
+            if (($state['status'] ?? 'idle') === 'paused') {
+                $state['status'] = 'running';
+                $state['last_message'] = 'Resumed Shopify description pull.';
+                $state['finished_at'] = null;
+            }
+
+            return $state;
+        });
+        $store->appendMessage('Resumed Shopify description pull.', true);
+        try {
+            $this->dispatchShopifyDescriptionPullJob();
+        } catch (\Throwable $e) {
+            Log::warning('DescriptionMaster: resume could not re-queue Shopify description pull', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return response()->json(['success' => true, 'job' => $job]);
+    }
+
+    public function stopShopifyPullJob(ShopifyDescriptionPullJobStore $store)
+    {
+        $job = $store->update(function (array $state) {
+            if (in_array($state['status'] ?? 'idle', ['running', 'paused'], true)) {
+                $state['status'] = 'stopping';
+                $state['last_message'] = 'Stop requested. Current SKU will finish first.';
+            }
+
+            return $state;
+        });
+        $store->appendMessage('Stop requested. Current SKU will finish first.', false);
+
+        return response()->json(['success' => true, 'job' => $job]);
+    }
+
+    private function dispatchShopifyDescriptionPullJob(): void
+    {
+        RunShopifyDescriptionPullJob::dispatch();
     }
 
     /**
