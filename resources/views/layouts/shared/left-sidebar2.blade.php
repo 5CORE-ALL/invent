@@ -178,7 +178,19 @@
                                 <a href="{{ route('product.description') }}">Product Description</a>
                             </li>
                             <li>
-                                <a href="{{ route('product.description2') }}">Description Master 2.0</a>
+                                <a href="{{ route('about.brand') }}">About Brand</a>
+                            </li>
+                            <li>
+                                <a href="{{ route('technical.specifications') }}">Technical Specifications</a>
+                            </li>
+                            <li>
+                                <a href="{{ route('description.for.html') }}">Description For HTML</a>
+                            </li>
+                            <li>
+                                <a href="{{ route('images.a.plus.content') }}">Images A+ Content</a>
+                            </li>
+                            <li>
+                                <a href="{{ route('a.plus.content') }}">A+ Content</a>
                             </li>
                             <li>
                                 <a href="{{ route('features') }}">Features</a>
