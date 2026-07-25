@@ -816,6 +816,127 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Push SKU base/supplier price to Temu via bg.local.goods.priceorder.change.sku.price.
+     *
+     * @param  string  $sku  Seller SKU
+     * @param  float  $price  New supplier/base price (not storefront Temu Price)
+     * @param  string|null  $goodsId  Optional goodsId from row (skips lookup)
+     * @param  string|null  $skuId  Optional skuId from row (skips lookup)
+     * @param  string  $currency
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, response?: mixed}
+     */
+    public function updateSkuBasePrice(
+        string $sku,
+        float $price,
+        ?string $goodsId = null,
+        ?string $skuId = null,
+        string $currency = 'USD'
+    ): array {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if ($price <= 0) {
+            return ['success' => false, 'message' => 'Price must be greater than 0.'];
+        }
+
+        $goodsId = $goodsId !== null && $goodsId !== '' ? (string) $goodsId : $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return [
+                'success' => false,
+                'message' => 'goodsId not found for SKU. Run app:fetch-temu-metrics first.',
+            ];
+        }
+
+        $skuId = $skuId !== null && $skuId !== '' ? (string) $skuId : $this->getSkuIdBySku($sku);
+        if (! $skuId) {
+            return [
+                'success' => false,
+                'message' => 'skuId not found for SKU. Run app:fetch-temu-metrics --only=skus first.',
+            ];
+        }
+
+        $amount = number_format($price, 2, '.', '');
+        $currency = strtoupper(trim($currency)) ?: 'USD';
+
+        $requestBody = [
+            'type' => 'bg.local.goods.priceorder.change.sku.price',
+            'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+            'changeSkuPriceDTOList' => [
+                [
+                    'skuChangePriceBaseDTOList' => [
+                        [
+                            'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
+                            'newSupplierPrice' => [
+                                'amount' => $amount,
+                                'currency' => $currency,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $signedRequest = $this->generateSignValue($requestBody);
+        $url = 'https://openapi-b-us.temu.com/openapi/router';
+
+        $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(60);
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        try {
+            Log::info('Temu updateSkuBasePrice request', [
+                'sku' => $sku,
+                'goodsId' => $goodsId,
+                'skuId' => $skuId,
+                'amount' => $amount,
+                'currency' => $currency,
+            ]);
+
+            $response = $request->post($url, $signedRequest);
+            $data = $response->json() ?? [];
+
+            Log::info('Temu updateSkuBasePrice response', [
+                'sku' => $sku,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return [
+                    'success' => true,
+                    'message' => "Price updated on Temu for SKU: {$sku} → {$amount} {$currency}.",
+                    'goods_id' => (string) $goodsId,
+                    'sku_id' => (string) $skuId,
+                    'response' => $data['result'] ?? $data,
+                ];
+            }
+
+            $errorCode = $data['errorCode'] ?? $response->status();
+            $errorMsg = (string) ($data['errorMsg'] ?? $data['message'] ?? $response->body() ?: 'Unknown error');
+
+            return [
+                'success' => false,
+                'message' => trim("[{$errorCode}] {$errorMsg}"),
+                'goods_id' => (string) $goodsId,
+                'sku_id' => (string) $skuId,
+                'response' => $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateSkuBasePrice exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Temu price push failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * Update product title on Temu by seller SKU.
      * Resolves SKU → goodsId (required by API); uses goodsId + goodsName in request.
      * API type is configurable via config('services.temu.goods_update_type') or TEMU_GOODS_UPDATE_TYPE.

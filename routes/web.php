@@ -4395,6 +4395,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-badge-history', [TemuController::class, 'getTemuBadgeHistory']);
     Route::post('/temu-pricing/update-price', [TemuController::class, 'updateTemuPrice']);
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
+    Route::post('/temu/push-price', [TemuController::class, 'pushTemuPrice'])->name('temu.push.price');
     Route::post('/temu2-pricing/update-price', [TemuController::class, 'updateTemu2Price']);
     Route::post('/temu2-pricing/save-sprice', [TemuController::class, 'saveTemu2Sprice']);
     Route::post('/temu2-sync-data-view-from-temu', [TemuController::class, 'syncTemu2DataViewFromTemuDataView'])->name('temu2.sync.dataview');
