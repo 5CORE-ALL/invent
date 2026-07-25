@@ -4360,18 +4360,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-pricing/upload', [TemuController::class, 'uploadTemu2Pricing'])->name('temu2.pricing.upload');
     Route::get('/temu2-pricing/sample', [TemuController::class, 'downloadTemu2PricingSample'])->name('temu2.pricing.sample');
 
-    // Temu View Data Upload
-    Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
-    Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
-    // L7 mirror — same format, separate table so the replace-all upload on
-    // either window doesn't wipe the other. Drives the "L7 vs L30 %" column
-    // on /temu-decrease.
-    Route::post('/temu-view-data-l7/upload', [TemuController::class, 'uploadTemuViewDataL7'])->name('temu.viewdata.l7.upload');
-    Route::get('/temu-view-data-l7/sample', [TemuController::class, 'downloadTemuViewDataL7Sample'])->name('temu.viewdata.l7.sample');
-    // Prior-week mirror (days 8–14 back). Same shape as L30/L7; persisted in
-    // its own table so the replace-all upload doesn't clobber the other two.
-    Route::post('/temu-view-data-l7-to-l14/upload', [TemuController::class, 'uploadTemuViewDataL7ToL14'])->name('temu.viewdata.l7tol14.upload');
-    Route::get('/temu-view-data-l7-to-l14/sample', [TemuController::class, 'downloadTemuViewDataL7ToL14Sample'])->name('temu.viewdata.l7tol14.sample');
+    // Temu 2 View Data Upload (Temu 1 views come from Ads API → temu_metrics.product_clicks_l30)
     Route::post('/temu2-view-data/upload', [TemuController::class, 'uploadTemu2ViewData'])->name('temu2.viewdata.upload');
     Route::get('/temu2-view-data/sample', [TemuController::class, 'downloadTemu2ViewDataSample'])->name('temu2.viewdata.sample');
 

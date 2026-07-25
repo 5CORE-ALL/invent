@@ -26,6 +26,7 @@ use App\Models\TemuViewData;
 use App\Models\TemuViewDataL7;
 use App\Models\TemuViewDataL7ToL14;
 use App\Models\Temu2ViewData;
+use App\Models\TemuAdsApiReport;
 use App\Models\TemuAdData;
 use App\Models\TemuLmp;
 use App\Models\TemuListingStatus;
@@ -3047,7 +3048,7 @@ class TemuController extends Controller
                 $allPricingData = Temu2Pricing::select($pricingSelect)->get();
             } else {
                 $allPricingData = TemuMetric::query()
-                    ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'recommended_base_price'])
+                    ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'recommended_base_price', 'product_clicks_l30'])
                     ->get()
                     ->map(static function ($m) {
                         return (object) [
@@ -3063,6 +3064,7 @@ class TemuController extends Controller
                             'sku_id' => $m->sku_id,
                             'date_created' => '',
                             'recommended_base_price' => $m->recommended_base_price,
+                            'product_clicks_l30' => $m->product_clicks_l30,
                         ];
                     });
             }
@@ -3290,37 +3292,60 @@ class TemuController extends Controller
                 'groi_percent' => round($salesGroiPercent, 1),
             ];
 
-            // Fetch all view data (no date filter). Each marketplace has its own
-            // table — temu_view_data for Temu 1, temu2_view_data for Temu 2 —
-            // because the upload handler wipes + replaces, so sharing one table
-            // would leave whichever marketplace was uploaded last as the only
-            // one with non-zero product_clicks (and therefore non-zero CVR).
-            $viewModel = $isTemu2Pricing ? Temu2ViewData::class : TemuViewData::class;
-            $viewData = $viewModel::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
-                ->groupBy('goods_id')
-                ->get()
-                ->keyBy('goods_id');
-
-            // L7 view data — Temu 1 only (Temu 2 keeps its single window for now).
-            // Same aggregation shape as $viewData so the per-row lookup is symmetric.
-            // Wrapped in Schema::hasTable so a fresh checkout without the migration
-            // still loads the page (column just shows 0 / no data).
-            $viewDataL7 = ($isTemu2Pricing || ! Schema::hasTable('temu_view_data_l7'))
-                ? collect()
-                : TemuViewDataL7::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+            // Views (Temu 1): Ads API → temu_metrics.product_clicks_l30 (by goods_id).
+            // Temu 2: still uses temu2_view_data sheet until a Temu 2 ads API path exists.
+            if ($isTemu2Pricing) {
+                $viewData = Temu2ViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
                     ->groupBy('goods_id')
                     ->get()
-                    ->keyBy('goods_id');
+                    ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id));
 
-            // L7-to-L14 view data — prior-week window (days 8–14 back). Used to
-            // surface "Views 14" alongside L30 / L7 so users can see week-over-week
-            // movement at a glance. Same hasTable guard as L7 above.
-            $viewDataL7ToL14 = ($isTemu2Pricing || ! Schema::hasTable('temu_view_data_l7_to_l14'))
-                ? collect()
-                : TemuViewDataL7ToL14::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
-                    ->groupBy('goods_id')
+                $viewDataL7 = collect();
+                $viewDataL7ToL14 = collect();
+            } else {
+                $viewByGoods = [];
+                TemuMetric::query()
+                    ->select('goods_id', 'product_clicks_l30')
+                    ->whereNotNull('goods_id')
+                    ->where('goods_id', '!=', '')
                     ->get()
-                    ->keyBy('goods_id');
+                    ->each(function ($row) use (&$viewByGoods) {
+                        $key = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                        if ($key === '' || $key === null) {
+                            return;
+                        }
+                        $clicks = (int) ($row->product_clicks_l30 ?? 0);
+                        if (! isset($viewByGoods[$key]) || $clicks > (int) $viewByGoods[$key]->product_clicks) {
+                            $viewByGoods[$key] = (object) [
+                                'product_clicks' => $clicks,
+                                'ctr' => 0,
+                            ];
+                        }
+                    });
+                $viewData = collect($viewByGoods);
+
+                // View 7: Ads API L7 report clicks (same clkCntAll source as L30)
+                $viewL7ByGoods = [];
+                if (Schema::hasTable('temu_ads_api_reports')) {
+                    TemuAdsApiReport::query()
+                        ->where('period', 'L7')
+                        ->whereNotNull('goods_id')
+                        ->get(['goods_id', 'clicks'])
+                        ->each(function ($row) use (&$viewL7ByGoods) {
+                            $key = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                            if ($key === '' || $key === null) {
+                                return;
+                            }
+                            $viewL7ByGoods[$key] = (object) [
+                                'product_clicks' => (int) ($row->clicks ?? 0),
+                            ];
+                        });
+                }
+                $viewDataL7 = collect($viewL7ByGoods);
+
+                // Views 14 (L7–L14): no Partner API window — always empty for Temu 1
+                $viewDataL7ToL14 = collect();
+            }
 
             $goodsIds = $pricingData->pluck('goods_id')->filter()->unique()->values()->all();
             $campaignRange = $isL7Period ? 'L7' : 'L30';
@@ -3540,28 +3565,24 @@ class TemuController extends Controller
                 // Get Temu L30 (last 30 days sales from Temu daily data)
                 $temuL30 = $temuSales ? (int) ($temuSales->temu_l30 ?? 0) : 0;
                 
-                // Get view data by goods_id (last 30 days) - only if item exists in Temu
+                // Views by goods_id: Temu 1 = API product_clicks_l30; Temu 2 = sheet
                 $goodsId = $item ? $item->goods_id : null;
-                $viewDataItem = $goodsId ? $viewData->get($goodsId) : null;
-                $productClicks = $viewDataItem ? $viewDataItem->product_clicks : 0;
-                $ctr = $viewDataItem ? $viewDataItem->ctr : 0;
+                $goodsIdKeyForViews = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
+                $viewDataItem = $goodsIdKeyForViews ? $viewData->get($goodsIdKeyForViews) : null;
+                $productClicks = $viewDataItem
+                    ? (int) $viewDataItem->product_clicks
+                    : (int) ($item->product_clicks_l30 ?? 0);
+                $ctr = $viewDataItem ? ($viewDataItem->ctr ?? 0) : 0;
 
-                // L7 views (last 7 days) for the "L7 vs L30 %" column. Same goods_id
-                // join as L30; missing upload → 0. The "% vs L30 pace" compares the
-                // L7 daily-average to the L30 daily-average:
-                //     (l7_views / 7) ÷ (l30_views / 30) × 100
-                //   = l7_views × 30 ÷ (l30_views × 7) × 100
-                // 100 = same pace, > 100 = trending up, < 100 = trending down. The
-                // page colors >70 green and <71 red per product spec.
-                $viewDataL7Item = $goodsId ? $viewDataL7->get($goodsId) : null;
+                // View 7: Temu 1 from ads API L7; Temu 2 unused (0)
+                $viewDataL7Item = $goodsIdKeyForViews ? $viewDataL7->get($goodsIdKeyForViews) : null;
                 $productClicksL7 = $viewDataL7Item ? (int) $viewDataL7Item->product_clicks : 0;
                 $l7VsL30Pct = ($productClicks > 0 && $productClicksL7 > 0)
                     ? round((($productClicksL7 / 7) / ($productClicks / 30)) * 100, 2)
                     : 0;
 
-                // Prior week (days 8–14 back). Joined the same way as L7 so the
-                // "Views 14" column lines up with "View 7" by goods_id.
-                $viewDataL7ToL14Item = $goodsId ? $viewDataL7ToL14->get($goodsId) : null;
+                // Views 14: no API for Temu 1 L7–L14 window
+                $viewDataL7ToL14Item = $goodsIdKeyForViews ? $viewDataL7ToL14->get($goodsIdKeyForViews) : null;
                 $productClicksL7ToL14 = $viewDataL7ToL14Item ? (int) $viewDataL7ToL14Item->product_clicks : 0;
                 
                 // Join keys: normalize goods_id so campaign reports match temu_pricing (Excel float issues)
@@ -4455,476 +4476,6 @@ class TemuController extends Controller
         }
     }
 
-    /**
-     * Upload Temu View Data (INSERT only, no truncate)
-     */
-    public function uploadTemuViewData(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
-        ]);
-
-        try {
-            $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getRealPath());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            // Get header row
-            $headers = array_shift($rows);
-            
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                // Replace-all upload: wipe the existing view-data rows so the table
-                // ends up being exactly what's in this file. Done inside the
-                // transaction so a failed import below rolls back the truncate too
-                // — we never end up with an empty table on error.
-                // truncate() implicitly commits in MySQL when called directly, so use
-                // delete() which is transactional. Keeps autoincrement IDs growing,
-                // which is fine since there are no FKs pointing here.
-                $deletedCount = TemuViewData::query()->delete();
-
-                foreach ($rows as $row) {
-                    if (empty($row[0]) || empty($row[1])) {
-                        $skipped++;
-                        continue; // Skip empty rows
-                    }
-
-                    $rowData = array_combine($headers, $row);
-                    
-                    // Parse date
-                    $date = null;
-                    if (!empty($rowData['Date'])) {
-                        try {
-                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
-                        } catch (\Exception $e) {
-                            Log::warning("Could not parse date: " . $rowData['Date']);
-                        }
-                    }
-
-                    // Parse CTR percentage (remove % sign if present)
-                    $ctr = 0;
-                    if (!empty($rowData['CTR'])) {
-                        $ctrValue = str_replace('%', '', $rowData['CTR']);
-                        $ctr = (float)$ctrValue;
-                    }
-
-                    $goodsId = $rowData['Goods ID'] ?? null;
-
-                    $viewData = [
-                        'goods_name' => $rowData['Goods Name'] ?? null,
-                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
-                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
-                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
-                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
-                        'ctr' => $ctr,
-                    ];
-
-                    // After the wipe above this is always an insert — keep updateOrCreate
-                    // anyway so duplicate (date, goods_id) rows within the same file are
-                    // collapsed instead of failing on the unique key.
-                    TemuViewData::updateOrCreate(
-                        ['date' => $date, 'goods_id' => $goodsId],
-                        $viewData
-                    );
-                    $imported++;
-                }
-
-                DB::commit();
-
-                return back()->with('success', "Successfully imported $imported records! ($skipped skipped, replaced $deletedCount existing rows)");
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error uploading Temu view data: ' . $e->getMessage());
-            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Download Temu View Data Sample File
-     */
-    public function downloadTemuViewDataSample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row
-        $headers = [
-            'Date',
-            'Goods ID',
-            'Goods Name',
-            'Product impressions',
-            'Number of visitor impressions of the product',
-            'Product clicks',
-            'Number of visitor clicks on the product',
-            'CTR'
-        ];
-        
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data
-        $sampleData = [
-            [
-                '2025-11-01',
-                '603163444796046',
-                '5Core 6.5 Inch Midrange Car Door Speaker',
-                '98493',
-                '71393',
-                '3188',
-                '2825',
-                '3.24%'
-            ],
-            [
-                '2025-11-01',
-                '603258940684269',
-                'Adjustable Heavy Duty Guitar Stand',
-                '79303',
-                '56745',
-                '496',
-                '439',
-                '0.63%'
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        foreach (range('A', 'H') as $col) {
-            $sheet->getColumnDimension($col)->setWidth(25);
-        }
-
-        // Style header row
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
-
-        // Output Download
-        $fileName = 'Temu_View_Data_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
-
-    /**
-     * Upload Temu L7 View Data. Mirrors uploadTemuViewData (same file format,
-     * same replace-all semantics, same parsing rules) but persists to the
-     * temu_view_data_l7 table so the L30 upload doesn't wipe the L7 rows
-     * (or vice versa). The /temu-decrease page reads both and computes
-     * "L7 vs L30 %" per goods_id.
-     */
-    public function uploadTemuViewDataL7(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
-        ]);
-
-        try {
-            $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getRealPath());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            $headers = array_shift($rows);
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                // Replace-all upload: wipe the L7 rows so the table is exactly
-                // what's in the uploaded file (mirrors uploadTemuViewData).
-                $deletedCount = TemuViewDataL7::query()->delete();
-
-                foreach ($rows as $row) {
-                    if (empty($row[0]) || empty($row[1])) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    $rowData = array_combine($headers, $row);
-
-                    $date = null;
-                    if (!empty($rowData['Date'])) {
-                        try {
-                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
-                        } catch (\Exception $e) {
-                            Log::warning("Could not parse date: " . $rowData['Date']);
-                        }
-                    }
-
-                    $ctr = 0;
-                    if (!empty($rowData['CTR'])) {
-                        $ctrValue = str_replace('%', '', $rowData['CTR']);
-                        $ctr = (float)$ctrValue;
-                    }
-
-                    $goodsId = $rowData['Goods ID'] ?? null;
-
-                    $viewData = [
-                        'goods_name' => $rowData['Goods Name'] ?? null,
-                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
-                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
-                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
-                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
-                        'ctr' => $ctr,
-                    ];
-
-                    TemuViewDataL7::updateOrCreate(
-                        ['date' => $date, 'goods_id' => $goodsId],
-                        $viewData
-                    );
-                    $imported++;
-                }
-
-                DB::commit();
-
-                return back()->with('success', "Successfully imported $imported L7 view records! ($skipped skipped, replaced $deletedCount existing rows)");
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error uploading Temu L7 view data: ' . $e->getMessage());
-            return back()->with('error', 'Error uploading L7 file: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Sample file for the L7 view-data upload. Identical schema to
-     * downloadTemuViewDataSample so the same Excel export from Temu's
-     * dashboard can feed either L30 or L7 uploads.
-     */
-    public function downloadTemuViewDataL7Sample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $headers = [
-            'Date',
-            'Goods ID',
-            'Goods Name',
-            'Product impressions',
-            'Number of visitor impressions of the product',
-            'Product clicks',
-            'Number of visitor clicks on the product',
-            'CTR'
-        ];
-
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        $sampleData = [
-            [
-                Carbon::now()->subDays(6)->format('Y-m-d'),
-                '603163444796046',
-                '5Core 6.5 Inch Midrange Car Door Speaker',
-                '22893',
-                '16451',
-                '732',
-                '648',
-                '3.20%'
-            ],
-            [
-                Carbon::now()->subDays(6)->format('Y-m-d'),
-                '603258940684269',
-                'Adjustable Heavy Duty Guitar Stand',
-                '18411',
-                '13182',
-                '115',
-                '102',
-                '0.62%'
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        foreach (range('A', 'H') as $col) {
-            $sheet->getColumnDimension($col)->setWidth(25);
-        }
-
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
-
-        $fileName = 'Temu_View_Data_L7_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
-
-    /**
-     * Upload Temu prior-week (L7-to-L14) View Data. Mirrors uploadTemuViewData
-     * row for row — same Excel format, same replace-all semantics, same parsing
-     * rules — but persists to temu_view_data_l7_to_l14 so it doesn't overwrite
-     * the L30 or L7 windows. Enables week-over-week deltas on /temu-decrease.
-     */
-    public function uploadTemuViewDataL7ToL14(Request $request)
-    {
-        $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
-        ]);
-
-        try {
-            $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getRealPath());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            $headers = array_shift($rows);
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                // Replace-all upload: wipe the prior-week rows so the table is
-                // exactly what's in the uploaded file (mirrors uploadTemuViewData
-                // and uploadTemuViewDataL7).
-                $deletedCount = TemuViewDataL7ToL14::query()->delete();
-
-                foreach ($rows as $row) {
-                    if (empty($row[0]) || empty($row[1])) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    $rowData = array_combine($headers, $row);
-
-                    $date = null;
-                    if (!empty($rowData['Date'])) {
-                        try {
-                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
-                        } catch (\Exception $e) {
-                            Log::warning("Could not parse date: " . $rowData['Date']);
-                        }
-                    }
-
-                    $ctr = 0;
-                    if (!empty($rowData['CTR'])) {
-                        $ctrValue = str_replace('%', '', $rowData['CTR']);
-                        $ctr = (float)$ctrValue;
-                    }
-
-                    $goodsId = $rowData['Goods ID'] ?? null;
-
-                    $viewData = [
-                        'goods_name' => $rowData['Goods Name'] ?? null,
-                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
-                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
-                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
-                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
-                        'ctr' => $ctr,
-                    ];
-
-                    TemuViewDataL7ToL14::updateOrCreate(
-                        ['date' => $date, 'goods_id' => $goodsId],
-                        $viewData
-                    );
-                    $imported++;
-                }
-
-                DB::commit();
-
-                return back()->with('success', "Successfully imported $imported L7-to-L14 view records! ($skipped skipped, replaced $deletedCount existing rows)");
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error uploading Temu L7-to-L14 view data: ' . $e->getMessage());
-            return back()->with('error', 'Error uploading L7-to-L14 file: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Sample file for the L7-to-L14 view-data upload. Identical schema to the
-     * L30 / L7 samples so the same Excel export from Temu's dashboard can feed
-     * any of the three uploads — only the date range the user chooses differs.
-     */
-    public function downloadTemuViewDataL7ToL14Sample()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $headers = [
-            'Date',
-            'Goods ID',
-            'Goods Name',
-            'Product impressions',
-            'Number of visitor impressions of the product',
-            'Product clicks',
-            'Number of visitor clicks on the product',
-            'CTR'
-        ];
-
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample dates fall inside the prior-week window (days 8–14 back) so
-        // the user can immediately see which range to export from Temu.
-        $sampleData = [
-            [
-                Carbon::now()->subDays(13)->format('Y-m-d'),
-                '603163444796046',
-                '5Core 6.5 Inch Midrange Car Door Speaker',
-                '21055',
-                '15103',
-                '671',
-                '595',
-                '3.18%'
-            ],
-            [
-                Carbon::now()->subDays(13)->format('Y-m-d'),
-                '603258940684269',
-                'Adjustable Heavy Duty Guitar Stand',
-                '17288',
-                '12366',
-                '108',
-                '95',
-                '0.61%'
-            ]
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        foreach (range('A', 'H') as $col) {
-            $sheet->getColumnDimension($col)->setWidth(25);
-        }
-
-        $headerStyle = [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCCCCC']]
-        ];
-        $sheet->getStyle('A1:H1')->applyFromArray($headerStyle);
-
-        $fileName = 'Temu_View_Data_L7_to_L14_Sample_' . date('Y-m-d') . '.xlsx';
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
 
     /**
      * Upload Temu 2 View Data. Mirrors uploadTemuViewData but writes to

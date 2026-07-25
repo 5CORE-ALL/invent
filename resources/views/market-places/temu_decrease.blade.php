@@ -772,33 +772,6 @@
                         <ul class="dropdown-menu shadow-sm" aria-labelledby="temuUploadDropdown">
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
-                                    <i class="fas fa-eye text-success" style="width: 18px;"></i>
-                                    <span>Up View Data (L30)</span>
-                                </button>
-                            </li>
-                            <li>
-                                {{-- Same Excel format as the L30 view-data upload; persists to
-                                     temu_view_data_l7 so the two uploads don't overwrite each
-                                     other. Feeds the "View 7" column. --}}
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataL7Modal">
-                                    <i class="fas fa-eye text-primary" style="width: 18px;"></i>
-                                    <span>Up View Data (L7)</span>
-                                </button>
-                            </li>
-                            <li>
-                                {{-- Prior-week window (days 8–14 back). Same upload format;
-                                     persists to temu_view_data_l7_to_l14 so the L30/L7/L7-to-L14
-                                     replace-all uploads remain independent. --}}
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
-                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataL7ToL14Modal">
-                                    <i class="fas fa-eye text-info" style="width: 18px;"></i>
-                                    <span>Up View Data (L7 to L14)</span>
-                                </button>
-                            </li>
-                            <li>
-                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
                                     <i class="fas fa-chart-line text-warning" style="width: 18px;"></i>
                                     <span>Up Ad Data</span>
@@ -1024,149 +997,6 @@
         </div>
     </div>
 
-    <!-- Upload View Data Modal -->
-    <div class="modal fade" id="uploadViewDataModal" tabindex="-1" aria-labelledby="uploadViewDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title" id="uploadViewDataModalLabel">
-                        <i class="fas fa-eye me-2"></i>Upload Temu View Data
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    @if(session('success'))
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                            {{ session('success') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    @if(session('error'))
-                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                            {{ session('error') }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    @endif
-                    
-                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="viewDataFile" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
-                            </label>
-                            <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB)
-                            </div>
-                        </div>
-                        <div class="alert alert-info">
-                            <i class="fas fa-lightbulb me-2"></i>
-                            <strong>Note:</strong> This will INSERT new records only (no truncate/update).
-                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
-                                <i class="fas fa-download"></i> Download Sample File
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadViewDataForm" class="btn btn-success">
-                        <i class="fas fa-upload me-1"></i>Up View Data
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Upload Temu L7 View Data modal. Same form/file shape as the L30 modal
-         above (Excel/CSV with the same column headers); posts to a different
-         route so it lands in temu_view_data_l7 instead of temu_view_data. --}}
-    <div class="modal fade" id="uploadViewDataL7Modal" tabindex="-1" aria-labelledby="uploadViewDataL7ModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title" id="uploadViewDataL7ModalLabel">
-                        <i class="fas fa-eye me-2"></i>Upload Temu L7 View Data
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadViewDataL7Form" action="{{ route('temu.viewdata.l7.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="viewDataL7File" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-primary me-1"></i>Choose Excel File (last 7 days)
-                            </label>
-                            <input type="file" class="form-control" id="viewDataL7File" name="file" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB). Same column layout as L30 view data — just export only the last 7 days from Temu.
-                            </div>
-                        </div>
-                        <div class="alert alert-info">
-                            <i class="fas fa-lightbulb me-2"></i>
-                            <strong>Note:</strong> Replace-all upload — overwrites all existing L7 rows.
-                            <a href="{{ route('temu.viewdata.l7.sample') }}" class="alert-link">
-                                <i class="fas fa-download"></i> Download Sample File
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadViewDataL7Form" class="btn btn-primary">
-                        <i class="fas fa-upload me-1"></i>Up L7 View Data
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Upload Temu prior-week (L7-to-L14) View Data modal. Same form/file
-         shape as the L30 and L7 modals; posts to the L7-to-L14 route so it
-         lands in temu_view_data_l7_to_l14 without disturbing the other two
-         windows. --}}
-    <div class="modal fade" id="uploadViewDataL7ToL14Modal" tabindex="-1" aria-labelledby="uploadViewDataL7ToL14ModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-dark">
-                    <h5 class="modal-title" id="uploadViewDataL7ToL14ModalLabel">
-                        <i class="fas fa-eye me-2"></i>Upload Temu View Data (L7 to L14)
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadViewDataL7ToL14Form" action="{{ route('temu.viewdata.l7tol14.upload') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label for="viewDataL7ToL14File" class="form-label fw-bold">
-                                <i class="fas fa-file-excel text-info me-1"></i>Choose Excel File (days 8–14 back)
-                            </label>
-                            <input type="file" class="form-control" id="viewDataL7ToL14File" name="file" accept=".xlsx,.xls,.csv" required>
-                            <div class="form-text">
-                                <i class="fas fa-info-circle text-info me-1"></i>
-                                Accepts .xlsx, .xls, or .csv files (Max: 10MB). Same column layout as the L30 / L7 view-data uploads — export the prior 7-day window from Temu (last week, not the current 7 days).
-                            </div>
-                        </div>
-                        <div class="alert alert-info">
-                            <i class="fas fa-lightbulb me-2"></i>
-                            <strong>Note:</strong> Replace-all upload — overwrites all existing L7-to-L14 rows.
-                            <a href="{{ route('temu.viewdata.l7tol14.sample') }}" class="alert-link">
-                                <i class="fas fa-download"></i> Download Sample File
-                            </a>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadViewDataL7ToL14Form" class="btn btn-info">
-                        <i class="fas fa-upload me-1"></i>Up L7 to L14 View Data
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Upload Ad Data Modal -->
     <div class="modal fade" id="uploadAdDataModal" tabindex="-1" aria-labelledby="uploadAdDataModalLabel" aria-hidden="true">
@@ -4644,6 +4474,7 @@
                     field: "product_clicks",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "L30 ad clicks from Temu Ads API (temu_metrics.product_clicks_l30 / clkCntAll).",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const sku = row.sku || '';
@@ -4653,30 +4484,26 @@
                     }
                 },
                 {
-                    // L7 product clicks — total views uploaded for the last 7 days
-                    // via the "Up View Data (L7)" flow. Populated by the L7 mirror
-                    // table (temu_view_data_l7); 0 when no L7 upload exists.
+                    // L7 ad clicks from temu_ads_api_reports (period=L7)
                     title: "View 7",
                     field: "product_clicks_l7",
                     hozAlign: "center",
                     sorter: "number",
                     width: 80,
-                    headerTooltip: "L7 product clicks — sum from temu_view_data_l7 for this SKU's goods_id. Upload via the 'Up View Data (L7)' menu.",
+                    headerTooltip: "L7 ad clicks from Temu Ads API (temu_ads_api_reports period=L7). Run: php artisan temu:fetch-ads-api-reports --period=L7",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
                     }
                 },
                 {
-                    // Prior-week product clicks (days 8–14 back). Populated by the
-                    // "Up View Data (L7 to L14)" upload; 0 when no upload exists.
-                    // Sits next to "View 7" so week-over-week movement is one glance.
+                    // No Partner API for days 8–14 window — always 0 for Temu 1
                     title: "Views 14",
                     field: "product_clicks_l7_to_l14",
                     hozAlign: "center",
                     sorter: "number",
                     width: 80,
-                    headerTooltip: "L7→L14 product clicks — the prior 7-day window (days 8–14 back). Upload via the 'Up View Data (L7 to L14)' menu.",
+                    headerTooltip: "L7→L14 window is not available from Temu Ads API (always empty).",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
