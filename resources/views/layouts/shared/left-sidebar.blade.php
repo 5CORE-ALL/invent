@@ -2336,6 +2336,9 @@
                             <a href="{{ route('general.specific.master') }}">General Specific Masters</a>
                         </li>
                         <li>
+                            <a href="{{ route('reverb.listing.master') }}">Reverb Listing Master</a>
+                        </li>
+                        <li>
                             <a href="{{ route('compliance.master') }}">Compliance Masters</a>
                         </li>
                         <li>

@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\ProductCategory;
+use App\Models\ProductMaster;
 use App\Models\ReverbMetric;
 use App\Models\ReverbOrderMetric;
 use App\Models\ReverbPricingPrice;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
+use App\Services\ReverbApiService;
 use App\Services\ReverbManagerApiService;
 use App\Services\ReverbAuthService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
@@ -16,6 +19,7 @@ use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ReverbDetailFormatter;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\ReverbLinkMapSyncService;
+use App\Services\MarketplaceManager\ReverbListingValidator;
 use App\Jobs\WarmReverbLiveListingsCache;
 use App\Services\MarketplaceManager\ReverbLiveListingsService;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -384,7 +388,8 @@ class ReverbSyncController extends Controller
         }
         $liveReverb = $liveService->liveDetailsByListingIds($listingIds);
 
-        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb) {
+        $listingValidator = app(ReverbListingValidator::class);
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb, $listingValidator) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnReverb($metric, $sku);
@@ -393,6 +398,9 @@ class ReverbSyncController extends Controller
             $pid = $linked ? (string) ($metric->product_id ?? '') : '';
             $live = ($pid !== '' && isset($liveReverb[$pid])) ? $liveReverb[$pid] : null;
             $aeQty = $linked ? ($live['inventory'] ?? null) : null;
+            $incomplete = $linked
+                ? $listingValidator->incompletenessFromLive(is_array($live) ? $live : null)
+                : ['incomplete' => false, 'issue_count' => 0];
 
             return (object) [
                 'shopify_sku_id' => $row->id,
@@ -410,6 +418,8 @@ class ReverbSyncController extends Controller
                 'linked' => $linked,
                 'listing_status' => $linked ? 'linked' : 'unlinked',
                 'reverb_state' => $live['state'] ?? null,
+                'listing_incomplete' => (bool) ($incomplete['incomplete'] ?? false),
+                'listing_issue_count' => (int) ($incomplete['issue_count'] ?? 0),
             ];
         });
 
@@ -527,7 +537,8 @@ class ReverbSyncController extends Controller
         }
         $liveReverb = $liveService->liveDetailsByListingIds($listingIds);
 
-        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb) {
+        $listingValidator = app(ReverbListingValidator::class);
+        $enriched = collect($pageRows)->map(function (ShopifySku $row) use ($aeMap, $liveShopifyQty, $liveReverb, $listingValidator) {
             $sku = (string) $row->sku;
             $metric = $aeMap[$sku] ?? null;
             $linked = $this->isShopifySkuLinkedOnReverb($metric, $sku);
@@ -540,6 +551,9 @@ class ReverbSyncController extends Controller
             if ($linked && $live !== null) {
                 $rvQty = (int) ($live['inventory'] ?? 0);
             }
+            $incomplete = $linked
+                ? $listingValidator->incompletenessFromLive(is_array($live) ? $live : null)
+                : ['incomplete' => false, 'issue_count' => 0];
 
             return (object) [
                 'shopify_sku_id' => $row->id,
@@ -557,6 +571,8 @@ class ReverbSyncController extends Controller
                 'linked' => true,
                 'listing_status' => 'linked',
                 'reverb_state' => $state !== '' ? $state : null,
+                'listing_incomplete' => (bool) ($incomplete['incomplete'] ?? false),
+                'listing_issue_count' => (int) ($incomplete['issue_count'] ?? 0),
             ];
         });
 
@@ -799,6 +815,503 @@ class ReverbSyncController extends Controller
             'success' => true,
             'message' => 'Pulled latest Reverb details for '.$sku.'. Nothing was pushed to Shopify or Reverb.',
         ]);
+    }
+
+    /**
+     * JSON payload for the View Listing editable modal.
+     */
+    public function listingEditor(string $marketplace, int $shopifySkuId): JsonResponse
+    {
+        return $this->buildListingEditorResponse($shopifySkuId, false);
+    }
+
+    /**
+     * Force-pull listing from Reverb API into the modal.
+     */
+    public function listingEditorPull(string $marketplace, int $shopifySkuId): JsonResponse
+    {
+        return $this->buildListingEditorResponse($shopifySkuId, true);
+    }
+
+    /**
+     * Push edited listing fields from the modal to Reverb.
+     */
+    public function listingEditorPush(Request $request, string $marketplace, int $shopifySkuId): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('reverb')) {
+            return response()->json(['success' => false, 'message' => 'Reverb not connected.'], 422);
+        }
+
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $metric = $this->reverbMetricMapForSkus([$sku])[$sku] ?? null;
+        if (! $this->isShopifySkuLinkedOnReverb($metric, $sku)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This SKU is not linked on Reverb. Run Sync Reverb link map first.',
+            ], 422);
+        }
+
+        $fields = $request->input('listing', $request->all());
+        if (! is_array($fields)) {
+            return response()->json(['success' => false, 'message' => 'Invalid listing payload.'], 422);
+        }
+
+        // Merge bullet lines into a Highlighted Features block when description lacks one.
+        if (! empty($fields['bullets']) && is_array($fields['bullets'])) {
+            $bullets = array_values(array_filter(array_map(static fn ($b) => trim((string) $b), $fields['bullets'])));
+            $description = (string) ($fields['description'] ?? '');
+            if ($bullets !== [] && ! str_contains($description, 'highlighted-features')) {
+                $features = '<div class="highlighted-features">'."\n";
+                foreach ($bullets as $b) {
+                    $features .= '<p>'.e($b).'<br></p>'."\n";
+                }
+                $features .= '</div>';
+                $fields['description'] = $features."\n".$description;
+            }
+        }
+
+        $validator = app(ReverbListingValidator::class);
+        $validation = $validator->validate($fields);
+        if (! ($validation['ok'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Listing has validation issues. Fix red-triangle fields before pushing.',
+                'validation' => $validation,
+            ], 422);
+        }
+
+        $listingId = (string) ($metric->product_id ?? '');
+        $result = app(ReverbApiService::class)->updateListing($listingId !== '' ? $listingId : $sku, $fields);
+
+        if (! empty($result['success']) && $metric) {
+            $metric->update([
+                'product_name' => trim((string) ($fields['title'] ?? $metric->product_name)) ?: $metric->product_name,
+                'price' => isset($fields['price_amount']) && is_numeric($fields['price_amount'])
+                    ? (float) $fields['price_amount']
+                    : $metric->price,
+            ]);
+        }
+
+        return response()->json([
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => $result['message'] ?? 'Push finished.',
+            'listing_id' => $result['listing_id'] ?? $listingId,
+            'validation' => $validation,
+        ], ! empty($result['success']) ? 200 : 422);
+    }
+
+    /**
+     * Autofill modal fields from Product Master (does not push to Reverb).
+     */
+    public function listingEditorProductMaster(Request $request, string $marketplace, int $shopifySkuId): JsonResponse
+    {
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $section = strtolower(trim((string) $request->query('section', 'full')));
+        if (! in_array($section, ['full', 'title', 'images', 'bullets', 'description', 'videos', 'details'], true)) {
+            $section = 'full';
+        }
+
+        $pm = $this->findProductMasterForSku($sku);
+        if (! $pm) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No Product Master row found for SKU '.$sku.'.',
+            ], 404);
+        }
+
+        $partial = $this->productMasterListingPartial($pm, $section);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Loaded Product Master data ('.$section.'). Review fields, then Push to Reverb.',
+            'section' => $section,
+            'partial' => $partial,
+        ]);
+    }
+
+    /**
+     * Fill only blank / underfilled listing fields from Product Master pages.
+     * Does not overwrite existing filled Reverb form values.
+     */
+    public function listingEditorAutopopulateMissing(Request $request, string $marketplace, int $shopifySkuId): JsonResponse
+    {
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $pm = $this->findProductMasterForSku($sku);
+        if (! $pm) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No Product Master row found for SKU '.$sku.'. Create/update it under Product Masters first.',
+                'master_url' => route('reverb.listing.master'),
+            ], 404);
+        }
+
+        $current = $request->input('listing', []);
+        if (! is_array($current)) {
+            $current = [];
+        }
+
+        $source = $this->productMasterListingPartial($pm, 'full');
+        $filled = [];
+        $stillMissing = [];
+        $sourcesUsed = [];
+
+        $fillText = static function (string $field, mixed $currentVal, mixed $sourceVal, string $sourceLabel) use (&$filled, &$stillMissing, &$sourcesUsed): void {
+            $cur = trim((string) ($currentVal ?? ''));
+            $src = trim((string) ($sourceVal ?? ''));
+            if ($cur !== '') {
+                return;
+            }
+            if ($src !== '') {
+                $filled[$field] = $src;
+                $sourcesUsed[$field] = $sourceLabel;
+            } else {
+                $stillMissing[] = $field;
+            }
+        };
+
+        $fillText('title', $current['title'] ?? '', $source['title'] ?? '', 'Title Master');
+        $fillText('make', $current['make'] ?? '', $source['make'] ?? '', 'Reverb Listing Master / Brand');
+        $fillText('model', $current['model'] ?? '', $source['model'] ?? '', 'Reverb Listing Master');
+        $fillText('finish', $current['finish'] ?? '', $source['finish'] ?? '', 'Reverb Listing Master');
+        $fillText('year', $current['year'] ?? '', $source['year'] ?? '', 'Reverb Listing Master');
+        $fillText('sku', $current['sku'] ?? '', $source['sku'] ?? $sku, 'Product Master SKU');
+        $fillText('condition_name', $current['condition_name'] ?? '', $source['condition_name'] ?? '', 'Reverb Listing Master / General Specific');
+        $fillText('category_name', $current['category_name'] ?? '', $source['category_name'] ?? '', 'Category Master');
+        $fillText('upc', $current['upc'] ?? '', $source['upc'] ?? '', 'ID Master / Product Master');
+        $fillText('description', $current['description'] ?? '', $source['description'] ?? '', 'Description Master');
+        $fillText('shipping_profile_id', $current['shipping_profile_id'] ?? '', $source['shipping_profile_id'] ?? '', 'Reverb Listing Master');
+
+        $curPrice = $current['price_amount'] ?? null;
+        if (($curPrice === null || $curPrice === '' || ! is_numeric($curPrice) || (float) $curPrice <= 0)
+            && isset($source['price_amount']) && is_numeric($source['price_amount']) && (float) $source['price_amount'] > 0) {
+            $filled['price_amount'] = (float) $source['price_amount'];
+            $filled['price_currency'] = $source['price_currency'] ?? 'USD';
+            $sourcesUsed['price_amount'] = 'Pricing / Shipping Master (LP+Ship)';
+        } elseif ($curPrice === null || $curPrice === '' || ! is_numeric($curPrice) || (float) $curPrice <= 0) {
+            $stillMissing[] = 'price_amount';
+        }
+
+        $curCurrency = trim((string) ($current['price_currency'] ?? ''));
+        if ($curCurrency === '' && empty($filled['price_currency'])) {
+            $filled['price_currency'] = 'USD';
+            $sourcesUsed['price_currency'] = 'Default USD';
+        }
+
+        $curPhotos = is_array($current['photos'] ?? null) ? array_values(array_filter(array_map('trim', $current['photos']))) : [];
+        $srcPhotos = is_array($source['photos'] ?? null) ? $source['photos'] : [];
+        if (count($curPhotos) < 11) {
+            if ($srcPhotos !== []) {
+                $merged = array_values(array_unique(array_slice(array_merge($curPhotos, $srcPhotos), 0, 25)));
+                if ($merged !== $curPhotos) {
+                    $filled['photos'] = $merged;
+                    $sourcesUsed['photos'] = 'Image Master (+ Hero/gallery)';
+                }
+                if (count($merged) < 11) {
+                    $stillMissing[] = 'photos';
+                }
+            } else {
+                $stillMissing[] = 'photos';
+            }
+        }
+
+        $curVideos = is_array($current['videos'] ?? null) ? array_values(array_filter(array_map('trim', $current['videos']))) : [];
+        $srcVideos = is_array($source['videos'] ?? null) ? $source['videos'] : [];
+        if (count($curVideos) < 1) {
+            if ($srcVideos !== []) {
+                $filled['videos'] = array_values(array_unique(array_slice($srcVideos, 0, 3)));
+                $sourcesUsed['videos'] = 'Video Master';
+            } else {
+                $stillMissing[] = 'videos';
+            }
+        }
+
+        // Highlighted features: always use Bullet Points Master (/bullet-points) data.
+        $srcBullets = is_array($source['bullets'] ?? null) ? $source['bullets'] : [];
+        if ($srcBullets !== []) {
+            $filled['bullets'] = $srcBullets;
+            $sourcesUsed['bullets'] = 'Bullet Points Master (/bullet-points)';
+            if (! empty($source['highlighted_features_html'])) {
+                $filled['highlighted_features_html'] = $source['highlighted_features_html'];
+            }
+        } else {
+            $stillMissing[] = 'bullets';
+        }
+
+        $stillMissing = array_values(array_unique($stillMissing));
+        $masterUrl = route('reverb.listing.master');
+
+        return response()->json([
+            'success' => true,
+            'message' => $filled === []
+                ? 'No blank fields could be filled from Product Master. Add missing master data, then retry.'
+                : ('Autopopulated '.count($filled).' missing field(s) from Product Master pages.'),
+            'partial' => $filled,
+            'sources' => $sourcesUsed,
+            'still_missing' => $stillMissing,
+            'master_url' => $masterUrl,
+            'hint' => $stillMissing !== []
+                ? 'Still missing: '.implode(', ', $stillMissing).'. Edit under Reverb Listing Master / related Product Masters.'
+                : null,
+        ]);
+    }
+
+    protected function findProductMasterForSku(string $sku): ?ProductMaster
+    {
+        $skuTrim = trim($sku);
+        if ($skuTrim === '') {
+            return null;
+        }
+
+        $pm = ProductMaster::query()
+            ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($skuTrim)])
+            ->first();
+
+        if (! $pm && method_exists(ShopifySku::class, 'normalizeSkuForShopifyLookup')) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($skuTrim);
+            $candidates = ProductMaster::query()
+                ->where('sku', 'like', '%'.preg_replace('/\s+/', '%', $skuTrim).'%')
+                ->limit(50)
+                ->get();
+            $pm = $candidates->first(function ($row) use ($norm) {
+                return ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? '')) === $norm;
+            });
+        }
+
+        return $pm;
+    }
+
+    /**
+     * @return array{success: bool, message?: string, listing?: array<string, mixed>, validation?: array<string, mixed>}
+     */
+    protected function buildListingEditorResponse(int $shopifySkuId, bool $forcePull): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('reverb')) {
+            return response()->json(['success' => false, 'message' => 'Reverb not connected.'], 422);
+        }
+
+        $shopifyRow = ShopifySku::query()->findOrFail($shopifySkuId);
+        $sku = (string) $shopifyRow->sku;
+        $metric = $this->reverbMetricMapForSkus([$sku])[$sku] ?? null;
+
+        if (! $this->isShopifySkuLinkedOnReverb($metric, $sku)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This SKU is not linked on Reverb. Run Sync Reverb link map first.',
+            ], 422);
+        }
+
+        $productId = (string) ($metric->product_id ?? '');
+        $info = $this->aliExpressApi->getProductInfo($productId);
+        if (empty($info['success'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $info['message'] ?? 'Failed to load listing from Reverb.',
+            ], 422);
+        }
+
+        $aeData = is_array($info['data'] ?? null) ? $info['data'] : [];
+        $listing = app(ReverbDetailFormatter::class)->toListingEditor($aeData, $metric, $sku);
+        unset($listing['raw']);
+        // Highlighted features always come from Bullet Points Master (/bullet-points).
+        $listing = $this->applyBulletPointsMasterToListing($listing, $sku);
+        $validation = app(ReverbListingValidator::class)->validate($listing);
+
+        if ($forcePull && $metric) {
+            $metric->update([
+                'product_name' => trim((string) ($listing['title'] ?? $metric->product_name)) ?: $metric->product_name,
+                'price' => $listing['price_amount'] ?? $metric->price,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $forcePull ? 'Pulled latest listing from Reverb.' : 'Listing loaded.',
+            'shopify_sku_id' => $shopifySkuId,
+            'sku' => $sku,
+            'listing' => $listing,
+            'validation' => $validation,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function productMasterListingPartial(ProductMaster $pm, string $section): array
+    {
+        $partial = [];
+        $values = is_array($pm->Values) ? $pm->Values : [];
+
+        if (in_array($section, ['full', 'title', 'details'], true)) {
+            $title = trim((string) ($pm->title150 ?? $pm->title100 ?? ''));
+            if ($title !== '') {
+                $partial['title'] = $title;
+            }
+        }
+
+        if (in_array($section, ['full', 'details'], true)) {
+            $make = trim((string) ($pm->reverb_make ?? $values['brand'] ?? ''));
+            $model = trim((string) ($pm->reverb_model ?? ''));
+            $finish = trim((string) ($pm->reverb_finish ?? ''));
+            $year = trim((string) ($pm->reverb_year ?? ''));
+            $condition = trim((string) ($pm->reverb_condition ?? $values['condition'] ?? ''));
+            $upc = trim((string) ($pm->barcode ?? $values['upc'] ?? $values['gtin'] ?? $values['ean'] ?? ''));
+            $shippingProfile = trim((string) ($pm->reverb_shipping_profile_id ?? ''));
+
+            if ($make !== '') {
+                $partial['make'] = $make;
+            }
+            if ($model !== '') {
+                $partial['model'] = $model;
+            }
+            if ($finish !== '') {
+                $partial['finish'] = $finish;
+            }
+            if ($year !== '') {
+                $partial['year'] = $year;
+            }
+            if ($condition !== '') {
+                $partial['condition_name'] = $condition;
+            }
+            if ($upc !== '') {
+                $partial['upc'] = $upc;
+            }
+            if ($shippingProfile !== '') {
+                $partial['shipping_profile_id'] = $shippingProfile;
+            }
+            $partial['sku'] = trim((string) ($pm->sku ?? ''));
+
+            $categoryName = trim((string) ($pm->category ?? ''));
+            if ($categoryName === '' && ! empty($pm->category_id)) {
+                $cat = ProductCategory::query()->find($pm->category_id);
+                $categoryName = trim((string) ($cat->category_name ?? ''));
+            }
+            if ($categoryName !== '') {
+                $partial['category_name'] = $categoryName;
+            }
+
+            $lp = isset($values['lp']) && is_numeric($values['lp']) ? (float) $values['lp'] : null;
+            $ship = isset($values['ship']) && is_numeric($values['ship']) ? (float) $values['ship'] : 0.0;
+            if ($lp !== null && $lp > 0) {
+                // Suggested sellable floor from masters; user can edit before push.
+                $partial['price_amount'] = round($lp + $ship, 2);
+                $partial['price_currency'] = 'USD';
+            }
+        }
+
+        if (in_array($section, ['full', 'images'], true)) {
+            $photos = [];
+            foreach (array_merge([$pm->main_image ?? null], [
+                $pm->image1, $pm->image2, $pm->image3, $pm->image4, $pm->image5,
+                $pm->image6, $pm->image7, $pm->image8, $pm->image9, $pm->image10,
+                $pm->image11, $pm->image12, $pm->image13, $pm->image14, $pm->image15,
+                $pm->image16, $pm->image17, $pm->image18, $pm->image19, $pm->image20,
+            ]) as $url) {
+                $url = trim((string) $url);
+                if ($url !== '') {
+                    $photos[] = $url;
+                }
+            }
+            foreach (['hero_image', 'trust_image', 'ugc_image', 'image_path'] as $vk) {
+                $url = trim((string) ($values[$vk] ?? ''));
+                if ($url !== '') {
+                    $photos[] = $url;
+                }
+            }
+            $partial['photos'] = array_values(array_unique(array_slice($photos, 0, 25)));
+        }
+
+        if (in_array($section, ['full', 'bullets'], true)) {
+            // Source of truth: Bullet Points Master page (/bullet-points) → product_master.bullet1–5
+            $bullets = $this->bulletPointsFromProductMaster($pm);
+            $partial['bullets'] = $bullets;
+            if ($bullets !== []) {
+                $features = '<div class="highlighted-features">'."\n";
+                foreach ($bullets as $b) {
+                    $features .= '<p>'.e($b).'<br></p>'."\n";
+                }
+                $features .= '</div>';
+                $partial['highlighted_features_html'] = $features;
+            }
+        }
+
+        if (in_array($section, ['full', 'description'], true)) {
+            $html = trim((string) ($pm->description_html ?? ''));
+            if ($html === '') {
+                foreach (['description_1500', 'description_1000', 'description_800', 'description_600', 'product_description'] as $col) {
+                    $text = trim((string) ($pm->{$col} ?? ''));
+                    if ($text !== '') {
+                        $html = '<p>'.nl2br(e($text), false).'</p>';
+                        break;
+                    }
+                }
+            }
+            if ($html !== '') {
+                $partial['description'] = $html;
+            }
+        }
+
+        if (in_array($section, ['full', 'videos'], true)) {
+            $videos = [];
+            foreach ([
+                'video_product_overview',
+                'video_unboxing',
+                'video_how_to',
+                'video_setup',
+                'video_troubleshooting',
+                'video_brand_story',
+                'video_product_benefits',
+            ] as $col) {
+                $url = trim((string) ($pm->{$col} ?? ''));
+                if ($url !== '') {
+                    $videos[] = $url;
+                }
+            }
+            $partial['videos'] = array_values(array_unique(array_slice($videos, 0, 3)));
+        }
+
+        return $partial;
+    }
+
+    /**
+     * Bullet Points Master (/bullet-points) → product_master.bullet1–bullet5.
+     *
+     * @return list<string>
+     */
+    protected function bulletPointsFromProductMaster(ProductMaster $pm): array
+    {
+        $bullets = [];
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            $b = trim((string) ($pm->{$col} ?? ''));
+            if ($b !== '') {
+                $bullets[] = $b;
+            }
+        }
+
+        return $bullets;
+    }
+
+    /**
+     * Always prefer Bullet Points Master data for the Highlighted features field.
+     *
+     * @param  array<string, mixed>  $listing
+     * @return array<string, mixed>
+     */
+    protected function applyBulletPointsMasterToListing(array $listing, string $sku): array
+    {
+        $pm = $this->findProductMasterForSku($sku);
+        if (! $pm) {
+            return $listing;
+        }
+
+        $bullets = $this->bulletPointsFromProductMaster($pm);
+        if ($bullets !== []) {
+            $listing['bullets'] = $bullets;
+        }
+
+        return $listing;
     }
 
     public function refreshProducts(Request $request): JsonResponse

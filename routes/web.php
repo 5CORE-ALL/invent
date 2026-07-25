@@ -591,6 +591,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/sync-inventory', [\App\Http\Controllers\MarketplaceController::class, 'syncProductInventory'])->name('marketplace.products.sync.inventory')->whereNumber('shopifySku');
+        Route::get('/products/{shopifySku}/listing-editor', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'listingEditor'])
+            ->name('marketplace.reverb.listing.editor')
+            ->whereNumber('shopifySku')
+            ->where('marketplace', 'reverb');
+        Route::post('/products/{shopifySku}/listing-editor/pull', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'listingEditorPull'])
+            ->name('marketplace.reverb.listing.editor.pull')
+            ->whereNumber('shopifySku')
+            ->where('marketplace', 'reverb');
+        Route::post('/products/{shopifySku}/listing-editor/push', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'listingEditorPush'])
+            ->name('marketplace.reverb.listing.editor.push')
+            ->whereNumber('shopifySku')
+            ->where('marketplace', 'reverb');
+        Route::get('/products/{shopifySku}/listing-editor/product-master', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'listingEditorProductMaster'])
+            ->name('marketplace.reverb.listing.editor.product-master')
+            ->whereNumber('shopifySku')
+            ->where('marketplace', 'reverb');
+        Route::post('/products/{shopifySku}/listing-editor/autopopulate-missing', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'listingEditorAutopopulateMissing'])
+            ->name('marketplace.reverb.listing.editor.autopopulate')
+            ->whereNumber('shopifySku')
+            ->where('marketplace', 'reverb');
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/orders/{order}', [\App\Http\Controllers\MarketplaceController::class, 'showOrder'])->name('marketplace.orders.show')->whereNumber('order');
         Route::post('/orders/{order}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullOrder'])->name('marketplace.orders.pull')->whereNumber('order');
@@ -4545,6 +4565,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/general-specific-master/store', [CategoryController::class, 'storeGeneralSpecificMaster'])->name('general.specific.master.store');
     Route::post('/general-specific-master/update', [CategoryController::class, 'updateGeneralSpecificMaster'])->name('general.specific.master.update');
     Route::post('/general-specific-master/import', [CategoryController::class, 'importGeneralSpecificMaster'])->name('general.specific.master.import');
+
+    Route::get('/reverb-listing-master', [\App\Http\Controllers\ProductMaster\ReverbListingMasterController::class, 'index'])->name('reverb.listing.master');
+    Route::get('/reverb-listing-master/data', [\App\Http\Controllers\ProductMaster\ReverbListingMasterController::class, 'data'])->name('reverb.listing.master.data');
+    Route::post('/reverb-listing-master/update', [\App\Http\Controllers\ProductMaster\ReverbListingMasterController::class, 'update'])->name('reverb.listing.master.update');
     Route::get('/compliance-master', [CategoryController::class, 'complianceMaster'])->name('compliance.master');
     Route::get('/compliance-master-data-view', [CategoryController::class, 'getComplianceMasterData'])->name('compliance.master.data');
     Route::post('/compliance-master/store', [CategoryController::class, 'storeComplianceMaster'])->name('compliance.master.store');

@@ -275,6 +275,22 @@ final class ReverbLiveListingsService
             return null;
         }
 
+        $condition = is_array($item['condition'] ?? null) ? $item['condition'] : [];
+        $categories = is_array($item['categories'] ?? null) ? $item['categories'] : [];
+        $category = is_array($categories[0] ?? null) ? $categories[0] : [];
+        $shipping = is_array($item['shipping'] ?? null) ? $item['shipping'] : [];
+        $photos = is_array($item['photos'] ?? null) ? $item['photos'] : [];
+        if ($photos === [] && is_array($item['cloudinary_photos'] ?? null)) {
+            $photos = $item['cloudinary_photos'];
+        }
+        $videos = is_array($item['videos'] ?? null) ? $item['videos'] : [];
+        if ($videos === [] && trim((string) ($item['video_url'] ?? $item['product_video_url'] ?? '')) !== '') {
+            $videos = [trim((string) ($item['video_url'] ?? $item['product_video_url']))];
+        }
+        $description = trim((string) ($item['description'] ?? $item['plain_text_description'] ?? ''));
+        $shippingProfileId = trim((string) ($item['shipping_profile_id'] ?? $shipping['profile_id'] ?? ''));
+        $shippingRates = is_array($shipping['rates'] ?? null) ? $shipping['rates'] : [];
+
         return [
             'product_id' => $productId,
             'sku' => $sku,
@@ -282,6 +298,25 @@ final class ReverbLiveListingsService
             'inventory' => $inv,
             'title' => isset($item['title']) ? (string) $item['title'] : null,
             'price' => $price,
+            'price_currency' => trim((string) ($item['price']['currency'] ?? $item['listing_currency'] ?? 'USD')) ?: 'USD',
+            'make' => trim((string) ($item['make'] ?? '')),
+            'model' => trim((string) ($item['model'] ?? '')),
+            'finish' => trim((string) ($item['finish'] ?? '')),
+            'year' => trim((string) ($item['year'] ?? '')),
+            'condition_name' => trim((string) ($condition['display_name'] ?? $condition['slug'] ?? '')),
+            'condition_uuid' => trim((string) ($condition['uuid'] ?? '')),
+            'category_name' => trim((string) ($category['full_name'] ?? '')),
+            'category_uuid' => trim((string) ($category['uuid'] ?? '')),
+            'upc' => trim((string) ($item['upc'] ?? '')),
+            'upc_does_not_apply' => filter_var($item['upc_does_not_apply'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'description' => $description,
+            'photos' => array_values(array_filter($photos)),
+            'videos' => array_values(array_filter($videos)),
+            'photo_count' => count($photos),
+            'video_count' => count($videos),
+            'shipping_profile_id' => $shippingProfileId,
+            'shipping_rates' => $shippingRates,
+            'local_pickup_only' => filter_var($item['local_pickup_only'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 

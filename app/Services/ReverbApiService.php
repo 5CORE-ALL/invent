@@ -718,6 +718,158 @@ class ReverbApiService
     }
 
     /**
+     * Full listing update for the View Listing modal (PUT /api/listings/{id}).
+     *
+     * @param  array<string, mixed>  $fields  Editor-shaped fields from the modal
+     * @return array{success: bool, message: string, listing_id?: string, body?: string}
+     */
+    public function updateListing(string $identifier, array $fields): array
+    {
+        $token = self::getReverbBearerToken();
+        if (! $token) {
+            return [
+                'success' => false,
+                'message' => 'Reverb API token not configured (set REVERB_CLIENT_ID + REVERB_CLIENT_SECRET or REVERB_TOKEN).',
+            ];
+        }
+
+        $trim = trim($identifier);
+        if ($trim === '') {
+            return ['success' => false, 'message' => 'SKU or listing_id is required.'];
+        }
+
+        $listingId = $this->resolveReverbListingId($trim);
+        if ($listingId === null) {
+            return ['success' => false, 'message' => 'No Reverb listing found for SKU or reverb_listing_id.'];
+        }
+
+        $payload = [];
+
+        foreach (['title', 'make', 'model', 'finish', 'year', 'sku', 'upc'] as $key) {
+            if (array_key_exists($key, $fields) && $fields[$key] !== null) {
+                $payload[$key] = is_string($fields[$key]) ? trim((string) $fields[$key]) : $fields[$key];
+            }
+        }
+
+        if (array_key_exists('upc_does_not_apply', $fields)) {
+            $payload['upc_does_not_apply'] = filter_var($fields['upc_does_not_apply'], FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
+        }
+
+        if (array_key_exists('description', $fields) && is_string($fields['description'])) {
+            $desc = trim($fields['description']);
+            if ($desc !== '') {
+                $payload['description'] = $desc;
+                $payload['plain_text_description'] = trim(html_entity_decode(strip_tags($desc), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            }
+        }
+
+        if (isset($fields['price_amount']) && is_numeric($fields['price_amount'])) {
+            $currency = trim((string) ($fields['price_currency'] ?? $fields['currency'] ?? 'USD')) ?: 'USD';
+            $payload['price'] = [
+                'amount' => number_format((float) $fields['price_amount'], 2, '.', ''),
+                'currency' => $currency,
+            ];
+        }
+
+        if (array_key_exists('inventory', $fields) && is_numeric($fields['inventory'])) {
+            $payload['inventory'] = (int) $fields['inventory'];
+            $payload['has_inventory'] = true;
+        } elseif (array_key_exists('has_inventory', $fields)) {
+            $payload['has_inventory'] = (bool) $fields['has_inventory'];
+        }
+
+        foreach (['offers_enabled', 'handmade', 'local_pickup_only'] as $boolKey) {
+            if (array_key_exists($boolKey, $fields)) {
+                $payload[$boolKey] = (bool) $fields[$boolKey];
+            }
+        }
+
+        $conditionUuid = trim((string) ($fields['condition_uuid'] ?? ''));
+        if ($conditionUuid !== '') {
+            $payload['condition'] = ['uuid' => $conditionUuid];
+        }
+
+        $categoryUuid = trim((string) ($fields['category_uuid'] ?? ''));
+        if ($categoryUuid !== '') {
+            $payload['categories'] = [['uuid' => $categoryUuid]];
+        }
+
+        $photos = [];
+        if (isset($fields['photos']) && is_array($fields['photos'])) {
+            foreach ($fields['photos'] as $photo) {
+                if (is_string($photo) && trim($photo) !== '') {
+                    $photos[] = trim($photo);
+                } elseif (is_array($photo)) {
+                    $u = trim((string) ($photo['url'] ?? $photo['href'] ?? ''));
+                    if ($u !== '') {
+                        $photos[] = $u;
+                    }
+                }
+            }
+        }
+        if ($photos !== []) {
+            $prep = $this->prepareReverbPhotoUrls($photos);
+            if (! ($prep['success'] ?? false)) {
+                return ['success' => false, 'message' => $prep['message'] ?? 'Invalid photo URLs.', 'listing_id' => $listingId];
+            }
+            $payload['photos'] = array_slice($prep['urls'], 0, 25);
+            $payload['photo_upload_method'] = 'override_position';
+        }
+
+        $videos = [];
+        if (isset($fields['videos']) && is_array($fields['videos'])) {
+            foreach ($fields['videos'] as $video) {
+                if (is_string($video) && trim($video) !== '') {
+                    $videos[] = trim($video);
+                } elseif (is_array($video)) {
+                    $u = trim((string) ($video['link'] ?? $video['url'] ?? $video['href'] ?? ''));
+                    if ($u !== '') {
+                        $videos[] = $u;
+                    }
+                }
+            }
+        }
+        $videos = array_slice(array_values(array_unique($videos)), 0, 3);
+        if ($videos !== []) {
+            $payload['videos'] = array_map(static fn (string $link): array => ['link' => $link], $videos);
+        }
+
+        if (isset($fields['shipping_profile_id']) && trim((string) $fields['shipping_profile_id']) !== '') {
+            $payload['shipping_profile_id'] = trim((string) $fields['shipping_profile_id']);
+        } elseif (isset($fields['shipping']) && is_array($fields['shipping'])) {
+            $payload['shipping'] = $fields['shipping'];
+        }
+
+        if ($payload === []) {
+            return ['success' => false, 'message' => 'No listing fields to update.', 'listing_id' => $listingId];
+        }
+
+        try {
+            $response = $this->reverbPutListingWithRetry($token, $listingId, $payload);
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Listing updated on Reverb.',
+                    'listing_id' => $listingId,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Reverb API error (HTTP '.$response->status().'): '.mb_substr($response->body(), 0, 2000),
+                'listing_id' => $listingId,
+                'body' => mb_substr($response->body(), 0, 2000),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'listing_id' => $listingId,
+            ];
+        }
+    }
+
+    /**
      * Push bullet lines into the listing description `Highlighted Features` block (PUT listing description).
      * Long-form copy remains on {@see updateDescription()}.
      *

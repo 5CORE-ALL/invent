@@ -152,6 +152,127 @@ class ReverbDetailFormatter
     }
 
     /**
+     * Flatten a live Reverb listing into editable fields for the View Listing modal.
+     *
+     * @param  array<string, mixed>|null  $aeLive
+     * @return array<string, mixed>
+     */
+    public function toListingEditor(?array $aeLive, ?ReverbMetric $metric = null, ?string $fallbackSku = null): array
+    {
+        $ae = $this->unwrapReverbListing($aeLive);
+        $state = is_array($ae['state'] ?? null) ? $ae['state'] : [];
+        $condition = is_array($ae['condition'] ?? null) ? $ae['condition'] : [];
+        $category = $this->list($ae['categories'] ?? [])[0] ?? null;
+        $category = is_array($category) ? $category : [];
+        $price = is_array($ae['price'] ?? null) ? $ae['price'] : [];
+        $shipping = is_array($ae['shipping'] ?? null) ? $ae['shipping'] : [];
+
+        $photos = $this->extractProductImages($ae, []);
+        $videos = $this->extractListingVideos($ae);
+        $descriptions = $this->extractProductDescriptions($ae);
+        $descriptionHtml = '';
+        foreach ($descriptions as $block) {
+            $html = trim((string) ($block['html'] ?? ''));
+            if ($html !== '') {
+                $descriptionHtml = $html;
+                break;
+            }
+        }
+        if ($descriptionHtml === '') {
+            $descriptionHtml = trim((string) ($ae['description'] ?? $ae['plain_text_description'] ?? ''));
+        }
+
+        $bullets = [];
+        if (is_string($metric?->bullet_points) && trim($metric->bullet_points) !== '') {
+            $bullets = preg_split('/\r\n|\r|\n/', trim($metric->bullet_points)) ?: [];
+            $bullets = array_values(array_filter(array_map('trim', $bullets)));
+        }
+
+        $priceAmount = $this->money($price['amount'] ?? $ae['price'] ?? $metric?->price);
+        $inventory = isset($ae['inventory']) && is_numeric($ae['inventory']) ? (int) $ae['inventory'] : null;
+
+        $shippingRates = [];
+        foreach ($this->list($shipping['rates'] ?? []) as $rateRow) {
+            $rateRow = $this->arr($rateRow);
+            $rate = $this->arr($rateRow['rate'] ?? []);
+            $shippingRates[] = [
+                'region_code' => $this->str($rateRow['region_code'] ?? null),
+                'amount' => $this->str($rate['amount'] ?? null),
+                'currency' => $this->str($rate['currency'] ?? 'USD') ?: 'USD',
+            ];
+        }
+
+        return [
+            'listing_id' => $this->str($ae['id'] ?? $ae['product_id'] ?? $metric?->product_id),
+            'sku' => $this->str($ae['sku'] ?? $metric?->sku ?? $fallbackSku),
+            'title' => $this->extractProductTitle($ae) ?? $this->str($metric?->product_name),
+            'make' => $this->str($ae['make'] ?? null),
+            'model' => $this->str($ae['model'] ?? null),
+            'finish' => $this->str($ae['finish'] ?? null),
+            'year' => $this->str($ae['year'] ?? null),
+            'condition_uuid' => $this->str($condition['uuid'] ?? null),
+            'condition_name' => $this->str($condition['display_name'] ?? $condition['slug'] ?? null),
+            'category_uuid' => $this->str($category['uuid'] ?? null),
+            'category_name' => $this->str($category['full_name'] ?? null),
+            'upc' => $this->str($ae['upc'] ?? null),
+            'upc_does_not_apply' => filter_var($ae['upc_does_not_apply'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'handmade' => (bool) ($ae['handmade'] ?? false),
+            'offers_enabled' => array_key_exists('offers_enabled', $ae) ? (bool) $ae['offers_enabled'] : true,
+            'local_pickup_only' => (bool) ($ae['local_pickup_only'] ?? false),
+            'price_amount' => $priceAmount,
+            'price_currency' => $this->str($price['currency'] ?? $ae['listing_currency'] ?? 'USD') ?: 'USD',
+            'inventory' => $inventory,
+            'has_inventory' => array_key_exists('has_inventory', $ae) ? (bool) $ae['has_inventory'] : ($inventory !== null),
+            'description' => $descriptionHtml,
+            'bullets' => $bullets,
+            'photos' => $photos,
+            'videos' => $videos,
+            'shipping_profile_id' => $this->str($ae['shipping_profile_id'] ?? $shipping['profile_id'] ?? null),
+            'shipping_rates' => $shippingRates,
+            'shipping_local' => (bool) ($shipping['local'] ?? $ae['local_pickup_only'] ?? false),
+            'state' => $this->str($state['description'] ?? $state['slug'] ?? null),
+            'listing_url' => $this->str($ae['_links']['web']['href'] ?? null),
+            'raw' => $ae,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ae
+     * @return list<string>
+     */
+    protected function extractListingVideos(array $ae): array
+    {
+        $urls = [];
+        foreach ($this->list($ae['videos'] ?? []) as $video) {
+            if (is_string($video) && trim($video) !== '') {
+                $urls[] = trim($video);
+
+                continue;
+            }
+            $video = $this->arr($video);
+            foreach (['link', 'url', 'href', 'video_url'] as $key) {
+                $u = $this->str($video[$key] ?? null);
+                if ($u) {
+                    $urls[] = $u;
+                    break;
+                }
+            }
+            $href = $this->str($video['_links']['web']['href'] ?? $video['_links']['self']['href'] ?? null);
+            if ($href) {
+                $urls[] = $href;
+            }
+        }
+        foreach (['video_url', 'product_video_url'] as $key) {
+            $u = $this->str($ae[$key] ?? null);
+            if ($u) {
+                $urls[] = $u;
+            }
+        }
+
+        return array_values(array_unique(array_slice($urls, 0, 3)));
+    }
+
+    /**
      * Prefer the full Reverb listing payload when Manager aliases wrap it.
      *
      * @param  array<string, mixed>|null  $aeLive
