@@ -94,6 +94,7 @@
             <div class="card bp-master-card">
                 <div class="card-body">
                     <div class="mb-3 bp-master-toolbar">
+                        @include('partials.parent-playback-controls')
                         <button id="exportBtn" class="btn btn-primary"><i class="fas fa-download"></i> Export</button>
                         <button id="importBtn" class="btn btn-info"><i class="fas fa-upload"></i> Import</button>
                         <button id="pullShopifyBtn" class="btn btn-warning"><i class="fas fa-download"></i> Shopify Pull</button>
@@ -110,6 +111,7 @@
                             <option value="count_5">5 bullet points</option>
                         </select>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
 
@@ -117,11 +119,14 @@
                         <table id="bullet-master-table" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
+                                    <th style="width:36px;text-align:center;">
+                                        <input type="checkbox" class="form-check-input" id="selectAllRowsBp" title="Select all visible rows" aria-label="Select all visible rows">
+                                    </th>
+                                    <th>Parent</th>
                                     <th>
                                         <div class="d-flex align-items-center gap-2"><span>SKU</span><span id="skuCountBp">(0)</span></div>
                                         <input type="text" id="skuSearchBp" class="th-sub mt-1" placeholder="Search SKU">
                                     </th>
-                                    <th>Product Name</th>
                                     <th>
                                         <div class="th-caption">Current Bullets (Preview) <span id="previewCountBp">(0)</span></div>
                                         <input type="text" id="previewSearchBp" class="th-sub" placeholder="Search preview">
@@ -163,6 +168,15 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk Edit:</strong> Saving will update
+                        <strong id="bulkEditCount">0</strong> selected SKU(s).
+                    </div>
+                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                        <div class="small text-muted mb-1">Applying to SKUs:</div>
+                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                    </div>
                     <div class="mb-3 border-bottom pb-2">
                         <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
                             <div class="small text-muted text-uppercase fw-semibold">Title</div>
@@ -273,7 +287,7 @@
                     <div class="alert alert-warning small mb-3">
                         This imports bullet points from Shopify into Product Master only. It does not push anything back to Shopify.
                     </div>
-                    <div class="small text-muted mb-2" id="shopifyPullScopeText">Scope: currently filtered SKUs.</div>
+                    <div class="small text-muted mb-2" id="shopifyPullScopeText">Scope: checked rows only.</div>
                     <div id="shopifyPullPanel" class="border rounded bg-light p-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <strong>Progress</strong>
@@ -371,6 +385,11 @@ document.addEventListener('DOMContentLoaded', () => {
         MP_TILE[k] = { cls: v.cls, short: v.short };
     });
     let tableData = [];
+    let visibleFilteredRows = [];
+    let selectedSkus = new Set();
+    let bulkEditSkus = [];
+    let navParent = null;
+    let parentPlayback = null;
     let editRowModal, aiPromptRulesModal, editBulletChangeModal, viewRowModal, shopifyPullModal, shopifyPullConfirmModal, marketplacePushConfirmModal;
     let lastViewModalPlainText = '';
     let shopifyPullPollTimer = null;
@@ -537,6 +556,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function updateSelectedCount() {
+        const badge = document.getElementById('selectedCountBadge');
+        if (badge) badge.textContent = selectedSkus.size + ' selected';
+    }
+
+    function syncSelectAllCheckbox() {
+        const selectAll = document.getElementById('selectAllRowsBp');
+        if (!selectAll) return;
+        const visibleSkus = visibleFilteredRows.map(r => String(r.SKU || '')).filter(Boolean);
+        if (!visibleSkus.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const selectedVisible = visibleSkus.filter(sku => selectedSkus.has(sku));
+        selectAll.checked = selectedVisible.length === visibleSkus.length;
+        selectAll.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleSkus.length;
+    }
+
+    function resolveBulkEditSkus(clickedSku) {
+        clickedSku = String(clickedSku || '').trim();
+        const selected = Array.from(selectedSkus).filter(Boolean);
+        const set = new Set(selected);
+        if (clickedSku) set.add(clickedSku);
+        if (selected.length === 0) return clickedSku ? [clickedSku] : [];
+        return Array.from(set);
+    }
+
+    function bindCheckboxEvents(root = document) {
+        root.querySelectorAll('.row-select-bp[data-sku]').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const sku = String(this.dataset.sku || '');
+                if (!sku) return;
+                if (this.checked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
+                updateSelectedCount();
+                syncSelectAllCheckbox();
+            });
+        });
+    }
+
     function loadData(options = {}) {
         const silent = !!options.silent;
         const scroll = silent ? captureScrollState() : null;
@@ -547,20 +607,21 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(r => r.json())
             .then(res => {
                 const raw = Array.isArray(res.data) ? res.data : Object.values(res.data || {});
-                tableData = raw.filter(i => i && i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
+                tableData = raw.filter(i => i && i.SKU);
                 bySku.clear();
                 tableData.forEach(r => bySku.set(String(r.SKU), r));
+                if (parentPlayback) parentPlayback.rebuildParents();
                 try {
                     if (silent) {
                         applyTableFilters();
                         restoreScrollState(scroll);
                     } else {
-                        renderTable(tableData);
+                        applyTableFilters();
                     }
                 } catch (e) {
                     console.error('renderTable failed', e);
                     const tbody = document.getElementById('table-body');
-                    tbody.innerHTML = `<tr><td colspan="6" class="text-danger">Render failed: ${esc(e.message || e)}</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-danger">Render failed: ${esc(e.message || e)}</td></tr>`;
                 }
                 const badge = document.getElementById('rowCountBadge');
                 if (badge) badge.textContent = `${tableData.length} products`;
@@ -603,9 +664,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const preview = r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ');
         const bp = r.bullet_points || {};
         const statuses = r.bullet_push_statuses || {};
+        const checked = selectedSkus.has(sku) ? 'checked' : '';
         return `<tr data-sku="${esc(sku)}">
-            <td>${esc(sku)}</td>
+            <td class="text-center"><input type="checkbox" class="form-check-input row-select-bp" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
             <td>${esc(r.Parent || sku)}</td>
+            <td>${esc(sku)}</td>
             <td class="preview-cell" title="${esc(preview || '')}">${esc(trunc(preview, 64))}</td>
             <td class="action-buttons-cell">
                 <div class="action-buttons-group">
@@ -638,6 +701,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         bindRowEvents(newRow);
+        bindCheckboxEvents(newRow);
+        syncSelectAllCheckbox();
+        updateSelectedCount();
     }
 
     function renderTable(rows) {
@@ -650,12 +716,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sc) sc.textContent = `(${rows.length})`;
         const tbody = document.getElementById('table-body');
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No products found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No products found</td></tr>';
+            visibleFilteredRows = [];
+            syncSelectAllCheckbox();
+            updateSelectedCount();
             return;
         }
         tbody.innerHTML = rows.map(r => buildRowHtml(r)).join('');
 
         bindRowEvents();
+        bindCheckboxEvents();
+        syncSelectAllCheckbox();
+        updateSelectedCount();
     }
 
     function bindRowEvents(root = document) {
@@ -770,9 +842,41 @@ document.addEventListener('DOMContentLoaded', () => {
     function openEditModal(sku) {
         const row = bySku.get(String(sku));
         if (!row) return;
+        if (selectedSkus.size > 0 && !selectedSkus.has(String(sku))) {
+            selectedSkus.add(String(sku));
+            updateSelectedCount();
+        }
+        bulkEditSkus = resolveBulkEditSkus(sku);
+        const isBulk = bulkEditSkus.length > 1;
+
         document.getElementById('modalSku').value = sku;
-        document.getElementById('modalSkuLabel').textContent = sku;
-        document.getElementById('modalProductLabel').textContent = row.Parent || sku;
+        document.getElementById('modalSkuLabel').textContent = isBulk
+            ? (bulkEditSkus.length + ' SKUs selected')
+            : sku;
+        document.getElementById('modalProductLabel').textContent = isBulk
+            ? 'Bulk edit — same bullet points will be saved to every selected SKU'
+            : (row.Parent || sku);
+
+        const banner = document.getElementById('bulkEditBanner');
+        const listWrap = document.getElementById('bulkSkuListWrap');
+        const listEl = document.getElementById('bulkSkuList');
+        const saveBtn = document.getElementById('saveModalBtn');
+        const modalTitle = document.querySelector('#editRowModal .modal-title');
+        if (isBulk) {
+            if (banner) banner.style.display = '';
+            document.getElementById('bulkEditCount').textContent = String(bulkEditSkus.length);
+            if (listWrap) listWrap.style.display = '';
+            if (listEl) listEl.textContent = bulkEditSkus.join(', ');
+            if (saveBtn) saveBtn.innerHTML = `<i class="fas fa-save"></i> Save to ${bulkEditSkus.length} SKUs`;
+            if (modalTitle) modalTitle.innerHTML = '<i class="fas fa-layer-group me-2"></i>Bulk Edit Bullet Points';
+        } else {
+            if (banner) banner.style.display = 'none';
+            if (listWrap) listWrap.style.display = 'none';
+            if (listEl) listEl.textContent = '';
+            if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> Save Bullet Points';
+            if (modalTitle) modalTitle.innerHTML = '<i class="fas fa-edit me-2"></i>Edit Bullet Points';
+        }
+
         const titleValue = row.shopify_product_title || row.title || row.Title || row.product_title || row.ProductTitle || row.product_name || row.ProductName || row.name || row.Name || row.Parent || sku;
         const titleEl = document.getElementById('modalTitleLabel');
         if (titleEl) titleEl.textContent = titleValue;
@@ -1046,22 +1150,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (status) status.textContent = text || `${done}/${total}`;
     }
 
-    function currentFilteredRowsForPull() {
-        const skuQ = (document.getElementById('skuSearchBp') && document.getElementById('skuSearchBp').value.toLowerCase().trim()) || '';
-        const prevQ = (document.getElementById('previewSearchBp') && document.getElementById('previewSearchBp').value.toLowerCase().trim()) || '';
-        const statusFilter = (document.getElementById('tableBulletStatusFilter') && document.getElementById('tableBulletStatusFilter').value) || 'all';
-        let rows = tableData.filter(r => r && r.SKU && !String(r.SKU).toUpperCase().includes('PARENT'));
-        if (skuQ) rows = rows.filter(r => String(r.SKU || '').toLowerCase().includes(skuQ));
-        if (prevQ) {
-            rows = rows.filter(r => {
-                const preview = String(r.default_bullets || [r.bullet1, r.bullet2, r.bullet3, r.bullet4, r.bullet5].filter(Boolean).join(' ') || '').toLowerCase();
-                return preview.includes(prevQ) || String(r.Parent || '').toLowerCase().includes(prevQ);
-            });
-        }
-        rows = rows.filter(r => rowMatchesBulletStatusFilter(r, statusFilter));
-        return rows;
-    }
-
     function productMasterBulletsForRow(row) {
         return [row.bullet1, row.bullet2, row.bullet3, row.bullet4, row.bullet5]
             .map(v => (v == null ? '' : String(v).trim()))
@@ -1158,15 +1246,26 @@ document.addEventListener('DOMContentLoaded', () => {
         shopifyPullPollTimer = null;
     }
 
+    function getCheckedSkusForPull() {
+        return Array.from(selectedSkus).map(sku => String(sku || '').trim()).filter(Boolean);
+    }
+
     async function openShopifyPullModal(skus = null) {
-        shopifyPullSelectedSkus = Array.isArray(skus) && skus.length
+        const checked = Array.isArray(skus) && skus.length
             ? skus.map(sku => String(sku || '').trim()).filter(Boolean)
-            : null;
+            : getCheckedSkusForPull();
+
+        if (!checked.length) {
+            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            return;
+        }
+
+        shopifyPullSelectedSkus = checked;
         const scope = document.getElementById('shopifyPullScopeText');
         if (scope) {
-            scope.textContent = shopifyPullSelectedSkus
-                ? `Scope: selected SKU ${shopifyPullSelectedSkus.join(', ')}.`
-                : 'Scope: currently filtered SKUs.';
+            scope.textContent = checked.length === 1
+                ? `Scope: checked SKU ${checked[0]}.`
+                : `Scope: ${checked.length} checked SKU(s) — ${checked.slice(0, 12).join(', ')}${checked.length > 12 ? '…' : ''}.`;
         }
         if (shopifyPullModal) shopifyPullModal.show();
         await pollShopifyPullStatus();
@@ -1247,17 +1346,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function startShopifyPullToLocal() {
-        const rows = shopifyPullSelectedSkus
-            ? shopifyPullSelectedSkus.map(sku => ({ SKU: sku }))
-            : currentFilteredRowsForPull();
-        const skus = rows.map(row => String(row.SKU || '').trim()).filter(Boolean);
+        const skus = (Array.isArray(shopifyPullSelectedSkus) && shopifyPullSelectedSkus.length)
+            ? shopifyPullSelectedSkus.slice()
+            : getCheckedSkusForPull();
         if (!skus.length) {
-            toast('No SKUs loaded to pull from Shopify.', false);
+            toast('Select at least one row (checkbox) before Shopify Pull.', false);
             return;
         }
-        const scopeText = shopifyPullSelectedSkus
-            ? `SKU: ${skus.join(', ')}`
-            : `${skus.length} currently filtered SKU(s)`;
+        const scopeText = skus.length === 1
+            ? `checked SKU ${skus[0]}`
+            : `${skus.length} checked SKU(s)`;
         await startShopifyPullJobForSkus(skus, { scopeText });
     }
 
@@ -1280,11 +1378,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function exportData() {
         const rows = tableData
-            .filter(row => row && row.SKU && !String(row.SKU).toUpperCase().includes('PARENT'))
+            .filter(row => row && row.SKU)
             .map(row => ({
                 Parent: row.Parent || '',
                 SKU: row.SKU || '',
-                'Product Name': row.Parent || row.SKU || '',
                 'Bullet 1': row.bullet1 || '',
                 'Bullet 2': row.bullet2 || '',
                 'Bullet 3': row.bullet3 || '',
@@ -1299,7 +1396,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ws['!cols'] = [
             { wch: 24 },
             { wch: 28 },
-            { wch: 36 },
             { wch: 48 },
             { wch: 48 },
             { wch: 48 },
@@ -1436,6 +1532,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const prevQ = (document.getElementById('previewSearchBp') && document.getElementById('previewSearchBp').value.toLowerCase().trim()) || '';
         const statusFilter = (document.getElementById('tableBulletStatusFilter') && document.getElementById('tableBulletStatusFilter').value) || 'all';
         let rows = tableData;
+        if (navParent != null) {
+            rows = rows.filter(r => String(r.Parent || '') === String(navParent));
+        }
         if (skuQ) {
             rows = rows.filter(r => String(r.SKU || '').toLowerCase().includes(skuQ));
         }
@@ -1446,6 +1545,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         rows = rows.filter(r => rowMatchesBulletStatusFilter(r, statusFilter));
+        visibleFilteredRows = rows;
         renderTable(rows);
     }
     const skuSearchBp = document.getElementById('skuSearchBp');
@@ -1455,47 +1555,91 @@ document.addEventListener('DOMContentLoaded', () => {
     if (previewSearchBp) previewSearchBp.addEventListener('input', applyTableFilters);
     if (tableBulletStatusFilter) tableBulletStatusFilter.addEventListener('change', applyTableFilters);
 
-    document.getElementById('saveModalBtn').addEventListener('click', function() {
-        const sku = document.getElementById('modalSku').value;
-        const lines = getBulletLinesFromModal();
-        const payload = { sku };
-        [1,2,3,4,5].forEach((i) => { payload['bullet' + i] = lines[i - 1] || ''; });
+    const selectAllRowsBp = document.getElementById('selectAllRowsBp');
+    if (selectAllRowsBp) {
+        selectAllRowsBp.addEventListener('change', function() {
+            const checked = this.checked;
+            visibleFilteredRows.forEach(r => {
+                const sku = String(r.SKU || '');
+                if (!sku) return;
+                if (checked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
+            });
+            document.querySelectorAll('.row-select-bp[data-sku]').forEach(cb => {
+                cb.checked = checked;
+            });
+            updateSelectedCount();
+            syncSelectAllCheckbox();
+        });
+    }
 
-        const btn = this; const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-        fetch('/bullet-points/save', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: csrfHeaders(),
-            body: JSON.stringify(payload)
-        })
-        .then(async (r) => {
-            const payload = await r.json().catch(() => ({}));
-            if (!r.ok || !payload.success) {
-                throw new Error(r.status === 419 ? 'Session expired. Refresh the page and try again.' : (payload.message || 'Save failed'));
+    document.getElementById('saveModalBtn').addEventListener('click', async function() {
+        const lines = getBulletLinesFromModal();
+        const skus = bulkEditSkus.length
+            ? bulkEditSkus.slice()
+            : [document.getElementById('modalSku').value].filter(Boolean);
+        if (!skus.length) {
+            toast('No SKUs to save', false);
+            return;
+        }
+
+        const btn = this;
+        const old = btn.innerHTML;
+        btn.disabled = true;
+        let ok = 0;
+        let fail = 0;
+
+        for (let i = 0; i < skus.length; i++) {
+            const sku = skus[i];
+            if (skus.length > 1) {
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Saving ${i + 1}/${skus.length}...`;
+            } else {
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
             }
-            return payload;
-        })
-        .then(res => {
-            const row = bySku.get(String(sku));
-            if (row) {
-                [1,2,3,4,5].forEach((i) => { row['bullet' + i] = lines[i - 1] || ''; });
-                row.default_bullets = lines.filter(Boolean).join('\n');
-            }
-            tableData.forEach((row) => {
-                if (String(row.SKU || '') === String(sku)) {
-                    [1,2,3,4,5].forEach((i) => { row['bullet' + i] = lines[i - 1] || ''; });
+            const payload = { sku };
+            [1, 2, 3, 4, 5].forEach((n) => { payload['bullet' + n] = lines[n - 1] || ''; });
+
+            try {
+                const r = await fetch('/bullet-points/save', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: csrfHeaders(),
+                    body: JSON.stringify(payload),
+                });
+                const res = await r.json().catch(() => ({}));
+                if (!r.ok || !res.success) {
+                    throw new Error(r.status === 419 ? 'Session expired. Refresh the page and try again.' : (res.message || 'Save failed'));
+                }
+                const row = bySku.get(String(sku));
+                if (row) {
+                    [1, 2, 3, 4, 5].forEach((n) => { row['bullet' + n] = lines[n - 1] || ''; });
                     row.default_bullets = lines.filter(Boolean).join('\n');
                 }
-            });
-            toast(res.message || 'Bullet points saved');
+                tableData.forEach((row) => {
+                    if (String(row.SKU || '') === String(sku)) {
+                        [1, 2, 3, 4, 5].forEach((n) => { row['bullet' + n] = lines[n - 1] || ''; });
+                        row.default_bullets = lines.filter(Boolean).join('\n');
+                    }
+                });
+                ok++;
+            } catch (e) {
+                fail++;
+                console.error('Bulk bullet save failed', { sku, error: e });
+            }
+        }
+
+        if (skus.length === 1) {
+            toast(fail ? 'Save failed' : 'Bullet points saved', !fail);
+        } else {
+            toast(`Bulk save: ${ok} updated` + (fail ? `, ${fail} failed` : ''), fail === 0);
+        }
+        if (ok > 0) {
             if (editRowModal) editRowModal.hide();
             applyTableFilters();
-        })
-        .catch(e => toast('Save failed: ' + e.message, false))
-        .finally(() => {
-            btn.disabled = false;
-            btn.innerHTML = old;
-        });
+            updateSelectedCount();
+        }
+        btn.disabled = false;
+        btn.innerHTML = old;
     });
 
     const viewCopyAllBtn = document.getElementById('viewCopyAllBtn');
@@ -1503,7 +1647,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('pushSelectedBtn').addEventListener('click', () => bulkPush('selected'));
     document.getElementById('pushAllBtn').addEventListener('click', () => bulkPush('all'));
-    document.getElementById('pullShopifyBtn').addEventListener('click', () => openShopifyPullModal());
+    document.getElementById('pullShopifyBtn').addEventListener('click', () => {
+        const skus = getCheckedSkusForPull();
+        if (!skus.length) {
+            toast('Select at least one row (checkbox) before Shopify Pull.', false);
+            return;
+        }
+        openShopifyPullModal(skus);
+    });
     document.getElementById('startShopifyPullBtn').addEventListener('click', startShopifyPullToLocal);
     document.getElementById('pauseShopifyPullBtn').addEventListener('click', () => controlShopifyPull('pause'));
     document.getElementById('resumeShopifyPullBtn').addEventListener('click', () => controlShopifyPull('resume'));
@@ -1662,6 +1813,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             console.warn('Bootstrap JS not available; modals/toasts will be degraded.');
         }
+        parentPlayback = window.ParentPlayback.create({
+            getAllData: function () { return tableData; },
+            applyFilter: function (parent) {
+                navParent = parent;
+                applyTableFilters();
+            },
+        });
         loadData();
         pollShopifyPullStatus();
     });

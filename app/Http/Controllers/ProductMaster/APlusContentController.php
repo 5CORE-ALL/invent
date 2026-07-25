@@ -44,9 +44,8 @@ class APlusContentController extends Controller
 
             $products = ProductMaster::query()
                 ->orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 0 ELSE 1 END")
                 ->orderBy('sku', 'asc')
-                ->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'")
                 ->select($select)
                 ->get();
 
@@ -78,6 +77,48 @@ class APlusContentController extends Controller
                 'message' => 'Failed to load A+ Content data.',
                 'error' => $e->getMessage(),
                 'status' => 500,
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /a-plus-content/preview-html?sku= — combined HTML (bullets, description, features, specs, package, about us).
+     */
+    public function previewHtml(Request $request)
+    {
+        try {
+            $sku = trim((string) $request->query('sku', ''));
+            if ($sku === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU is required.',
+                ], 422);
+            }
+
+            $product = ProductMaster::where('sku', $sku)->first();
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found.',
+                ], 404);
+            }
+
+            $preview = $this->buildCompositeHtmlPreview($product);
+
+            return response()->json([
+                'success' => true,
+                'sku' => $product->sku,
+                'parent' => $product->parent,
+                'title150' => $product->title150,
+                'html' => $preview['html'],
+                'sections' => $preview['sections'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('APlusContent: previewHtml failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to build HTML preview: '.$e->getMessage(),
             ], 500);
         }
     }

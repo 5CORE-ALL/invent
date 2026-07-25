@@ -46,6 +46,18 @@
             border:1px solid #e2e8f0; border-radius:8px; padding:.75rem; background:#fff;
             max-height:220px; overflow:auto; font-size:13px; line-height:1.45;
         }
+        .preview-pm-wrap { display:flex; align-items:center; gap:8px; min-width:0; }
+        .preview-pm-wrap .preview-cell { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .preview-magnify-btn {
+            flex-shrink:0; width:28px; height:28px; border:none; border-radius:6px;
+            background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff;
+            display:inline-flex; align-items:center; justify-content:center; cursor:pointer;
+        }
+        #compositeHtmlPreview {
+            border:1px solid #e2e8f0; border-radius:10px; padding:1rem; background:#fff;
+            max-height:min(70vh,640px); overflow:auto;
+        }
+        #compositeSectionBadges .badge { font-size:10px; margin-right:4px; margin-bottom:4px; }
     </style>
 @endsection
 
@@ -64,6 +76,7 @@
             <div class="card apc-master-card">
                 <div class="card-body">
                     <div class="mb-3 apc-master-toolbar">
+                        @include('partials.parent-playback-controls')
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -85,6 +98,7 @@
                             <option value="complete">HTML + Images</option>
                         </select>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
 
@@ -98,13 +112,22 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-pen-to-square me-2"></i>Edit A+ Content</h5>
+                    <h5 class="modal-title" id="editModalTitle"><i class="fas fa-pen-to-square me-2"></i>Edit A+ Content</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk Edit:</strong> Saving will update
+                        <strong id="bulkEditCount">0</strong> selected SKU(s).
+                    </div>
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-2"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                        <div class="small text-muted mb-1">Applying to SKUs:</div>
+                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                    </div>
                     <p class="apc-sync-note mb-3">
                         Saves sync automatically to <strong>Description For HTML</strong>
                         (<code>description_html</code> / <code>description_1500</code>
@@ -133,7 +156,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="modalSaveBtn">
-                        <i class="fas fa-save"></i> Save &amp; Sync
+                        <i class="fas fa-save"></i> <span id="modalSaveBtnLabel">Save &amp; Sync</span>
                     </button>
                 </div>
             </div>
@@ -157,6 +180,26 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="viewEditBtn"><i class="fas fa-edit me-1"></i> Edit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="compositePreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-magnifying-glass me-2"></i>HTML Preview</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="compositePreviewSubtitle" class="small text-muted mb-2"></div>
+                    <div id="compositeSectionBadges" class="mb-3"></div>
+                    <div id="compositeHtmlPreview"><div class="text-muted text-center py-4">Loading…</div></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="compositeCopyBtn"><i class="fas fa-copy me-1"></i> Copy HTML</button>
                 </div>
             </div>
         </div>
@@ -204,11 +247,17 @@
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
             const MAX_SLOTS = 12;
             let table = null;
+            let allRows = [];
             let editModal = null;
             let viewModal = null;
             let uploadModal = null;
+            let compositeModal = null;
             let slotUrls = Array(MAX_SLOTS).fill('');
             let viewRowSku = '';
+            let lastCompositeHtml = '';
+            let bulkEditSkus = [];
+            let navParent = null;
+            let parentPlayback = null;
 
             function toast(message, type) {
                 const wrap = document.getElementById('toastContainer');
@@ -258,21 +307,28 @@
                 if (badge) badge.textContent = n + ' product' + (n === 1 ? '' : 's');
             }
 
+            function updateSelectedCount() {
+                const badge = document.getElementById('selectedCountBadge');
+                if (!badge || !table) return;
+                badge.textContent = table.getSelectedData().length + ' selected';
+            }
+
             function applyStatusFilter() {
                 if (!table) return;
                 const mode = document.getElementById('statusFilter')?.value || 'all';
-                table.clearFilter(true);
-                if (mode === 'has_html') table.setFilter(row => htmlText(row.getData()) !== '');
-                else if (mode === 'missing_html') table.setFilter(row => htmlText(row.getData()) === '');
-                else if (mode === 'has_images') table.setFilter(row => imagesOf(row.getData()).length > 0);
-                else if (mode === 'missing_images') table.setFilter(row => imagesOf(row.getData()).length === 0);
-                else if (mode === 'complete') {
-                    table.setFilter(row => {
-                        const d = row.getData();
-                        return htmlText(d) !== '' && imagesOf(d).length > 0;
-                    });
-                }
+                table.setFilter(function (data) {
+                    if (navParent != null && String(data.Parent || '') !== String(navParent)) return false;
+                    const html = htmlText(data);
+                    const imgs = imagesOf(data);
+                    if (mode === 'has_html') return html !== '';
+                    if (mode === 'missing_html') return html === '';
+                    if (mode === 'has_images') return imgs.length > 0;
+                    if (mode === 'missing_images') return imgs.length === 0;
+                    if (mode === 'complete') return html !== '' && imgs.length > 0;
+                    return true;
+                });
                 updateRowCount(table.getDataCount('active'));
+                updateSelectedCount();
             }
 
             function compactSlots() {
@@ -372,10 +428,55 @@
                 });
             }
 
+            function resolveBulkEditSkus(clickedRow) {
+                const clickedSku = String(clickedRow.SKU || '').trim();
+                const selected = (table ? table.getSelectedData() : [])
+                    .map(r => String(r.SKU || '').trim())
+                    .filter(Boolean);
+                const set = new Set(selected);
+                if (clickedSku) set.add(clickedSku);
+                if (selected.length === 0) return clickedSku ? [clickedSku] : [];
+                return Array.from(set);
+            }
+
             function openEdit(rowData) {
+                if (table) {
+                    const row = table.getRows().find(r => r.getData().SKU === rowData.SKU);
+                    if (row && !row.isSelected()) row.select();
+                }
+
+                bulkEditSkus = resolveBulkEditSkus(rowData);
+                const isBulk = bulkEditSkus.length > 1;
+
                 document.getElementById('modalSku').value = rowData.SKU || '';
-                document.getElementById('modalSkuLabel').textContent = rowData.SKU || '';
-                document.getElementById('modalProductLabel').textContent = rowData.Parent || rowData.title150 || rowData.SKU || '';
+                document.getElementById('modalSkuLabel').textContent = isBulk
+                    ? (bulkEditSkus.length + ' SKUs selected')
+                    : (rowData.SKU || '');
+                document.getElementById('modalProductLabel').textContent = isBulk
+                    ? 'Bulk edit — same HTML + images will be saved to every selected SKU'
+                    : (rowData.Parent || rowData.title150 || rowData.SKU || '');
+
+                const banner = document.getElementById('bulkEditBanner');
+                const listWrap = document.getElementById('bulkSkuListWrap');
+                const listEl = document.getElementById('bulkSkuList');
+                const titleEl = document.getElementById('editModalTitle');
+                const saveLabel = document.getElementById('modalSaveBtnLabel');
+
+                if (isBulk) {
+                    banner.style.display = '';
+                    document.getElementById('bulkEditCount').textContent = String(bulkEditSkus.length);
+                    listWrap.style.display = '';
+                    listEl.textContent = bulkEditSkus.join(', ');
+                    titleEl.innerHTML = '<i class="fas fa-layer-group me-2"></i>Bulk Edit A+ Content';
+                    saveLabel.textContent = 'Save to ' + bulkEditSkus.length + ' SKUs';
+                } else {
+                    banner.style.display = 'none';
+                    listWrap.style.display = 'none';
+                    listEl.textContent = '';
+                    titleEl.innerHTML = '<i class="fas fa-pen-to-square me-2"></i>Edit A+ Content';
+                    saveLabel.textContent = 'Save & Sync';
+                }
+
                 document.getElementById('modalDescHtml').value = htmlText(rowData);
                 updateCharCount();
                 const imgs = imagesOf(rowData);
@@ -410,7 +511,50 @@
                 uploadModal.show();
             }
 
+            function renderSectionBadges(sections) {
+                const labels = {
+                    bullet_points: 'Bullet Points',
+                    description: 'Description',
+                    features: 'Features',
+                    specifications: 'Specifications',
+                    package_includes: 'Package Includes',
+                    about_us: 'About Us',
+                    images: 'Images',
+                };
+                document.getElementById('compositeSectionBadges').innerHTML = Object.keys(labels).map(key => {
+                    const on = !!(sections && sections[key]);
+                    return '<span class="badge ' + (on ? 'bg-success' : 'bg-secondary') + '">' +
+                        (on ? '✓ ' : '– ') + labels[key] + '</span>';
+                }).join('');
+            }
+
+            async function openCompositePreview(rowData) {
+                const sku = rowData.SKU || '';
+                document.getElementById('compositePreviewSubtitle').textContent =
+                    sku + ' — ' + (rowData.Parent || rowData.title150 || '');
+                document.getElementById('compositeHtmlPreview').innerHTML =
+                    '<div class="text-muted text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>Building HTML preview…</div>';
+                document.getElementById('compositeSectionBadges').innerHTML = '';
+                lastCompositeHtml = '';
+                compositeModal.show();
+                try {
+                    const res = await fetch('/a-plus-content/preview-html?sku=' + encodeURIComponent(sku), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load preview');
+                    renderSectionBadges(json.sections || {});
+                    lastCompositeHtml = json.html || '';
+                    document.getElementById('compositeHtmlPreview').innerHTML = lastCompositeHtml
+                        || '<div class="text-muted text-center py-4">No content available.</div>';
+                } catch (e) {
+                    document.getElementById('compositeHtmlPreview').innerHTML =
+                        '<div class="text-danger text-center py-4">' + esc(e.message || 'Preview failed') + '</div>';
+                }
+            }
+
             function initTable(rows) {
+                allRows = rows;
                 if (table) {
                     table.replaceData(rows);
                     applyStatusFilter();
@@ -425,16 +569,28 @@
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 200],
                     placeholder: 'No products found',
+                    selectableRows: true,
                     columns: [
                         {
-                            title: 'SKU',
-                            field: 'SKU',
-                            width: 170,
-                            headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter SKU',
+                            formatter: 'rowSelection',
+                            titleFormatter: 'rowSelection',
+                            titleFormatterParams: {
+                                rowRange: 'active',
+                            },
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerSort: false,
+                            width: 44,
+                            minWidth: 44,
+                            resizable: false,
+                            frozen: true,
+                            cellClick: function (e, cell) {
+                                e.stopPropagation();
+                                cell.getRow().toggleSelect();
+                            },
                         },
                         {
-                            title: 'Product Name',
+                            title: 'Parent',
                             field: 'Parent',
                             width: 180,
                             headerFilter: 'input',
@@ -445,15 +601,31 @@
                             },
                         },
                         {
-                            title: 'HTML Preview',
-                            field: 'description_for_html',
-                            minWidth: 200,
+                            title: 'SKU',
+                            field: 'SKU',
+                            width: 170,
                             headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter HTML',
+                            headerFilterPlaceholder: 'Filter SKU',
+                        },
+                        {
+                            title: 'Preview (PM)',
+                            field: 'description_for_html',
+                            minWidth: 240,
+                            headerFilter: 'input',
+                            headerFilterPlaceholder: 'Filter preview',
                             formatter: function (cell) {
                                 const d = cell.getRow().getData();
                                 const full = htmlText(d);
-                                return '<span title="' + esc(stripPreview(full)) + '">' + esc(stripPreview(full)) + '</span>';
+                                const prev = stripPreview(full);
+                                return '<div class="preview-pm-wrap">' +
+                                    '<span class="preview-cell" title="' + esc(prev) + '">' + esc(prev) + '</span>' +
+                                    '<button type="button" class="preview-magnify-btn" title="Open HTML preview" data-sku="' + esc(d.SKU || '') + '">' +
+                                    '<i class="fas fa-magnifying-glass"></i></button></div>';
+                            },
+                            cellClick: function (e, cell) {
+                                if (!e.target.closest('.preview-magnify-btn')) return;
+                                e.stopPropagation();
+                                openCompositePreview(cell.getRow().getData());
                             },
                         },
                         {
@@ -502,8 +674,13 @@
 
                 table.on('dataFiltered', function () {
                     updateRowCount(table.getDataCount('active'));
+                    updateSelectedCount();
+                });
+                table.on('rowSelectionChanged', function () {
+                    updateSelectedCount();
                 });
                 updateRowCount(rows.length);
+                updateSelectedCount();
             }
 
             async function loadData() {
@@ -576,6 +753,24 @@
                 editModal = new bootstrap.Modal(document.getElementById('editApcModal'));
                 viewModal = new bootstrap.Modal(document.getElementById('viewApcModal'));
                 uploadModal = new bootstrap.Modal(document.getElementById('slotUploadModal'));
+                compositeModal = new bootstrap.Modal(document.getElementById('compositePreviewModal'));
+
+                parentPlayback = window.ParentPlayback.create({
+                    getAllData: function () { return allRows; },
+                    applyFilter: function (parent) {
+                        navParent = parent;
+                        applyStatusFilter();
+                    },
+                });
+
+                document.getElementById('compositeCopyBtn').addEventListener('click', async function () {
+                    try {
+                        await navigator.clipboard.writeText(lastCompositeHtml || '');
+                        toast(lastCompositeHtml ? 'Copied HTML to clipboard' : 'Nothing to copy', lastCompositeHtml ? 'success' : 'error');
+                    } catch (_) {
+                        toast('Copy failed', 'error');
+                    }
+                });
 
                 document.getElementById('exportBtn').addEventListener('click', exportExcel);
                 document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
@@ -594,19 +789,42 @@
                 });
 
                 document.getElementById('modalSaveBtn').addEventListener('click', async function () {
-                    const sku = document.getElementById('modalSku').value;
                     const html = document.getElementById('modalDescHtml').value || '';
                     const images = compactSlots();
+                    const skus = bulkEditSkus.length
+                        ? bulkEditSkus.slice()
+                        : [document.getElementById('modalSku').value].filter(Boolean);
+                    if (!skus.length) {
+                        toast('No SKUs to save', 'error');
+                        return;
+                    }
+
                     const btn = this;
                     btn.disabled = true;
+                    let ok = 0, fail = 0;
                     try {
-                        const json = await saveApc(sku, html, images);
-                        applySyncedToRow(sku, json);
-                        toast('Saved & synced A+ Content for ' + sku, 'success');
-                        editModal.hide();
-                        applyStatusFilter();
-                    } catch (e) {
-                        toast(e.message || 'Save failed', 'error');
+                        for (const sku of skus) {
+                            try {
+                                const json = await saveApc(sku, html, images);
+                                applySyncedToRow(sku, json);
+                                ok++;
+                            } catch (_) {
+                                fail++;
+                            }
+                        }
+                        if (skus.length === 1) {
+                            toast(fail ? 'Save failed' : ('Saved & synced A+ Content for ' + skus[0]), fail ? 'error' : 'success');
+                        } else {
+                            toast(
+                                'Bulk save: ' + ok + ' updated' + (fail ? ', ' + fail + ' failed' : ''),
+                                fail ? 'error' : 'success'
+                            );
+                        }
+                        if (ok > 0) {
+                            editModal.hide();
+                            applyStatusFilter();
+                            updateSelectedCount();
+                        }
                     } finally {
                         btn.disabled = false;
                     }

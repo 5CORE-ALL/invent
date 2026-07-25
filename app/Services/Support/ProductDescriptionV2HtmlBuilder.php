@@ -22,6 +22,9 @@ final class ProductDescriptionV2HtmlBuilder
         string $packageIncludes,
         string $aboutBrand,
         string $specTableHeading = 'Specification',
+        string $aboutHeading = 'About Brand',
+        bool $imagesFirst = false,
+        string $bulletHeading = 'About Item',
     ): array {
         $bullets = array_values(array_filter(array_map('trim', $bullets), fn ($b) => $b !== ''));
         $imageUrls = array_slice(array_values(array_filter(array_map('trim', $imageUrls), fn ($u) => $u !== '')), 0, 12);
@@ -29,6 +32,36 @@ final class ProductDescriptionV2HtmlBuilder
         $esc = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         $blocks = [];
+
+        $appendGallery = function (bool $withHeading) use (&$blocks, $imageUrls, $esc): void {
+            if ($imageUrls === []) {
+                return;
+            }
+            $gallery = '';
+            foreach ($imageUrls as $url) {
+                $gallery .= '<img src="'.$esc($url).'" alt="" loading="lazy" />';
+            }
+            if ($withHeading) {
+                $blocks[] = <<<HTML
+  <div class="section">
+    <h3>Images</h3>
+    <div class="image-gallery">
+{$gallery}
+    </div>
+  </div>
+HTML;
+            } else {
+                $blocks[] = <<<HTML
+  <div class="image-gallery">
+{$gallery}
+  </div>
+HTML;
+            }
+        };
+
+        if ($imagesFirst) {
+            $appendGallery(true);
+        }
 
         if ($bullets !== []) {
             $bulletHtml = '';
@@ -39,9 +72,10 @@ final class ProductDescriptionV2HtmlBuilder
                     $bulletHtml .= '<li>'.$esc($line).'</li>';
                 }
             }
+            $bulletH = $esc(trim($bulletHeading) !== '' ? $bulletHeading : 'About Item');
             $blocks[] = <<<HTML
   <div class="section">
-    <h3>About Item</h3>
+    <h3>{$bulletH}</h3>
     <ul class="bullet-list">
 {$bulletHtml}
     </ul>
@@ -49,16 +83,8 @@ final class ProductDescriptionV2HtmlBuilder
 HTML;
         }
 
-        if ($imageUrls !== []) {
-            $gallery = '';
-            foreach ($imageUrls as $url) {
-                $gallery .= '<img src="'.$esc($url).'" alt="" loading="lazy" />';
-            }
-            $blocks[] = <<<HTML
-  <div class="image-gallery">
-{$gallery}
-  </div>
-HTML;
+        if (! $imagesFirst) {
+            $appendGallery(false);
         }
 
         $descTrim = trim($productDescription);
@@ -138,7 +164,8 @@ HTML;
         $brandTrim = trim($aboutBrand);
         if ($brandTrim !== '') {
             $brandP = '<p>'.nl2br($esc($brandTrim)).'</p>';
-            $blocks[] = "  <div class=\"section\">\n    <h3>About Brand</h3>\n    {$brandP}\n  </div>";
+            $aboutH = $esc(trim($aboutHeading) !== '' ? $aboutHeading : 'About Brand');
+            $blocks[] = "  <div class=\"section\">\n    <h3>{$aboutH}</h3>\n    {$brandP}\n  </div>";
         }
 
         if ($blocks === []) {

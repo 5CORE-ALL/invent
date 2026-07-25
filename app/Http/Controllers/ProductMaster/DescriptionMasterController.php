@@ -51,9 +51,8 @@ class DescriptionMasterController extends Controller
             // Load ALL non-parent rows (no pagination) — the page filters/searches client-side, like Bullet Points.
             $products = ProductMaster::query()
                 ->orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 0 ELSE 1 END")
                 ->orderBy('sku', 'asc')
-                ->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'")
                 ->select([
                     'id', 'parent', 'sku', 'title150',
                     'product_description', 'description_1500', 'description_1000', 'description_800', 'description_600',

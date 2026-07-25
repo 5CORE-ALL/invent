@@ -42,6 +42,7 @@
             <div class="card ts-master-card">
                 <div class="card-body">
                     <div class="mb-3 ts-master-toolbar">
+                        @include('partials.parent-playback-controls')
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -54,6 +55,7 @@
                             <option value="missing">Missing Specifications</option>
                         </select>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
 
@@ -67,13 +69,22 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Technical Specifications</h5>
+                    <h5 class="modal-title" id="editModalTitle"><i class="fas fa-edit me-2"></i>Edit Technical Specifications</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk Edit:</strong> Saving will update
+                        <strong id="bulkEditCount">0</strong> selected SKU(s).
+                    </div>
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                        <div class="small text-muted mb-1">Applying to SKUs:</div>
+                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                    </div>
                     <label for="modalSpecs" class="form-label">Technical Specifications</label>
                     <textarea id="modalSpecs" class="form-control font-monospace" rows="12" placeholder="One per line:&#10;Material: Steel&#10;Weight: 2.5 kg&#10;Color: Black"></textarea>
                     <div class="d-flex justify-content-between mt-1">
@@ -84,7 +95,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="modalSaveBtn">
-                        <i class="fas fa-save"></i> Save
+                        <i class="fas fa-save"></i> <span id="modalSaveBtnLabel">Save</span>
                     </button>
                 </div>
             </div>
@@ -118,8 +129,12 @@
         (function () {
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
             let table = null;
+            let allRows = [];
             let editModal = null;
             let viewModal = null;
+            let bulkEditSkus = [];
+            let navParent = null;
+            let parentPlayback = null;
 
             function toast(message, type) {
                 const wrap = document.getElementById('toastContainer');
@@ -151,17 +166,24 @@
                 if (badge) badge.textContent = n + ' product' + (n === 1 ? '' : 's');
             }
 
+            function updateSelectedCount() {
+                const badge = document.getElementById('selectedCountBadge');
+                if (!badge || !table) return;
+                badge.textContent = table.getSelectedData().length + ' selected';
+            }
+
             function applyStatusFilter() {
                 if (!table) return;
                 const mode = document.getElementById('statusFilter')?.value || 'all';
-                if (mode === 'has') {
-                    table.setFilter(row => specsText(row.getData()) !== '');
-                } else if (mode === 'missing') {
-                    table.setFilter(row => specsText(row.getData()) === '');
-                } else {
-                    table.clearFilter(true);
-                }
+                table.setFilter(function (data) {
+                    if (navParent != null && String(data.Parent || '') !== String(navParent)) return false;
+                    const text = specsText(data);
+                    if (mode === 'has') return text !== '';
+                    if (mode === 'missing') return text === '';
+                    return true;
+                });
                 updateRowCount(table.getDataCount('active'));
+                updateSelectedCount();
             }
 
             async function saveSpecs(sku, text) {
@@ -198,10 +220,53 @@
                 }
             }
 
+            function resolveBulkEditSkus(clickedRow) {
+                const clickedSku = String(clickedRow.SKU || '').trim();
+                const selected = (table ? table.getSelectedData() : [])
+                    .map(r => String(r.SKU || '').trim())
+                    .filter(Boolean);
+                const set = new Set(selected);
+                if (clickedSku) set.add(clickedSku);
+                if (selected.length === 0) return clickedSku ? [clickedSku] : [];
+                return Array.from(set);
+            }
+
             function openEdit(rowData) {
+                if (table) {
+                    const row = table.getRows().find(r => r.getData().SKU === rowData.SKU);
+                    if (row && !row.isSelected()) row.select();
+                }
+                bulkEditSkus = resolveBulkEditSkus(rowData);
+                const isBulk = bulkEditSkus.length > 1;
+
                 document.getElementById('modalSku').value = rowData.SKU || '';
-                document.getElementById('modalSkuLabel').textContent = rowData.SKU || '';
-                document.getElementById('modalProductLabel').textContent = rowData.Parent || rowData.title150 || rowData.SKU || '';
+                document.getElementById('modalSkuLabel').textContent = isBulk
+                    ? (bulkEditSkus.length + ' SKUs selected')
+                    : (rowData.SKU || '');
+                document.getElementById('modalProductLabel').textContent = isBulk
+                    ? 'Bulk edit — same specs will be saved to every selected SKU'
+                    : (rowData.Parent || rowData.title150 || rowData.SKU || '');
+
+                const banner = document.getElementById('bulkEditBanner');
+                const listWrap = document.getElementById('bulkSkuListWrap');
+                const listEl = document.getElementById('bulkSkuList');
+                const titleEl = document.getElementById('editModalTitle');
+                const saveLabel = document.getElementById('modalSaveBtnLabel');
+                if (isBulk) {
+                    banner.style.display = '';
+                    document.getElementById('bulkEditCount').textContent = String(bulkEditSkus.length);
+                    listWrap.style.display = '';
+                    listEl.textContent = bulkEditSkus.join(', ');
+                    titleEl.innerHTML = '<i class="fas fa-layer-group me-2"></i>Bulk Edit Technical Specifications';
+                    saveLabel.textContent = 'Save to ' + bulkEditSkus.length + ' SKUs';
+                } else {
+                    banner.style.display = 'none';
+                    listWrap.style.display = 'none';
+                    listEl.textContent = '';
+                    titleEl.innerHTML = '<i class="fas fa-edit me-2"></i>Edit Technical Specifications';
+                    saveLabel.textContent = 'Save';
+                }
+
                 document.getElementById('modalSpecs').value = specsText(rowData);
                 updateCounts();
                 editModal.show();
@@ -223,6 +288,7 @@
             }
 
             function initTable(rows) {
+                allRows = rows;
                 if (table) {
                     table.replaceData(rows);
                     applyStatusFilter();
@@ -237,16 +303,26 @@
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 200],
                     placeholder: 'No products found',
+                    selectableRows: true,
                     columns: [
                         {
-                            title: 'SKU',
-                            field: 'SKU',
-                            width: 180,
-                            headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter SKU',
+                            formatter: 'rowSelection',
+                            titleFormatter: 'rowSelection',
+                            titleFormatterParams: { rowRange: 'active' },
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerSort: false,
+                            width: 44,
+                            minWidth: 44,
+                            resizable: false,
+                            frozen: true,
+                            cellClick: function (e, cell) {
+                                e.stopPropagation();
+                                cell.getRow().toggleSelect();
+                            },
                         },
                         {
-                            title: 'Product Name',
+                            title: 'Parent',
                             field: 'Parent',
                             width: 200,
                             headerFilter: 'input',
@@ -255,6 +331,13 @@
                                 const d = cell.getRow().getData();
                                 return esc(d.Parent || d.title150 || d.SKU || '');
                             },
+                        },
+                        {
+                            title: 'SKU',
+                            field: 'SKU',
+                            width: 180,
+                            headerFilter: 'input',
+                            headerFilterPlaceholder: 'Filter SKU',
                         },
                         {
                             title: 'Preview',
@@ -316,8 +399,13 @@
 
                 table.on('dataFiltered', function () {
                     updateRowCount(table.getDataCount('active'));
+                    updateSelectedCount();
+                });
+                table.on('rowSelectionChanged', function () {
+                    updateSelectedCount();
                 });
                 updateRowCount(rows.length);
+                updateSelectedCount();
             }
 
             async function loadData() {
@@ -386,6 +474,14 @@
                 editModal = new bootstrap.Modal(document.getElementById('editSpecsModal'));
                 viewModal = new bootstrap.Modal(document.getElementById('viewSpecsModal'));
 
+                parentPlayback = window.ParentPlayback.create({
+                    getAllData: function () { return allRows; },
+                    applyFilter: function (parent) {
+                        navParent = parent;
+                        applyStatusFilter();
+                    },
+                });
+
                 document.getElementById('exportBtn').addEventListener('click', exportExcel);
                 document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
                 document.getElementById('importFile').addEventListener('change', function (e) {
@@ -397,18 +493,37 @@
                 document.getElementById('modalSpecs').addEventListener('input', updateCounts);
 
                 document.getElementById('modalSaveBtn').addEventListener('click', async function () {
-                    const sku = document.getElementById('modalSku').value;
                     const text = document.getElementById('modalSpecs').value || '';
+                    const skus = bulkEditSkus.length
+                        ? bulkEditSkus.slice()
+                        : [document.getElementById('modalSku').value].filter(Boolean);
+                    if (!skus.length) {
+                        toast('No SKUs to save', 'error');
+                        return;
+                    }
                     const btn = this;
                     btn.disabled = true;
+                    let ok = 0, fail = 0;
                     try {
-                        const json = await saveSpecs(sku, text);
-                        applySaveToRow(sku, json, text);
-                        toast('Saved specs for ' + sku, 'success');
-                        editModal.hide();
-                        applyStatusFilter();
-                    } catch (e) {
-                        toast(e.message || 'Save failed', 'error');
+                        for (const sku of skus) {
+                            try {
+                                const json = await saveSpecs(sku, text);
+                                applySaveToRow(sku, json, text);
+                                ok++;
+                            } catch (_) {
+                                fail++;
+                            }
+                        }
+                        if (skus.length === 1) {
+                            toast(fail ? 'Save failed' : ('Saved specs for ' + skus[0]), fail ? 'error' : 'success');
+                        } else {
+                            toast('Bulk save: ' + ok + ' updated' + (fail ? ', ' + fail + ' failed' : ''), fail ? 'error' : 'success');
+                        }
+                        if (ok > 0) {
+                            editModal.hide();
+                            applyStatusFilter();
+                            updateSelectedCount();
+                        }
                     } finally {
                         btn.disabled = false;
                     }

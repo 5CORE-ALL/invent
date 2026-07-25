@@ -62,10 +62,26 @@
         .action-buttons {
             white-space: nowrap;
         }
+
+        .features-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .row-checkbox,
+        #selectAll {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #0d6efd;
+        }
     </style>
 @endsection
 
 @section('content')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <div id="rainbow-loader" class="rainbow-loader"></div>
 
     <div class="container-fluid">
@@ -87,15 +103,17 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div>
-                                <button type="button" class="btn btn-success btn-sm me-2" onclick="exportToExcel()">
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                            <div class="features-toolbar">
+                                @include('partials.parent-playback-controls')
+                                <button type="button" class="btn btn-success btn-sm" onclick="exportToExcel()">
                                     <i class="fas fa-file-excel"></i> Export to Excel
                                 </button>
                                 <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('importFile').click()">
                                     <i class="fas fa-file-upload"></i> Import from Excel
                                 </button>
                                 <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;" onchange="importFromExcel(event)">
+                                <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                             </div>
                             <button type="button" class="btn btn-primary" onclick="openModal()">
                                 <i class="fas fa-plus"></i> Add Features
@@ -106,6 +124,9 @@
                             <table id="product-table">
                                 <thead>
                                     <tr>
+                                        <th class="text-center">
+                                            <input type="checkbox" id="selectAll" title="Select filtered rows">
+                                        </th>
                                         <th>Image</th>
                                         <th>Parent</th>
                                         <th>SKU</th>
@@ -141,6 +162,7 @@
                                     </tr>
                                     <tr>
                                         <th></th>
+                                        <th></th>
                                         <th><input type="text" class="form-control form-control-sm search-input" placeholder="Search Parent" data-column="Parent"></th>
                                         <th><input type="text" class="form-control form-control-sm search-input" placeholder="Search SKU" data-column="SKU"></th>
                                         <th><input type="text" class="form-control form-control-sm search-input" placeholder="Search Feature 1" data-column="feature1"></th>
@@ -152,7 +174,7 @@
                                 </thead>
                                 <tbody id="table-body">
                                     <tr>
-                                        <td colspan="8" class="text-center">Loading...</td>
+                                        <td colspan="9" class="text-center">Loading...</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -173,6 +195,15 @@
                 </div>
                 <div class="modal-body">
                     <form id="featureForm">
+                        <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                            <i class="fas fa-layer-group me-1"></i>
+                            <strong>Bulk Edit:</strong> Saving will update
+                            <strong id="bulkEditCount">0</strong> selected SKU(s).
+                        </div>
+                        <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                            <div class="small text-muted mb-1">Applying to SKUs:</div>
+                            <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                        </div>
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label">Parent</label>
@@ -233,13 +264,27 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         let tableData = [];
         let featureModal;
+        let bulkEditSkus = [];
+        let navParent = null;
+        let parentPlayback = null;
 
         document.addEventListener('DOMContentLoaded', function() {
             featureModal = new bootstrap.Modal(document.getElementById('featureModal'));
+            parentPlayback = window.ParentPlayback.create({
+                getAllData: function() { return tableData; },
+                applyFilter: function(parent) {
+                    navParent = parent;
+                    applyFilters();
+                },
+            });
             loadFeatureData();
             setupSearchHandlers();
             setupCharCounters();
             setupSKUChangeHandler();
+            setupSelectAll();
+            document.getElementById('featureModal').addEventListener('hidden.bs.modal', function() {
+                bulkEditSkus = [];
+            });
         });
 
         function loadFeatureData() {
@@ -262,7 +307,8 @@
                     
                     if (data && Array.isArray(data)) {
                         tableData = data;
-                        renderTable(tableData);
+                        if (parentPlayback) parentPlayback.rebuildParents();
+                        applyFilters();
                         updateCounts();
                     } else {
                         console.error('Invalid data:', response);
@@ -282,22 +328,29 @@
             tbody.innerHTML = '';
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center">No products found</td></tr>';
+                updateSelectedCount();
+                syncSelectAllCheckbox();
                 return;
             }
 
-            // Filter out parent rows before rendering
-            const filteredData = data.filter(item => {
-                return !(item.SKU && item.SKU.toUpperCase().includes('PARENT'));
-            });
-
-            if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No products found</td></tr>';
-                return;
-            }
-
-            filteredData.forEach(item => {
+            data.forEach(item => {
                 const row = document.createElement('tr');
+                row.dataset.sku = item.SKU || '';
+
+                // Checkbox
+                const checkboxCell = document.createElement('td');
+                checkboxCell.className = 'text-center';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'row-checkbox';
+                checkbox.setAttribute('data-sku', item.SKU || '');
+                checkbox.addEventListener('change', function() {
+                    updateSelectedCount();
+                    syncSelectAllCheckbox();
+                });
+                checkboxCell.appendChild(checkbox);
+                row.appendChild(checkboxCell);
 
                 // Image
                 const imageCell = document.createElement('td');
@@ -328,15 +381,24 @@
                 // Actions
                 const actionCell = document.createElement('td');
                 actionCell.className = 'action-buttons';
-                actionCell.innerHTML = `
-                    <button class="btn btn-info btn-action" onclick="openModal('${escapeHtml(item.SKU)}')">
-                        <i class="fas fa-edit"></i> Edit
-                    </button>
-                `;
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn btn-info btn-action';
+                editBtn.innerHTML = '<i class="fas fa-edit"></i> Edit';
+                editBtn.addEventListener('click', function() {
+                    const cb = row.querySelector('.row-checkbox');
+                    if (cb && !cb.checked) cb.checked = true;
+                    updateSelectedCount();
+                    syncSelectAllCheckbox();
+                    openModal(item.SKU);
+                });
+                actionCell.appendChild(editBtn);
                 row.appendChild(actionCell);
 
                 tbody.appendChild(row);
             });
+
+            updateSelectedCount();
+            syncSelectAllCheckbox();
         }
 
         // Check if value is missing (null, undefined, empty)
@@ -351,13 +413,10 @@
             let feature4MissingCount = 0;
 
             tableData.forEach(item => {
-                if (item.SKU && !String(item.SKU).toUpperCase().includes('PARENT')) {
-                    // Count missing data for each feature column
-                    if (isMissing(item.feature1)) feature1MissingCount++;
-                    if (isMissing(item.feature2)) feature2MissingCount++;
-                    if (isMissing(item.feature3)) feature3MissingCount++;
-                    if (isMissing(item.feature4)) feature4MissingCount++;
-                }
+                if (isMissing(item.feature1)) feature1MissingCount++;
+                if (isMissing(item.feature2)) feature2MissingCount++;
+                if (isMissing(item.feature3)) feature3MissingCount++;
+                if (isMissing(item.feature4)) feature4MissingCount++;
             });
 
             document.getElementById('feature1MissingCount').textContent = `(${feature1MissingCount})`;
@@ -408,8 +467,7 @@
             const filterFeature4 = document.getElementById('filterFeature4').value;
 
             const filteredData = tableData.filter(item => {
-                // Skip parent rows
-                if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
+                if (navParent != null && String(item.Parent || '') !== String(navParent)) {
                     return false;
                 }
 
@@ -445,6 +503,62 @@
             });
 
             renderTable(filteredData);
+        }
+
+        function getSelectedSkus() {
+            const skus = [];
+            document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
+                const sku = cb.getAttribute('data-sku');
+                if (sku) skus.push(sku);
+            });
+            return skus;
+        }
+
+        function resolveBulkEditSkus(clickedSku) {
+            const selected = getSelectedSkus();
+            const set = new Set(selected);
+            if (clickedSku) set.add(clickedSku);
+            if (selected.length === 0) return clickedSku ? [clickedSku] : [];
+            return Array.from(set);
+        }
+
+        function updateSelectedCount() {
+            const badge = document.getElementById('selectedCountBadge');
+            if (!badge) return;
+            badge.textContent = getSelectedSkus().length + ' selected';
+        }
+
+        function syncSelectAllCheckbox() {
+            const selectAll = document.getElementById('selectAll');
+            if (!selectAll) return;
+            const visible = Array.from(document.querySelectorAll('.row-checkbox')).filter(cb => {
+                const rowEl = cb.closest('tr');
+                return rowEl && rowEl.offsetParent !== null;
+            });
+            if (visible.length === 0) {
+                selectAll.checked = false;
+                selectAll.indeterminate = false;
+                return;
+            }
+            const checkedCount = visible.filter(cb => cb.checked).length;
+            selectAll.checked = checkedCount === visible.length;
+            selectAll.indeterminate = checkedCount > 0 && checkedCount < visible.length;
+        }
+
+        function setupSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            if (!selectAll) return;
+            selectAll.addEventListener('change', function() {
+                document.querySelectorAll('.row-checkbox').forEach(checkbox => {
+                    const rowEl = checkbox.closest('tr');
+                    const isVisible = rowEl && rowEl.offsetParent !== null;
+                    if (isVisible) {
+                        checkbox.checked = selectAll.checked;
+                    }
+                });
+                selectAll.indeterminate = false;
+                updateSelectedCount();
+            });
         }
 
         function filterTable() {
@@ -498,6 +612,28 @@
                 updateCharCounter(i);
             }
 
+            bulkEditSkus = sku ? resolveBulkEditSkus(sku) : [];
+            const isBulk = bulkEditSkus.length > 1;
+            const banner = document.getElementById('bulkEditBanner');
+            const listWrap = document.getElementById('bulkSkuListWrap');
+            const listEl = document.getElementById('bulkSkuList');
+            const saveBtn = document.querySelector('#featureModal .modal-footer .btn-primary');
+
+            if (isBulk) {
+                banner.style.display = '';
+                listWrap.style.display = '';
+                document.getElementById('bulkEditCount').textContent = String(bulkEditSkus.length);
+                listEl.textContent = bulkEditSkus.join(', ');
+                document.getElementById('modalTitle').textContent = 'Bulk Edit Features';
+                if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> Save to ' + bulkEditSkus.length + ' SKUs';
+            } else {
+                banner.style.display = 'none';
+                listWrap.style.display = 'none';
+                listEl.textContent = '';
+                document.getElementById('modalTitle').textContent = sku ? 'Edit Features' : 'Add Features';
+                if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+            }
+
             // Populate SKU dropdown
             const skuSelect = document.getElementById('modalSKU');
             
@@ -509,7 +645,7 @@
             skuSelect.innerHTML = '<option value="">Select SKU</option>';
             
             tableData.forEach(item => {
-                if (item.SKU && !item.SKU.toUpperCase().includes('PARENT')) {
+                if (item.SKU) {
                     const option = document.createElement('option');
                     option.value = item.SKU;
                     option.textContent = item.SKU;
@@ -521,7 +657,6 @@
             });
 
             if (sku) {
-                document.getElementById('modalTitle').textContent = 'Edit Features';
                 const item = tableData.find(d => d.SKU === sku);
                 if (item) {
                     document.getElementById('modalParent').value = item.Parent || '';
@@ -531,7 +666,7 @@
                     }
                 }
             } else {
-                document.getElementById('modalTitle').textContent = 'Add Features';
+                bulkEditSkus = [];
                 
                 // Initialize Select2 with searchable dropdown for add mode
                 $(skuSelect).select2({
@@ -549,29 +684,16 @@
                 if ($(skuSelect).hasClass('select2-hidden-accessible')) {
                     $(skuSelect).select2('destroy');
                 }
+                bulkEditSkus = [];
+                const saveBtnReset = document.querySelector('#featureModal .modal-footer .btn-primary');
+                if (saveBtnReset) saveBtnReset.innerHTML = '<i class="fas fa-save"></i> Save';
             }, { once: true });
 
             featureModal.show();
         }
 
-        function saveFeatures() {
-            const skuSelect = document.getElementById('modalSKU');
-            // Get SKU value - use Select2 .val() if initialized, otherwise use .value
-            const sku = $(skuSelect).hasClass('select2-hidden-accessible') ? $(skuSelect).val() : skuSelect.value;
-            
-            if (!sku) {
-                showError('Please select a SKU');
-                return;
-            }
-
-            const features = {};
-            for (let i = 1; i <= 4; i++) {
-                features[`feature${i}`] = document.getElementById(`feature${i}`).value;
-            }
-
-            document.getElementById('rainbow-loader').style.display = 'block';
-
-            fetch('/features/save', {
+        async function saveFeaturesForSku(sku, features) {
+            const response = await fetch('/features/save', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -582,23 +704,63 @@
                     sku: sku,
                     ...features
                 })
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showSuccess(data.message || 'Features saved successfully!');
-                        featureModal.hide();
-                        loadFeatureData();
-                    } else {
-                        showError(data.message || 'Failed to save features');
+            });
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.message || 'Failed to save features');
+            }
+            return data;
+        }
+
+        async function saveFeatures() {
+            const skuSelect = document.getElementById('modalSKU');
+            const sku = $(skuSelect).hasClass('select2-hidden-accessible') ? $(skuSelect).val() : skuSelect.value;
+
+            const features = {};
+            for (let i = 1; i <= 4; i++) {
+                features[`feature${i}`] = document.getElementById(`feature${i}`).value;
+            }
+
+            const skus = bulkEditSkus.length
+                ? bulkEditSkus.slice()
+                : (sku ? [sku] : []);
+
+            if (!skus.length) {
+                showError('Please select a SKU');
+                return;
+            }
+
+            document.getElementById('rainbow-loader').style.display = 'block';
+
+            let ok = 0;
+            let fail = 0;
+            try {
+                for (const targetSku of skus) {
+                    try {
+                        await saveFeaturesForSku(targetSku, features);
+                        ok++;
+                    } catch (error) {
+                        console.error('Save failed for', targetSku, error);
+                        fail++;
                     }
-                    document.getElementById('rainbow-loader').style.display = 'none';
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showError('Failed to save: ' + error.message);
-                    document.getElementById('rainbow-loader').style.display = 'none';
-                });
+                }
+
+                if (skus.length === 1) {
+                    showSuccess(fail ? 'Failed to save features' : 'Features saved successfully!');
+                } else {
+                    showSuccess('Bulk save: ' + ok + ' updated' + (fail ? ', ' + fail + ' failed' : ''));
+                }
+
+                if (ok > 0) {
+                    featureModal.hide();
+                    loadFeatureData();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to save: ' + error.message);
+            } finally {
+                document.getElementById('rainbow-loader').style.display = 'none';
+            }
         }
 
         function exportToExcel() {
@@ -607,9 +769,7 @@
                 return;
             }
 
-            const exportData = tableData
-                .filter(item => item.SKU && !item.SKU.toUpperCase().includes('PARENT'))
-                .map(item => ({
+            const exportData = tableData.map(item => ({
                     'Parent': item.Parent || '',
                     'SKU': item.SKU || '',
                     'Feature 1': item.feature1 || '',

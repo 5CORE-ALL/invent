@@ -38,6 +38,20 @@
         .iac-slot .form-control { font-size:11px; }
         .iac-slot-actions { display:flex; gap:6px; flex-wrap:wrap; }
         .iac-slot-actions .btn { font-size:11px; padding:3px 8px; }
+        .preview-pm-wrap { display:flex; align-items:center; gap:8px; min-width:0; width:100%; }
+        .preview-pm-wrap .preview-cell { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .preview-magnify-btn {
+            flex-shrink:0; width:30px; height:30px; border:none; border-radius:6px;
+            background:#0d6efd; color:#fff; font-size:13px;
+            display:inline-flex; align-items:center; justify-content:center; cursor:pointer;
+            box-shadow:0 1px 3px rgba(13,110,253,.4);
+        }
+        .preview-magnify-btn:hover { background:#0b5ed7; color:#fff; }
+        #compositeHtmlPreview {
+            border:1px solid #e2e8f0; border-radius:10px; padding:1rem; background:#fff;
+            max-height:min(70vh,640px); overflow:auto;
+        }
+        #compositeSectionBadges .badge { font-size:10px; margin-right:4px; margin-bottom:4px; }
     </style>
 @endsection
 
@@ -56,6 +70,7 @@
             <div class="card iac-master-card">
                 <div class="card-body">
                     <div class="mb-3 iac-master-toolbar">
+                        @include('partials.parent-playback-controls')
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -68,6 +83,7 @@
                             <option value="missing">Missing A+ Images</option>
                         </select>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
 
@@ -82,13 +98,22 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-images me-2"></i>A+ Content Images</h5>
+                    <h5 class="modal-title" id="editModalTitle"><i class="fas fa-images me-2"></i>A+ Content Images</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk Edit:</strong> Saving will update
+                        <strong id="bulkEditCount">0</strong> selected SKU(s).
+                    </div>
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
+                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                        <div class="small text-muted mb-1">Applying to SKUs:</div>
+                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                    </div>
                     <p class="small text-muted mb-3">
                         Up to 12 A+ Content image slots per SKU. Upload a file (like Amazon A+ Contents) or paste an image URL, then Save.
                     </p>
@@ -100,8 +125,28 @@
                     </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="modalSaveBtn">
-                        <i class="fas fa-save"></i> Save Images
+                        <i class="fas fa-save"></i> <span id="modalSaveBtnLabel">Save Images</span>
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="compositePreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header modal-header-gradient">
+                    <h5 class="modal-title"><i class="fas fa-magnifying-glass me-2"></i>HTML Preview</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="compositePreviewSubtitle" class="small text-muted mb-2"></div>
+                    <div id="compositeSectionBadges" class="mb-3"></div>
+                    <div id="compositeHtmlPreview"><div class="text-muted text-center py-4">Loading…</div></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="compositeCopyBtn"><i class="fas fa-copy me-1"></i> Copy HTML</button>
                 </div>
             </div>
         </div>
@@ -152,9 +197,15 @@
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
             const MAX_SLOTS = 12;
             let table = null;
+            let allRows = [];
             let editModal = null;
             let uploadModal = null;
+            let compositeModal = null;
             let slotUrls = Array(MAX_SLOTS).fill('');
+            let lastCompositeHtml = '';
+            let bulkEditSkus = [];
+            let navParent = null;
+            let parentPlayback = null;
 
             function toast(message, type) {
                 const wrap = document.getElementById('toastContainer');
@@ -188,17 +239,25 @@
                 if (badge) badge.textContent = n + ' product' + (n === 1 ? '' : 's');
             }
 
+            function updateSelectedCount() {
+                const badge = document.getElementById('selectedCountBadge');
+                if (!badge || !table) return;
+                const n = table.getSelectedData().length;
+                badge.textContent = n + ' selected';
+            }
+
             function applyStatusFilter() {
                 if (!table) return;
                 const mode = document.getElementById('statusFilter')?.value || 'all';
-                if (mode === 'has') {
-                    table.setFilter(row => imagesOf(row.getData()).length > 0);
-                } else if (mode === 'missing') {
-                    table.setFilter(row => imagesOf(row.getData()).length === 0);
-                } else {
-                    table.clearFilter(true);
-                }
+                table.setFilter(function (data) {
+                    if (navParent != null && String(data.Parent || '') !== String(navParent)) return false;
+                    const count = imagesOf(data).length;
+                    if (mode === 'has') return count > 0;
+                    if (mode === 'missing') return count === 0;
+                    return true;
+                });
                 updateRowCount(table.getDataCount('active'));
+                updateSelectedCount();
             }
 
             function compactSlots() {
@@ -287,10 +346,65 @@
                 }
             }
 
+            function resolveBulkEditSkus(clickedRow) {
+                const clickedSku = String(clickedRow.SKU || '').trim();
+                const selected = (table ? table.getSelectedData() : [])
+                    .map(r => String(r.SKU || '').trim())
+                    .filter(Boolean);
+
+                // Bulk = all selected rows; always include the row whose Edit was clicked.
+                const set = new Set(selected);
+                if (clickedSku) set.add(clickedSku);
+
+                // If nothing was selected, edit only the clicked row.
+                if (selected.length === 0) {
+                    return clickedSku ? [clickedSku] : [];
+                }
+
+                return Array.from(set);
+            }
+
             function openEdit(rowData) {
+                // Ensure the clicked row is selected so it is part of the bulk set.
+                if (table) {
+                    const row = table.getRows().find(r => r.getData().SKU === rowData.SKU);
+                    if (row && !row.isSelected()) {
+                        row.select();
+                    }
+                }
+
+                bulkEditSkus = resolveBulkEditSkus(rowData);
+                const isBulk = bulkEditSkus.length > 1;
+
                 document.getElementById('modalSku').value = rowData.SKU || '';
-                document.getElementById('modalSkuLabel').textContent = rowData.SKU || '';
-                document.getElementById('modalProductLabel').textContent = rowData.Parent || rowData.title150 || rowData.SKU || '';
+                document.getElementById('modalSkuLabel').textContent = isBulk
+                    ? (bulkEditSkus.length + ' SKUs selected')
+                    : (rowData.SKU || '');
+                document.getElementById('modalProductLabel').textContent = isBulk
+                    ? 'Bulk edit — same A+ images will be saved to every selected SKU'
+                    : (rowData.Parent || rowData.title150 || rowData.SKU || '');
+
+                const banner = document.getElementById('bulkEditBanner');
+                const listWrap = document.getElementById('bulkSkuListWrap');
+                const listEl = document.getElementById('bulkSkuList');
+                const titleEl = document.getElementById('editModalTitle');
+                const saveLabel = document.getElementById('modalSaveBtnLabel');
+
+                if (isBulk) {
+                    banner.style.display = '';
+                    document.getElementById('bulkEditCount').textContent = String(bulkEditSkus.length);
+                    listWrap.style.display = '';
+                    listEl.textContent = bulkEditSkus.join(', ');
+                    titleEl.innerHTML = '<i class="fas fa-layer-group me-2"></i>Bulk Edit A+ Content Images';
+                    saveLabel.textContent = 'Save to ' + bulkEditSkus.length + ' SKUs';
+                } else {
+                    banner.style.display = 'none';
+                    listWrap.style.display = 'none';
+                    listEl.textContent = '';
+                    titleEl.innerHTML = '<i class="fas fa-images me-2"></i>A+ Content Images';
+                    saveLabel.textContent = 'Save Images';
+                }
+
                 const imgs = imagesOf(rowData);
                 slotUrls = Array(MAX_SLOTS).fill('');
                 imgs.slice(0, MAX_SLOTS).forEach((u, i) => { slotUrls[i] = u; });
@@ -306,7 +420,50 @@
                 uploadModal.show();
             }
 
+            function renderSectionBadges(sections) {
+                const labels = {
+                    bullet_points: 'Bullet Points',
+                    description: 'Description',
+                    features: 'Features',
+                    specifications: 'Specifications',
+                    package_includes: 'Package Includes',
+                    about_us: 'About Us',
+                    images: 'Images',
+                };
+                document.getElementById('compositeSectionBadges').innerHTML = Object.keys(labels).map(key => {
+                    const on = !!(sections && sections[key]);
+                    return '<span class="badge ' + (on ? 'bg-success' : 'bg-secondary') + '">' +
+                        (on ? '✓ ' : '– ') + labels[key] + '</span>';
+                }).join('');
+            }
+
+            async function openCompositePreview(rowData) {
+                const sku = rowData.SKU || '';
+                document.getElementById('compositePreviewSubtitle').textContent =
+                    sku + ' — ' + (rowData.Parent || rowData.title150 || '');
+                document.getElementById('compositeHtmlPreview').innerHTML =
+                    '<div class="text-muted text-center py-4"><i class="fas fa-spinner fa-spin me-2"></i>Building HTML preview…</div>';
+                document.getElementById('compositeSectionBadges').innerHTML = '';
+                lastCompositeHtml = '';
+                compositeModal.show();
+                try {
+                    const res = await fetch('/a-plus-content/preview-html?sku=' + encodeURIComponent(sku), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load preview');
+                    renderSectionBadges(json.sections || {});
+                    lastCompositeHtml = json.html || '';
+                    document.getElementById('compositeHtmlPreview').innerHTML = lastCompositeHtml
+                        || '<div class="text-muted text-center py-4">No content available.</div>';
+                } catch (e) {
+                    document.getElementById('compositeHtmlPreview').innerHTML =
+                        '<div class="text-danger text-center py-4">' + esc(e.message || 'Preview failed') + '</div>';
+                }
+            }
+
             function initTable(rows) {
+                allRows = rows;
                 if (table) {
                     table.replaceData(rows);
                     applyStatusFilter();
@@ -321,16 +478,28 @@
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 200],
                     placeholder: 'No products found',
+                    selectableRows: true,
                     columns: [
                         {
-                            title: 'SKU',
-                            field: 'SKU',
-                            width: 180,
-                            headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter SKU',
+                            formatter: 'rowSelection',
+                            titleFormatter: 'rowSelection',
+                            titleFormatterParams: {
+                                rowRange: 'active', // header checkbox applies to filtered rows
+                            },
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerSort: false,
+                            width: 44,
+                            minWidth: 44,
+                            resizable: false,
+                            frozen: true,
+                            cellClick: function (e, cell) {
+                                e.stopPropagation();
+                                cell.getRow().toggleSelect();
+                            },
                         },
                         {
-                            title: 'Product Name',
+                            title: 'Parent',
                             field: 'Parent',
                             width: 200,
                             headerFilter: 'input',
@@ -341,17 +510,36 @@
                             },
                         },
                         {
+                            title: 'SKU',
+                            field: 'SKU',
+                            width: 180,
+                            headerFilter: 'input',
+                            headerFilterPlaceholder: 'Filter SKU',
+                        },
+                        {
                             title: 'Preview (PM)',
                             field: 'description_1500',
-                            minWidth: 180,
+                            minWidth: 260,
+                            width: 280,
                             headerFilter: 'input',
                             headerFilterPlaceholder: 'Filter preview',
+                            headerSort: false,
                             formatter: function (cell) {
                                 const d = cell.getRow().getData();
                                 const t = String(d.description_1500 || d.product_description || '').trim();
-                                if (!t) return '<span class="text-muted">—</span>';
-                                const prev = t.length > 80 ? t.slice(0, 80) + '…' : t;
-                                return '<span title="' + esc(t) + '">' + esc(prev) + '</span>';
+                                const prev = !t ? '—' : (t.length > 70 ? t.slice(0, 70) + '…' : t);
+                                const sku = esc(d.SKU || '');
+                                return '<div class="preview-pm-wrap">' +
+                                    '<span class="preview-cell" title="' + esc(t) + '">' + esc(prev) + '</span>' +
+                                    '<button type="button" class="preview-magnify-btn" title="View HTML: Images, Bullets, Description, Features, Specs, Package, About Us" data-sku="' + sku + '">' +
+                                    '<i class="fas fa-search"></i></button></div>';
+                            },
+                            cellClick: function (e, cell) {
+                                const btn = e.target.closest('.preview-magnify-btn');
+                                if (!btn) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openCompositePreview(cell.getRow().getData());
                             },
                         },
                         {
@@ -381,23 +569,49 @@
                         {
                             title: 'Action',
                             field: '_action',
-                            width: 140,
+                            width: 190,
                             hozAlign: 'center',
                             headerSort: false,
                             formatter: function () {
-                                return '<button type="button" class="btn btn-sm btn-primary iac-edit-btn"><i class="fas fa-images me-1"></i>Images</button>';
+                                return '<div class="d-flex gap-1 justify-content-center">' +
+                                    '<button type="button" class="btn btn-sm btn-outline-primary iac-preview-btn" title="HTML Preview">' +
+                                    '<i class="fas fa-search"></i></button>' +
+                                    '<button type="button" class="btn btn-sm btn-primary iac-edit-btn"><i class="fas fa-images me-1"></i>Images</button>' +
+                                    '</div>';
                             },
                             cellClick: function (e, cell) {
-                                if (e.target.closest('.iac-edit-btn')) openEdit(cell.getRow().getData());
+                                const d = cell.getRow().getData();
+                                if (e.target.closest('.iac-preview-btn')) openCompositePreview(d);
+                                if (e.target.closest('.iac-edit-btn')) openEdit(d);
                             },
                         },
                     ],
                 });
 
+                // Fallback click handler (in case Tabulator cellClick is blocked)
+                const tableEl = document.getElementById('images-aplus-table');
+                if (tableEl && !tableEl.dataset.previewBound) {
+                    tableEl.dataset.previewBound = '1';
+                    tableEl.addEventListener('click', function (e) {
+                        const btn = e.target.closest('.preview-magnify-btn, .iac-preview-btn');
+                        if (!btn || !table) return;
+                        const rowEl = e.target.closest('.tabulator-row');
+                        if (!rowEl) return;
+                        const row = table.getRow(rowEl);
+                        if (row) openCompositePreview(row.getData());
+                    });
+                }
+
                 table.on('dataFiltered', function () {
                     updateRowCount(table.getDataCount('active'));
+                    updateSelectedCount();
                 });
+                table.on('rowSelectionChanged', function () {
+                    updateSelectedCount();
+                });
+
                 updateRowCount(rows.length);
+                updateSelectedCount();
             }
 
             async function loadData() {
@@ -474,6 +688,24 @@
             document.addEventListener('DOMContentLoaded', function () {
                 editModal = new bootstrap.Modal(document.getElementById('editImagesModal'));
                 uploadModal = new bootstrap.Modal(document.getElementById('slotUploadModal'));
+                compositeModal = new bootstrap.Modal(document.getElementById('compositePreviewModal'));
+
+                parentPlayback = window.ParentPlayback.create({
+                    getAllData: function () { return allRows; },
+                    applyFilter: function (parent) {
+                        navParent = parent;
+                        applyStatusFilter();
+                    },
+                });
+
+                document.getElementById('compositeCopyBtn').addEventListener('click', async function () {
+                    try {
+                        await navigator.clipboard.writeText(lastCompositeHtml || '');
+                        toast(lastCompositeHtml ? 'Copied HTML to clipboard' : 'Nothing to copy', lastCompositeHtml ? 'success' : 'error');
+                    } catch (_) {
+                        toast('Copy failed', 'error');
+                    }
+                });
 
                 document.getElementById('exportBtn').addEventListener('click', exportExcel);
                 document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
@@ -491,18 +723,41 @@
                 });
 
                 document.getElementById('modalSaveBtn').addEventListener('click', async function () {
-                    const sku = document.getElementById('modalSku').value;
                     const images = compactSlots();
+                    const skus = bulkEditSkus.length
+                        ? bulkEditSkus.slice()
+                        : [document.getElementById('modalSku').value].filter(Boolean);
+                    if (!skus.length) {
+                        toast('No SKUs to save', 'error');
+                        return;
+                    }
+
                     const btn = this;
                     btn.disabled = true;
+                    let ok = 0, fail = 0;
                     try {
-                        const json = await saveImages(sku, images);
-                        applyToRow(sku, json.aplus_images || images);
-                        toast('Saved A+ images for ' + sku, 'success');
-                        editModal.hide();
-                        applyStatusFilter();
-                    } catch (e) {
-                        toast(e.message || 'Save failed', 'error');
+                        for (const sku of skus) {
+                            try {
+                                const json = await saveImages(sku, images);
+                                applyToRow(sku, json.aplus_images || images);
+                                ok++;
+                            } catch (_) {
+                                fail++;
+                            }
+                        }
+                        if (skus.length === 1) {
+                            toast(fail ? 'Save failed' : ('Saved A+ images for ' + skus[0]), fail ? 'error' : 'success');
+                        } else {
+                            toast(
+                                'Bulk save: ' + ok + ' updated' + (fail ? ', ' + fail + ' failed' : ''),
+                                fail ? 'error' : 'success'
+                            );
+                        }
+                        if (ok > 0) {
+                            editModal.hide();
+                            applyStatusFilter();
+                            updateSelectedCount();
+                        }
                     } finally {
                         btn.disabled = false;
                     }

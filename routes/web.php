@@ -3973,6 +3973,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/images-a-plus-content/upload-image', [ImagesAPlusContentController::class, 'uploadImage'])->name('images.a.plus.content.upload');
     Route::get('/a-plus-content', [APlusContentController::class, 'index'])->name('a.plus.content');
     Route::get('/a-plus-content-data', [APlusContentController::class, 'getData'])->name('a.plus.content.data');
+    Route::get('/a-plus-content/preview-html', [APlusContentController::class, 'previewHtml'])->name('a.plus.content.preview');
     Route::post('/a-plus-content/save', [APlusContentController::class, 'save'])->name('a.plus.content.save');
     Route::post('/a-plus-content/upload-image', [APlusContentController::class, 'uploadImage'])->name('a.plus.content.upload');
     Route::get('/features', fn () => view('features'))->name('features');

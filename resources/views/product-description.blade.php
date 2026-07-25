@@ -57,6 +57,8 @@
         .btn.is-loading { opacity:.75; pointer-events:none; }
         #modalDescCharCount { font-variant-numeric: tabular-nums; }
         #modalDescCharCount.at-limit { color:#dc2626; font-weight:600; }
+        .dm-row-sel, #selectAllRowsDm { width:16px; height:16px; cursor:pointer; accent-color:#1a56b7; }
+        #desc-master-table th.dm-sel-col, #desc-master-table td.dm-sel-col { width:36px; text-align:center; padding:6px 4px; }
     </style>
 @endsection
 
@@ -77,11 +79,13 @@
                         <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="retryLoadBtn">Retry</button>
                     </div>
                     <div class="mb-3 dm-master-toolbar">
+                        @include('partials.parent-playback-controls')
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm"><i class="fas fa-download"></i> Export</button>
                         <button type="button" id="importBtn" class="btn btn-info btn-sm"><i class="fas fa-upload"></i> Import</button>
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
                         <button type="button" id="pushAllBtn" class="btn btn-push-all btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL (this page)</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
         </div>
 
@@ -94,11 +98,14 @@
                             <table id="desc-master-table" class="table w-100">
                                 <thead>
                                     <tr>
+                                        <th class="dm-sel-col">
+                                            <input type="checkbox" id="selectAllRowsDm" title="Select all visible rows">
+                                        </th>
+                                        <th>Parent</th>
                                         <th>
                                             <div class="d-flex align-items-center gap-2"><span>SKU</span><span id="skuCountDm">(0)</span></div>
                                             <input type="text" id="skuSearchDm" class="th-sub" placeholder="Filter SKU" autocomplete="off">
                                         </th>
-                                        <th>Product Name</th>
                                         <th>
                                             <div>Preview (PM)</div>
                                             <input type="text" id="previewSearchDm" class="th-sub" placeholder="Filter preview" autocomplete="off">
@@ -138,12 +145,21 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit descriptions</h5>
+                    <h5 class="modal-title" id="editModalTitle"><i class="fas fa-edit me-2"></i>Edit descriptions</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
                     <input type="hidden" id="modalAplusImagesJson" value="[]">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk Edit:</strong> Saving will update
+                        <strong id="bulkEditCount">0</strong> selected SKU(s).
+                    </div>
+                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
+                        <div class="small text-muted mb-1">Applying to SKUs:</div>
+                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                    </div>
                     <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
                     <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
                     <p class="small text-muted mb-2"><i class="fas fa-info-circle"></i> Each marketplace has its own description. Pick a tab, edit in the editor, then Save. <strong>Fetch live</strong> pulls that marketplace's current listing description (tables &amp; images preserved).</p>
@@ -167,7 +183,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> Save all</button>
+                    <button type="button" class="btn btn-success" id="modalSavePmBtn"><i class="fas fa-save"></i> <span id="modalSaveBtnLabel">Save all</span></button>
                 </div>
             </div>
         </div>
@@ -268,6 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let tableData = [];
     const bySku = new Map();
+    const selectedSkus = new Set();
+    let bulkEditSkus = [];
+    let navParent = null;
+    let parentPlayback = null;
     let editModal, viewDescModal, marketplacePushConfirmModal;
     let marketplacePushConfirmResolver = null;
     let tableBodyBound = false;
@@ -470,9 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const sku = String(r.SKU || '');
         const pm = String(r.description_1500 || r.product_description || '').trim();
         const prev100 = preview100(r);
+        const checked = selectedSkus.has(sku) ? ' checked' : '';
         return `<tr data-sku="${esc(sku)}">
-                <td>${esc(sku)}</td>
+                <td class="dm-sel-col"><input type="checkbox" class="form-check-input dm-row-sel" data-sku="${esc(sku)}"${checked} title="Select row"></td>
                 <td>${esc(r.Parent || r.title150 || sku)}</td>
+                <td>${esc(sku)}</td>
                 <td class="preview-cell" title="${esc(pm)}">${esc(prev100)}</td>
                 <td class="action-buttons-cell">
                     <div class="action-buttons-group">
@@ -488,11 +510,58 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>`;
     }
 
+    function updateSelectedCount() {
+        const badge = document.getElementById('selectedCountBadge');
+        if (badge) badge.textContent = selectedSkus.size + ' selected';
+    }
+
+    function syncSelectAllHeader() {
+        const visibleSkus = getFilteredData().map((r) => String(r.SKU || '')).filter(Boolean);
+        const allSelected = visibleSkus.length > 0 && visibleSkus.every((sku) => selectedSkus.has(sku));
+        const header = document.getElementById('selectAllRowsDm');
+        if (header) header.checked = allSelected;
+    }
+
+    function bindSelectAllOnce() {
+        const header = document.getElementById('selectAllRowsDm');
+        if (!header || header.dataset.bound) return;
+        header.dataset.bound = '1';
+        header.addEventListener('change', () => {
+            const checked = header.checked;
+            getFilteredData().forEach((r) => {
+                const sku = String(r.SKU || '');
+                if (!sku) return;
+                if (checked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
+            });
+            renderTable();
+        });
+    }
+
+    function resolveBulkEditSkus(clickedSku) {
+        const selected = Array.from(selectedSkus).filter((sku) => bySku.has(String(sku)));
+        const set = new Set(selected);
+        const clicked = String(clickedSku || '').trim();
+        if (clicked) set.add(clicked);
+        if (!selected.length) return clicked ? [clicked] : [];
+        return Array.from(set);
+    }
+
     function bindTableBodyOnce() {
         if (tableBodyBound) return;
         tableBodyBound = true;
             const tbody = document.getElementById('table-body');
         if (!tbody) return;
+
+        tbody.addEventListener('change', (e) => {
+            const rowSel = e.target.closest('.dm-row-sel');
+            if (!rowSel) return;
+            const sku = rowSel.getAttribute('data-sku') || '';
+            if (rowSel.checked) selectedSkus.add(sku);
+            else selectedSkus.delete(sku);
+            updateSelectedCount();
+            syncSelectAllHeader();
+        });
 
         tbody.addEventListener('click', (e) => {
             const viewRow = e.target.closest('[data-view-row]');
@@ -605,7 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function buildSkeletonRows(n) {
         let h = '';
         for (let r = 0; r < n; r++) {
-            h += '<tr><td><div class="dm-skel-bar w-60"></div></td><td><div class="dm-skel-bar w-80"></div></td><td><div class="dm-skel-bar w-80"></div></td>';
+            h += '<tr><td><div class="dm-skel-bar w-40"></div></td><td><div class="dm-skel-bar w-60"></div></td><td><div class="dm-skel-bar w-60"></div></td><td><div class="dm-skel-bar w-80"></div></td>';
             h += '<td><div class="dm-skel-bar w-40"></div></td><td><div class="dm-skel-bar w-80"></div></td><td><div class="dm-skel-bar w-60"></div></td><td><div class="dm-skel-bar w-60"></div></td><td><div class="dm-skel-bar w-40"></div></td></tr>';
         }
         return h;
@@ -656,11 +725,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (res.status === 500 && res.error) throw new Error(res.message || res.error);
                 if (mySeq !== descriptionMasterLoadSeq) return;
                 const raw = Array.isArray(res.data) ? res.data : [];
-                tableData = raw.filter((i) => i && i.SKU && !String(i.SKU).toUpperCase().includes('PARENT'));
+                tableData = raw.filter((i) => i && i.SKU);
                 bySku.clear();
                 tableData.forEach((r) => bySku.set(String(r.SKU), r));
                 listMeta = res.meta || { total: tableData.length };
                 setLoadingUi(false);
+                if (parentPlayback) parentPlayback.rebuildParents();
                 renderTable();
             })
             .catch((e) => {
@@ -674,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showLoadError(msg);
                 toast('Failed to load: ' + msg, false);
                 const tbody = document.getElementById('table-body');
-                if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-3">Load failed. Retry or check console (F12).</td></tr>';
+                if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-3">Load failed. Retry or check console (F12).</td></tr>';
             });
     }
 
@@ -683,6 +753,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const qSku = (document.getElementById('skuSearchDm')?.value || '').trim().toLowerCase();
         const qText = (document.getElementById('previewSearchDm')?.value || '').trim().toLowerCase();
         let rows = tableData;
+        if (navParent != null) {
+            rows = rows.filter((r) => String(r.Parent || '') === String(navParent));
+        }
         if (qSku) rows = rows.filter((r) => String(r.SKU || '').toLowerCase().includes(qSku));
         if (qText) {
             rows = rows.filter((r) => {
@@ -697,14 +770,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderTable() {
         const tbody = document.getElementById('table-body');
         bindTableBodyOnce();
+        bindSelectAllOnce();
         const rows = getFilteredData();
         const total = listMeta.total != null ? listMeta.total : tableData.length;
         const badge = document.getElementById('rowCountBadge');
         if (badge) badge.textContent = total + ' products';
         const cnt = document.getElementById('skuCountDm');
         if (cnt) cnt.textContent = '(' + rows.length + ' shown)';
+        updateSelectedCount();
+        syncSelectAllHeader();
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No matching products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No matching products</td></tr>';
             return;
         }
         tbody.innerHTML = rows.map(buildRowHtml).join('');
@@ -718,9 +794,45 @@ document.addEventListener('DOMContentLoaded', () => {
     function openEditModal(sku) {
         const row = bySku.get(String(sku));
         if (!row) return;
+        if (!selectedSkus.has(String(sku))) {
+            selectedSkus.add(String(sku));
+            updateSelectedCount();
+            document.querySelectorAll('.dm-row-sel').forEach((cb) => {
+                if (cb.getAttribute('data-sku') === String(sku)) cb.checked = true;
+            });
+            syncSelectAllHeader();
+        }
+        bulkEditSkus = resolveBulkEditSkus(sku);
+        const isBulk = bulkEditSkus.length > 1;
+
         document.getElementById('modalSku').value = sku;
-        document.getElementById('modalSkuLabel').textContent = sku;
-        document.getElementById('modalProductLabel').textContent = row.Parent || row.title150 || sku;
+        document.getElementById('modalSkuLabel').textContent = isBulk
+            ? (bulkEditSkus.length + ' SKUs selected')
+            : sku;
+        document.getElementById('modalProductLabel').textContent = isBulk
+            ? 'Bulk edit — same descriptions will be saved to every selected SKU'
+            : (row.Parent || row.title150 || sku);
+
+        const banner = document.getElementById('bulkEditBanner');
+        const listWrap = document.getElementById('bulkSkuListWrap');
+        const listEl = document.getElementById('bulkSkuList');
+        const titleEl = document.getElementById('editModalTitle');
+        const saveLabel = document.getElementById('modalSaveBtnLabel');
+        if (isBulk) {
+            banner.style.display = '';
+            document.getElementById('bulkEditCount').textContent = String(bulkEditSkus.length);
+            listWrap.style.display = '';
+            listEl.textContent = bulkEditSkus.join(', ');
+            titleEl.innerHTML = '<i class="fas fa-layer-group me-2"></i>Bulk Edit Descriptions';
+            saveLabel.textContent = 'Save to ' + bulkEditSkus.length + ' SKUs';
+        } else {
+            banner.style.display = 'none';
+            listWrap.style.display = 'none';
+            listEl.textContent = '';
+            titleEl.innerHTML = '<i class="fas fa-edit me-2"></i>Edit descriptions';
+            saveLabel.textContent = 'Save all';
+        }
+
         mpContent = {};
         ALL_MP.forEach((mp) => {
             mpContent[mp] = enforceMpContentLimit(mp, String((row.descriptions && row.descriptions[mp]) || ''));
@@ -1011,39 +1123,69 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    // Save all marketplaces' edited descriptions to their metrics (no push).
-    document.getElementById('modalSavePmBtn')?.addEventListener('click', () => {
-        const sku = document.getElementById('modalSku').value;
-        stashActiveEditorContent();
-        setButtonLoading('modalSavePmBtn', true, 'Saving...');
+    async function saveDescriptionsForSku(sku) {
         const targets = ALL_MP.filter((mp) => stripHtmlToPlain(mpContent[mp] || '').length > 0);
         if (!targets.length) {
-            toast('Nothing to save — add text on at least one marketplace tab.', false);
-            setButtonLoading('modalSavePmBtn', false);
-            return;
+            return { ok: 0, fail: 0, failed: [], skipped: true };
         }
         const tasks = targets.map((mp) => fetch('/product-description/save-marketplace', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
             body: JSON.stringify({ sku, marketplace: mp, description: enforceMpContentLimit(mp, mpContent[mp]) })
         }).then((r) => r.json()).then((res) => ({ mp, ok: !!res.success, stored: storedDescriptionFromSaveResponse(res, mpContent[mp]) })).catch(() => ({ mp, ok: false, stored: '' })));
-        Promise.all(tasks)
-            .then((results) => {
-                const failed = results.filter((x) => !x.ok).map((x) => LABELS[x.mp] || x.mp);
-                const row = bySku.get(String(sku));
-                if (row) {
-                    row.descriptions = row.descriptions || {};
-                    results.filter((x) => x.ok).forEach(({ mp, stored }) => {
-                        row.descriptions[mp] = stored || mpContent[mp];
-                        mpContent[mp] = row.descriptions[mp];
-                    });
-                }
-                renderTable();
-                if (failed.length) toast('Saved, but failed: ' + failed.join(', '), false);
-                else toast('Saved descriptions for ' + results.filter((x) => x.ok).length + ' marketplace(s).');
-            })
-            .catch((e) => toast('Save failed: ' + e.message, false))
-            .finally(() => setButtonLoading('modalSavePmBtn', false));
+        const results = await Promise.all(tasks);
+        const failed = results.filter((x) => !x.ok).map((x) => LABELS[x.mp] || x.mp);
+        const row = bySku.get(String(sku));
+        if (row) {
+            row.descriptions = row.descriptions || {};
+            results.filter((x) => x.ok).forEach(({ mp, stored }) => {
+                row.descriptions[mp] = stored || mpContent[mp];
+            });
+        }
+        return { ok: results.filter((x) => x.ok).length, fail: failed.length, failed, skipped: false };
+    }
+
+    // Save all marketplaces' edited descriptions to their metrics (no push).
+    document.getElementById('modalSavePmBtn')?.addEventListener('click', async () => {
+        stashActiveEditorContent();
+        const skus = bulkEditSkus.length
+            ? bulkEditSkus.slice()
+            : [document.getElementById('modalSku').value].filter(Boolean);
+        if (!skus.length) {
+            toast('No SKUs to save', false);
+            return;
+        }
+        if (!ALL_MP.some((mp) => stripHtmlToPlain(mpContent[mp] || '').length > 0)) {
+            toast('Nothing to save — add text on at least one marketplace tab.', false);
+            return;
+        }
+        setButtonLoading('modalSavePmBtn', true, 'Saving...');
+        let totalOk = 0;
+        let totalFail = 0;
+        const allFailed = [];
+        try {
+            for (const sku of skus) {
+                const result = await saveDescriptionsForSku(sku);
+                if (result.skipped) continue;
+                totalOk += result.ok;
+                totalFail += result.fail;
+                if (result.failed.length) allFailed.push(...result.failed);
+            }
+            renderTable();
+            if (skus.length === 1) {
+                if (allFailed.length) toast('Saved, but failed: ' + [...new Set(allFailed)].join(', '), false);
+                else toast('Saved descriptions for ' + totalOk + ' marketplace(s).');
+            } else {
+                toast(
+                    'Bulk save: ' + skus.length + ' SKU(s)' + (totalFail ? ', some marketplace saves failed' : ' updated'),
+                    totalFail ? false : true
+                );
+            }
+        } catch (e) {
+            toast('Save failed: ' + e.message, false);
+        } finally {
+            setButtonLoading('modalSavePmBtn', false);
+        }
     });
 
     /** Appends per-marketplace attempt details when the server used automatic retries. */
@@ -1298,6 +1440,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.bootstrap) {
         marketplacePushConfirmModal = new bootstrap.Modal(document.getElementById('marketplacePushConfirmModal'));
     }
+
+    parentPlayback = window.ParentPlayback.create({
+        getAllData: function () { return tableData; },
+        applyFilter: function (parent) {
+            navParent = parent;
+            renderTable();
+        },
+    });
 });
     </script>
 @endsection

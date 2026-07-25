@@ -37,9 +37,8 @@ class AboutBrandController extends Controller
 
             $products = ProductMaster::query()
                 ->orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 0 ELSE 1 END")
                 ->orderBy('sku', 'asc')
-                ->whereRaw("UPPER(COALESCE(sku, '')) NOT LIKE '%PARENT%'")
                 ->select($select)
                 ->get();
 
