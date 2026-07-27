@@ -296,6 +296,30 @@
             text-align: center;
             white-space: nowrap;
         }
+
+        /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #skuMetricsModal.modal,
+        #badgeTrendChartModal.modal,
+        #avgViewsChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #skuMetricsModal .modal-dialog,
+        #badgeTrendChartModal .modal-dialog,
+        #avgViewsChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #skuMetricsModal .modal-content,
+        #badgeTrendChartModal .modal-content,
+        #avgViewsChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -814,9 +838,9 @@
     </div>
 
     <!-- SKU Metrics Chart Modal (UI matches Amazon: teal header, ref panel High/Med/Low, median line, value labels on points) -->
-    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+    <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -860,9 +884,9 @@
     </div>
 
     <!-- Badge Trend Chart Modal (same graph as first image: teal header, line chart, median line, value labels, High/Med/Low) -->
-    <div class="modal fade" id="badgeTrendChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+    <div class="modal fade p-0" id="badgeTrendChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -906,9 +930,9 @@
     </div>
 
     <!-- Average Views History Modal -->
-    <div class="modal fade" id="avgViewsChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
+    <div class="modal fade p-0" id="avgViewsChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Daily Average Views History</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1276,7 +1300,7 @@
                 $('#badgeTrendChartRefLabel').text(currentBadgeChartLabel);
                 var dotColors = values.map(function(v, i) {
                     if (i === 0) return refGray;
-                    return v > values[i - 1] ? refGreen : v < values[i - 1] ? refRed : refGray;
+                    return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
                 });
                 var labelColors = values.map(function(v) { return v === 0 ? refGreen : v > 0 ? refRed : refGray; });
                 badgeChartFirstSeriesStats = { values: values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors: dotColors, labelColors: labelColors, valueFmt: refFmt };

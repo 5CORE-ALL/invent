@@ -87,17 +87,121 @@
            card width so columns can stretch instead of leaving a gap on the right. */
         #mfrg-table { width: 100%; }
 
-        /* Column show/hide menu */
+        /* Vertical column titles (same pattern as /forecast.analysis) */
+        #mfrg-table.tabulator .tabulator-header .tabulator-col {
+            padding: 4px 2px;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            gap: 4px;
+            min-height: 65px;
+            padding: 4px 3px;
+            box-sizing: border-box;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            flex: 0 0 auto;
+            min-height: 34px;
+            width: 100%;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-sku) .tabulator-col-title,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-sku) .tabulator-title {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            font-weight: 700;
+            font-size: 0.68rem;
+            line-height: 1.1;
+            letter-spacing: 0.02em;
+            text-align: center;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-content {
+            min-height: auto;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title-holder,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            min-height: auto !important;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col.tabulator-field-sku .tabulator-col-content,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-content {
+            min-height: auto !important;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: center;
+            gap: 4px;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col.tabulator-field-sku .tabulator-col-title-holder,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-title-holder {
+            min-height: auto !important;
+            flex-direction: row !important;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        #mfrg-table.tabulator .tabulator-header .tabulator-col.tabulator-field-sku .tabulator-col-title,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col.tabulator-field-sku .tabulator-title,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-col-title,
+        #mfrg-table.tabulator .tabulator-header .tabulator-col[tabulator-field="sku"] .tabulator-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            min-height: auto !important;
+            font-size: 1.36rem !important;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: normal;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        /* Column show/hide menu — 4 groups */
         .mip-columns-wrap { position: relative; }
         .mip-columns-menu {
             position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
-            padding: 8px 10px; min-width: 210px; max-height: 340px; overflow: auto;
+            padding: 8px 10px; min-width: min(92vw, 720px); max-width: min(96vw, 780px);
+            max-height: 70vh; overflow: auto;
             box-shadow: 0 6px 18px rgba(0,0,0,0.12);
         }
         .mip-columns-menu .mip-columns-head {
             display: flex; justify-content: space-between; align-items: center;
             gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+        }
+        .mip-columns-menu .mip-col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        .mip-columns-menu .mip-col-vis-group {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px;
+            padding: 6px; min-height: 100px; display: flex; flex-direction: column;
+        }
+        .mip-columns-menu .mip-col-vis-group-title {
+            display: flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.04em; color: #495057;
+            margin: 0 0 6px; padding: 2px 4px; border-bottom: 1px solid #dee2e6;
+            cursor: pointer; user-select: none;
+        }
+        .mip-columns-menu .mip-col-vis-group-title input { margin: 0; flex-shrink: 0; cursor: pointer; }
+        .mip-columns-menu .mip-col-vis-group-list {
+            flex: 1; max-height: 260px; overflow-y: auto; margin: 0; padding: 0; list-style: none;
+        }
+        .mip-columns-menu .mip-col-vis-item label {
+            display: flex; align-items: center; gap: 6px; padding: 3px 5px; cursor: pointer;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; font-size: 0.8rem;
         }
         .mip-columns-menu .form-check { margin-bottom: 3px; }
         .mip-columns-menu .form-check-label { cursor: pointer; }
@@ -939,6 +1043,12 @@
                 const full = short + ' ' + d.getFullYear();
                 return '<span title="' + full + '">' + short + '</span>';
             }
+            function supplierFirstName(name) {
+                const v = String(name || '').trim();
+                if (!v) return '';
+                return v.split(/\s+/).filter(Boolean)[0] || v;
+            }
+
             function supplierFormatter(cell) {
                 // Plain-text display by default — no border, no caret, no "dropdown" affordance.
                 // The cell becomes a searchable supplier picker only when clicked (via the
@@ -946,11 +1056,12 @@
                 // by QTY / O Date / D Date. Previously this rendered a styled <div> with a
                 // border + caret on every row, which made every supplier cell look editable
                 // from outside before the user even clicked.
+                // Show first name only to save space; full name remains in title + editor.
                 const val = (cell.getValue() || '').trim();
                 if (!val) {
                     return '<span class="text-muted" title="Click to set supplier">—</span>';
                 }
-                return '<span class="mip-supplier-text" title="' + esc(val) + '">' + esc(val) + '</span>';
+                return '<span class="mip-supplier-text" title="' + esc(val) + '">' + esc(supplierFirstName(val)) + '</span>';
             }
 
             table = new Tabulator("#mfrg-table", {
@@ -1055,7 +1166,7 @@
                             return url ? '<div class="mip-new-img-aspect"><img src="' + esc(url) + '"></div>' : '<span class="text-muted">N/A</span>';
                         }
                     },
-                    { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
+                    { title: "Supplier", field: "supplier", width: 72, minWidth: 56, maxWidth: 96, widthGrow: 0, hozAlign: "center",
                       formatter: supplierFormatter,
                       editor: "list",
                       editorParams: {
@@ -1280,6 +1391,14 @@
 
             const colBtn = document.getElementById('mip-columns-btn');
             const colMenu = document.getElementById('mip-columns-menu');
+            const MIP_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
+            const MIP_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
+            const MIP_COL_GROUPS = {
+                basic: ['Image', 'supplier', 'Category', 'sku', 'stage', 'exec'],
+                grp1: ['moq', 'qty', 'created_at', 'delivery_date', 'mip_po_number', 'total_cbm', 'CBM', 'row_cp', 'row_amount'],
+                grp2: ['pkg_inst', 'u_manual', 'compliance', 'pre_mip_checklist_status', 'supplier_platform_links'],
+                others: [],
+            };
             function columnLabel(col) {
                 const def = col.getDefinition() || {};
                 const field = col.getField();
@@ -1289,22 +1408,76 @@
                 label = (tmp.textContent || tmp.innerText || '').trim();
                 return label || field || '(column)';
             }
+            function mipClassifyColumn(field) {
+                for (let i = 0; i < MIP_COL_GROUP_KEYS.length; i++) {
+                    const key = MIP_COL_GROUP_KEYS[i];
+                    if (key === 'others') continue;
+                    if ((MIP_COL_GROUPS[key] || []).indexOf(field) !== -1) return key;
+                }
+                return 'others';
+            }
+            function syncMipGroupHeader(groupEl) {
+                if (!groupEl) return;
+                const headerCb = groupEl.querySelector('.mip-col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.mip-col-toggle');
+                if (!headerCb) return;
+                if (!itemCbs.length) {
+                    headerCb.checked = false;
+                    headerCb.indeterminate = false;
+                    headerCb.disabled = true;
+                    return;
+                }
+                headerCb.disabled = false;
+                let checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
             function buildColumnsMenu() {
-                let rows = '';
-                table.getColumns().forEach(function (col) {
-                    const field = col.getField();
-                    if (!field) return; // skip row-selection / non-data columns
-                    const checked = col.isVisible() ? 'checked' : '';
-                    rows += '<div class="form-check">' +
-                        '<input class="form-check-input mip-col-toggle" type="checkbox" data-field="' + esc(field) + '" id="mipcol-' + esc(field) + '" ' + checked + '>' +
-                        '<label class="form-check-label small" for="mipcol-' + esc(field) + '">' + esc(columnLabel(col)) + '</label>' +
+                const lists = {};
+                const groupEls = {};
+                let groupsHtml = '';
+                MIP_COL_GROUP_KEYS.forEach(function (cat) {
+                    groupsHtml +=
+                        '<div class="mip-col-vis-group" data-category="' + cat + '">' +
+                            '<label class="mip-col-vis-group-title">' +
+                                '<input type="checkbox" class="mip-col-vis-group-toggle" data-group="' + cat + '" title="Select / deselect all in ' + MIP_COL_GROUP_LABELS[cat] + '">' +
+                                MIP_COL_GROUP_LABELS[cat] +
+                            '</label>' +
+                            '<ul class="mip-col-vis-group-list" data-category="' + cat + '"></ul>' +
                         '</div>';
                 });
                 colMenu.innerHTML =
                     '<div class="mip-columns-head">' +
                         '<span class="fw-semibold small">Toggle columns</span>' +
                         '<button type="button" class="btn btn-sm btn-link p-0 small" id="mip-columns-all">Show all</button>' +
-                    '</div>' + rows;
+                    '</div>' +
+                    '<div class="mip-col-vis-groups">' + groupsHtml + '</div>';
+
+                MIP_COL_GROUP_KEYS.forEach(function (cat) {
+                    lists[cat] = colMenu.querySelector('.mip-col-vis-group-list[data-category="' + cat + '"]');
+                    groupEls[cat] = colMenu.querySelector('.mip-col-vis-group[data-category="' + cat + '"]');
+                });
+
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField();
+                    if (!field) return;
+                    if (field === 'row_action' || field === 'row_delete') return;
+                    const cat = mipClassifyColumn(field);
+                    const list = lists[cat];
+                    if (!list) return;
+                    const checked = col.isVisible() ? 'checked' : '';
+                    const id = 'mipcol-' + field.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const li = document.createElement('li');
+                    li.className = 'mip-col-vis-item';
+                    li.innerHTML =
+                        '<label for="' + esc(id) + '">' +
+                            '<input class="form-check-input mip-col-toggle" type="checkbox" data-field="' + esc(field) + '" data-group="' + cat + '" id="' + esc(id) + '" ' + checked + '>' +
+                            '<span>' + esc(columnLabel(col)) + '</span>' +
+                        '</label>';
+                    list.appendChild(li);
+                });
+                MIP_COL_GROUP_KEYS.forEach(function (cat) { syncMipGroupHeader(groupEls[cat]); });
             }
             colBtn.addEventListener('click', function (e) {
                 e.stopPropagation();
@@ -1318,11 +1491,29 @@
             colMenu.addEventListener('click', function (e) { e.stopPropagation(); });
             colMenu.addEventListener('change', function (e) {
                 const t = e.target;
+                if (t.classList.contains('mip-col-vis-group-toggle')) {
+                    const group = t.dataset.group;
+                    const groupEl = colMenu.querySelector('.mip-col-vis-group[data-category="' + group + '"]');
+                    const itemCbs = groupEl ? groupEl.querySelectorAll('.mip-col-toggle') : [];
+                    itemCbs.forEach(function (cb) {
+                        cb.checked = t.checked;
+                        const field = cb.dataset.field;
+                        if (!field) return;
+                        if (t.checked) table.showColumn(field); else table.hideColumn(field);
+                    });
+                    t.indeterminate = false;
+                    table.redraw(true);
+                    saveColumnVisibilityToServer();
+                    return;
+                }
                 if (!t.classList.contains('mip-col-toggle')) return;
                 const field = t.dataset.field;
                 if (t.checked) table.showColumn(field); else table.hideColumn(field);
                 table.redraw(true);
                 saveColumnVisibilityToServer();
+                if (t.dataset.group) {
+                    syncMipGroupHeader(colMenu.querySelector('.mip-col-vis-group[data-category="' + t.dataset.group + '"]'));
+                }
             });
             colMenu.addEventListener('click', function (e) {
                 if (e.target && e.target.id === 'mip-columns-all') {

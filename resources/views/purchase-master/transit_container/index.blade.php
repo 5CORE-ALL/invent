@@ -921,14 +921,18 @@ TAB_NAMES.forEach((tabName, index) => {
                 field: "supplier_name",
                 headerSort: false,
                 hozAlign: "center",
-                width: 110,
+                width: 72,
+                minWidth: 56,
+                maxWidth: 96,
+                widthGrow: 0,
                 formatter: function (cell) {
                     const saved = String(cell.getValue() || "").trim();
                     if (!saved) return '<span class="text-muted">—</span>';
+                    const first = saved.split(/\s+/).filter(Boolean)[0] || saved;
                     return `<div title="${saved.replace(/"/g,'&quot;')}"
-                                 style="font-weight:600;overflow:hidden;white-space:nowrap;
-                                        text-overflow:ellipsis;max-width:100px;">
-                                ${escapeHtmlTransit(saved)}
+                                 style="font-weight:700;overflow:hidden;white-space:nowrap;
+                                        text-overflow:ellipsis;max-width:100%;font-size:0.72rem;">
+                                ${escapeHtmlTransit(first)}
                             </div>`;
                 },
                 editor: transitCellEditor("input"),

@@ -551,9 +551,9 @@
                             style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
                             <div style="text-align: center;">
                                 <div
-                                    style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">
+                                    style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">
                                     Highest</div>
-                                <div id="cc-history-highest" style="font-size: 13px; font-weight: 700; color: #198754;">
+                                <div id="cc-history-highest" style="font-size: 13px; font-weight: 700; color: #dc3545;">
                                     —</div>
                             </div>
                             <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
@@ -565,9 +565,9 @@
                             </div>
                             <div style="text-align: center;">
                                 <div
-                                    style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">
+                                    style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">
                                     Lowest</div>
-                                <div id="cc-history-lowest" style="font-size: 13px; font-weight: 700; color: #dc3545;">
+                                <div id="cc-history-lowest" style="font-size: 13px; font-weight: 700; color: #198754;">
                                     —</div>
                             </div>
                         </div>
@@ -1063,18 +1063,33 @@
                 const yMin = Math.max(0, dataMin - range * 0.1);
                 const yMax = dataMax + range * 0.1;
 
-                if (ccHistoryHighestEl) ccHistoryHighestEl.textContent = ccHistoryFmt(dataMax);
-                if (ccHistoryMedianEl) ccHistoryMedianEl.textContent = ccHistoryFmt(median);
-                if (ccHistoryLowestEl) ccHistoryLowestEl.textContent = ccHistoryFmt(dataMin);
+                // Same reference-panel colors as /all-marketplace-master
+                const refRed = '#dc3545';
+                const refGray = '#6c757d';
+                const refGreen = '#198754';
+                if (ccHistoryHighestEl) {
+                    ccHistoryHighestEl.textContent = ccHistoryFmt(dataMax);
+                    ccHistoryHighestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
+                }
+                if (ccHistoryMedianEl) {
+                    ccHistoryMedianEl.textContent = ccHistoryFmt(median);
+                    ccHistoryMedianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
+                }
+                if (ccHistoryLowestEl) {
+                    ccHistoryLowestEl.textContent = ccHistoryFmt(dataMin);
+                    ccHistoryLowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
+                }
 
-                // CC Health: higher is better, so green = up vs yesterday, red = down, gray = same/first.
+                // Higher is better → green = up vs yesterday, red = down (same as all-marketplace-master).
                 const dotColors = values.map(function(v, i) {
                     if (i === 0) return '#6c757d';
                     if (v > values[i - 1]) return '#28a745';
                     if (v < values[i - 1]) return '#dc3545';
                     return '#6c757d';
                 });
-                const labelColors = dotColors.slice();
+                const labelColors = values.map(function(v) {
+                    return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
+                });
 
                 const medianLinePlugin = {
                     id: 'ccMedianLine',

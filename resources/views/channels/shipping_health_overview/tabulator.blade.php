@@ -222,6 +222,24 @@
             color: #9ca3af;
             text-align: center;
         }
+
+        /* Status history chart modal — full width */
+        #shovStatusHistoryModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #shovStatusHistoryModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #shovStatusHistoryModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -274,18 +292,19 @@
         </div>
     </div>
 
-    <div class="modal fade" id="shovStatusHistoryModal" tabindex="-1" aria-labelledby="shovStatusHistoryModalLabel"
+    <div class="modal fade p-0" id="shovStatusHistoryModal" tabindex="-1" aria-labelledby="shovStatusHistoryModalLabel"
         aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h6 class="modal-title fw-semibold mb-0" id="shovStatusHistoryModalLabel">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;" id="shovStatusHistoryModalLabel">
+                        <i class="fas fa-chart-area me-1"></i>
                         Status history — last 60 days
                     </h6>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div style="height: 280px; position: relative;">
+                <div class="modal-body p-2">
+                    <div style="height: 20vh; position: relative;">
                         <canvas id="shov-status-history-chart"></canvas>
                     </div>
                     <p class="small text-muted text-center mb-0 mt-2 d-none" id="shov-status-history-empty">

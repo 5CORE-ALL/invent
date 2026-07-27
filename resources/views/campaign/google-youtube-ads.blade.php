@@ -281,6 +281,24 @@
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
 
+        /* Badge chart modal — same full-width Rolling L30 UI as all-marketplace-master */
+        #gacRawBadgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #gacRawBadgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #gacRawBadgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+
     </style>
 @endsection
 
@@ -609,42 +627,47 @@
         </div>
     </div>
 
-    <div class="modal fade" id="gacRawBadgeChartModal" tabindex="-1" aria-labelledby="gacRawBadgeChartModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
-                    <h6 class="modal-title fw-bold" id="gacRawBadgeChartModalLabel">
-                        <i class="fas fa-chart-line me-1"></i>
-                        <span id="gacRawBadgeChartTitle">Trend</span>
+    <div class="modal fade p-0" id="gacRawBadgeChartModal" tabindex="-1" aria-labelledby="gacRawBadgeChartModalLabel" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow:hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size:13px;" id="gacRawBadgeChartModalLabel">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="gacRawBadgeChartTitle">Google YouTube Ads - ACOS (Rolling L30)</span>
                     </h6>
-                    <div class="ms-auto d-flex align-items-center gap-2">
-                        <select id="gacRawBadgeChartRange" class="form-select form-select-sm" style="width:120px;">
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="gacRawBadgeChartRange" class="form-select form-select-sm bg-white" style="width:110px;height:26px;font-size:11px;padding:1px 8px;" aria-label="Chart date range">
                             <option value="7">7 Days</option>
                             <option value="14">14 Days</option>
+                            <option value="30">30 Days</option>
                             <option value="32" selected>32 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                         </select>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close btn-close-white" style="font-size:10px;" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                 </div>
-                <div class="modal-body p-0">
-                    <div class="d-flex">
-                        <div style="flex:1; min-height:320px; padding:10px;">
+                <div class="modal-body p-2">
+                    <div id="gacRawBadgeChartContainer" style="height:20vh;display:flex;align-items:stretch;">
+                        <div style="flex:1;min-width:0;position:relative;">
                             <canvas id="gacRawBadgeChartCanvas"></canvas>
-                            <p class="text-center text-muted small mb-0 d-none" id="gacRawBadgeChartEmpty">
+                            <p class="text-center text-muted small mb-0 py-4 d-none" id="gacRawBadgeChartEmpty">
                                 No history available for this metric in the selected window.
                             </p>
                         </div>
-                        <div style="width:120px; border-left:1px solid #dee2e6; padding:14px 10px; text-align:center;">
-                            <div class="small text-uppercase fw-bold" style="color:#dc3545;">Highest</div>
-                            <div class="fs-5 fw-bold" id="gacRawBadgeChartHighest">—</div>
-                            <hr class="my-2">
-                            <div class="small text-uppercase fw-bold" style="color:#6c757d;">Median</div>
-                            <div class="fs-5 fw-bold" id="gacRawBadgeChartMedian">—</div>
-                            <hr class="my-2">
-                            <div class="small text-uppercase fw-bold" style="color:#198754;">Lowest</div>
-                            <div class="fs-5 fw-bold" id="gacRawBadgeChartLowest">—</div>
+                        <div id="gacRawBadgeChartRefPanel" style="width:100px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#dc3545;margin-bottom:1px;">Highest</div>
+                                <div id="gacRawBadgeChartHighest" style="font-size:13px;font-weight:700;color:#dc3545;">-</div>
+                            </div>
+                            <div style="text-align:center;border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#6c757d;margin-bottom:1px;">Median</div>
+                                <div id="gacRawBadgeChartMedian" style="font-size:13px;font-weight:700;color:#6c757d;">-</div>
+                            </div>
+                            <div style="text-align:center;">
+                                <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#198754;margin-bottom:1px;">Lowest</div>
+                                <div id="gacRawBadgeChartLowest" style="font-size:13px;font-weight:700;color:#198754;">-</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2240,9 +2263,16 @@
                     gacRawBadgeChart.destroy();
                     gacRawBadgeChart = null;
                 }
+
+                var refRed = '#dc3545';
+                var refGray = '#6c757d';
+                var refGreen = '#198754';
                 ['gacRawBadgeChartHighest', 'gacRawBadgeChartMedian', 'gacRawBadgeChartLowest'].forEach(function(id) {
                     var el = document.getElementById(id);
-                    if (el) el.textContent = '—';
+                    if (el) {
+                        el.textContent = '-';
+                        el.style.color = refGray;
+                    }
                 });
 
                 if (!data.length) {
@@ -2255,33 +2285,47 @@
 
                 var labels = data.map(function(row) { return row.date; });
                 var values = data.map(function(row) { return Number(row.value) || 0; });
-                var min = Math.min.apply(Math, values);
-                var max = Math.max.apply(Math, values);
+                var dataMin = Math.min.apply(Math, values);
+                var dataMax = Math.max.apply(Math, values);
                 var sorted = values.slice().sort(function(a, b) { return a - b; });
                 var mid = Math.floor(sorted.length / 2);
-                var median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-                var range = (max - min) || 1;
-                var yMin = Math.max(0, min - range * 0.1);
-                var yMax = max + range * 0.1;
-                var red = '#dc3545';
-                var green = '#198754';
-                var gray = '#6c757d';
-                var inverted = metric === 'acos';
+                var median = sorted.length % 2
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+                var range = (dataMax - dataMin) || 1;
+                var yMin = Math.max(0, dataMin - range * 0.1);
+                var yMax = dataMax + range * 0.1;
+                var inverted = (metric === 'acos');
 
-                function setStat(id, value) {
-                    var el = document.getElementById(id);
-                    if (!el) return;
-                    el.textContent = gacRawFormatBadgeChartValue(metric, value);
+                function fmtVal(v) {
+                    return gacRawFormatBadgeChartValue(metric, v);
                 }
-                setStat('gacRawBadgeChartHighest', max);
-                setStat('gacRawBadgeChartMedian', median);
-                setStat('gacRawBadgeChartLowest', min);
 
-                var pointColors = values.map(function(value, i) {
-                    if (i === 0) return gray;
-                    if (value === values[i - 1]) return gray;
-                    if (inverted) return value < values[i - 1] ? green : red;
-                    return value > values[i - 1] ? green : red;
+                var highestEl = document.getElementById('gacRawBadgeChartHighest');
+                var medianEl = document.getElementById('gacRawBadgeChartMedian');
+                var lowestEl = document.getElementById('gacRawBadgeChartLowest');
+                if (highestEl) {
+                    highestEl.textContent = fmtVal(dataMax);
+                    highestEl.style.color = dataMax === 0 ? refGreen : (dataMax > 0 ? refRed : refGray);
+                }
+                if (medianEl) {
+                    medianEl.textContent = fmtVal(median);
+                    medianEl.style.color = median === 0 ? refGreen : (median > 0 ? refRed : refGray);
+                }
+                if (lowestEl) {
+                    lowestEl.textContent = fmtVal(dataMin);
+                    lowestEl.style.color = dataMin === 0 ? refGreen : (dataMin > 0 ? refRed : refGray);
+                }
+
+                var pointColors = values.map(function(v, i) {
+                    if (i === 0) return '#6c757d';
+                    if (inverted) {
+                        return v < values[i - 1] ? '#28a745' : (v > values[i - 1] ? '#dc3545' : '#6c757d');
+                    }
+                    return v > values[i - 1] ? '#28a745' : (v < values[i - 1] ? '#dc3545' : '#6c757d');
+                });
+                var labelColors = values.map(function(v) {
+                    return v === 0 ? '#198754' : (v > 0 ? '#dc3545' : '#6c757d');
                 });
 
                 var medianLinePlugin = {
@@ -2290,15 +2334,35 @@
                         var yScale = chart.scales.y;
                         var xScale = chart.scales.x;
                         var ctx = chart.ctx;
-                        var y = yScale.getPixelForValue(median);
+                        var yPixel = yScale.getPixelForValue(median);
                         ctx.save();
                         ctx.setLineDash([6, 4]);
-                        ctx.strokeStyle = gray;
+                        ctx.strokeStyle = '#6c757d';
                         ctx.lineWidth = 1.2;
                         ctx.beginPath();
-                        ctx.moveTo(xScale.left, y);
-                        ctx.lineTo(xScale.right, y);
+                        ctx.moveTo(xScale.left, yPixel);
+                        ctx.lineTo(xScale.right, yPixel);
                         ctx.stroke();
+                        ctx.restore();
+                    }
+                };
+
+                var valueLabelsPlugin = {
+                    id: 'gacRawValueLabels',
+                    afterDatasetsDraw: function(chart) {
+                        var dataset = chart.data.datasets[0];
+                        var meta = chart.getDatasetMeta(0);
+                        var ctx = chart.ctx;
+                        ctx.save();
+                        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        meta.data.forEach(function(point, i) {
+                            var val = dataset.data[i];
+                            var offsetY = (i % 2 === 0) ? -10 : -20;
+                            ctx.fillStyle = labelColors[i];
+                            ctx.fillText(fmtVal(val), point.x, point.y + offsetY);
+                        });
                         ctx.restore();
                     }
                 };
@@ -2310,9 +2374,9 @@
                         datasets: [{
                             label: gacRawActiveBadgeLabel,
                             data: values,
-                            backgroundColor: 'rgba(13,110,253,0.08)',
-                            borderColor: '#0d6efd',
-                            borderWidth: 1.6,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
                             fill: true,
                             tension: 0.3,
                             pointRadius: 3,
@@ -2330,7 +2394,7 @@
                             tooltip: {
                                 callbacks: {
                                     label: function(ctx) {
-                                        return gacRawFormatBadgeChartValue(metric, ctx.parsed.y);
+                                        return fmtVal(ctx.parsed.y);
                                     }
                                 }
                             }
@@ -2341,14 +2405,14 @@
                                 max: yMax,
                                 ticks: {
                                     callback: function(value) {
-                                        return gacRawFormatBadgeChartValue(metric, value);
+                                        return fmtVal(value);
                                     }
                                 }
                             },
                             x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45 } }
                         }
                     },
-                    plugins: [medianLinePlugin]
+                    plugins: [medianLinePlugin, valueLabelsPlugin]
                 });
             }
 

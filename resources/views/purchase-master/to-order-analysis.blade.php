@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'To Order Analysis'])
+@extends('layouts.vertical', ['title' => 'Order'])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -70,15 +70,85 @@
         .toa-columns-menu {
             position: absolute; z-index: 4000; top: 100%; left: 0; margin-top: 4px;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
-            padding: 8px 10px; min-width: 220px; max-height: 360px; overflow: auto;
+            padding: 8px 10px; min-width: min(92vw, 720px); max-width: min(96vw, 780px);
+            max-height: 70vh; overflow: auto;
             box-shadow: 0 6px 18px rgba(0,0,0,0.12);
         }
         .toa-columns-menu .toa-columns-head {
             display: flex; justify-content: space-between; align-items: center;
             gap: 8px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
         }
+        .toa-columns-menu .toa-col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        .toa-columns-menu .toa-col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+        }
+        .toa-columns-menu .toa-col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            user-select: none;
+        }
+        .toa-columns-menu .toa-col-vis-group-title input { margin: 0; flex-shrink: 0; cursor: pointer; }
+        .toa-columns-menu .toa-col-vis-group-list {
+            flex: 1;
+            max-height: 260px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .toa-columns-menu .toa-col-vis-item {
+            margin: 0;
+            padding: 0;
+        }
+        .toa-columns-menu .toa-col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+        }
         .toa-columns-menu .form-check { margin-bottom: 3px; }
         .toa-columns-menu .form-check-label { cursor: pointer; }
+        .toa-row-action-btn {
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            color: #0d9488;
+            line-height: 1;
+        }
+        .toa-row-action-btn:hover,
+        .toa-row-action-btn:focus {
+            color: #0f766e;
+            background: transparent !important;
+            opacity: 0.85;
+        }
+        .toa-row-action-btn i { font-size: 1.15rem; }
 
         /* Bulk Edit modal — searchable Select2 dropdowns */
         #toaActionModal .select2-container--bootstrap-5 .select2-selection {
@@ -241,10 +311,10 @@
         }
         .toa-supplier-badge {
             display: inline-block;
-            padding: 4px 10px;
+            padding: 2px 6px;
             border-radius: 6px;
-            font-weight: 600;
-            font-size: 0.85rem;
+            font-weight: 700;
+            font-size: 0.72rem;
             line-height: 1.2;
             max-width: 100%;
             overflow: hidden;
@@ -267,6 +337,86 @@
         }
         #toOrderAnalysis-table .tabulator-header .tabulator-col .tabulator-col-sorter {
             display: none !important;
+        }
+
+        /* Vertical column titles (same pattern as /forecast.analysis) */
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col {
+            padding: 4px 2px;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            gap: 4px;
+            min-height: 65px;
+            padding: 4px 3px;
+            box-sizing: border-box;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            flex: 0 0 auto;
+            min-height: 34px;
+            width: 100%;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-SKU) .tabulator-col-title,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col:not(:first-child):not(.tabulator-field-SKU) .tabulator-title {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            font-weight: 700;
+            font-size: 0.68rem;
+            line-height: 1.1;
+            letter-spacing: 0.02em;
+            text-align: center;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-content {
+            min-height: auto;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title-holder,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col:first-child .tabulator-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            min-height: auto !important;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-content,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-content {
+            min-height: auto !important;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: center;
+            gap: 4px;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-title-holder,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-title-holder {
+            min-height: auto !important;
+            flex-direction: row !important;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-col-title,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col.tabulator-field-SKU .tabulator-title,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-col-title,
+        #toOrderAnalysis-table.tabulator .tabulator-header .tabulator-col[tabulator-field="SKU"] .tabulator-title {
+            writing-mode: horizontal-tb !important;
+            transform: none !important;
+            min-height: auto !important;
+            font-size: 1.36rem !important;
+            font-weight: 700;
+            line-height: 1.15;
+            letter-spacing: normal;
+            text-align: center;
+            white-space: nowrap;
         }
 
         /* Summary badges — full-width row above filters, autosize left to right */
@@ -303,8 +453,30 @@
         }
         .toa-badge--pending { background: #2563eb; }
         .toa-badge--value   { background: #0891b2; }
-        .toa-badge--ocd     { background: #d97706; }
+        .toa-badge--days    { background: #16a34a; cursor: pointer; transition: background 0.2s, transform 0.12s; }
+        .toa-badge--days:hover { transform: translateY(-1px); filter: brightness(1.05); }
+        .toa-badge--days.is-green  { background: #16a34a; }
+        .toa-badge--days.is-yellow { background: #ca8a04; }
+        .toa-badge--days.is-red    { background: #dc2626; }
         .toa-badge--cbm     { background: #16a34a; }
+
+        /* Days history graph — same full-width layout as /all-marketplace-master */
+        #toaDaysChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #toaDaysChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #toaDaysChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
         @media (max-width: 1100px) {
             .toa-summary {
                 overflow-x: auto;
@@ -529,6 +701,7 @@
     </style>
 @endsection
 @section('content')
+    @include('layouts.shared.page-title', ['page_title' => 'Order', 'sub_title' => 'Order'])
 
     <div class="row">
         <div class="col-12">
@@ -542,9 +715,12 @@
                     <span class="label">$ Value</span>
                     <span class="value" id="totalOrderValue">0</span>
                 </span>
-                <span class="toa-summary-badge toa-badge--ocd" title="Order Completion Days — average days since DOA for visible pending rows">
-                    <span class="label">OCD</span>
-                    <span class="value" id="ocdAverageDays">00</span>
+                <span class="toa-summary-badge toa-badge--days is-green" id="toaDaysBadge"
+                      role="button" tabindex="0"
+                      title="Average days since DOA for visible rows. Click for history graph."
+                      data-exact-value="">
+                    <span class="label">Days</span>
+                    <span class="value" id="toaAverageDays">00</span>
                 </span>
                 <span class="toa-summary-badge toa-badge--cbm" title="Total CBM for visible rows">
                     <span class="label">📦 CBM</span>
@@ -1188,29 +1364,12 @@
                             <div class="form-text small">Stage rows must have MOQ &gt; 0; rows without MOQ will be skipped.</div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Adv date</label>
-                            <input type="date" id="toa-action-adv-date" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-6">
                             <label class="form-label fw-semibold">C link</label>
                             <input type="text" id="toa-action-clink" class="form-control form-control-sm" maxlength="500" placeholder="— Keep current —">
                         </div>
                         <div class="col-12">
                             <label class="form-label fw-semibold">Reviews (improvement note)</label>
                             <textarea id="toa-action-reviews" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="— Keep current —"></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Item Pkg.</label>
-                            <textarea id="toa-action-item-pkg" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="— Keep current —"></textarea>
-                            <div class="form-text small">Requires product master ID on row (same as grid editor).</div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Instr Carton</label>
-                            <input type="text" id="toa-action-ctn-instr" class="form-control form-control-sm" maxlength="100" placeholder="— Keep current —">
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label fw-semibold">Design Instr Carton</label>
-                            <textarea id="toa-action-carton-design" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="— Keep current —"></textarea>
                         </div>
                     </div>
                 </div>
@@ -1256,9 +1415,68 @@
         </div>
     </div>
 
+    {{-- Days history graph (same format as Forecast Available % history) --}}
+    <div class="modal fade p-0" id="toaDaysChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="toaDaysChartTitle">Order — Days (Rolling 30 Days)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="toaDaysChartRange" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32">32 Days</option>
+                            <option value="35">35 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="toaDaysChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="toaDaysChart"></canvas>
+                        </div>
+                        <div id="toaDaysRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="toaDaysHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="toaDaysMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="toaDaysLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="toaDaysChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="toaDaysChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">Daily Days history is not available yet.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="{{ asset('js/exec-typeahead.js') }}"></script>
@@ -1463,12 +1681,21 @@
                 return TOA_SUPPLIER_PALETTE[Math.abs(hash) % TOA_SUPPLIER_PALETTE.length];
             }
 
+            function toaSupplierFirstName(name) {
+                const v = String(name || '').trim();
+                if (!v) return '';
+                return v.split(/\s+/).filter(Boolean)[0] || v;
+            }
+
             function formatToaSupplierCell(name) {
                 const v = String(name || '').trim();
                 if (!v) return '<span class="text-muted">—</span>';
+                const display = toaSupplierFirstName(v);
                 const colors = toaSupplierColors(v);
-                if (!colors) return `<span class="toa-readonly-cell-text">${escapeHtml(v)}</span>`;
-                return `<span class="toa-supplier-badge" style="background:${colors.bg};color:${colors.text};">${escapeHtml(v)}</span>`;
+                if (!colors) {
+                    return `<span class="toa-readonly-cell-text" title="${escapeHtmlAttr(v)}">${escapeHtml(display)}</span>`;
+                }
+                return `<span class="toa-supplier-badge" style="background:${colors.bg};color:${colors.text};" title="${escapeHtmlAttr(v)}">${escapeHtml(display)}</span>`;
             }
 
             const TOA_DATA_FIELD_META = {
@@ -1509,6 +1736,54 @@
                         <span class="purchase-hover-tip-badge${wrapClass}">${tipHtml}</span>
                     </button>
                 </div>`;
+            }
+
+            const TOA_PKG_CHECK_FIELDS = [
+                'barcode',
+                'instructions_item_pkg',
+                'ctn_instructions',
+                'packing_instructions',
+                'instructions_carton_design',
+                'packing_cdr_path',
+            ];
+
+            function toaFieldHasValue(row, fieldKey) {
+                const v = row[fieldKey];
+                if (v === null || v === undefined) return false;
+                if (typeof v === 'number') return Number.isFinite(v) && v !== 0;
+                return String(v).trim() !== '';
+            }
+
+            /** PKG icon: red if any packaging/design/CDR field is empty; blue when all filled. */
+            function toaPkgDataMissing(row) {
+                if (!row || row.is_parent) return false;
+                return TOA_PKG_CHECK_FIELDS.some(function (f) { return !toaFieldHasValue(row, f); });
+            }
+
+            /** QC icon: red if Issues / Amz / LMP / Review data is missing; blue when present. */
+            function toaQcDataMissing(row) {
+                if (!row || row.is_parent) return false;
+                const issuesMissing = !toaFieldHasValue(row, 'issues');
+                const amzMissing = !toaFieldHasValue(row, 'rating');
+                const lmpMissing = !toaFieldHasValue(row, 'lmp_price')
+                    && !(parseInt(row.lmp_entries_total, 10) > 0);
+                const reviewMissing = !row.has_review
+                    && !toaFieldHasValue(row, 'Reviews')
+                    && !toaFieldHasValue(row, 'positive_review')
+                    && !toaFieldHasValue(row, 'negative_review')
+                    && !toaFieldHasValue(row, 'improvement');
+                return issuesMissing || amzMissing || lmpMissing || reviewMissing;
+            }
+
+            function toaSearchIconHtml(missing, title, btnClass) {
+                const color = missing ? '#dc3545' : '#2563eb';
+                const tip = missing
+                    ? (title + ' — data missing')
+                    : title;
+                const cls = 'btn btn-sm btn-link p-0' + (btnClass ? (' ' + btnClass) : '');
+                return `<button type="button" class="${cls}" title="${escapeHtmlAttr(tip)}">
+                    <i class="fas fa-search" style="font-size:16px;color:${color};"></i>
+                </button>`;
             }
 
             function renderToaDataDotCell(cell, fieldKey, opts) {
@@ -2801,8 +3076,10 @@
                     {
                         title: "Supplier",
                         field: "Supplier",
-                        width: 160,
-                        minWidth: 130,
+                        width: 72,
+                        minWidth: 56,
+                        maxWidth: 96,
+                        widthGrow: 0,
                         hozAlign: "center",
                         formatter: function (cell) {
                             return formatToaSupplierCell(cell.getValue());
@@ -2854,9 +3131,11 @@
                             if (row.is_parent) {
                                 return '<span class="text-muted small">—</span>';
                             }
-                            return `<button type="button" class="btn btn-sm btn-link p-0 toa-pkg-view-btn" title="View packaging details">
-                                <i class="fas fa-search" style="font-size:16px;color:#2563eb;"></i>
-                            </button>`;
+                            return toaSearchIconHtml(
+                                toaPkgDataMissing(row),
+                                'View packaging details',
+                                'toa-pkg-view-btn'
+                            );
                         },
                         cellClick: function(e, cell) {
                             if (e.target.closest(".toa-pkg-view-btn")) {
@@ -2881,9 +3160,11 @@
                             if (row.is_parent) {
                                 return '<span class="text-muted small">—</span>';
                             }
-                            return `<button type="button" class="btn btn-sm btn-link p-0 toa-fix-view-btn" title="View Issues, IR, Amz, LMP & Review">
-                                <i class="fas fa-search" style="font-size:16px;color:#2563eb;"></i>
-                            </button>`;
+                            return toaSearchIconHtml(
+                                toaQcDataMissing(row),
+                                'View Issues, IR, Amz, LMP & Review',
+                                'toa-fix-view-btn'
+                            );
                         },
                         cellClick: function (e, cell) {
                             if (e.target.closest('.toa-fix-view-btn')) {
@@ -2908,7 +3189,7 @@
                         }
                     },
                     {
-                        title: "Instr<br>Carton",
+                        title: "Instr Carton",
                         field: "ctn_instructions",
                         visible: false,
                         width: 70,
@@ -2922,7 +3203,7 @@
                         }
                     },
                     {
-                        title: "Design<br>Instr.",
+                        title: "Design Instr.",
                         field: "packing_instructions",
                         visible: false,
                         width: 70,
@@ -2936,7 +3217,7 @@
                         }
                     },
                     {
-                        title: "Design<br>Instr<br>Carton",
+                        title: "Design Instr Carton",
                         field: "instructions_carton_design",
                         visible: false,
                         width: 70,
@@ -3331,8 +3612,8 @@
                         formatter: function (cell) {
                             const row = cell.getRow().getData();
                             const sku = (row.SKU || '').toString().replace(/"/g, '&quot;');
-                            return '<button type="button" class="btn btn-sm btn-outline-primary toa-row-action-btn" ' +
-                                'data-sku="' + sku + '" title="Bulk-edit this row (or all selected rows)">' +
+                            return '<button type="button" class="toa-row-action-btn" ' +
+                                'data-sku="' + sku + '" title="Edit this row (or all selected rows)">' +
                                 '<i class="mdi mdi-square-edit-outline"></i></button>';
                         },
                         cellClick: function (e, cell) {
@@ -3595,6 +3876,16 @@
                     if (stageVal === 'to_order_analysis' && prevStage === 'appr_req') {
                         rowPatch['Date of Appr'] = toaTodayIsoDate();
                     }
+                    // Order → MIP: autofill Adv date (today) when blank; persist + pass to MIP insert.
+                    let advDateForMip = String(d['Adv date'] || '').trim();
+                    const fromOrder = !prevStage || prevStage === 'to_order_analysis' || prevStage === 'order';
+                    if (stageVal === 'mip' && fromOrder && !advDateForMip) {
+                        advDateForMip = toaTodayIsoDate();
+                        rowPatch['Adv date'] = advDateForMip;
+                        try {
+                            await applyLinkColumnToRows([row], 'Adv date', advDateForMip);
+                        } catch (e) { /* still try MIP insert with stamped date */ }
+                    }
                     if (stageVal === 'mip') {
                         const insertRes = await fetch('/mfrg-progresses/insert', {
                             method: 'POST',
@@ -3607,7 +3898,7 @@
                                 sku: d.SKU || '',
                                 order_qty: d.approved_qty || '',
                                 supplier: d.Supplier || '',
-                                adv_date: d['Adv date'] || ''
+                                adv_date: advDateForMip || d['Adv date'] || ''
                             })
                         }).then(function (r) { return r.json(); });
                         if (insertRes.success) {
@@ -3615,7 +3906,7 @@
                             return { ok: true, deleted: true, sku: sku };
                         }
                         row.update(rowPatch, true);
-                        if (rowPatch['Date of Appr']) row.reformat();
+                        if (rowPatch['Date of Appr'] || rowPatch['Adv date']) row.reformat();
                         return { ok: false, error: insertRes.message || 'insert failed', sku: sku };
                     }
                     row.update(rowPatch, true);
@@ -3779,8 +4070,7 @@
                         $el.trigger('change');
                     }
                 });
-                $('#toa-action-moq, #toa-action-doa, #toa-action-adv-date, #toa-action-clink').val('');
-                $('#toa-action-reviews, #toa-action-item-pkg, #toa-action-ctn-instr, #toa-action-carton-design').val('');
+                $('#toa-action-moq, #toa-action-doa, #toa-action-clink, #toa-action-reviews').val('');
             }
 
             function initToaActionSelect2Search() {
@@ -3813,9 +4103,8 @@
             function toaActionHasAnyField() {
                 const checks = [
                     '#toa-action-moq', '#toa-action-doa', '#toa-action-supplier', '#toa-action-category',
-                    '#toa-action-executive', '#toa-action-nrp', '#toa-action-stage', '#toa-action-adv-date',
-                    '#toa-action-clink', '#toa-action-reviews', '#toa-action-item-pkg',
-                    '#toa-action-ctn-instr', '#toa-action-carton-design'
+                    '#toa-action-executive', '#toa-action-nrp', '#toa-action-stage',
+                    '#toa-action-clink', '#toa-action-reviews'
                 ];
                 return checks.some(function (sel) {
                     const el = document.querySelector(sel);
@@ -3996,12 +4285,8 @@
                     const execVal     = ($execSel.val() || '').trim();
                     const nrpVal      = ($('#toa-action-nrp').val() || '').trim();
                     const stageVal    = ($stageSel.val() || '').trim();
-                    const advDateVal  = ($('#toa-action-adv-date').val() || '').trim();
                     const clinkVal    = ($('#toa-action-clink').val() || '').trim();
                     const reviewsVal  = ($('#toa-action-reviews').val() || '').trim();
-                    const itemPkgVal  = ($('#toa-action-item-pkg').val() || '').trim();
-                    const ctnInstrVal = ($('#toa-action-ctn-instr').val() || '').trim();
-                    const cartonDesignVal = ($('#toa-action-carton-design').val() || '').trim();
 
                     const summary = [];
                     const origHtml = applyBtn.innerHTML;
@@ -4053,12 +4338,6 @@
                             if (res.failed.length)     line += ' • errors: ' + res.failed.join('; ');
                             summary.push(line);
                         }
-                        if (advDateVal) {
-                            const res = await applyLinkColumnToRows(currentRows, 'Adv date', advDateVal);
-                            let line = 'Adv date → ' + advDateVal + ': ' + res.ok + ' row(s)';
-                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
-                            summary.push(line);
-                        }
                         if (clinkVal) {
                             const res = await applyLinkColumnToRows(currentRows, 'Clink', clinkVal);
                             let line = 'C link: ' + res.ok + ' row(s)';
@@ -4068,27 +4347,6 @@
                         if (reviewsVal) {
                             const res = await applyLinkColumnToRows(currentRows, 'Reviews', reviewsVal);
                             let line = 'Reviews: ' + res.ok + ' row(s)';
-                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
-                            summary.push(line);
-                        }
-                        if (itemPkgVal) {
-                            const res = await applyDataFieldToRows(currentRows, 'instructions_item_pkg', itemPkgVal);
-                            let line = 'Item Pkg.: ' + res.ok + ' row(s)';
-                            if (res.skipped.length) line += ' • skipped (no product ID): ' + res.skipped.join(', ');
-                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
-                            summary.push(line);
-                        }
-                        if (ctnInstrVal) {
-                            const res = await applyDataFieldToRows(currentRows, 'ctn_instructions', ctnInstrVal);
-                            let line = 'Instr Carton: ' + res.ok + ' row(s)';
-                            if (res.skipped.length) line += ' • skipped (no product ID): ' + res.skipped.join(', ');
-                            if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
-                            summary.push(line);
-                        }
-                        if (cartonDesignVal) {
-                            const res = await applyDataFieldToRows(currentRows, 'instructions_carton_design', cartonDesignVal);
-                            let line = 'Design Instr Carton: ' + res.ok + ' row(s)';
-                            if (res.skipped.length) line += ' • skipped (no product ID): ' + res.skipped.join(', ');
                             if (res.failed.length) line += ' • errors: ' + res.failed.join('; ');
                             summary.push(line);
                         }
@@ -4562,12 +4820,38 @@
                     orderValueEl.textContent = formatToaBadgeK(totalOrderValue);
                     orderValueEl.title = 'Order value (CP × MOQ): $' + Math.round(totalOrderValue).toLocaleString('en-US');
                 }
-                const ocdEl = document.getElementById("ocdAverageDays");
-                if (ocdEl) {
-                    const ocd = pendingItems > 0 ? (totalOrderDays / pendingItems) : 0;
-                    ocdEl.textContent = pendingItems > 0 ? String(Math.round(ocd)) : "0";
-                    ocdEl.title = "Order Completion Days — sum of days since DOA (" + totalOrderDays + ") ÷ pending rows (" + pendingItems + ") = " + (pendingItems > 0 ? Math.round(ocd) : 0);
+                const daysEl = document.getElementById("toaAverageDays");
+                const daysBadge = document.getElementById("toaDaysBadge");
+                if (daysEl) {
+                    const avg = pendingItems > 0 ? (totalOrderDays / pendingItems) : 0;
+                    const days = pendingItems > 0 ? Math.round(avg) : 0;
+                    daysEl.textContent = String(days);
+                    if (daysBadge) {
+                        daysBadge.setAttribute('data-exact-value', String(days));
+                        daysBadge.classList.remove('is-green', 'is-yellow', 'is-red');
+                        daysBadge.classList.add(toaDaysBadgeTone(days));
+                        daysBadge.title = 'Average days since DOA (' + totalOrderDays + ' ÷ ' + pendingItems +
+                            ' = ' + days + '). Green < 7 · Yellow 7–15 · Red > 15. Click for history.';
+                    }
+                    // Persist today's Days snapshot for the history graph (debounced).
+                    if (typeof persistToaDaysSnapshot === 'function') {
+                        persistToaDaysSnapshot(days);
+                    }
                 }
+            }
+
+            /** Days badge color: green < 7, yellow 7–15, red > 15 */
+            function toaDaysBadgeTone(days) {
+                const n = Number(days);
+                if (!Number.isFinite(n) || n < 7) return 'is-green';
+                if (n <= 15) return 'is-yellow';
+                return 'is-red';
+            }
+            function toaDaysPointColor(days) {
+                const tone = toaDaysBadgeTone(days);
+                if (tone === 'is-green') return '#16a34a';
+                if (tone === 'is-yellow') return '#ca8a04';
+                return '#dc2626';
             }
 
             // Apply all filters (supplier play uses currentSupplierFilter when active)
@@ -4842,7 +5126,18 @@
                 const TOA_FORCE_HIDDEN_FIELDS = [
                     'specs', 'barcode',
                     'issues', 'Reviews', 'rating', 'lmp_price', 'Review', 'RFQ Form Link',
+                    'Adv date',
+                    'instructions_item_pkg', 'ctn_instructions', 'packing_instructions',
+                    'instructions_carton_design', 'packing_cdr_path',
                 ];
+                const TOA_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
+                const TOA_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
+                const TOA_COL_GROUPS = {
+                    basic: ['Image', 'Parent', 'SKU', 'Supplier', 'Category', 'category_supplier_count', 'stage', 'Exec'],
+                    grp1: ['approved_qty', 'msl', 'Date of Appr', 'doa_days', 'nr', 'pre_order_checklist_status'],
+                    grp2: ['pkg_view', 'fix_view'],
+                    others: [], // remainder
+                };
 
                 function enforceToaHiddenColumns() {
                     TOA_FORCE_HIDDEN_FIELDS.forEach(function (field) {
@@ -4860,23 +5155,79 @@
                     label = (tmp.textContent || tmp.innerText || '').trim();
                     return label || field || '(column)';
                 }
+                function toaClassifyColumn(field) {
+                    for (let i = 0; i < TOA_COL_GROUP_KEYS.length; i++) {
+                        const key = TOA_COL_GROUP_KEYS[i];
+                        if (key === 'others') continue;
+                        if ((TOA_COL_GROUPS[key] || []).indexOf(field) !== -1) return key;
+                    }
+                    return 'others';
+                }
+                function syncToaGroupHeader(groupEl) {
+                    if (!groupEl) return;
+                    const headerCb = groupEl.querySelector('.toa-col-vis-group-toggle');
+                    const itemCbs = groupEl.querySelectorAll('.toa-col-toggle');
+                    if (!headerCb) return;
+                    if (!itemCbs.length) {
+                        headerCb.checked = false;
+                        headerCb.indeterminate = false;
+                        headerCb.disabled = true;
+                        return;
+                    }
+                    headerCb.disabled = false;
+                    let checked = 0;
+                    itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                    headerCb.checked = checked === itemCbs.length;
+                    headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+                }
                 function buildMenu() {
-                    let rows = '';
-                    table.getColumns().forEach(function (col) {
-                        const field = col.getField();
-                        if (!field) return;
-                        // CL + Action stay visible — core workflow columns
-                        if (field === 'pre_order_checklist_status' || field === '_action') return;
-                        if (TOA_FORCE_HIDDEN_FIELDS.indexOf(field) !== -1) return;
-                        const checked = col.isVisible() ? 'checked' : '';
-                        rows += '<div class="form-check">' +
-                            '<input class="form-check-input toa-col-toggle" type="checkbox" data-field="' + escAttr(field) + '" id="toacol-' + escAttr(field) + '" ' + checked + '>' +
-                            '<label class="form-check-label small" for="toacol-' + escAttr(field) + '">' + escAttr(columnLabel(col)) + '</label>' +
+                    const lists = {};
+                    const groupEls = {};
+                    let groupsHtml = '';
+                    TOA_COL_GROUP_KEYS.forEach(function (cat) {
+                        groupsHtml +=
+                            '<div class="toa-col-vis-group" data-category="' + cat + '">' +
+                                '<label class="toa-col-vis-group-title">' +
+                                    '<input type="checkbox" class="toa-col-vis-group-toggle" data-group="' + cat + '" title="Select / deselect all in ' + TOA_COL_GROUP_LABELS[cat] + '">' +
+                                    TOA_COL_GROUP_LABELS[cat] +
+                                '</label>' +
+                                '<ul class="toa-col-vis-group-list" data-category="' + cat + '"></ul>' +
                             '</div>';
                     });
                     colMenu.innerHTML =
                         '<div class="toa-columns-head"><span class="fw-semibold small">Toggle columns</span>' +
-                        '<button type="button" class="btn btn-sm btn-link p-0 small" id="toa-columns-all">Show all</button></div>' + rows;
+                        '<button type="button" class="btn btn-sm btn-link p-0 small" id="toa-columns-all">Show all</button></div>' +
+                        '<div class="toa-col-vis-groups">' + groupsHtml + '</div>';
+
+                    TOA_COL_GROUP_KEYS.forEach(function (cat) {
+                        lists[cat] = colMenu.querySelector('.toa-col-vis-group-list[data-category="' + cat + '"]');
+                        groupEls[cat] = colMenu.querySelector('.toa-col-vis-group[data-category="' + cat + '"]');
+                    });
+
+                    table.getColumns().forEach(function (col) {
+                        const field = col.getField();
+                        if (!field) return;
+                        // CL + Action stay visible — core workflow columns (not in picker)
+                        if (field === 'pre_order_checklist_status' || field === '_action') return;
+                        if (TOA_FORCE_HIDDEN_FIELDS.indexOf(field) !== -1) return;
+                        const cat = toaClassifyColumn(field);
+                        const list = lists[cat];
+                        if (!list) return;
+                        const checked = col.isVisible() ? 'checked' : '';
+                        const id = 'toacol-' + field.replace(/[^a-zA-Z0-9_-]/g, '_');
+                        const li = document.createElement('li');
+                        li.className = 'toa-col-vis-item';
+                        li.innerHTML =
+                            '<label for="' + escAttr(id) + '">' +
+                                '<input class="form-check-input toa-col-toggle" type="checkbox" data-field="' + escAttr(field) + '" data-group="' + cat + '" id="' + escAttr(id) + '" ' + checked + '>' +
+                                '<span>' + escAttr(columnLabel(col)) + '</span>' +
+                            '</label>';
+                        list.appendChild(li);
+                    });
+
+                    TOA_COL_GROUP_KEYS.forEach(function (cat) {
+                        syncToaGroupHeader(groupEls[cat]);
+                    });
                 }
                 function saveVisibility() {
                     const visibility = {};
@@ -4954,11 +5305,31 @@
                 });
                 colMenu.addEventListener('change', function (e) {
                     const t = e.target;
+                    if (t.classList.contains('toa-col-vis-group-toggle')) {
+                        const group = t.dataset.group;
+                        const groupEl = colMenu.querySelector('.toa-col-vis-group[data-category="' + group + '"]');
+                        const itemCbs = groupEl ? groupEl.querySelectorAll('.toa-col-toggle') : [];
+                        itemCbs.forEach(function (cb) {
+                            cb.checked = t.checked;
+                            const field = cb.dataset.field;
+                            if (!field) return;
+                            if (t.checked) table.showColumn(field); else table.hideColumn(field);
+                        });
+                        t.indeterminate = false;
+                        enforceToaHiddenColumns();
+                        table.redraw(true);
+                        saveVisibility();
+                        return;
+                    }
                     if (!t.classList.contains('toa-col-toggle')) return;
                     const field = t.dataset.field;
                     if (t.checked) table.showColumn(field); else table.hideColumn(field);
                     table.redraw(true);
                     saveVisibility();
+                    const group = t.dataset.group;
+                    if (group) {
+                        syncToaGroupHeader(colMenu.querySelector('.toa-col-vis-group[data-category="' + group + '"]'));
+                    }
                 });
                 document.addEventListener('click', function (e) {
                     if (colMenu.style.display === 'block' && !colMenu.contains(e.target) && e.target !== colBtn) {
@@ -5327,6 +5698,281 @@
                 }
                 openToaClModal('bulk', selected);
             });
+
+            // ── Days history graph (same Chart.js format as Forecast Available %) ──
+            let toaDaysChartInstance = null;
+            let toaDaysChartDays = 30;
+            let toaDaysChartAjax = null;
+            let toaDaysPersistTimer = null;
+            let toaDaysLastPersisted = null;
+
+            function persistToaDaysSnapshot(days) {
+                const n = Number(days);
+                if (!Number.isFinite(n)) return;
+                if (toaDaysLastPersisted === n) return;
+                clearTimeout(toaDaysPersistTimer);
+                toaDaysPersistTimer = setTimeout(function () {
+                    toaDaysLastPersisted = n;
+                    fetch('/to-order-analysis/days-history?' + new URLSearchParams({
+                        days: '1',
+                        badge_value: String(n),
+                        persist_only: '1',
+                    }).toString(), {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    }).catch(function () {});
+                }, 1500);
+            }
+
+            function toaDaysRangeLabel(days) {
+                if (!days || days <= 0) return 'Lifetime';
+                return days + ' Days';
+            }
+
+            function showToaDaysChart() {
+                toaDaysChartDays = 30;
+                const rangeEl = document.getElementById('toaDaysChartRange');
+                if (rangeEl) rangeEl.value = '30';
+                const titleEl = document.getElementById('toaDaysChartTitle');
+                if (titleEl) {
+                    titleEl.textContent = 'Order — Days (Rolling ' + toaDaysRangeLabel(toaDaysChartDays) + ')';
+                }
+                const modalEl = document.getElementById('toaDaysChartModal');
+                if (!modalEl) return;
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                loadToaDaysChart();
+            }
+
+            function loadToaDaysChart() {
+                const loading = document.getElementById('toaDaysChartLoading');
+                const container = document.getElementById('toaDaysChartContainer');
+                const noData = document.getElementById('toaDaysChartNoData');
+                if (toaDaysChartAjax && typeof toaDaysChartAjax.abort === 'function') {
+                    try { toaDaysChartAjax.abort(); } catch (e) {}
+                }
+                if (loading) loading.style.display = 'block';
+                if (container) container.style.display = 'none';
+                if (noData) noData.style.display = 'none';
+
+                const badge = document.getElementById('toaDaysBadge');
+                let badgeValue = parseFloat(badge && badge.getAttribute('data-exact-value'));
+                if (!Number.isFinite(badgeValue)) {
+                    badgeValue = parseFloat((document.getElementById('toaAverageDays')?.textContent || '').trim());
+                }
+                const params = new URLSearchParams();
+                params.set('days', String(toaDaysChartDays));
+                if (Number.isFinite(badgeValue)) params.set('badge_value', String(badgeValue));
+
+                const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                toaDaysChartAjax = controller || null;
+                fetch('/to-order-analysis/days-history?' + params.toString(), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    signal: controller ? controller.signal : undefined,
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (response) {
+                        toaDaysChartAjax = null;
+                        if (loading) loading.style.display = 'none';
+                        if (response && response.success && response.data && response.data.length) {
+                            if (container) container.style.display = 'flex';
+                            renderToaDaysChart(response.data);
+                        } else if (noData) {
+                            noData.style.display = 'block';
+                        }
+                    })
+                    .catch(function (err) {
+                        if (err && err.name === 'AbortError') return;
+                        toaDaysChartAjax = null;
+                        if (loading) loading.style.display = 'none';
+                        if (noData) noData.style.display = 'block';
+                    });
+            }
+
+            function renderToaDaysChart(data) {
+                // Same Chart.js UI as /all-marketplace-master adBreakdownChart.
+                const canvas = document.getElementById('toaDaysChart');
+                if (!canvas || typeof Chart === 'undefined') return;
+                const ctx = canvas.getContext('2d');
+                if (toaDaysChartInstance) {
+                    toaDaysChartInstance.destroy();
+                    toaDaysChartInstance = null;
+                }
+
+                const labels = data.map(function (d) { return d.date; });
+                const values = data.map(function (d) { return Number(d.value) || 0; });
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const sorted = values.slice().sort(function (a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 !== 0
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+                const range = dataMax - dataMin || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = dataMax + range * 0.1;
+                const fmtVal = function (v) { return Math.round(v).toLocaleString('en-US'); };
+
+                // Reference panel — same colors as /all-marketplace-master
+                // (positive = red, zero = green). Days: lower is better.
+                const refRed = '#dc3545';
+                const refGray = '#6c757d';
+                const refGreen = '#198754';
+                const highestEl = document.getElementById('toaDaysHighest');
+                const medianEl = document.getElementById('toaDaysMedian');
+                const lowestEl = document.getElementById('toaDaysLowest');
+                if (highestEl) {
+                    highestEl.textContent = fmtVal(dataMax);
+                    highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
+                }
+                if (medianEl) {
+                    medianEl.textContent = fmtVal(median);
+                    medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
+                }
+                if (lowestEl) {
+                    lowestEl.textContent = fmtVal(dataMin);
+                    lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
+                }
+
+                // Dot colors inverted (like ACOS): lower vs yesterday = green (good), higher = red.
+                const dotColors = values.map(function (v, i) {
+                    if (i === 0) return '#6c757d';
+                    return v < values[i - 1] ? '#28a745'
+                         : v > values[i - 1] ? '#dc3545'
+                         : '#6c757d';
+                });
+                const labelColors = values.map(function (v) {
+                    return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
+                });
+
+                const medianLinePlugin = {
+                    id: 'toaDaysMedianLine',
+                    afterDraw: function (chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
+                const valueLabelsPlugin = {
+                    id: 'toaDaysValueLabels',
+                    afterDatasetsDraw: function (chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        c.save();
+                        c.font = 'bold 11px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        meta.data.forEach(function (point, i) {
+                            const offsetY = (i % 2 === 0) ? -10 : -20;
+                            c.fillStyle = labelColors[i];
+                            c.fillText(fmtVal(dataset.data[i]), point.x, point.y + offsetY);
+                        });
+                        c.restore();
+                    }
+                };
+
+                toaDaysChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Days',
+                            data: values,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointBorderWidth: 1.5
+                        }]
+                    },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 26, left: 2, right: 2, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 10 },
+                                padding: 6,
+                                callbacks: {
+                                    label: function (context) {
+                                        const idx = context.dataIndex;
+                                        const parts = ['Value: ' + fmtVal(context.raw)];
+                                        if (idx > 0) {
+                                            const diff = context.raw - values[idx - 1];
+                                            const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
+                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
+                                        }
+                                        if (idx >= 7) {
+                                            const diff7 = context.raw - values[idx - 7];
+                                            const arrow7 = diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬';
+                                            parts.push('vs 7d Ago: ' + arrow7 + ' ' + fmtVal(Math.abs(diff7)));
+                                        }
+                                        return parts;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function (value) { return fmtVal(value); }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31),
+                                    font: { size: 8 }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('toaDaysChartRange')?.addEventListener('change', function () {
+                const days = parseInt(this.value, 10);
+                if (days === toaDaysChartDays) return;
+                toaDaysChartDays = days;
+                const titleEl = document.getElementById('toaDaysChartTitle');
+                if (titleEl) {
+                    titleEl.textContent = 'Order — Days (Rolling ' + toaDaysRangeLabel(days) + ')';
+                }
+                loadToaDaysChart();
+            });
+
+            const toaDaysBadgeEl = document.getElementById('toaDaysBadge');
+            if (toaDaysBadgeEl) {
+                toaDaysBadgeEl.addEventListener('click', function () { showToaDaysChart(); });
+                toaDaysBadgeEl.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        showToaDaysChart();
+                    }
+                });
+            }
         });
     </script>
 @endsection

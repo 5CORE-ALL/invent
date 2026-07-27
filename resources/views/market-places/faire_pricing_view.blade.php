@@ -94,6 +94,24 @@
             text-align: center;
             white-space: nowrap;
         }
+
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #frMetricChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #frMetricChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #frMetricChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -332,10 +350,10 @@
     </div>
 
     <!-- Faire pricing summary — daily snapshot trend (amazon_channel_summary_data channel=faire) -->
-    <div class="modal fade" id="frMetricChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
-                <div class="modal-header text-white py-1 px-3" style="background-color: #b8860b;">
+    <div class="modal fade p-0" id="frMetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
                         <span id="frChartModalTitle">Faire — Metric trend</span>
@@ -532,11 +550,10 @@
 
             const dotColors = values.map(function(v, i) {
                 if (i === 0) return '#6c757d';
-                return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+                return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#28a745' : '#6c757d');
             });
-            const labelColors = values.map(function(v, i) {
-                if (i < 7) return '#6c757d';
-                return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#6c757d');
+            const labelColors = values.map(function(v) {
+                return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
             });
 
             const medianLinePlugin = {

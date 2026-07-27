@@ -205,7 +205,7 @@
                                 ['value' => 'purchase_master_suppliers', 'text' => 'Suppliers'],
                                 ['value' => 'purchase_master_claims_reimbursements', 'text' => 'Claims & Reimbursements'],
                                 ['value' => 'purchase_master_forecast_analysis', 'text' => 'Forecast Analysis'],
-                                ['value' => 'purchase_master_to_order_analysis', 'text' => 'To Order Analysis'],
+                                ['value' => 'purchase_master_to_order_analysis', 'text' => 'Order'],
                                 ['value' => 'purchase_master_list_all_purchase_orders', 'text' => 'Purchase Contract'],
                                 ['value' => 'purchase_master_purchase', 'text' => 'Purchase'],
                                 ['value' => 'purchase_master_sourcing', 'text' => 'Sourcing'],

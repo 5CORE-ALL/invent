@@ -4682,6 +4682,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/to-order-analysis', 'toOrderAnalysisNew')->name('to.order.analysis');
         Route::get('/to-order-analysis-new', 'toOrderAnalysisNew')->name('to.order.analysis.new');
         Route::get('/to-order-analysis/data', 'getToOrderAnalysis')->name('to.order.analysis.data');
+        Route::get('/to-order-analysis/days-history', 'getDaysHistory')->name('to.order.analysis.days.history');
         Route::post('/update-link', 'updateLink')->name('update.rfq.link');
         Route::post('/to-order-analysis/bulk-update-supplier', 'bulkUpdateSupplier')->name('to.order.analysis.bulk.supplier');
         Route::post('/to-order-analysis/bulk-update-category', 'bulkUpdateCategory')->name('to.order.analysis.bulk.category');
@@ -5853,6 +5854,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay3/campaign-ads/sbid-views-rule', 'getSbidViewsRule')->name('ebay3.campaign.ads.sbid.views.rule');
         Route::post('/ebay3/campaign-ads/sbid-views-rule', 'saveSbidViewsRule')->name('ebay3.campaign.ads.sbid.views.rule.save');
         Route::post('/ebay3/campaign-ads/push-sbid', 'pushSbid')->name('ebay3.campaign.ads.push.sbid');
+        Route::post('/ebay3/campaign-ads/push-sbid-slabs', 'pushSbidSlabsBySku')->name('ebay3.campaign.ads.push.sbid.slabs');
         Route::post('/ebay3/campaign-ads/push-selected', 'pushSelected')->name('ebay3.campaign.ads.push.selected');
         Route::get('/ebay3/campaign-ads/campaigns', 'getCampaignList')->name('ebay3.campaign.ads.campaigns');
         Route::post('/ebay3/campaign-ads/enroll', 'enrollInCampaign')->name('ebay3.campaign.ads.enroll');

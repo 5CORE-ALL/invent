@@ -507,6 +507,34 @@
             color: #1f2937;
             margin: 8px 0 6px;
         }
+        .fa-col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        .fa-col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 100px;
+        }
+        .fa-col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            user-select: none;
+        }
+        .fa-col-vis-group-title input { margin: 0; cursor: pointer; }
         .column-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(160px, 1fr));
@@ -1271,16 +1299,16 @@
                         </div>
                         <div id="faAvailablePctRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
                             <div style="text-align: center;">
-                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #7c3aed; margin-bottom: 1px;">Highest</div>
-                                <div id="faAvailablePctHighest" style="font-size: 13px; font-weight: 700; color: #7c3aed;">-</div>
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="faAvailablePctHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
                             </div>
                             <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
                                 <div id="faAvailablePctMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
                             </div>
                             <div style="text-align: center;">
-                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Lowest</div>
-                                <div id="faAvailablePctLowest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="faAvailablePctLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
                             </div>
                         </div>
                     </div>
@@ -1329,20 +1357,20 @@
     </div>
 
     <div class="modal fade" id="columnCustomizeModal" tabindex="-1" aria-labelledby="columnCustomizeModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:780px;">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h6 class="modal-title fw-semibold" id="columnCustomizeModalLabel"><i class="bi bi-layout-three-columns me-2"></i>Show / Hide Columns</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
-                    <div id="columnCheckboxList" class="row row-cols-2 row-cols-sm-3 g-2"></div>
-                            </div>
+                    <div id="columnCheckboxList" class="fa-col-vis-groups"></div>
+                </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="columnShowAllBtn">Show All</button>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="columnHideAllBtn">Hide All</button>
                     <button type="button" class="btn btn-sm btn-primary" id="columnSaveBtn" data-bs-dismiss="modal">Save</button>
-                        </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1495,7 +1523,13 @@
                     _token: $('meta[name="csrf-token"]').attr('content')
                 }).done(function(res) {
                     if (res && res.success) {
-                        resolve({ ok: true, payload: payload, message: res.message || '' });
+                        resolve({
+                            ok: true,
+                            payload: payload,
+                            message: res.message || '',
+                            date_apprvl: res.date_apprvl || null,
+                            doa_stamped: !!res.doa_stamped,
+                        });
                     } else {
                         resolve({ ok: false, payload: payload, message: (res && res.message) || 'Not saved' });
                     }
@@ -1531,14 +1565,12 @@
             return '';
         }
 
-        /** Display supplier as "FIRST MIDDLE L" — last word abbreviated to first letter. */
+        /** Display supplier as first name only (saves column space; full name in title). */
         function formatSupplierShortName(name) {
             const value = String(name == null ? '' : name).trim();
             if (!value) return '';
             const parts = value.split(/\s+/).filter(Boolean);
-            if (parts.length <= 1) return parts[0] || '';
-            const lastInitial = parts[parts.length - 1].charAt(0);
-            return parts.slice(0, -1).join(' ') + ' ' + lastInitial;
+            return parts[0] || value;
         }
 
         function forecastRowToYmd(value) {
@@ -2276,6 +2308,10 @@
                     patch[FORECAST_STAGE_QTY_MAP[stage].field] = checked ? (parseFloat(payload.value) || 0) : 0;
                 }
                 if (stage === 'appr_req') patch.appr_req_qty = checked ? moqNum : 0;
+                // DOA stamps automatically when Order qty goes from <1 → >0.
+                if (res.doa_stamped && res.date_apprvl) {
+                    patch.date_apprvl = res.date_apprvl;
+                }
                 row.update(patch, true);
 
                 if (typeof syncParentStageQtyColumns === 'function') {
@@ -2438,6 +2474,8 @@
             else if (col === 'MOQ') patch.MOQ = value;
             else if (col === 'ORDER') {
                 // Order qty > 0 automatically adds the Orders (to_order_analysis) stage.
+                // DOA is stamped server-side only when qty changes from <1 → >0.
+                const prevOrder = parseFloat((row.getData() || {}).two_order_qty) || 0;
                 const orderNum = parseFloat(value) || 0;
                 patch.two_order_qty = value;
                 let next = getForecastStages(row.getData() || {});
@@ -2451,6 +2489,12 @@
                 patch.stages = next;
                 patch.stage = next[0] || '';
                 patch.appr_req_qty = orderNum > 0 ? 0 : (parseFloat((row.getData() || {}).appr_req_qty) || 0);
+                if (prevOrder < 1 && orderNum > 0) {
+                    const d = new Date();
+                    patch.date_apprvl = d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+                }
             }
             else if (col === 'MIP') patch.order_given = value;
             else if (col === 'R2S') patch.readyToShipQty = value;
@@ -3249,9 +3293,9 @@
                     title: "Supp.",
                     field: "mfrg_supplier",
                     accessor: function(value) { return value ?? ''; },
-                    minWidth: 68,
-                    width: 76,
-                    maxWidth: 92,
+                    minWidth: 56,
+                    width: 68,
+                    maxWidth: 88,
                     widthGrow: 0,
                     hozAlign: "center",
                     vertAlign: "middle",
@@ -5854,38 +5898,105 @@
                 return label;
             }
 
+            const FA_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
+            const FA_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
+            const FA_COL_GROUPS = {
+                basic: ['Image', 'Parent', 'SKU', 'mfrg_supplier', 'Category', 'stage', 'exec'],
+                grp1: ['INV', 'L30', 'ov_dil', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'nr', 'date_apprvl', 'TAT'],
+                grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_npft_pct', 'avg_nroi_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
+                others: [],
+            };
+            function faClassifyColumn(field) {
+                for (let i = 0; i < FA_COL_GROUP_KEYS.length; i++) {
+                    const key = FA_COL_GROUP_KEYS[i];
+                    if (key === 'others') continue;
+                    if ((FA_COL_GROUPS[key] || []).indexOf(field) !== -1) return key;
+                }
+                return 'others';
+            }
+            function syncFaGroupHeader(groupEl) {
+                if (!groupEl) return;
+                const headerCb = groupEl.querySelector('.fa-col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.col-vis-checkbox');
+                if (!headerCb) return;
+                if (!itemCbs.length) {
+                    headerCb.checked = false;
+                    headerCb.indeterminate = false;
+                    headerCb.disabled = true;
+                    return;
+                }
+                headerCb.disabled = false;
+                let checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
             function buildCheckboxList() {
                 const list = document.getElementById("columnCheckboxList");
                 if (!list) return;
-                list.innerHTML = table.getColumns().map(function(col) {
+                const buckets = { basic: [], grp1: [], grp2: [], others: [] };
+                table.getColumns().forEach(function(col) {
                     const f = col.getField();
-                    if (!f) return '';
+                    if (!f) return;
                     const def = col.getDefinition() || {};
-                    if (def.hideFromColumnPicker) return '';
+                    if (def.hideFromColumnPicker) return;
+                    if (f === '_edit_row') return;
                     const label = getColumnLabel(col);
                     const checked = col.isVisible() ? 'checked' : '';
                     const safeF = String(f).replace(/"/g, '&quot;');
                     const safeLabel = String(label).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    return `<div class="col">
-                        <div class="form-check">
-                            <input class="form-check-input col-vis-checkbox" type="checkbox" id="colvis_${safeF}" data-field="${safeF}" ${checked}>
+                    const cat = faClassifyColumn(f);
+                    buckets[cat].push(
+                        `<div class="form-check mb-1">
+                            <input class="form-check-input col-vis-checkbox" type="checkbox" id="colvis_${safeF}" data-field="${safeF}" data-group="${cat}" ${checked}>
                             <label class="form-check-label small" for="colvis_${safeF}" style="cursor:pointer;">${safeLabel}</label>
-                        </div>
+                        </div>`
+                    );
+                });
+                list.innerHTML = FA_COL_GROUP_KEYS.map(function(cat) {
+                    return `<div class="fa-col-vis-group" data-category="${cat}">
+                        <label class="fa-col-vis-group-title">
+                            <input type="checkbox" class="fa-col-vis-group-toggle" data-group="${cat}" title="Select / deselect all in ${FA_COL_GROUP_LABELS[cat]}">
+                            ${FA_COL_GROUP_LABELS[cat]}
+                        </label>
+                        ${buckets[cat].join('')}
                     </div>`;
                 }).join('');
+                FA_COL_GROUP_KEYS.forEach(function(cat) {
+                    syncFaGroupHeader(list.querySelector('.fa-col-vis-group[data-category="' + cat + '"]'));
+                });
             }
 
-                trigger.addEventListener("click", function() {
+            trigger.addEventListener("click", function() {
                 buildCheckboxList();
                 bootstrap.Modal.getOrCreateInstance(modalEl).show();
             });
 
-            // Immediate apply on checkbox toggle
-            $(document).off('change.colvis', '.col-vis-checkbox').on('change.colvis', '.col-vis-checkbox', function() {
+            // Immediate apply on checkbox toggle (+ group select/deselect)
+            $(document).off('change.colvis', '.col-vis-checkbox, .fa-col-vis-group-toggle')
+                .on('change.colvis', '.col-vis-checkbox, .fa-col-vis-group-toggle', function() {
+                if (this.classList.contains('fa-col-vis-group-toggle')) {
+                    const group = this.dataset.group;
+                    const groupEl = document.querySelector('#columnCheckboxList .fa-col-vis-group[data-category="' + group + '"]');
+                    const checked = this.checked;
+                    (groupEl ? groupEl.querySelectorAll('.col-vis-checkbox') : []).forEach(function(cb) {
+                        cb.checked = checked;
+                        const col = table.getColumn(cb.dataset.field);
+                        if (!col) return;
+                        if (checked) col.show(); else col.hide();
+                    });
+                    this.indeterminate = false;
+                    saveColumnVisibilityToLocalStorage();
+                    return;
+                }
                 const col = table.getColumn(this.dataset.field);
                 if (!col) return;
                 if (this.checked) col.show(); else col.hide();
                 saveColumnVisibilityToLocalStorage();
+                const group = this.dataset.group;
+                if (group) {
+                    syncFaGroupHeader(document.querySelector('#columnCheckboxList .fa-col-vis-group[data-category="' + group + '"]'));
+                }
             });
 
             // Show All
@@ -6802,24 +6913,36 @@
                 const yMax = Math.min(105, dataMax + range * 0.1);
                 const fmtVal = function (v) { return (Math.round(v * 10) / 10).toFixed(1) + '%'; };
 
+                // Same reference-panel / dot / label colors as /all-marketplace-master
+                const refRed = '#dc3545';
+                const refGray = '#6c757d';
+                const refGreen = '#198754';
                 const highestEl = document.getElementById('faAvailablePctHighest');
                 const medianEl = document.getElementById('faAvailablePctMedian');
                 const lowestEl = document.getElementById('faAvailablePctLowest');
                 if (highestEl) {
                     highestEl.textContent = fmtVal(dataMax);
-                    highestEl.style.color = faAvailablePctPointColor(dataMax);
+                    highestEl.style.color = dataMax === 0 ? refGreen : dataMax > 0 ? refRed : refGray;
                 }
                 if (medianEl) {
                     medianEl.textContent = fmtVal(median);
-                    medianEl.style.color = faAvailablePctPointColor(median);
+                    medianEl.style.color = median === 0 ? refGreen : median > 0 ? refRed : refGray;
                 }
                 if (lowestEl) {
                     lowestEl.textContent = fmtVal(dataMin);
-                    lowestEl.style.color = faAvailablePctPointColor(dataMin);
+                    lowestEl.style.color = dataMin === 0 ? refGreen : dataMin > 0 ? refRed : refGray;
                 }
 
-                const pointColors = values.map(faAvailablePctPointColor);
-                const labelColors = pointColors.slice();
+                // Higher Available % is better → green = up vs yesterday, red = down
+                const pointColors = values.map(function (v, i) {
+                    if (i === 0) return '#6c757d';
+                    return v > values[i - 1] ? '#28a745'
+                         : v < values[i - 1] ? '#dc3545'
+                         : '#6c757d';
+                });
+                const labelColors = values.map(function (v) {
+                    return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
+                });
 
                 const medianLinePlugin = {
                     id: 'faAvailablePctMedianLine',

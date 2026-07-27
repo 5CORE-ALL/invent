@@ -364,7 +364,24 @@
                     },
                     { title: "VO Number", field: "vo_number", hozAlign: "center" },
                     { title: "Purchase Contract", field:"purchase_contract", hozAlign: "center" },
-                    { title: "Supplier Name", field:"supplier_name", hozAlign: "center" },
+                    {
+                        title: "Supplier Name",
+                        field: "supplier_name",
+                        hozAlign: "center",
+                        width: 72,
+                        minWidth: 56,
+                        maxWidth: 96,
+                        widthGrow: 0,
+                        formatter: function(cell) {
+                            const value = String(cell.getValue() || '').trim();
+                            if (!value) return '-';
+                            const first = value.split(/\s+/).filter(Boolean)[0] || value;
+                            const esc = function(s) {
+                                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                            };
+                            return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
+                        }
+                    },
                     { title: "Amount", field:"amount", hozAlign: "center" },
                     { title: "Advance Amount", field:"advance_amount", hozAlign: "center" },
                     { title: "Balance", field:"balance", hozAlign: "center", headerHozAlign: "center" },

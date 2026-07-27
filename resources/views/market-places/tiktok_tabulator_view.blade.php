@@ -271,6 +271,27 @@
             text-align: center;
             white-space: nowrap;
         }
+
+        /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #ttBadgeChartModal.modal,
+        #skuMetricsModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #ttBadgeChartModal .modal-dialog,
+        #skuMetricsModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #ttBadgeChartModal .modal-content,
+        #skuMetricsModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -599,13 +620,12 @@
     </div>
 
     <!-- Badge Trend Modal (top-aligned like eBay 3 / Faire badge charts — not vertically centered) -->
-    <div class="modal fade" id="ttBadgeChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl shadow-none modal-dialog-scrollable"
-            style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
-                <div class="modal-header py-2">
-                    <h6 class="modal-title mb-0" id="ttBadgeChartModalTitle">TikTok - Badge Trend</h6>
-                    <div class="d-flex align-items-center gap-2 me-2">
+    <div class="modal fade p-0" id="ttBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;" id="ttBadgeChartModalTitle">TikTok - Badge Trend</h6>
+                    <div class="d-flex align-items-center gap-2">
                         <select id="ttBadgeChartRangeSelect" class="form-select form-select-sm bg-white"
                             style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
@@ -615,8 +635,8 @@
                             <option value="90">90 Days</option>
                             <option value="0">Lifetime</option>
                         </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body pt-2 pb-2">
                     <div id="ttBadgeChartContainer" style="height: 38vh; display: none; flex-direction: row; align-items: stretch;">
@@ -625,18 +645,18 @@
                         </div>
                         <div
                             style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
-                            <div>
-                                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Highest</div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
                                 <div id="ttBadgeChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-
                                 </div>
                             </div>
-                            <div>
-                                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Median</div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
                                 <div id="ttBadgeChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-
                                 </div>
                             </div>
-                            <div>
-                                <div style="font-size: 10px; color: #6c757d; text-transform: uppercase;">Lowest</div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
                                 <div id="ttBadgeChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-
                                 </div>
                             </div>
@@ -655,9 +675,9 @@
     </div>
 
     <!-- Per-SKU Price chart (same pattern as /ebay-tabulator-view #skuMetricsModal) -->
-    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+    <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -1340,11 +1360,10 @@
 
                 const dotColors = values.map(function(v, i) {
                     if (i === 0) return '#6c757d';
-                    return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#198754' : '#6c757d');
+                    return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#28a745' : '#6c757d');
                 });
-                const pointLabelColors = values.map(function(v, i) {
-                    if (i < 7) return '#0f172a';
-                    return v < values[i - 7] ? '#dc3545' : (v > values[i - 7] ? '#198754' : '#0f172a');
+                const pointLabelColors = values.map(function(v) {
+                    return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
                 });
 
                 const medianLinePlugin = {

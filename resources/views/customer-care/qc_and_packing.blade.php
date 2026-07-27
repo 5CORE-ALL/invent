@@ -1262,6 +1262,27 @@
         .modal.show {
             background-color: transparent !important;
         }
+
+        /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #l30LossModal.modal,
+        #l30IssuesModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #l30LossModal .modal-dialog,
+        #l30IssuesModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #l30LossModal .modal-content,
+        #l30IssuesModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -2045,9 +2066,9 @@
 
     @if ($showDispatchExtras ?? false)
         {{-- ── L30 Loss Modal ───────────────────────────────────────────────── --}}
-        <div class="modal fade" id="l30LossModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
-                <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+        <div class="modal fade p-0" id="l30LossModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog shadow-none m-0 mx-0">
+                <div class="modal-content" style="overflow: hidden;">
                     <div class="modal-header bg-info text-white py-1 px-3">
                         <h6 class="modal-title mb-0" style="font-size:13px;">
                             <i class="bi bi-graph-down-arrow me-1"></i>
@@ -2066,12 +2087,12 @@
                                 <canvas id="l30LossLineChart"></canvas>
                             </div>
                             <div
-                                style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
+                                style="width:100px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
                                 <div style="text-align:center;">
                                     <div
                                         style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">
                                         Highest</div>
-                                    <div id="l30-loss-highest" style="font-size:14px;font-weight:700;color:#dc3545;">-
+                                    <div id="l30-loss-highest" style="font-size:13px;font-weight:700;color:#dc3545;">-
                                     </div>
                                 </div>
                                 <div
@@ -2079,14 +2100,14 @@
                                     <div
                                         style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">
                                         Median</div>
-                                    <div id="l30-loss-median" style="font-size:14px;font-weight:700;color:#6c757d;">-
+                                    <div id="l30-loss-median" style="font-size:13px;font-weight:700;color:#6c757d;">-
                                     </div>
                                 </div>
                                 <div style="text-align:center;">
                                     <div
                                         style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">
                                         Lowest</div>
-                                    <div id="l30-loss-lowest" style="font-size:14px;font-weight:700;color:#198754;">-
+                                    <div id="l30-loss-lowest" style="font-size:13px;font-weight:700;color:#198754;">-
                                     </div>
                                 </div>
                             </div>
@@ -2097,9 +2118,9 @@
         </div>
 
         {{-- ── L30 Issues Modal ─────────────────────────────────────────────── --}}
-        <div class="modal fade" id="l30IssuesModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog shadow-none" style="max-width:98vw;width:98vw;margin:10px auto 0;">
-                <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+        <div class="modal fade p-0" id="l30IssuesModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog shadow-none m-0 mx-0">
+                <div class="modal-content" style="overflow: hidden;">
                     <div class="modal-header bg-info text-white py-1 px-3">
                         <h6 class="modal-title mb-0" style="font-size:13px;">
                             <i class="bi bi-exclamation-circle me-1"></i>
@@ -2118,12 +2139,12 @@
                                 <canvas id="l30IssuesLineChart"></canvas>
                             </div>
                             <div
-                                style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;">
+                                style="width:100px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
                                 <div style="text-align:center;">
                                     <div
                                         style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">
                                         Highest</div>
-                                    <div id="l30-issues-highest" style="font-size:14px;font-weight:700;color:#dc3545;">-
+                                    <div id="l30-issues-highest" style="font-size:13px;font-weight:700;color:#dc3545;">-
                                     </div>
                                 </div>
                                 <div
@@ -2131,14 +2152,14 @@
                                     <div
                                         style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">
                                         Median</div>
-                                    <div id="l30-issues-median" style="font-size:14px;font-weight:700;color:#6c757d;">-
+                                    <div id="l30-issues-median" style="font-size:13px;font-weight:700;color:#6c757d;">-
                                     </div>
                                 </div>
                                 <div style="text-align:center;">
                                     <div
                                         style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">
                                         Lowest</div>
-                                    <div id="l30-issues-lowest" style="font-size:14px;font-weight:700;color:#198754;">-
+                                    <div id="l30-issues-lowest" style="font-size:13px;font-weight:700;color:#198754;">-
                                     </div>
                                 </div>
                             </div>

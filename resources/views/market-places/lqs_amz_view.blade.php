@@ -137,6 +137,27 @@
         .amz-hist-entry:last-child { margin-bottom: 0; }
         .amz-hist-entry .amz-he-meta { font-size: 10px; color: #6c757d; margin-bottom: 2px; }
         .amz-hist-entry .amz-he-text { font-size: 12px; color: #212529; font-weight: 500; }
+
+        /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #amzCvrChartModal.modal,
+        #amzBadgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #amzCvrChartModal .modal-dialog,
+        #amzBadgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #amzCvrChartModal .modal-content,
+        #amzBadgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -243,7 +264,7 @@
 
     {{-- ── CVR History Chart Modal (matches all-marketplace-master design) ── --}}
     <div class="modal fade p-0" id="amzCvrChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none m-0 mx-0" style="max-width:100%;">
+        <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow:hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size:13px;">
@@ -358,7 +379,7 @@
 
     {{-- Badge Trend Chart Modal – matches all-marketplace-master design --}}
     <div class="modal fade p-0" id="amzBadgeChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none m-0 mx-0" style="max-width:100%;">
+        <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow:hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size:13px;">
@@ -886,7 +907,7 @@
                     return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
                 });
 
-                const labelColors = dotColors;
+                const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
 
                 // Median dashed line plugin (matches all-marketplace-master)
                 const medianLinePlugin = {
@@ -1223,6 +1244,7 @@
                 const dotColors = values.map((v, i) =>
                     i === 0 ? '#6c757d' : v > values[i-1] ? '#28a745' : v < values[i-1] ? '#dc3545' : '#6c757d'
                 );
+                const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
 
                 // Median dashed line plugin
                 const medianLinePlugin = {
@@ -1249,7 +1271,7 @@
                         c.textAlign = 'center'; c.textBaseline = 'bottom';
                         meta.data.forEach((point, i) => {
                             const offsetY = (i % 2 === 0) ? -10 : -20;
-                            c.fillStyle = dotColors[i];
+                            c.fillStyle = labelColors[i];
                             c.fillText(amzBadgeFmt(dataset.data[i]), point.x, point.y + offsetY);
                         });
                         c.restore();

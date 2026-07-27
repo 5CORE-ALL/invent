@@ -14,12 +14,14 @@ use App\Models\ToOrderAnalysis;
 use App\Models\ToOrderPreChecklist;
 use App\Models\ToOrderReview;
 use App\Models\AmazonSkuCompetitor;
+use App\Models\ChannelMasterSummary;
 use App\Models\ComparisonData;
 use App\Services\LinkedSkuGroupService;
 use App\Services\PurchasePageExecService;
 use App\Services\SupplierCategorySync;
 use App\Services\ToOrderSkuFieldSync;
 use App\Services\ToOrderSupplierSync;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
@@ -27,10 +29,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ToOrderAnalysisController extends Controller
 {
+    private const DAYS_HISTORY_CHANNEL = 'to_order_avg_days';
+
+    private const DAYS_HISTORY_TZ = 'America/Los_Angeles';
+
     protected $apiController;
 
     public function __construct(ApiController $apiController)
@@ -392,16 +399,8 @@ class ToOrderAnalysisController extends Controller
     public function getToOrderAnalysis()
     {
         try {
-            // Get showNR and showLATER from request if available (for API calls)
-            $showNR = request()->get('showNR', '0') === '1';
-            $showLATER = request()->get('showLATER', '0') === '1';
-            
-            // Same forecast row set as the Forecast Analysis page (read-only build — no derived-stage DB writes).
-            // Include a SKU when ANY of these is true:
-            //   - Forecast "Order" column displays > 0 (two_order_qty, or MOQ fallback when 2 Ord ≥ 0)
-            //   - stages includes 'to_order_analysis' (multi-stage; primary stage may be mip/r2s/…)
-            //   - stage = 'appr_req' / 'to_order_analysis'
-            //   - the Appr Req rule passes → to_order >= 0 AND MOQ > 0
+            // Same cohort as Forecast Analysis Order column > 0
+            // (forecastRowOrderQty in forecastAnalysis.blade.php).
             $snapshotRows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
             $yellowForecastBySku = [];
             foreach ($snapshotRows as $faRow) {
@@ -410,23 +409,7 @@ class ToOrderAnalysisController extends Controller
                     continue;
                 }
 
-                $stage = strtolower(trim((string) ($faRow->stage ?? '')));
-                $explicitStage = ($stage === 'appr_req' || $stage === 'to_order_analysis');
-
-                $stages = [];
-                if (is_array($faRow->stages ?? null)) {
-                    $stages = array_map(static fn ($s) => strtolower(trim((string) $s)), $faRow->stages);
-                } elseif (! empty($stage)) {
-                    $stages = [$stage];
-                }
-                $hasOrderStage = in_array('to_order_analysis', $stages, true);
-
-                if (
-                    ! $this->forecastRowHasPositiveOrderColumn($faRow)
-                    && ! $hasOrderStage
-                    && ! $explicitStage
-                    && ! $this->forecastRowMatchesYellowApprReqQueue($faRow)
-                ) {
+                if (! $this->forecastRowHasPositiveOrderColumn($faRow)) {
                     continue;
                 }
 
@@ -438,11 +421,23 @@ class ToOrderAnalysisController extends Controller
             $allSkus = array_keys($yellowForecastBySku);
             sort($allSkus);
 
-            // orderBy id asc: last row per normalized SKU wins
+            // orderBy id asc: last row per normalized SKU wins for most fields,
+            // but keep the newest non-null DOA so duplicate SKU rows don't blank DOA.
             $toOrderByNorm = [];
+            $doaByNorm = [];
             foreach (DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get() as $row) {
                 $norm = strtoupper(trim((string) ($row->sku ?? '')));
-                if ($norm !== '') {
+                if ($norm === '') {
+                    continue;
+                }
+                $toOrderByNorm[$norm] = $row;
+                if (! empty($row->date_apprvl)) {
+                    $doaByNorm[$norm] = $row->date_apprvl;
+                }
+            }
+            foreach ($toOrderByNorm as $norm => $row) {
+                if (empty($row->date_apprvl) && ! empty($doaByNorm[$norm])) {
+                    $row->date_apprvl = $doaByNorm[$norm];
                     $toOrderByNorm[$norm] = $row;
                 }
             }
@@ -506,17 +501,9 @@ class ToOrderAnalysisController extends Controller
                         : (json_decode($amazonData->value ?? '{}', true) ?: []);
                 }
                 
-                // Skip if SKU has NR or LATER in forecast_analysis table (unless explicitly shown)
-                $nrValue = strtoupper(trim((string) ($forecast?->nr ?? '')));
-                if ($forecast) {
-                    if ($nrValue === 'NR' && !$showNR) {
-                        continue; // Skip NR SKU
-                    }
-                    if ($nrValue === 'LATER' && !$showLATER) {
-                        continue; // Skip LATER SKU
-                    }
-                }
-                
+                // Cohort already excludes NR/LATER via forecastRowHasPositiveOrderColumn
+                // (same as Forecast Order column). Keep showNR/showLATER hooks unused here.
+
                 $parent = trim((string) ($faItem->Parent ?? $toOrder->parent ?? $product?->parent ?? ''));
                 $supplierName = '';
 
@@ -630,7 +617,10 @@ class ToOrderAnalysisController extends Controller
                     'packing_cdr_path' => $packingCdrPath,
                     'instructions_item_pkg' => $instructionsItemPkg,
                     'instructions_carton_design' => $instructionsCartonDesign,
-                    'Date of Appr'    => $toOrder->date_apprvl ?? '',
+                    // Prefer to_order DOA; fall back to forecast_analysis.date_apprvl.
+                    'Date of Appr'    => trim((string) ($toOrder->date_apprvl ?? '')) !== ''
+                        ? $toOrder->date_apprvl
+                        : trim((string) ($forecast?->date_apprvl ?? '')),
                     'Clink'           => ($forecast ? ($forecast->clink ?? '') : ''),
                     // Use stored supplier; only fallback to parent lookup when never set (null). Empty = user chose "Select" so keep blank.
                     'Supplier'        => $toOrder->supplier_name !== null ? (string) $toOrder->supplier_name : ($supplierName ?? ''),
@@ -1970,6 +1960,111 @@ class ToOrderAnalysisController extends Controller
             $row['pre_order_checklist_total_count'] = count($items);
         }
         unset($row);
+    }
+
+    /**
+     * Persist today's average Days (since DOA) snapshot for the history graph.
+     */
+    private function persistDaysSnapshot(float $days): void
+    {
+        try {
+            if (! Schema::hasTable('channel_master_daily_data')) {
+                return;
+            }
+
+            $today = Carbon::now(self::DAYS_HISTORY_TZ)->toDateString();
+            $existing = ChannelMasterSummary::query()
+                ->where('channel', self::DAYS_HISTORY_CHANNEL)
+                ->whereDate('snapshot_date', $today)
+                ->first();
+            $sd = is_array($existing?->summary_data) ? $existing->summary_data : [];
+            $sd['avg_days'] = round($days, 1);
+            $sd['captured_at'] = Carbon::now(self::DAYS_HISTORY_TZ)->toDateTimeString();
+
+            ChannelMasterSummary::updateOrCreate(
+                ['channel' => self::DAYS_HISTORY_CHANNEL, 'snapshot_date' => $today],
+                [
+                    'summary_data' => $sd,
+                    'notes' => 'Order page average Days since DOA snapshot (Pacific)',
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('persistDaysSnapshot failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * History graph for Days badge — same response shape as Forecast Available % history.
+     * GET /to-order-analysis/days-history?days=30&badge_value=43
+     */
+    public function getDaysHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        $badgeValue = $request->input('badge_value');
+        $live = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
+            ? round((float) $badgeValue, 1)
+            : 0.0;
+
+        // Lightweight persist-only ping from the badge (no chart payload needed).
+        if ($request->boolean('persist_only')) {
+            $this->persistDaysSnapshot($live);
+
+            return response()->json(['success' => true]);
+        }
+
+        $chartData = [];
+        if (Schema::hasTable('channel_master_daily_data')) {
+            $query = ChannelMasterSummary::query()
+                ->where('channel', self::DAYS_HISTORY_CHANNEL)
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $start = Carbon::now(self::DAYS_HISTORY_TZ)->subDays(max($days - 1, 0))->toDateString();
+                $query->whereDate('snapshot_date', '>=', $start);
+            }
+
+            $rows = $query->get(['snapshot_date', 'summary_data']);
+            foreach ($rows as $row) {
+                $dateKey = Carbon::parse($row->snapshot_date)->timezone(self::DAYS_HISTORY_TZ)->toDateString();
+                $sd = is_array($row->summary_data) ? $row->summary_data : [];
+                $chartData[] = [
+                    'date' => Carbon::parse($dateKey, self::DAYS_HISTORY_TZ)->format('M d'),
+                    'date_key' => $dateKey,
+                    'value' => round((float) ($sd['avg_days'] ?? 0), 1),
+                ];
+            }
+        }
+
+        $todayKey = Carbon::now(self::DAYS_HISTORY_TZ)->toDateString();
+        $todayLabel = Carbon::now(self::DAYS_HISTORY_TZ)->format('M d');
+        $replaced = false;
+        foreach ($chartData as &$point) {
+            if (($point['date_key'] ?? '') === $todayKey) {
+                $point['value'] = $live;
+                $replaced = true;
+            }
+        }
+        unset($point);
+
+        if (! $replaced) {
+            $chartData[] = [
+                'date' => $todayLabel,
+                'date_key' => $todayKey,
+                'value' => $live,
+            ];
+        }
+
+        $this->persistDaysSnapshot($live);
+
+        return response()->json([
+            'success' => true,
+            'data' => array_map(static function (array $p) {
+                return [
+                    'date' => $p['date'],
+                    'value' => $p['value'],
+                ];
+            }, $chartData),
+        ]);
     }
 
 }

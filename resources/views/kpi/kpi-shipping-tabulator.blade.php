@@ -84,6 +84,24 @@
             border-radius: 12px;
             overflow: hidden;
         }
+
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #avg-history-modal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #avg-history-modal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #avg-history-modal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -168,34 +186,43 @@
         </div>
     </div>
 
-    <div class="modal fade" id="avg-history-modal" tabindex="-1" aria-labelledby="avg-history-modal-label" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-white py-2 px-3">
-                    <h6 class="modal-title mb-0" id="avg-history-modal-label">
+    <div class="modal fade p-0" id="avg-history-modal" tabindex="-1" aria-labelledby="avg-history-modal-label" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;" id="avg-history-modal-label">
                         <i class="fas fa-chart-area me-1"></i>
                         Avg On Time % - History
                     </h6>
                     <div class="d-flex align-items-center gap-2">
-                        <select id="avg-history-range" class="form-select form-select-sm bg-white" style="width: auto;">
+                        <select id="avg-history-range" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
                             <option value="30" selected>30 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                             <option value="0">Lifetime</option>
                         </select>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="avg-history-chart-wrapper" style="height: 45vh; display: flex; align-items: stretch;">
+                    <div id="avg-history-chart-wrapper" style="height: 20vh; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="avg-history-chart"></canvas>
                         </div>
-                        <div style="width: 150px; padding-left: 12px; font-size: 12px;" class="d-flex flex-column justify-content-center gap-2">
-                            <div class="p-2 rounded bg-light"><div class="text-muted">Highest</div><div id="avg-history-high" class="fw-bold text-success">-</div></div>
-                            <div class="p-2 rounded bg-light"><div class="text-muted">Median</div><div id="avg-history-median" class="fw-bold text-primary">-</div></div>
-                            <div class="p-2 rounded bg-light"><div class="text-muted">Lowest</div><div id="avg-history-low" class="fw-bold text-danger">-</div></div>
+                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="avg-history-high" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="avg-history-median" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="avg-history-low" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
                         </div>
                     </div>
                     <div id="avg-history-empty" class="text-center text-muted py-4" style="display: none;">No history data yet.</div>
@@ -818,7 +845,7 @@
                 const meta = chart.getDatasetMeta(0);
                 ctx2.save();
                 ctx2.font = '10px sans-serif';
-                ctx2.fillStyle = '#495057';
+                ctx2.fillStyle = values[i] === 0 ? '#198754' : values[i] > 0 ? '#dc3545' : '#6c757d';
                 ctx2.textAlign = 'center';
                 meta.data.forEach(function(point, i) {
                     ctx2.fillText(values[i].toFixed(1) + '%', point.x, point.y - 8);

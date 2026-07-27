@@ -105,6 +105,24 @@
             align-items: center;
             justify-content: center;
         }
+
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #fbaBadgeTrendModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #fbaBadgeTrendModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #fbaBadgeTrendModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 @section('script')
@@ -431,9 +449,9 @@
         </div>
 
     {{-- FBA Badge Trend Modal --}}
-    <div class="modal fade" id="fbaBadgeTrendModal" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
+    <div class="modal fade p-0" id="fbaBadgeTrendModal" tabindex="-1">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-2 px-3">
                     <h6 class="modal-title mb-0" id="fbaChartTitle"><i class="fas fa-chart-area me-1"></i> FBA Trend</h6>
                     <div class="d-flex align-items-center gap-2">
@@ -457,10 +475,10 @@
                     </div>
                     <div id="fbaChartLineWrap" style="display:none;height:55vh;align-items:stretch;">
                         <div style="flex:1;min-width:0;position:relative;"><canvas id="fbaChartLineCanvas"></canvas></div>
-                        <div style="width:90px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px;border-left:1px solid #dee2e6;background:#f8f9fa;">
-                            <div class="text-center"><div style="font-size:8px;color:#dc3545;font-weight:700;">Highest</div><div id="fbaChartHighest" style="font-size:13px;font-weight:700;color:#dc3545;">–</div></div>
-                            <div class="text-center" style="border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;"><div style="font-size:8px;color:#6c757d;font-weight:700;">Median</div><div id="fbaChartMedian" style="font-size:13px;font-weight:700;color:#6c757d;">–</div></div>
-                            <div class="text-center"><div style="font-size:8px;color:#198754;font-weight:700;">Lowest</div><div id="fbaChartLowest" style="font-size:13px;font-weight:700;color:#198754;">–</div></div>
+                        <div style="width:100px;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:6px 8px;border-left:1px solid #e9ecef;background:#f8f9fa;border-radius:0 4px 4px 0;">
+                            <div class="text-center"><div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#dc3545;margin-bottom:1px;">Highest</div><div id="fbaChartHighest" style="font-size:13px;font-weight:700;color:#dc3545;">–</div></div>
+                            <div class="text-center" style="border-top:1px dashed #adb5bd;border-bottom:1px dashed #adb5bd;padding:4px 0;"><div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#6c757d;margin-bottom:1px;">Median</div><div id="fbaChartMedian" style="font-size:13px;font-weight:700;color:#6c757d;">–</div></div>
+                            <div class="text-center"><div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#198754;margin-bottom:1px;">Lowest</div><div id="fbaChartLowest" style="font-size:13px;font-weight:700;color:#198754;">–</div></div>
                         </div>
                     </div>
                     <div id="fbaChartBarWrap" style="display:none;">

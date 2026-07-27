@@ -1629,23 +1629,47 @@ class ForecastAnalysisController extends Controller
             // Order qty > 0 always carries the Orders (to_order_analysis) stage.
             $orderStage = $valueNum > 0 ? 'to_order_analysis' : '';
 
+            // Prefer the highest approved_qty across SKU rows as the "old" Order qty so
+            // DOA is stamped only on a real <1 → >0 transition (not on every edit).
             $oldOrder = null;
-            $orderQuery = DB::table('to_order_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
-            if ($parentNorm !== '') {
-                $orderQuery->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm]);
+            $existingDoa = null;
+            $skuOrderRows = DB::table('to_order_analysis')
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                ->whereNull('deleted_at')
+                ->orderByDesc('id')
+                ->get(['id', 'approved_qty', 'date_apprvl', 'parent']);
+            foreach ($skuOrderRows as $row) {
+                $q = is_numeric($row->approved_qty) ? (float) $row->approved_qty : 0.0;
+                if ($oldOrder === null || $q > (float) $oldOrder) {
+                    $oldOrder = $row->approved_qty;
+                }
+                if ($existingDoa === null && ! empty($row->date_apprvl)) {
+                    $existingDoa = $row->date_apprvl;
+                }
             }
-            $orderRow = $orderQuery->orderByDesc('updated_at')->first();
-            if ($orderRow) {
-                $oldOrder = $orderRow->approved_qty;
+            if ($existingDoa === null) {
+                $existingDoa = DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
+                    ->whereNotNull('date_apprvl')
+                    ->where('date_apprvl', '!=', '')
+                    ->orderByDesc('id')
+                    ->value('date_apprvl');
             }
+
+            $oldNum = is_numeric($oldOrder) ? (float) $oldOrder : 0.0;
+            // Auto DOA when Order qty first crosses to >0, or when qty is >0 but DOA was never set.
+            $stampDoa = $valueNum > 0.0 && ($oldNum < 1.0 || empty($existingDoa));
+            $doaToday = now()->toDateString();
 
             $orderPayload = [
                 'approved_qty' => $valueNum,
-                'date_apprvl' => now()->toDateString(),
                 'auth_user' => optional(Auth::user())->name,
                 'updated_at' => now(),
                 'deleted_at' => null,
             ];
+            if ($stampDoa) {
+                $orderPayload['date_apprvl'] = $doaToday;
+            }
             if ($orderStage !== '') {
                 $orderPayload['stage'] = $orderStage;
             }
@@ -1669,50 +1693,80 @@ class ForecastAnalysisController extends Controller
                     'sku' => $sku,
                     'parent' => $parent !== '' ? $parent : null,
                     'approved_qty' => $valueNum,
-                    'date_apprvl' => now()->toDateString(),
-                    'stage' => $orderStage,
+                    // New Order row with qty > 0 is a <1 → >0 transition.
+                    'date_apprvl' => $valueNum > 0 ? $doaToday : null,
+                    'stage' => $orderStage !== '' ? $orderStage : null,
                     'auth_user' => optional(Auth::user())->name,
                     'created_at' => now(),
                     'updated_at' => now(),
                     'deleted_at' => null,
                 ]);
+                if ($valueNum > 0) {
+                    $stampDoa = true;
+                }
             }
 
             $this->logForecastAnalysisChange($sku, $parent, 'order', $oldOrder, $valueNum);
 
             // Auto-add Orders stage on forecast_analysis when Order qty > 0.
             // Do not overwrite a later pipeline stage (mip / r2s / transit).
+            // Also stamp forecast DOA on the same <1 → >0 transition.
             if ($valueNum > 0) {
                 $existingFa = DB::table('forecast_analysis')
                     ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
                     ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
                     ->first();
 
+                $faUpdate = ['updated_at' => now()];
+                if ($stampDoa) {
+                    $faUpdate['date_apprvl'] = $doaToday;
+                }
+
                 if ($existingFa) {
                     $currentStage = strtolower(trim((string) ($existingFa->stage ?? '')));
                     $laterStages = ['mip', 'r2s', 'transit'];
                     if ($currentStage !== 'to_order_analysis' && ! in_array($currentStage, $laterStages, true)) {
+                        $faUpdate['stage'] = 'to_order_analysis';
                         DB::table('forecast_analysis')
                             ->where('id', $existingFa->id)
-                            ->update([
-                                'stage' => 'to_order_analysis',
-                                'updated_at' => now(),
-                            ]);
+                            ->update($faUpdate);
                         $this->logForecastAnalysisChange($sku, $parent, 'stage', $currentStage, 'to_order_analysis');
+                    } elseif ($stampDoa) {
+                        DB::table('forecast_analysis')
+                            ->where('id', $existingFa->id)
+                            ->update($faUpdate);
+                    }
+                    if ($stampDoa) {
+                        $this->logForecastAnalysisChange(
+                            $sku,
+                            $parent,
+                            'date_apprvl',
+                            $existingFa->date_apprvl ?? $existingDoa,
+                            $doaToday
+                        );
                     }
                 } else {
                     DB::table('forecast_analysis')->insert([
                         'sku' => $sku,
                         'parent' => $parent !== '' ? $parent : null,
                         'stage' => 'to_order_analysis',
+                        'date_apprvl' => $stampDoa || $valueNum > 0 ? $doaToday : null,
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
                     $this->logForecastAnalysisChange($sku, $parent, 'stage', null, 'to_order_analysis');
+                    if ($stampDoa || $valueNum > 0) {
+                        $this->logForecastAnalysisChange($sku, $parent, 'date_apprvl', null, $doaToday);
+                    }
                 }
             }
 
-            return response()->json(['success' => true, 'message' => 'Order updated successfully']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Order updated successfully',
+                'date_apprvl' => $stampDoa ? $doaToday : ($existingDoa ?: null),
+                'doa_stamped' => $stampDoa,
+            ]);
         }
 
         // Handle MIP updates: persist to mfrg_progress.qty (this is the page source for MIP column)
@@ -2967,7 +3021,13 @@ class ForecastAnalysisController extends Controller
             'deleted_at' => null,
         ];
 
-        if (strtolower(trim($previousStage)) === 'appr_req') {
+        // Auto DOA when Order qty first becomes > 0 (<1 → >0), or legacy appr_req → Order.
+        $prevQty = is_numeric($existingOrder->approved_qty ?? null) ? (float) $existingOrder->approved_qty : 0.0;
+        $nextQty = is_numeric($orderQty) ? (float) $orderQty : 0.0;
+        $stampDoa = (strtolower(trim($previousStage)) === 'appr_req')
+            || ($prevQty < 1.0 && $nextQty > 0.0)
+            || ($existingOrder === null && $nextQty > 0.0);
+        if ($stampDoa) {
             $payload['date_apprvl'] = now()->toDateString();
         }
 

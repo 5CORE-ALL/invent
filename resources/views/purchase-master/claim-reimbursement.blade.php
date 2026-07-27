@@ -272,7 +272,23 @@
             },
             columns: [
                 { title: "Claim Number", field: "claim_number", hozAlign: "center", minWidth: 130, visible: false },
-                { title: "Supplier", field: "supplier_name", hozAlign: "center", width: 70 },
+                {
+                    title: "Supplier",
+                    field: "supplier_name",
+                    hozAlign: "center",
+                    width: 72,
+                    minWidth: 56,
+                    maxWidth: 96,
+                    widthGrow: 0,
+                    formatter: function (cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '-';
+                        const first = value.split(/\s+/).filter(Boolean)[0] || value;
+                        const esc = String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                        const escFirst = String(first).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                        return `<span title="${esc}" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">${escFirst}</span>`;
+                    }
+                },
                 {
                     title: "Claim",
                     field: "claim_date",

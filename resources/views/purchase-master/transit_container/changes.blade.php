@@ -234,7 +234,25 @@ const groupedData = @json($groupedData);
             },
             { title: "Parent", field: "parent"},
             { title: "Our Sku", field: "our_sku", editor: "input" },
-            { title: "Supplier Name", field: "supplier_name", editor: "input"},
+            {
+              title: "Supplier Name",
+              field: "supplier_name",
+              editor: "input",
+              width: 72,
+              minWidth: 56,
+              maxWidth: 96,
+              widthGrow: 0,
+              hozAlign: "center",
+              formatter: function(cell) {
+                const value = String(cell.getValue() || '').trim();
+                if (!value) return '-';
+                const first = value.split(/\s+/).filter(Boolean)[0] || value;
+                const esc = function(s) {
+                  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                };
+                return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
+              }
+            },
             { 
               title: "Total QTY", 
               field: "pcs_qty", 

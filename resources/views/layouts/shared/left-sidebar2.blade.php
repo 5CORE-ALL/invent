@@ -85,7 +85,7 @@
                                 <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
                             </li>
                             <li>
-                                <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
+                                <a href="{{ route('to.order.analysis') }}">Order</a>
                             </li>
                             <li>
                                 <a href="{{ route('list-all-purchase-orders') }}">Purchase Contract</a>

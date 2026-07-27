@@ -380,6 +380,24 @@
             user-select: none;
         }
 
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #pricingMasterChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #pricingMasterChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #pricingMasterChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+
     </style>
 @endsection
 
@@ -695,9 +713,9 @@
     </div>
 
     <!-- Sold Master Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
-    <div class="modal fade" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+    <div class="modal fade p-0" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>

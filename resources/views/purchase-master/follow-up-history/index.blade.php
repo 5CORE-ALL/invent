@@ -351,9 +351,19 @@ document.addEventListener('DOMContentLoaded', function() {
             {
                 title: "Supplier", 
                 field: "supplier_name", 
-                width: 150,
+                width: 72,
+                minWidth: 56,
+                maxWidth: 96,
+                widthGrow: 0,
+                hozAlign: "center",
                 headerFilter: "input",
-                headerFilterPlaceholder: "Filter..."
+                headerFilterPlaceholder: "Filter...",
+                formatter: function(cell) {
+                    const value = String(cell.getValue() || '').trim();
+                    if (!value) return '-';
+                    const first = value.split(/\s+/).filter(Boolean)[0] || value;
+                    return `<span title="${escapeHtml(value)}" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">${escapeHtml(first)}</span>`;
+                }
             },
             {
                 title: "Update", 

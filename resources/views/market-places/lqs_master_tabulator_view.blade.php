@@ -114,6 +114,24 @@
             text-align: center;
             white-space: nowrap;
         }
+
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #lqsBadgeChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #lqsBadgeChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #lqsBadgeChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
     </style>
 @endsection
 
@@ -203,9 +221,9 @@
     </div>
 
     {{-- Badge Trend Chart Modal – matches Aliexpress style --}}
-    <div class="modal fade" id="lqsBadgeChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width:80vw;width:80vw;margin:10px auto 0;">
-            <div class="modal-content" style="border-radius:8px;overflow:hidden;">
+    <div class="modal fade p-0" id="lqsBadgeChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size:13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -624,8 +642,11 @@
 
                 const label = lqsBadgeLabels[lqsBadgeMetric] || lqsBadgeMetric;
 
-                // Point colors: red if below median, green if above
-                const pointColors = values.map(v => v >= median ? '#28a745' : '#dc3545');
+                const dotColors = values.map((v, i) => {
+                    if (i === 0) return '#6c757d';
+                    return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+                });
+                const labelColors = values.map(v => v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d');
 
                 // Register datalabels plugin globally if available
                 if (typeof ChartDataLabels !== 'undefined') {
@@ -643,8 +664,8 @@
                             data: values,
                             borderColor: '#adb5bd',
                             backgroundColor: 'rgba(173,181,189,0.08)',
-                            pointBackgroundColor: pointColors,
-                            pointBorderColor: pointColors,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
                             pointRadius: 5, pointHoverRadius: 7,
                             borderWidth: 2, tension: 0.2, fill: true
                         }]
@@ -666,7 +687,7 @@
                             datalabels: typeof ChartDataLabels !== 'undefined' ? {
                                 align: 'top', anchor: 'end',
                                 font: { size: 10, weight: '600' },
-                                color: ctx => ctx.dataset.pointBackgroundColor[ctx.dataIndex],
+                                color: ctx => labelColors[ctx.dataIndex],
                                 formatter: v => lqsFormatChartVal(v),
                                 clip: false
                             } : false

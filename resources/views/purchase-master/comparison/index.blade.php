@@ -5360,15 +5360,16 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!name) {
                 return '';
             }
+            const first = name.split(/\s+/).filter(Boolean)[0] || name;
             const link = String(s.link || '').trim();
             const title = s.company ? `${name} — ${s.company}` : name;
             if (link) {
                 return `<a href="${escapeHtmlAttr(link)}" target="_blank" rel="noopener noreferrer"
                     class="badge bg-secondary-subtle text-dark border text-decoration-none me-1 mb-1 comparison-supplier-badge"
-                    title="${escapeHtmlAttr(title)}">${escapeHtml(name)}</a>`;
+                    title="${escapeHtmlAttr(title)}">${escapeHtml(first)}</a>`;
             }
             return `<span class="badge bg-secondary-subtle text-dark border me-1 mb-1 comparison-supplier-badge"
-                title="${escapeHtmlAttr(title)}">${escapeHtml(name)}</span>`;
+                title="${escapeHtmlAttr(title)}">${escapeHtml(first)}</span>`;
         }).join('');
         return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
     }
@@ -6091,9 +6092,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 field: 'suppliers',
                 hozAlign: 'left',
                 headerHozAlign: 'center',
-                width: 200,
+                width: 120,
+                minWidth: 90,
+                maxWidth: 160,
+                widthGrow: 0,
                 headerSort: false,
-                headerTooltip: 'Suppliers for the Mfr Category (from supplier.list)',
+                headerTooltip: 'Suppliers for the Mfr Category (from supplier.list) — first name shown',
                 cssClass: 'comparison-suppliers-col',
                 formatter: suppliersColumnFormatter,
             },

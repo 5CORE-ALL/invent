@@ -77,6 +77,7 @@
     }
     #lcMetricChartModal.modal {
         --tz-modal-width: 100%;
+        --tz-modal-margin: 0.5rem 0;
         padding-left: 0 !important;
         padding-right: 0 !important;
     }
@@ -88,6 +89,7 @@
     #lcMetricChartModal .modal-content {
         border-radius: 0;
         width: 100%;
+        max-width: 100%;
     }
 </style>
 @endsection

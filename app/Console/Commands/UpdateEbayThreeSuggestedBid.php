@@ -23,7 +23,7 @@ class UpdateEbayThreeSuggestedBid extends Command
     protected $signature = 'ebay3:update-suggestedbid
         {--dry-run : Run without making actual API calls}
         {--chunk= : Override chunk size (default from cron-monitor config)}';
-    protected $description = 'Bulk update eBay3 ad bids using Sbid (Views) — same logic as ebay:update-suggestedbid';
+    protected $description = 'Bulk update eBay3 ad bids using Sbid Rule slabs — same rule as ebay:update-suggestedbid (ebay1_sbid_slabs)';
 
     protected string $monitorJobName = 'eBay3 Suggested Bid';
 
@@ -181,28 +181,21 @@ class UpdateEbayThreeSuggestedBid extends Command
                 ->get()
                 ->keyBy('listing_id');
 
-        // Sbid (Views) — daily ±%/day adjustment of the base S Bid by L7 View colour
-        // band, clamped to Min/Max caps (same rule the UI shows). The colour band
-        // needs the average l7_views across the listings this command processes.
-        // Settings key: ebay3_sbid_views (mirrors ebay1_sbid_views).
-        $sbidViewsSettings = \App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY3);
-        $l7Sum = 0.0; $l7Count = 0;
-        foreach ($ebayMetricsNormalized as $m) {
-            if ($m && $m->item_id && $campaignListings->has($m->item_id)) {
-                $l7Sum += (float) ($m->l7_views ?? 0);
-                $l7Count++;
-            }
+        // Load Sbid Rule slabs (ebay1_sbid_slabs) — same as eBay 1 /ebay/campaign-ads.
+        // Rules are evaluated top to bottom; the first rule whose filled ranges all match wins.
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
+        if (! is_array($sbidSlabs) || $sbidSlabs === []) {
+            $sbidSlabs = [
+                ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
+                ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
+                ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
+            ];
         }
-        $avgL7Views = $l7Count > 0 ? ($l7Sum / $l7Count) : 0.0;
-        $this->info("Sbid (Views): avg L7 across {$l7Count} processed listing(s) = " . round($avgL7Views, 2)
-            . " | caps [{$sbidViewsSettings['min_cap']}, {$sbidViewsSettings['max_cap']}]"
-            . " | pink {$sbidViewsSettings['pink_dir']} {$sbidViewsSettings['pink_step']}"
-            . " | green {$sbidViewsSettings['green_dir']} {$sbidViewsSettings['green_step']}"
-            . " | red {$sbidViewsSettings['red_dir']} {$sbidViewsSettings['red_step']}"
-            . " | no-dec when E L30 ≤ {$sbidViewsSettings['no_dec_max_el30']}");
+        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (shared with eBay 1 — For L7 Views / CVR → S Bid)');
 
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on Sbid (Views)...');
+        $this->info('Processing bid updates based on Sbid Rule slabs...');
         $updatedListings = 0;
         $bidProcessedCount = 0;
         
@@ -214,8 +207,7 @@ class UpdateEbayThreeSuggestedBid extends Command
                 $shopifyData, 
                 $ebayMetricsNormalized, 
                 $campaignListings,
-                $sbidViewsSettings,
-                $avgL7Views,
+                $sbidSlabs,
                 $ebayGeneralL30, 
                 &$updatedListings,
                 &$bidProcessedCount,
@@ -232,6 +224,7 @@ class UpdateEbayThreeSuggestedBid extends Command
 
                         $soldL30  = (float) ($ebayMetric->ebay_l30 ?? 0);   // Esold
                         $views    = (float) ($ebayMetric->views ?? 0);      // Views L30
+                        $l7Views  = (float) ($ebayMetric->l7_views ?? 0);   // For L7 Views
                         $scvr     = $views > 0 ? ($soldL30 / $views) * 100 : 0; // CVR
 
                         // DIL = (L30 sold / inventory) * 100, from Shopify data
@@ -239,27 +232,16 @@ class UpdateEbayThreeSuggestedBid extends Command
                         $qty = (float) ($shopify->quantity ?? 0);
                         $dil = $inv > 0 ? ($qty / $inv) * 100 : 0;
 
-                        // Sbid (Views): adjust the CURRENT C Bid (bid_percentage) by the
-                        // row's L7 View colour band (direction + step), clamped to the
-                        // Min/Max caps. Green = no change (keep current C Bid). No current
-                        // C Bid → skip (nothing to adjust).
-                        $baseBid = (float) ($listing->bid_percentage ?? 0);
-                        $l7views = (float) ($ebayMetric->l7_views ?? 0);
-                        $newBid  = \App\Support\SbidViewsRule::apply(
-                            $baseBid,
-                            $l7views,
-                            $avgL7Views,
-                            $sbidViewsSettings,
-                            $soldL30
-                        );
+                        // S Bid from Sbid Rule slabs (same as /ebay/campaign-ads S Bid column).
+                        $newBid = $this->resolveSlabBid($scvr, $dil, $soldL30, $views, $l7Views, $sbidSlabs);
 
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku;
 
                         if ($newBid <= 0) {
-                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} → No current C Bid (skipped)");
+                            $this->warn("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | E L30: {$soldL30} | CVR: " . round($scvr, 2) . " | Dil: " . round($dil, 2) . " → No matching Sbid Rule slab (skipped)");
                         } else {
-                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | L7: {$l7views} | C Bid: {$baseBid} | SBID (Views): {$newBid}");
+                            $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Views: {$views} | E L30: {$soldL30} | CVR: " . round($scvr, 2) . " | Dil: " . round($dil, 2) . " | SBID: {$newBid}");
                             $updatedListings++;
                         }
                     }
@@ -432,6 +414,24 @@ class UpdateEbayThreeSuggestedBid extends Command
         } finally {
             DB::connection()->disconnect();
         }
+    }
+
+    private function resolveSlabBid(float $cvr, float $dil, float $esold, float $views, float $l7Views, array $slabs): float
+    {
+        foreach ($slabs as $s) {
+            if ($this->slabInRange($cvr,   $s['cvr_min']   ?? null, $s['cvr_max']   ?? null)
+                && $this->slabInRange($l7Views, $s['l7_views_min'] ?? null, $s['l7_views_max'] ?? null)) {
+                return (float) ($s['sbid'] ?? 0);
+            }
+        }
+        return 0.0;
+    }
+
+    private function slabInRange(float $val, $min, $max): bool
+    {
+        if ($min !== null && $min !== '' && $val < (float) $min) return false;
+        if ($max !== null && $max !== '' && $val > (float) $max) return false;
+        return true;
     }
 
     private function getEbayAccessToken()

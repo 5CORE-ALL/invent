@@ -47,26 +47,24 @@
         background: #f4f6fa;
         border-radius: 6px;
     }
-    /* Forecast Analysis–style supplier (mfrg_progress; column 1) */
+    /* Supplier column — first name only; autofit narrow width */
+    th[data-column="1"],
     td.forecast-current-supplier-cell-r2s {
+        width: 72px;
+        min-width: 56px;
+        max-width: 96px;
         vertical-align: middle;
         text-align: center;
-        max-width: 92px;
     }
     td.forecast-current-supplier-cell-r2s .forecast-supplier-name {
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        -webkit-box-orient: vertical;
+        display: inline-block;
         overflow: hidden;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-        line-height: 1.15;
-        width: 100%;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         max-width: 100%;
         box-sizing: border-box;
         text-align: center;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 0.72rem;
     }
 
@@ -223,6 +221,49 @@
         font-size: 0.75rem;
         padding: 6px 8px;
     }
+    /* Vertical column titles (same pattern as /forecast.analysis); checkbox + SKU stay horizontal */
+    #readyToShipTable.wide-table thead th:not([data-column="0"]):not([data-column="3"]) {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        white-space: nowrap;
+        font-weight: 700;
+        font-size: 0.68rem;
+        line-height: 1.1;
+        letter-spacing: 0.02em;
+        text-align: center;
+        vertical-align: middle;
+        height: 110px;
+        min-height: 110px;
+        padding: 8px 4px;
+        overflow: visible;
+        text-overflow: clip;
+    }
+    #readyToShipTable.wide-table thead th:not([data-column="0"]):not([data-column="3"]) br {
+        display: none;
+    }
+    #readyToShipTable.wide-table thead th:not([data-column="0"]):not([data-column="3"]) .resizer {
+        /* Parent th is rotated 180° — pin resizer back to the visual right edge */
+        transform: rotate(180deg);
+        top: auto;
+        bottom: 0;
+        right: auto;
+        left: 0;
+        width: 100%;
+        height: 5px;
+    }
+    #readyToShipTable.wide-table thead th[data-column="0"],
+    #readyToShipTable.wide-table thead th[data-column="3"] {
+        writing-mode: horizontal-tb !important;
+        transform: none !important;
+        height: auto;
+        min-height: auto;
+        vertical-align: middle;
+    }
+    #readyToShipTable.wide-table thead th[data-column="3"] {
+        font-size: 1.36rem !important;
+        font-weight: 700;
+        letter-spacing: normal;
+    }
     #readyToShipTable.wide-table tbody tr:hover {
         transform: none;
     }
@@ -360,6 +401,47 @@
     .column-dropdown-btn.column-dropdown-btn--icon-only i {
         font-size: 1.15rem;
         line-height: 1;
+    }
+    #columnDropdownContent.show {
+        min-width: min(92vw, 720px);
+        max-width: min(96vw, 780px);
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    #columnDropdownContent .r2s-col-vis-groups {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 8px;
+    }
+    #columnDropdownContent .r2s-col-vis-group {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 6px;
+        min-height: 100px;
+    }
+    #columnDropdownContent .r2s-col-vis-group-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #495057;
+        margin: 0 0 6px;
+        padding: 2px 4px;
+        border-bottom: 1px solid #dee2e6;
+        cursor: pointer;
+        user-select: none;
+    }
+    #columnDropdownContent .r2s-col-vis-group-title input { margin: 0; cursor: pointer; }
+    #columnDropdownContent .column-checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 5px;
+        font-size: 0.8rem;
     }
     /* Supplier summary modal — grouped blocks + history */
     .r2s-sup-history-block { background: #fff; }
@@ -1176,7 +1258,10 @@
                                     $r2sPackingNorm = \App\Services\ReadyToShipPackingListSheetService::normalizeSku($item->sku ?? '');
                                     $r2sPackingLink = ($packingListLinks ?? [])[$r2sPackingNorm] ?? null;
                                     $mfrgSup = trim((string) ($item->mfrg_supplier ?? ''));
-                                    $mfrgDisplay = $mfrgSup !== '' ? $mfrgSup : '—';
+                                    // First name only in grid (full name stays in title attribute).
+                                    $mfrgDisplay = $mfrgSup !== ''
+                                        ? (preg_split('/\s+/', $mfrgSup, -1, PREG_SPLIT_NO_EMPTY)[0] ?? $mfrgSup)
+                                        : '—';
                                     $categoryDisplay = trim((string) ($item->Category ?? ''));
                                     $categoryDisplay = $categoryDisplay !== '' ? $categoryDisplay : '—';
                                     $supplierZoneMapLocal = $supplierZoneMap ?? [];
@@ -2238,84 +2323,151 @@
         const dropdownContent = document.getElementById('columnDropdownContent');
         const ths = document.querySelectorAll('.wide-table thead th');
 
-        // Capitalize column names and create checkboxes
+        // Capitalize column names and create checkboxes (4 groups: basic / GRP1 / GRP2 / Others)
         if (!dropdownContent || !dropdownBtn) {
             console.warn('[ReadyToShip] Column dropdown elements missing; skipping column visibility UI.');
         } else {
-        dropdownContent.innerHTML = '';
-        ths.forEach((th, i) => {
-            const colIndex = i + 1;
-            const colName = capitalizeWords((th.textContent || '').trim());
-            const item = document.createElement('div');
-            item.className = 'column-checkbox-item';
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.id = `column-${colIndex}`;
-            checkbox.className = 'column-checkbox';
-            checkbox.setAttribute('data-column', colIndex);
-
-            const label = document.createElement('label');
-            label.htmlFor = `column-${colIndex}`;
-            label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
-
-            item.appendChild(checkbox);
-            item.appendChild(label);
-            dropdownContent.appendChild(item);
-        });
-
-        // Restore hidden columns from localStorage
-        const hiddenColumns = getHiddenColumns();
-        document.querySelectorAll('.column-checkbox').forEach(checkbox => {
+        const R2S_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
+        const R2S_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
+        // data-column values
+        const R2S_COL_GROUPS = {
+            basic: ['27', '26', '1', '29', '3', '21', '0'],
+            grp1: ['4', '20', '19', '25', '24'],
+            grp2: ['15', '10', '13'],
+            others: [],
+        };
+        function r2sClassifyColumn(colKey) {
+            for (let i = 0; i < R2S_COL_GROUP_KEYS.length; i++) {
+                const key = R2S_COL_GROUP_KEYS[i];
+                if (key === 'others') continue;
+                if ((R2S_COL_GROUPS[key] || []).indexOf(String(colKey)) !== -1) return key;
+            }
+            return 'others';
+        }
+        function syncR2sGroupHeader(groupEl) {
+            if (!groupEl) return;
+            const headerCb = groupEl.querySelector('.r2s-col-vis-group-toggle');
+            const itemCbs = groupEl.querySelectorAll('.column-checkbox');
+            if (!headerCb) return;
+            if (!itemCbs.length) {
+                headerCb.checked = false;
+                headerCb.indeterminate = false;
+                headerCb.disabled = true;
+                return;
+            }
+            headerCb.disabled = false;
+            let checked = 0;
+            itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+            headerCb.checked = checked === itemCbs.length;
+            headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+        }
+        function applyR2sColumnVisibility(checkbox) {
             const columnIndex = checkbox.getAttribute('data-column');
             const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
             if (!th) return;
             const label = document.querySelector(`label[for="column-${columnIndex}"]`);
             const colName = capitalizeWords((th.textContent || '').trim());
-
-            checkbox.checked = !hiddenColumns.includes(columnIndex);
+            let hidden = getHiddenColumns();
             document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => {
                 cell.style.display = checkbox.checked ? '' : 'none';
             });
-            label.innerHTML = `${colName} <i class="mdi mdi-eye${checkbox.checked ? ' text-primary' : '-off text-muted'}"></i>`;
-        });
+            if (checkbox.checked) {
+                hidden = hidden.filter(c => c !== columnIndex);
+                if (label) label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
+            } else {
+                if (!hidden.includes(columnIndex)) hidden.push(columnIndex);
+                if (label) label.innerHTML = `${colName} <i class="mdi mdi-eye-off text-muted"></i>`;
+            }
+            saveHiddenColumns(hidden);
+        }
 
-        // Toggle dropdown
+        dropdownContent.innerHTML = '';
+        const head = document.createElement('div');
+        head.className = 'd-flex justify-content-between align-items-center mb-2 pb-2 border-bottom';
+        head.innerHTML = '<span class="fw-semibold small">Toggle columns</span><button type="button" class="btn btn-sm btn-link p-0 small" id="r2s-columns-all">Show all</button>';
+        dropdownContent.appendChild(head);
+        const groupsWrap = document.createElement('div');
+        groupsWrap.className = 'r2s-col-vis-groups';
+        const lists = {};
+        const groupEls = {};
+        R2S_COL_GROUP_KEYS.forEach(function (cat) {
+            const group = document.createElement('div');
+            group.className = 'r2s-col-vis-group';
+            group.dataset.category = cat;
+            group.innerHTML =
+                '<label class="r2s-col-vis-group-title">' +
+                    '<input type="checkbox" class="r2s-col-vis-group-toggle" data-group="' + cat + '" title="Select / deselect all in ' + R2S_COL_GROUP_LABELS[cat] + '">' +
+                    R2S_COL_GROUP_LABELS[cat] +
+                '</label>';
+            const list = document.createElement('div');
+            list.className = 'r2s-col-vis-group-list';
+            group.appendChild(list);
+            groupsWrap.appendChild(group);
+            lists[cat] = list;
+            groupEls[cat] = group;
+        });
+        dropdownContent.appendChild(groupsWrap);
+
+        const hiddenColumns = getHiddenColumns();
+        ths.forEach((th) => {
+            const colIndex = th.getAttribute('data-column');
+            if (!colIndex) return;
+            // Skip select-all checkbox column and Edit from picker (keep always available)
+            if (colIndex === '0' || colIndex === '28') return;
+            const colName = capitalizeWords((th.textContent || '').trim());
+            if (!colName) return;
+            const cat = r2sClassifyColumn(colIndex);
+            const item = document.createElement('div');
+            item.className = 'column-checkbox-item';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `column-${colIndex}`;
+            checkbox.className = 'column-checkbox';
+            checkbox.setAttribute('data-column', colIndex);
+            checkbox.setAttribute('data-group', cat);
+            checkbox.checked = !hiddenColumns.includes(colIndex);
+            const label = document.createElement('label');
+            label.htmlFor = `column-${colIndex}`;
+            label.innerHTML = `${colName} <i class="mdi mdi-eye${checkbox.checked ? ' text-primary' : '-off text-muted'}"></i>`;
+            item.appendChild(checkbox);
+            item.appendChild(label);
+            lists[cat].appendChild(item);
+            document.querySelectorAll(`[data-column="${colIndex}"]`).forEach(cell => {
+                cell.style.display = checkbox.checked ? '' : 'none';
+            });
+        });
+        R2S_COL_GROUP_KEYS.forEach(function (cat) { syncR2sGroupHeader(groupEls[cat]); });
+
         dropdownBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             dropdownContent.classList.toggle('show');
         });
-
-        // Close dropdown when clicking outside
         window.addEventListener('click', (e) => {
-            if (!e.target.matches('.column-dropdown-btn') && !dropdownContent.contains(e.target)) {
+            if (!e.target.closest('.column-dropdown') && !dropdownContent.contains(e.target)) {
                 dropdownContent.classList.remove('show');
             }
         });
-
-        // Checkbox change event
-        dropdownContent.querySelectorAll('.column-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', function() {
-                const columnIndex = this.getAttribute('data-column');
-                const th = document.querySelector(`.wide-table thead th[data-column="${columnIndex}"]`);
-                if (!th) return;
-                const label = document.querySelector(`label[for="column-${columnIndex}"]`);
-                const colName = capitalizeWords((th.textContent || '').trim());
-                let hidden = getHiddenColumns();
-
-                document.querySelectorAll(`[data-column="${columnIndex}"]`).forEach(cell => {
-                    cell.style.display = this.checked ? '' : 'none';
+        dropdownContent.addEventListener('change', function (e) {
+            const t = e.target;
+            if (t.classList.contains('r2s-col-vis-group-toggle')) {
+                const group = t.dataset.group;
+                const groupEl = groupEls[group];
+                (groupEl ? groupEl.querySelectorAll('.column-checkbox') : []).forEach(function (cb) {
+                    cb.checked = t.checked;
+                    applyR2sColumnVisibility(cb);
                 });
-
-                if (this.checked) {
-                    hidden = hidden.filter(c => c !== columnIndex);
-                    label.innerHTML = `${colName} <i class="mdi mdi-eye text-primary"></i>`;
-                } else {
-                    hidden.push(columnIndex);
-                    label.innerHTML = `${colName} <i class="mdi mdi-eye-off text-muted"></i>`;
-                }
-                saveHiddenColumns(hidden);
-            });
+                t.indeterminate = false;
+                return;
+            }
+            if (!t.classList.contains('column-checkbox')) return;
+            applyR2sColumnVisibility(t);
+            if (t.dataset.group) syncR2sGroupHeader(groupEls[t.dataset.group]);
+        });
+        document.getElementById('r2s-columns-all')?.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showAllColumns();
+            R2S_COL_GROUP_KEYS.forEach(function (cat) { syncR2sGroupHeader(groupEls[cat]); });
         });
 
         } // end column dropdown else

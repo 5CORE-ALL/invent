@@ -760,20 +760,31 @@
             cursor: default;
         }
 
-        /* SKU column — larger on hover for readability */
+        /* SKU column — keep long SKUs inside the cell (do not overwrite Details) */
+        .pricing-master-sku-wrap {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
         .pricing-master-sku-text {
-            display: inline-block;
-            transform-origin: left center;
-            transition: transform 0.18s ease;
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            white-space: normal;
+            line-height: 1.25;
             cursor: default;
         }
-        .pricing-master-sku-text:hover {
-            transform: scale(1.35);
-            position: relative;
-            z-index: 5;
+        .pricing-master-sku-wrap .copy-sku-btn {
+            flex: 0 0 auto;
+            margin-left: 0 !important;
         }
         .tabulator .tabulator-cell.pricing-master-sku-col {
-            overflow: visible;
+            overflow: hidden;
         }
 
         /* Row selection checkboxes */
@@ -851,6 +862,24 @@
         #spriceDetailsModal .modal-header.sprice-modal-drag-header {
             cursor: move;
             user-select: none;
+        }
+
+        /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
+        #pricingMasterChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #pricingMasterChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #pricingMasterChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
         }
 
     </style>
@@ -1314,9 +1343,9 @@
     </div>
 
     <!-- Master Analytics Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
-    <div class="modal fade" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
-            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+    <div class="modal fade p-0" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
@@ -2974,12 +3003,18 @@
                     frozen: true,
                     minWidth: 120,
                     formatter: function(cell) {
-                        const sku = cell.getValue();
-                        let html = `<span class="pricing-master-sku-text">${sku}</span>`;
-                        html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
-                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
-                                   data-sku="${sku}" title="Copy SKU"></i>`;
-                        return html;
+                        const sku = cell.getValue() ?? '';
+                        const safeSku = String(sku)
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;');
+                        return `<span class="pricing-master-sku-wrap">` +
+                            `<span class="pricing-master-sku-text" title="${safeSku}">${safeSku}</span>` +
+                            `<i class="fa fa-copy text-secondary copy-sku-btn" ` +
+                            `style="cursor: pointer; font-size: 14px;" ` +
+                            `data-sku="${safeSku}" title="Copy SKU"></i>` +
+                            `</span>`;
                     }
                 },
                 {

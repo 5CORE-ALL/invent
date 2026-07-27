@@ -139,7 +139,29 @@
                 },
                 { title: 'SKU',         field: 'sku',           headerFilter: 'input', minWidth: 160 },
                 { title: 'Parent',      field: 'parent',        headerFilter: 'input', minWidth: 110 },
-                { title: 'Suppliers',   field: 'suppliers',     headerFilter: 'input', minWidth: 130 },
+                {
+                    title: 'Suppliers',
+                    field: 'suppliers',
+                    headerFilter: 'input',
+                    width: 72,
+                    minWidth: 56,
+                    maxWidth: 96,
+                    widthGrow: 0,
+                    hozAlign: 'center',
+                    formatter: function(cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '-';
+                        // May be comma-separated; shorten each name to first word.
+                        const short = value.split(',').map(function(part) {
+                            const t = part.trim();
+                            return t ? (t.split(/\s+/).filter(Boolean)[0] || t) : '';
+                        }).filter(Boolean).join(', ');
+                        const esc = function(s) {
+                            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                        };
+                        return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(short) + '</span>';
+                    }
+                },
                 { title: 'INV',         field: 'inv',           hozAlign: 'right',     width: 80,  sorter: 'number' },
                 {
                     title: 'Stage',

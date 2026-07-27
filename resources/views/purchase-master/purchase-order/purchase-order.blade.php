@@ -1031,7 +1031,7 @@
                 <td class="text-center"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}"/></td>
                 <td class="text-center">${renderPoNumberCell(order.po_number)}</td>
                 <td class="text-center">${order.po_date || '-'}</td>
-                <td>${order.supplier_name || '-'}</td>
+                <td class="text-center" title="${(order.supplier_name || '').replace(/"/g, '&quot;')}" style="max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:0.72rem;">${(order.supplier_name || '-').toString().trim().split(/\s+/).filter(Boolean)[0] || '-'}</td>
                 <td class="small">${order.sku_list || '-'}</td>
                 <td class="text-center">${formatNum(order.total_amount)}</td>
                 <td class="text-center">${formatNum(order.advance_amount)}</td>
