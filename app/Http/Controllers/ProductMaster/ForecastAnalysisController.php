@@ -7,11 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ForecastAnalysisHistory;
+use App\Models\ChannelMasterSummary;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 use App\Models\AmazonDataView;
 use App\Models\AmazonSkuCompetitor;
@@ -27,6 +29,11 @@ use App\Services\ToOrderSupplierSync;
 class ForecastAnalysisController extends Controller
 {
     protected $apiController;
+
+    /** Daily Available % snapshots in channel_master_daily_data (Pacific calendar day). */
+    private const AVAILABLE_PCT_CHANNEL = 'forecast_available_pct';
+
+    private const AVAILABLE_PCT_TZ = 'America/Los_Angeles';
 
     /** Cache::remember with silent fallback — if cache storage fails, run the query directly. */
     private function cachedOrRun(string $key, int $ttl, callable $cb)
@@ -1219,6 +1226,13 @@ class ForecastAnalysisController extends Controller
             $children = collect($processedData)->filter(fn ($item) => ! ($item->is_parent ?? false));
             $totalMslSp = $children->sum(fn ($item) => (float) ($item->{'MSL_SP'} ?? 0));
 
+            $availableStats = $this->computeAvailablePctFromRows($processedData);
+            $this->persistAvailablePctSnapshot(
+                (float) $availableStats['pct'],
+                (int) $availableStats['available'],
+                (int) $availableStats['total']
+            );
+
             $payload = [
                 'message'             => 'Data fetched successfully',
                 'data'                => $processedData,
@@ -1226,6 +1240,9 @@ class ForecastAnalysisController extends Controller
                 'total_msl_sp'        => round($totalMslSp, 0),
                 'total_msl_sp_amz'    => $badgeTotals['total_msl_sp_amz'],
                 'total_transit_value' => $badgeTotals['total_transit_value'],
+                'available_pct'       => $availableStats['pct'],
+                'available_count'     => $availableStats['available'],
+                'available_total'     => $availableStats['total'],
                 'status'              => 200,
             ];
 
@@ -1236,6 +1253,143 @@ class ForecastAnalysisController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Available % = share of child SKUs with INV > 0 (matches forecast badge).
+     *
+     * @param  array<int, object>  $rows
+     * @return array{total: int, available: int, pct: float}
+     */
+    private function computeAvailablePctFromRows(array $rows): array
+    {
+        $total = 0;
+        $available = 0;
+        foreach ($rows as $item) {
+            if (($item->is_parent ?? false) || ($item->isParent ?? false)) {
+                continue;
+            }
+            $total++;
+            $inv = (float) ($item->INV ?? 0);
+            if ($inv > 0) {
+                $available++;
+            }
+        }
+
+        return [
+            'total' => $total,
+            'available' => $available,
+            'pct' => $total > 0 ? round(($available / $total) * 100, 1) : 0.0,
+        ];
+    }
+
+    private function persistAvailablePctSnapshot(float $pct, int $available, int $total): void
+    {
+        try {
+            if (! Schema::hasTable('channel_master_daily_data')) {
+                return;
+            }
+
+            $today = Carbon::now(self::AVAILABLE_PCT_TZ)->toDateString();
+            $existing = ChannelMasterSummary::query()
+                ->where('channel', self::AVAILABLE_PCT_CHANNEL)
+                ->whereDate('snapshot_date', $today)
+                ->first();
+            $sd = is_array($existing?->summary_data) ? $existing->summary_data : [];
+            $sd['available_pct'] = round($pct, 1);
+            if ($total > 0) {
+                $sd['available_count'] = $available;
+                $sd['total_count'] = $total;
+            }
+            $sd['captured_at'] = Carbon::now(self::AVAILABLE_PCT_TZ)->toDateTimeString();
+
+            ChannelMasterSummary::updateOrCreate(
+                ['channel' => self::AVAILABLE_PCT_CHANNEL, 'snapshot_date' => $today],
+                [
+                    'summary_data' => $sd,
+                    'notes' => 'Forecast Analysis Available % snapshot (Pacific)',
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('persistAvailablePctSnapshot failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * History graph for Available % — same response shape as /channel-metric-chart-data.
+     * GET /forecast-analysis/available-pct-history?days=30&badge_value=64
+     */
+    public function getAvailablePctHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        $badgeValue = $request->input('badge_value');
+        $live = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
+            ? round((float) $badgeValue, 1)
+            : null;
+
+        if ($live === null) {
+            try {
+                $stats = $this->computeAvailablePctFromRows($this->forecastAnalysisRowsForToolbar(false));
+                $live = (float) $stats['pct'];
+            } catch (\Throwable $e) {
+                $live = 0.0;
+            }
+        }
+
+        $chartData = [];
+        if (Schema::hasTable('channel_master_daily_data')) {
+            $query = ChannelMasterSummary::query()
+                ->where('channel', self::AVAILABLE_PCT_CHANNEL)
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $start = Carbon::now(self::AVAILABLE_PCT_TZ)->subDays(max($days - 1, 0))->toDateString();
+                $query->whereDate('snapshot_date', '>=', $start);
+            }
+
+            $rows = $query->get(['snapshot_date', 'summary_data']);
+            foreach ($rows as $row) {
+                $dateKey = Carbon::parse($row->snapshot_date)->timezone(self::AVAILABLE_PCT_TZ)->toDateString();
+                $sd = is_array($row->summary_data) ? $row->summary_data : [];
+                $chartData[] = [
+                    'date' => Carbon::parse($dateKey, self::AVAILABLE_PCT_TZ)->format('M d'),
+                    'date_key' => $dateKey,
+                    'value' => round((float) ($sd['available_pct'] ?? 0), 1),
+                ];
+            }
+        }
+
+        $todayKey = Carbon::now(self::AVAILABLE_PCT_TZ)->toDateString();
+        $todayLabel = Carbon::now(self::AVAILABLE_PCT_TZ)->format('M d');
+        $replaced = false;
+        foreach ($chartData as &$point) {
+            if (($point['date_key'] ?? '') === $todayKey) {
+                $point['value'] = $live;
+                $replaced = true;
+            }
+        }
+        unset($point);
+
+        if (! $replaced) {
+            $chartData[] = [
+                'date' => $todayLabel,
+                'date_key' => $todayKey,
+                'value' => $live,
+            ];
+        }
+
+        // Persist today's live value so the next visit has history.
+        $this->persistAvailablePctSnapshot($live, 0, 0);
+
+        return response()->json([
+            'success' => true,
+            'data' => array_map(static function (array $p) {
+                return [
+                    'date' => $p['date'],
+                    'value' => $p['value'],
+                ];
+            }, $chartData),
+        ]);
     }
 
     public function forecastAnalysis(Request $request)

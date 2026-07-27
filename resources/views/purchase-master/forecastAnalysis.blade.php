@@ -484,6 +484,24 @@
             overflow: auto;
             padding-right: 4px;
         }
+
+        /* Available % history graph — same full-width layout as /all-marketplace-master */
+        #faAvailablePctChartModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #faAvailablePctChartModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #faAvailablePctChartModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
         .column-group-title {
             font-weight: 700;
             color: #1f2937;
@@ -812,7 +830,7 @@
                             <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S <span id="total_r2s_value_display">0</span></button>
                             <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn <span id="total_transit_value_display">0</span></button>
                             <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs">CBM <span id="total_cbm_value_display">0</span></button>
-                            <button type="button" id="zero-stock-badge-btn" class="btn btn-sm btn-danger fw-semibold text-white" style="cursor:pointer;" title="Child SKUs with INV ≤ 0 (zero or negative). Click to filter or clear." aria-pressed="false"><span id="zero-stock-count">0%</span></button>
+                            <button type="button" id="zero-stock-badge-btn" class="btn btn-sm fw-semibold text-white" style="cursor:pointer;background-color:#dc3545;border-color:#dc3545;" title="Available % — child SKUs with INV &gt; 0. Click for history graph · Ctrl/⌘+click to filter." aria-pressed="false" data-exact-value=""><span id="zero-stock-count">0%</span></button>
                         </div>
                     </div>
 
@@ -1216,6 +1234,64 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Available % history graph (same format as /all-marketplace-master metric chart) --}}
+    <div class="modal fade p-0" id="faAvailablePctChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="faAvailablePctChartTitle">Forecast — Available % (Rolling 30 Days)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="faAvailablePctChartRange" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32">32 Days</option>
+                            <option value="35">35 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="faAvailablePctChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="faAvailablePctChart"></canvas>
+                        </div>
+                        <div id="faAvailablePctRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #7c3aed; margin-bottom: 1px;">Highest</div>
+                                <div id="faAvailablePctHighest" style="font-size: 13px; font-weight: 700; color: #7c3aed;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="faAvailablePctMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Lowest</div>
+                                <div id="faAvailablePctLowest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="faAvailablePctChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="faAvailablePctChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">Daily Available % history is not available yet.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4552,28 +4628,42 @@
         function syncZeroStockBadgeActiveState() {
             const btn = document.getElementById('zero-stock-badge-btn');
             if (!btn) return;
-            const on = invHeaderFilterMode(currentInvFilter) === 'le0';
+            // Badge is Available % — active when filtering to INV > 0.
+            const on = invHeaderFilterMode(currentInvFilter) === 'gt0';
             btn.classList.toggle('active', on);
             btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+        function availablePctBadgeColors(pct) {
+            // >95 Excellent purple · 90–95 green · 80–90 yellow · <80 red
+            if (pct > 95) return { bg: '#7c3aed', border: '#6d28d9', text: '#ffffff', label: 'Excellent' };
+            if (pct >= 90) return { bg: '#198754', border: '#157347', text: '#ffffff', label: 'Good' };
+            if (pct >= 80) return { bg: '#ffc107', border: '#e0a800', text: '#212529', label: 'Fair' };
+            return { bg: '#dc3545', border: '#bb2d3b', text: '#ffffff', label: 'Low' };
         }
         function updateZeroStockBadgeCount() {
             const countEl = document.getElementById('zero-stock-count');
             const btn = document.getElementById('zero-stock-badge-btn');
             if (!countEl || !table || typeof table.getData !== 'function') return;
             let total = 0;
-            let zero = 0;
+            let available = 0;
             table.getData().forEach(function(d) {
                 if (!d || d.is_parent || d.isParent) return;
                 total++;
                 const invValue = d.raw_data ? d.raw_data["INV"] : d["INV"];
                 const invNum = parseFloat(invValue);
                 const v = Number.isFinite(invNum) ? invNum : 0;
-                if (v <= 0) zero++;
+                if (v > 0) available++;
             });
-            const pct = total > 0 ? Math.round((zero / total) * 100) : 0;
+            const pct = total > 0 ? Math.round((available / total) * 100) : 0;
             countEl.textContent = pct + '%';
             if (btn) {
-                btn.title = 'Child SKUs with INV ≤ 0: ' + zero + ' of ' + total + ' (' + pct + '%). Click to filter or clear.';
+                const colors = availablePctBadgeColors(pct);
+                btn.style.backgroundColor = colors.bg;
+                btn.style.borderColor = colors.border;
+                btn.style.color = colors.text;
+                btn.setAttribute('data-exact-value', String(pct));
+                btn.title = 'Available % (' + colors.label + '): ' + available + ' of ' + total +
+                    ' child SKUs with INV > 0 (' + pct + '%). Click for history graph · Ctrl/⌘+click to filter.';
             }
         }
         function syncInvFilterFromHeader() {
@@ -6481,22 +6571,264 @@
                 });
             }
 
-            document.getElementById('zero-stock-badge-btn')?.addEventListener('click', function() {
-                const tbl = Tabulator.findTable("#forecast-table")[0];
-                if (invHeaderFilterMode(currentInvFilter) === 'le0') {
-                    currentInvFilter = '';
-                    if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
-                        try { tbl.setHeaderFilterValue('INV', ''); } catch (e) {}
-                    }
-                } else {
-                    currentInvFilter = '<=0';
-                    if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
-                        try { tbl.setHeaderFilterValue('INV', '<=0'); } catch (e) {}
-                    }
+            // ── Available % history graph (same Chart.js format as /all-marketplace-master) ──
+            let faAvailablePctChartInstance = null;
+            let faAvailablePctChartDays = 30;
+            let faAvailablePctChartAjax = null;
+
+            function faAvailablePctRangeLabel(days) {
+                if (!days || days <= 0) return 'Lifetime';
+                return days + ' Days';
+            }
+
+            function faAvailablePctPointColor(pct) {
+                const c = availablePctBadgeColors(pct);
+                return c.bg;
+            }
+
+            function showFaAvailablePctChart() {
+                faAvailablePctChartDays = 30;
+                const rangeEl = document.getElementById('faAvailablePctChartRange');
+                if (rangeEl) rangeEl.value = '30';
+                const titleEl = document.getElementById('faAvailablePctChartTitle');
+                if (titleEl) {
+                    titleEl.textContent = 'Forecast — Available % (Rolling ' + faAvailablePctRangeLabel(faAvailablePctChartDays) + ')';
                 }
-                syncZeroStockBadgeActiveState();
-                if (typeof setCombinedFilters === 'function') setCombinedFilters();
-                saveForecastFilterPrefs();
+                const modalEl = document.getElementById('faAvailablePctChartModal');
+                if (!modalEl) return;
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                loadFaAvailablePctChart();
+            }
+
+            function loadFaAvailablePctChart() {
+                const loading = document.getElementById('faAvailablePctChartLoading');
+                const container = document.getElementById('faAvailablePctChartContainer');
+                const noData = document.getElementById('faAvailablePctChartNoData');
+                if (faAvailablePctChartAjax && typeof faAvailablePctChartAjax.abort === 'function') {
+                    try { faAvailablePctChartAjax.abort(); } catch (e) {}
+                }
+                if (loading) loading.style.display = 'block';
+                if (container) container.style.display = 'none';
+                if (noData) noData.style.display = 'none';
+
+                const btn = document.getElementById('zero-stock-badge-btn');
+                let badgeValue = parseFloat(btn && btn.getAttribute('data-exact-value'));
+                if (!Number.isFinite(badgeValue)) {
+                    const txt = (document.getElementById('zero-stock-count')?.textContent || '').replace(/%/g, '').trim();
+                    badgeValue = parseFloat(txt);
+                }
+                const params = new URLSearchParams();
+                params.set('days', String(faAvailablePctChartDays));
+                if (Number.isFinite(badgeValue)) params.set('badge_value', String(badgeValue));
+
+                const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                faAvailablePctChartAjax = controller || null;
+                fetch('/forecast-analysis/available-pct-history?' + params.toString(), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                    signal: controller ? controller.signal : undefined,
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (response) {
+                        faAvailablePctChartAjax = null;
+                        if (loading) loading.style.display = 'none';
+                        if (response && response.success && response.data && response.data.length) {
+                            if (container) container.style.display = 'flex';
+                            renderFaAvailablePctChart(response.data);
+                        } else if (noData) {
+                            noData.style.display = 'block';
+                        }
+                    })
+                    .catch(function (err) {
+                        if (err && err.name === 'AbortError') return;
+                        faAvailablePctChartAjax = null;
+                        if (loading) loading.style.display = 'none';
+                        if (noData) noData.style.display = 'block';
+                    });
+            }
+
+            function renderFaAvailablePctChart(data) {
+                const canvas = document.getElementById('faAvailablePctChart');
+                if (!canvas || typeof Chart === 'undefined') return;
+                const ctx = canvas.getContext('2d');
+                if (faAvailablePctChartInstance) {
+                    faAvailablePctChartInstance.destroy();
+                    faAvailablePctChartInstance = null;
+                }
+
+                const labels = data.map(function (d) { return d.date; });
+                const values = data.map(function (d) { return Number(d.value) || 0; });
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const sorted = values.slice().sort(function (a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 !== 0
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+                const range = dataMax - dataMin || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = Math.min(105, dataMax + range * 0.1);
+                const fmtVal = function (v) { return (Math.round(v * 10) / 10).toFixed(1) + '%'; };
+
+                const highestEl = document.getElementById('faAvailablePctHighest');
+                const medianEl = document.getElementById('faAvailablePctMedian');
+                const lowestEl = document.getElementById('faAvailablePctLowest');
+                if (highestEl) {
+                    highestEl.textContent = fmtVal(dataMax);
+                    highestEl.style.color = faAvailablePctPointColor(dataMax);
+                }
+                if (medianEl) {
+                    medianEl.textContent = fmtVal(median);
+                    medianEl.style.color = faAvailablePctPointColor(median);
+                }
+                if (lowestEl) {
+                    lowestEl.textContent = fmtVal(dataMin);
+                    lowestEl.style.color = faAvailablePctPointColor(dataMin);
+                }
+
+                const pointColors = values.map(faAvailablePctPointColor);
+                const labelColors = pointColors.slice();
+
+                const medianLinePlugin = {
+                    id: 'faAvailablePctMedianLine',
+                    afterDraw: function (chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const c = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+                        c.save();
+                        c.setLineDash([6, 4]);
+                        c.strokeStyle = '#6c757d';
+                        c.lineWidth = 1.2;
+                        c.beginPath();
+                        c.moveTo(xScale.left, yPixel);
+                        c.lineTo(xScale.right, yPixel);
+                        c.stroke();
+                        c.restore();
+                    }
+                };
+                const valueLabelsPlugin = {
+                    id: 'faAvailablePctValueLabels',
+                    afterDatasetsDraw: function (chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const c = chart.ctx;
+                        c.save();
+                        c.font = 'bold 11px Inter, system-ui, sans-serif';
+                        c.textAlign = 'center';
+                        c.textBaseline = 'bottom';
+                        meta.data.forEach(function (point, i) {
+                            const offsetY = (i % 2 === 0) ? -10 : -20;
+                            c.fillStyle = labelColors[i];
+                            c.fillText(fmtVal(dataset.data[i]), point.x, point.y + offsetY);
+                        });
+                        c.restore();
+                    }
+                };
+
+                faAvailablePctChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Available %',
+                            data: values,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: pointColors,
+                            pointBorderColor: pointColors,
+                            pointBorderWidth: 1.5
+                        }]
+                    },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 26, left: 2, right: 2, bottom: 2 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 10 },
+                                padding: 6,
+                                callbacks: {
+                                    label: function (context) {
+                                        const idx = context.dataIndex;
+                                        const parts = ['Value: ' + fmtVal(context.raw)];
+                                        if (idx > 0) {
+                                            const diff = context.raw - values[idx - 1];
+                                            const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
+                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
+                                        }
+                                        if (idx >= 7) {
+                                            const diff7 = context.raw - values[idx - 7];
+                                            const arrow7 = diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬';
+                                            parts.push('vs 7d Ago: ' + arrow7 + ' ' + fmtVal(Math.abs(diff7)));
+                                        }
+                                        return parts;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: {
+                                    font: { size: 9 },
+                                    callback: function (value) { return fmtVal(value); }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31),
+                                    font: { size: 8 }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            document.getElementById('faAvailablePctChartRange')?.addEventListener('change', function () {
+                const days = parseInt(this.value, 10);
+                if (days === faAvailablePctChartDays) return;
+                faAvailablePctChartDays = days;
+                const titleEl = document.getElementById('faAvailablePctChartTitle');
+                if (titleEl) {
+                    titleEl.textContent = 'Forecast — Available % (Rolling ' + faAvailablePctRangeLabel(days) + ')';
+                }
+                loadFaAvailablePctChart();
+            });
+
+            document.getElementById('zero-stock-badge-btn')?.addEventListener('click', function(e) {
+                // Ctrl/⌘+click keeps the INV > 0 filter toggle; normal click opens history graph.
+                if (e.ctrlKey || e.metaKey) {
+                    const tbl = Tabulator.findTable("#forecast-table")[0];
+                    if (invHeaderFilterMode(currentInvFilter) === 'gt0') {
+                        currentInvFilter = '';
+                        if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                            try { tbl.setHeaderFilterValue('INV', ''); } catch (err) {}
+                        }
+                    } else {
+                        currentInvFilter = '>0';
+                        if (tbl && typeof tbl.setHeaderFilterValue === 'function') {
+                            try { tbl.setHeaderFilterValue('INV', '>0'); } catch (err) {}
+                        }
+                    }
+                    syncZeroStockBadgeActiveState();
+                    if (typeof setCombinedFilters === 'function') setCombinedFilters();
+                    saveForecastFilterPrefs();
+                    return;
+                }
+                showFaAvailablePctChart();
             });
 
             // Keep R2S Val badge in sync with Ready to Ship blade (refresh on load, every 60s, and when tab becomes visible)
