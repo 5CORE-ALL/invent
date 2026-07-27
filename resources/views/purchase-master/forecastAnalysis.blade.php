@@ -1935,6 +1935,25 @@
             return '#ad1457';
         };
 
+        /**
+         * Days of stock from MSL pace: INV ÷ (monthly avg ÷ 30).
+         * Monthly avg = m_avg (combined Shopify+FBA), else MSL ÷ 4.
+         */
+        function forecastDaysOfStock(row) {
+            if (!row || row.is_parent || row.isParent) return null;
+            const inv = parseFloat(row.INV);
+            if (!Number.isFinite(inv)) return null;
+            let mAvg = parseFloat(row.m_avg);
+            if (!Number.isFinite(mAvg) || mAvg <= 0) {
+                const msl = parseFloat(row.msl);
+                if (Number.isFinite(msl) && msl > 0) mAvg = msl / 4;
+            }
+            if (!Number.isFinite(mAvg) || mAvg <= 0) return null;
+            const avgPerDay = mAvg / 30;
+            if (avgPerDay <= 0) return null;
+            return Math.round(inv / avgPerDay);
+        }
+
         const getPftColor = (value) => {
             const percent = parseFloat(value) * 100;
             if (percent < 10) return 'red';
@@ -2861,6 +2880,51 @@
                             return `<div class="text-center"><span class="forecast-dil-pct" style="color:${col};">${percent}%</span></div>`;
                         }
                         return `<div class="text-center"><span class="forecast-dil-pct" style="color:#b71c1c;">0%</span></div>`;
+                    }
+                },
+                {
+                    // Days of stock from MSL pace: INV ÷ (monthly avg ÷ 30).
+                    // Monthly avg is m_avg (MSL ÷ 4); same MSL pipeline as the MSL column.
+                    title: "Days",
+                    field: "days_cover",
+                    headerSort: true,
+                    hozAlign: "center",
+                    width: 58,
+                    minWidth: 48,
+                    maxWidth: 72,
+                    headerTooltip: "Days of stock = INV ÷ (MSL monthly avg ÷ 30)",
+                    accessor: function(row) {
+                        return forecastDaysOfStock(row);
+                    },
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = forecastDaysOfStock(aRow.getData());
+                        const bv = forecastDaysOfStock(bRow.getData());
+                        if (av == null && bv == null) return 0;
+                        if (av == null) return -1;
+                        if (bv == null) return 1;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const days = forecastDaysOfStock(d);
+                        if (days == null) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const inv = parseFloat(d.INV);
+                        let mAvg = parseFloat(d.m_avg);
+                        if (!Number.isFinite(mAvg) || mAvg <= 0) {
+                            const msl = parseFloat(d.msl);
+                            if (Number.isFinite(msl) && msl > 0) mAvg = msl / 4;
+                        }
+                        const avgDay = (Number.isFinite(mAvg) && mAvg > 0) ? (mAvg / 30) : 0;
+                        const tip = 'INV ' + (Number.isFinite(inv) ? inv : 0) +
+                            ' ÷ avg/day ' + (avgDay > 0 ? avgDay.toFixed(2) : '0') +
+                            ' (MSL monthly avg ÷ 30)';
+                        return '<span style="display:block;text-align:center;font-weight:700;" title="' +
+                            String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">' + days + '</span>';
                     }
                 },
 
