@@ -4192,6 +4192,28 @@ class ChannelMasterController extends Controller
         );
     }
 
+    /**
+     * Active-channel NPFT% / NROI% for other pages (forecast toolbar).
+     * Reads badges_data only — never rebuilds channel master (that was blocking forecast ~15s).
+     */
+    public function getActiveChannelNpftNroi()
+    {
+        try {
+            $data = \App\Models\BadgeData::dataForPage('all-marketplace-master');
+
+            return response()->json([
+                'success' => true,
+                'npft_pct' => (int) round((float) ($data['npft_pct'] ?? 0)),
+                'nroi_pct' => (int) round((float) ($data['n_roi'] ?? 0)),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
 
     public function getEbaytwoMasterAdsPercent(): float
     {

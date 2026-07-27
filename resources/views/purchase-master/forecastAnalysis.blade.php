@@ -285,11 +285,11 @@
             border-radius: 0;
         }
 
-        /* Pink "badge" styling for cells whose value is "pink" (DIL >= 50%,
-           GROI% > 100%, etc.). Generic utility class so any percent cell can
-           opt in by adding `pink-pct-badge`. Applied only to the inline span
-           inside the cell so only the number pill changes — surrounding cell
-           padding/border stays as-is.
+        /* Pink "badge" styling for cells whose value is "pink" (DIL >= 50%, etc.).
+           Generic utility class so any percent cell can opt in by adding
+           `pink-pct-badge`. Applied only to the inline span inside the cell so
+           only the number pill changes — surrounding cell padding/border stays
+           as-is.
            NOTE: `.forecast-dil-pct` uses `!important` on `background` and
            `border`, so this utility must use `!important` too or it gets
            cancelled out on DIL cells. */
@@ -830,6 +830,8 @@
                             <button id="total_r2s_value" class="btn btn-sm btn-warning fw-semibold text-dark" title="R2S Value">R2S <span id="total_r2s_value_display">0</span></button>
                             <button id="total_transit_value" class="btn btn-sm btn-secondary fw-semibold text-dark" title="Transit Value">Trn <span id="total_transit_value_display">0</span></button>
                             <button id="total_cbm_value" class="btn btn-sm btn-info fw-semibold text-dark" title="Total CBM — Σ (MSL × CBM/unit) across visible child SKUs">CBM <span id="total_cbm_value_display">0</span></button>
+                            <button type="button" id="fa-avg-npft-badge" class="btn btn-sm fw-semibold text-dark" style="background-color:#ffc107;border-color:#ffc107;" title="NPFT% — same as Active channel (/all-marketplace-master)">NPFT: <span id="fa-avg-npft-value">—</span></button>
+                            <button type="button" id="fa-avg-nroi-badge" class="btn btn-sm fw-semibold text-dark" style="background-color:#20c997;border-color:#20c997;" title="NROI% — same as Active channel (/all-marketplace-master)">NROI: <span id="fa-avg-nroi-value">—</span></button>
                             <button type="button" id="zero-stock-badge-btn" class="btn btn-sm fw-semibold text-white" style="cursor:pointer;background-color:#dc3545;border-color:#dc3545;" title="Available % — child SKUs with INV &gt; 0. Click for history graph · Ctrl/⌘+click to filter." aria-pressed="false" data-exact-value=""><span id="zero-stock-count">0%</span></button>
                         </div>
                     </div>
@@ -2116,13 +2118,46 @@
 
         function getForecastStages(rowData) {
             if (!rowData) return [];
-            let list;
-            if (Array.isArray(rowData.stages)) {
-                list = rowData.stages.slice();
-            } else {
-                const single = String(rowData.stage || '').trim().toLowerCase();
-                list = single ? [single] : [];
+            if (rowData.is_parent || rowData.isParent) {
+                const parentStage = String(rowData.stage || '').trim().toLowerCase();
+                return parentStage ? normalizeForecastStages([parentStage]) : [];
             }
+
+            // Derive Stage markers from pipeline quantities (same rules as Order /
+            // MIP / R2S / Transit columns). Manual-only flags (all_good) kept from
+            // stored stage; qty-backed stages are never kept without qty.
+            const list = [];
+            const raw = rowData.raw_data || {};
+            const qtyTransit = parseFloat(rowData.transit ?? raw.transit ?? 0) || 0;
+            const qtyR2s = parseFloat(rowData.readyToShipQty ?? raw.readyToShipQty ?? 0) || 0;
+            const qtyMip = parseFloat(rowData.order_given ?? raw.order_given ?? raw['Order Given'] ?? 0) || 0;
+            const qtyTwoOrder = parseFloat(rowData.two_order_qty ?? raw.two_order_qty ?? 0) || 0;
+            const twoOrd = parseFloat(rowData.to_order ?? raw.to_order ?? 0);
+            const nr = String(rowData.nr ?? raw.nr ?? '').trim().toUpperCase();
+            const moq = parseFloat(rowData.MOQ ?? raw.MOQ ?? raw['Approved QTY'] ?? 0) || 0;
+            const orderEligible = Number.isFinite(twoOrd) && twoOrd >= 0
+                && qtyMip === 0 && qtyR2s === 0
+                && nr !== 'NR' && nr !== 'LATER';
+            const displayOrder = qtyTwoOrder > 0
+                ? qtyTwoOrder
+                : (orderEligible && moq > 0 ? moq : 0);
+
+            if (displayOrder > 0) list.push('to_order_analysis');
+            if (qtyMip > 0) list.push('mip');
+            if (qtyR2s > 0) list.push('r2s');
+            if (qtyTransit > 0) list.push('transit');
+
+            const stored = String(rowData.stage || '').trim().toLowerCase();
+            if (stored === 'all_good' || stored === 'appr_req') list.push(stored);
+            // Also honor stages[] manual flags if present.
+            const fromArr = Array.isArray(rowData.stages)
+                ? rowData.stages
+                : (rowData.stages && typeof rowData.stages === 'object' ? Object.values(rowData.stages) : []);
+            fromArr.forEach(function (s) {
+                const v = String(s || '').trim().toLowerCase();
+                if (v === 'all_good' || v === 'appr_req') list.push(v);
+            });
+
             return normalizeForecastStages(list);
         }
 
@@ -2660,7 +2695,7 @@
                     }
                 }
             },
-            initialSort: [{ column: "mfrg_order_date", dir: "asc" }],
+            initialSort: [{ column: "days_cover", dir: "asc" }],
             initialHeaderFilter: [{ field: "nr", value: "" }, { field: "stage", value: "" }, { field: "INV", value: "" }],
             movableColumns: true,
             resizableColumns: true,
@@ -2899,9 +2934,10 @@
                     sorter: function(a, b, aRow, bRow) {
                         const av = forecastDaysOfStock(aRow.getData());
                         const bv = forecastDaysOfStock(bRow.getData());
+                        // Nulls last so lowest Days stays on top for default asc sort.
                         if (av == null && bv == null) return 0;
-                        if (av == null) return -1;
-                        if (bv == null) return 1;
+                        if (av == null) return 1;
+                        if (bv == null) return -1;
                         return av - bv;
                     },
                     formatter: function(cell) {
@@ -2922,8 +2958,10 @@
                         const avgDay = (Number.isFinite(mAvg) && mAvg > 0) ? (mAvg / 30) : 0;
                         const tip = 'INV ' + (Number.isFinite(inv) ? inv : 0) +
                             ' ÷ avg/day ' + (avgDay > 0 ? avgDay.toFixed(2) : '0') +
-                            ' (MSL monthly avg ÷ 30)';
-                        return '<span style="display:block;text-align:center;font-weight:700;" title="' +
+                            ' (MSL monthly avg ÷ 30)' +
+                            (days < 120 ? ' — under 120 days' : '');
+                        const color = days < 120 ? '#b71c1c' : '#111827';
+                        return '<span style="display:block;text-align:center;font-weight:700;color:' + color + ';" title="' +
                             String(tip).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">' + days + '</span>';
                     }
                 },
@@ -3568,41 +3606,6 @@
                     }
                 },
                 {
-                    title: "GROI%",
-                    field: "avg_groi_pct",
-                    minWidth: 58,
-                    width: 62,
-                    headerSort: true,
-                    hozAlign: "center",
-                    sorter: "number",
-                    titleFormatter: function() {
-                        const span = document.createElement("span");
-                        span.textContent = "GROI%";
-                        span.setAttribute("title", "Gross ROI % (amazon_data_view)");
-                        return span;
-                    },
-                    accessor: function(row) {
-                        if (!row) return null;
-                        const v = parseFloat(row.avg_groi_pct);
-                        return Number.isFinite(v) ? v : null;
-                    },
-                    formatter: function(cell) {
-                        const v = cell.getValue();
-                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
-                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
-                        }
-                        const n = Math.round(parseFloat(v));
-                        // Pink range (>100%) uses the shared pill/badge styling. Other
-                        // ranges keep the previous coloured-text styling.
-                        if (n > 100) {
-                            return `<span class="pink-pct-badge" title="Gross ROI % — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
-                        }
-                        let col = '#1b5e20';
-                        if (n < 50) col = '#b71c1c';
-                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Gross ROI % — red &lt;50, green 50–100, magenta &gt;100">${n}%</span>`;
-                    }
-                },
-                {
                     title: "CP",
                     field: "CP",
                     accessor: row => (row ? row["CP"] : 0),
@@ -4079,7 +4082,7 @@
                     let gpftSum = 0, gpftCnt = 0;
                     let adSum   = 0, adCnt   = 0;
                     let npftSum = 0, npftCnt = 0;
-                    let groiSum = 0, groiCnt = 0;
+                    let nroiSum = 0, nroiCnt = 0;
                     let effRoiSum = 0, effRoiCnt = 0;
                     let revSum  = 0, revCnt  = 0;
                     let ratSum  = 0, ratCnt  = 0;
@@ -4114,18 +4117,18 @@
                             const v = parseFloat(np);
                             if (Number.isFinite(v)) { npftSum += v; npftCnt++; }
                         }
-                        let groiF = NaN;
-                        const gi = c.avg_groi_pct;
-                        if (gi != null && gi !== '') {
-                            const v = parseFloat(gi);
-                            if (Number.isFinite(v)) { groiF = v; groiSum += v; groiCnt++; }
+                        let nroiF = NaN;
+                        const ni = c.avg_nroi_pct;
+                        if (ni != null && ni !== '') {
+                            const v = parseFloat(ni);
+                            if (Number.isFinite(v)) { nroiF = v; nroiSum += v; nroiCnt++; }
                         }
 
                         const mAvg = parseFloat(c.m_avg) || 0;
                         const moq  = parseFloat(c.MOQ)   || 0;
                         const tat  = mAvg > 0 ? Math.round(moq / mAvg) : 0;
-                        if (tat > 0 && Number.isFinite(groiF)) {
-                            effRoiSum += Math.round((groiF / tat) * 12);
+                        if (tat > 0 && Number.isFinite(nroiF)) {
+                            effRoiSum += Math.round((nroiF / tat) * 12);
                             effRoiCnt++;
                         }
 
@@ -4146,7 +4149,7 @@
                     row.avg_gpft_pct = gpftCnt ? Math.round(gpftSum / gpftCnt) : null;
                     row.avg_ad_pct   = adCnt   ? Math.round(adSum   / adCnt   * 10) / 10 : null;
                     row.avg_npft_pct = npftCnt ? Math.round(npftSum / npftCnt) : null;
-                    row.avg_groi_pct = groiCnt ? Math.round(groiSum / groiCnt) : null;
+                    row.avg_nroi_pct = nroiCnt ? Math.round(nroiSum / nroiCnt) : null;
                     row.eff_roi_pct  = effRoiCnt ? Math.round(effRoiSum / effRoiCnt) : null;
                     row.reviews      = revCnt  ? Math.round(revSum  / revCnt) : null;
                     row.rating       = ratCnt  ? Math.round(ratSum  / ratCnt  * 10) / 10 : null;
@@ -4237,7 +4240,7 @@
                     // the rendered table while the cross-row filter pass finishes.
                     requestAnimationFrame(() => {
                         setCombinedFilters();
-                        table.setSort([{ column: "mfrg_order_date", dir: "asc" }]);
+                        table.setSort([{ column: "days_cover", dir: "asc" }]);
                         // Re-apply saved column visibility LAST: updateColumnDefinition()
                         // above rebuilds several core columns and resets their visibility,
                         // so this must run after those mutations to remain authoritative.
@@ -6913,6 +6916,25 @@
             document.addEventListener('visibilitychange', function() {
                 if (document.visibilityState === 'visible') refreshR2sVal();
             });
+
+            // NPFT% / NROI% — lightweight badges_data read (same Active-channel snapshot).
+            // Deferred so it never competes with /forecast-analysis-data-view on first paint.
+            function refreshActiveChannelNpftNroiBadges() {
+                const npftEl = document.getElementById('fa-avg-npft-value');
+                const nroiEl = document.getElementById('fa-avg-nroi-value');
+                if (!npftEl && !nroiEl) return;
+                fetch('/active-channel-npft-nroi', {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (!res || !res.success) return;
+                        if (npftEl && res.npft_pct != null) npftEl.textContent = Math.round(res.npft_pct) + '%';
+                        if (nroiEl && res.nroi_pct != null) nroiEl.textContent = Math.round(res.nroi_pct) + '%';
+                    })
+                    .catch(function () {});
+            }
+            setTimeout(refreshActiveChannelNpftNroiBadges, 1500);
         });
 
         // Scout products view handler

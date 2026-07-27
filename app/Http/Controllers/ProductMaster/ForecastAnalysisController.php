@@ -682,21 +682,30 @@ class ForecastAnalysisController extends Controller
 
             $adv = $getAmazonAdv($sheetSku);
             $item->avg_gpft_pct = null;
-            $item->avg_groi_pct = null;
-            $item->avg_ad_pct   = $defaultChannelAds;   // channel-level Ads% (same for all rows)
+            $item->avg_groi_pct = null; // legacy field; UI uses NPFT/NROI (marketplace-master formulas)
+            $item->avg_ad_pct   = $defaultChannelAds;   // channel-level Ads% (same as /all-marketplace-master Amazon)
             $item->avg_npft_pct = null;
             $item->avg_nroi_pct = null;
             if (is_array($adv)) {
                 $gpft = (float) ($adv['GPFT'] ?? 0);
-                $adPct = (float) ($adv['AD_percent'] ?? $adv['AD%'] ?? 0);
                 $roiPct = (float) ($adv['ROI'] ?? 0);
-                $hasAdv = array_key_exists('GPFT', $adv) || array_key_exists('ROI', $adv)
-                    || array_key_exists('AD_percent', $adv) || array_key_exists('AD%', $adv);
-                if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0 || $adPct != 0.0) {
+                $hasAdv = array_key_exists('GPFT', $adv) || array_key_exists('ROI', $adv);
+                if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0) {
                     $item->avg_gpft_pct = (int) round($gpft);
                     $item->avg_groi_pct = (int) round($roiPct);
-                    $item->avg_npft_pct = (int) round($gpft - $adPct);
-                    $item->avg_nroi_pct = (int) round($roiPct - $adPct);
+                    // NPFT% = GPFT% − Ads% (same as /all-marketplace-master Amazon row / badge)
+                    $adsPct = is_numeric($defaultChannelAds) ? (float) $defaultChannelAds : 0.0;
+                    $item->avg_npft_pct = (int) round($gpft - $adsPct);
+                    // NROI% = (gross profit $ − ad spend $) / LP × 100
+                    // gross profit $ ≈ price × GPFT%/100; ad spend $ ≈ price × Ads%/100
+                    $amzPriceEarly = (float) $resolveAmazonPrice($sheetSku);
+                    $shipEarly = is_numeric($values['ship'] ?? null) ? (float) $values['ship'] : 0.0;
+                    if ($lp > 0 && $amzPriceEarly > 0) {
+                        // Same unit economics as Amazon GPFT: price×0.80 − ship − LP
+                        $grossPftDollar = ($amzPriceEarly * 0.80) - $shipEarly - $lp;
+                        $netPftDollar = $grossPftDollar - ($amzPriceEarly * $adsPct / 100);
+                        $item->avg_nroi_pct = (int) round(($netPftDollar / $lp) * 100);
+                    }
                 }
             }
             $item->reviews = $getJungleReviews($sheetSku);
@@ -1021,9 +1030,27 @@ class ForecastAnalysisController extends Controller
                 // 2 Order column = to_order_analysis approved qty only (not Appr.req MOQ)
                 $qtyTwoOrder = (float) ($item->two_order_qty ?? 0);
 
+                // Match Order column display: approved qty, else MOQ when 2 Ord >= 0,
+                // no MIP/R2S, and NRP is not 2BDC/LATER — so Stage shows Order too.
+                $mslForOrder = is_numeric($item->msl ?? null) ? (float) $item->msl : 0.0;
+                $invForOrder = is_numeric($item->INV ?? null) ? (float) $item->INV : 0.0;
+                $computedToOrder = (int) round($mslForOrder - $invForOrder - $qtyTransit - $qtyMip - $qtyR2s);
+                $nrNorm = strtoupper(trim((string) ($item->nr ?? '')));
+                $moqForOrder = is_numeric($item->{'MOQ'} ?? null)
+                    ? (float) $item->{'MOQ'}
+                    : (float) preg_replace('/[^0-9.\-]/', '', (string) ($item->{'MOQ'} ?? ''));
+                $orderEligible = $computedToOrder >= 0
+                    && $qtyMip == 0.0
+                    && $qtyR2s == 0.0
+                    && $nrNorm !== 'NR'
+                    && $nrNorm !== 'LATER';
+                $displayOrderQty = $qtyTwoOrder > 0
+                    ? $qtyTwoOrder
+                    : (($orderEligible && $moqForOrder > 0) ? $moqForOrder : 0.0);
+
                 // Quantity-backed stages (order = left→right pipeline for display).
                 $activeStages = [];
-                if ($qtyTwoOrder > 0) { $activeStages[] = 'to_order_analysis'; }
+                if ($displayOrderQty > 0) { $activeStages[] = 'to_order_analysis'; }
                 if ($qtyMip > 0)      { $activeStages[] = 'mip'; }
                 if ($qtyR2s > 0)      { $activeStages[] = 'r2s'; }
                 if ($qtyTransit > 0)  { $activeStages[] = 'transit'; }
@@ -1062,7 +1089,7 @@ class ForecastAnalysisController extends Controller
                 $qtyStageCount = ($qtyTransit > 0 ? 1 : 0)
                     + ($qtyR2s > 0 ? 1 : 0)
                     + ($qtyMip > 0 ? 1 : 0)
-                    + ($qtyTwoOrder > 0 ? 1 : 0);
+                    + ($displayOrderQty > 0 ? 1 : 0);
                 if ($qtyStageCount === 1 && ! $isManualFlag && $currentStage !== $primary) {
                     $stagePendingUpdates[$sheetSku] = $primary;
                 }
@@ -1220,18 +1247,15 @@ class ForecastAnalysisController extends Controller
     public function getViewForecastAnalysisData()
     {
         try {
-            $processedData = $this->forecastAnalysisRowsForToolbar(true);
+            // Read-only: do not flush stage updates or Available % snapshots on every
+            // table load (those writes made forecast.analysis feel stuck for 10–20s).
+            $processedData = $this->forecastAnalysisRowsForToolbar(false);
             $badgeTotals = $this->aggregateForecastToolbarBadges($processedData);
 
             $children = collect($processedData)->filter(fn ($item) => ! ($item->is_parent ?? false));
             $totalMslSp = $children->sum(fn ($item) => (float) ($item->{'MSL_SP'} ?? 0));
 
             $availableStats = $this->computeAvailablePctFromRows($processedData);
-            $this->persistAvailablePctSnapshot(
-                (float) $availableStats['pct'],
-                (int) $availableStats['available'],
-                (int) $availableStats['total']
-            );
 
             $payload = [
                 'message'             => 'Data fetched successfully',
