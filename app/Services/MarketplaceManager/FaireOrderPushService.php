@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 class FaireOrderPushService
 {
+    use SyncsShopifyOrderAddress;
+
     public ?string $lastFailureReason = null;
 
     public ?int $lastApiStatus = null;
@@ -111,7 +113,7 @@ class FaireOrderPushService
 
         // Do not nest customer on order PUT — that can leave billing_address null
         // and does not reliably rename an existing Shopify customer.
-        $ok = $this->putOrder($config, $shopifyOrderId, ['order' => $update]);
+        $ok = $this->putShopifyOrder($config, $shopifyOrderId, ['order' => $update]);
         if (! $ok) {
             return [
                 'success' => false,
@@ -173,7 +175,9 @@ class FaireOrderPushService
                 // Use cached payload.
             }
 
-            if (! $this->shopifyOrderNeedsAddress((string) $line->shopify_order_id)) {
+            if (! $this->shopifyOrderNeedsAddress((string) $line->shopify_order_id, [
+                ['faire', 'customer'],
+            ])) {
                 $skipped++;
                 usleep(200000);
 
@@ -210,147 +214,7 @@ class FaireOrderPushService
     {
         $settings ??= MarketplaceSyncSettings::getFor('faire');
 
-        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
-    }
-
-    /**
-     * True when Shopify order is missing shipping address (or placeholder customer only).
-     */
-    protected function shopifyOrderNeedsAddress(string $shopifyOrderId): bool
-    {
-        $shopifyOrderId = trim($shopifyOrderId);
-        if ($shopifyOrderId === '') {
-            return false;
-        }
-
-        $config = $this->shopifyConfig();
-        if (($config['store_url'] ?? '') === '' || ($config['token'] ?? '') === '') {
-            return false;
-        }
-
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-            ])->timeout(30)->get(
-                'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
-                ['fields' => 'id,shipping_address,billing_address,customer']
-            );
-
-            if ($response->status() === 429) {
-                sleep(2);
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $config['token'],
-                ])->timeout(30)->get(
-                    'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
-                    ['fields' => 'id,shipping_address,billing_address,customer']
-                );
-            }
-
-            if (! $response->successful()) {
-                // Retry sync path when we cannot confirm — safer for missing addresses.
-                return true;
-            }
-
-            $ship1 = trim((string) ($response->json('order.shipping_address.address1') ?? ''));
-            if ($ship1 === '') {
-                return true;
-            }
-
-            $first = strtolower(trim((string) ($response->json('order.customer.first_name') ?? '')));
-            $last = strtolower(trim((string) ($response->json('order.customer.last_name') ?? '')));
-            if ($first === 'faire' && $last === 'customer') {
-                return true;
-            }
-
-            return false;
-        } catch (\Throwable $e) {
-            return true;
-        }
-    }
-
-    /**
-     * @param  array{store_url: string, token: string}  $config
-     * @param  array<string, mixed>  $address
-     * @param  array<string, mixed>  $customer
-     */
-    protected function syncShopifyCustomerFromAddress(
-        array $config,
-        string $shopifyOrderId,
-        array $address,
-        array $customer
-    ): void {
-        try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-            ])->timeout(30)->get(
-                'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json',
-                ['fields' => 'id,customer']
-            );
-
-            if (! $response->successful()) {
-                return;
-            }
-
-            $customerId = (int) ($response->json('order.customer.id') ?? 0);
-            if ($customerId <= 0) {
-                return;
-            }
-
-            $payload = array_filter([
-                'id' => $customerId,
-                'first_name' => $customer['first_name'] ?? $address['first_name'] ?? null,
-                'last_name' => $customer['last_name'] ?? $address['last_name'] ?? null,
-                'phone' => $address['phone'] ?? null,
-            ], static fn ($v) => $v !== null && $v !== '');
-
-            $email = trim((string) ($customer['email'] ?? ''));
-            if ($email !== '') {
-                $payload['email'] = $email;
-            }
-
-            $addressPayload = array_filter(array_merge($address, ['default' => true]), static fn ($v) => $v !== null && $v !== '');
-            if (! empty($addressPayload['address1'])) {
-                $payload['addresses'] = [$addressPayload];
-            }
-
-            Http::withHeaders([
-                'X-Shopify-Access-Token' => $config['token'],
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->put(
-                'https://'.$config['store_url'].'/admin/api/2024-01/customers/'.$customerId.'.json',
-                ['customer' => $payload]
-            );
-        } catch (\Throwable $e) {
-            Log::warning('FaireOrderPushService: Shopify customer address sync failed', [
-                'shopify_order_id' => $shopifyOrderId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * @param  array<string, mixed>  $address
-     * @return array<string, mixed>
-     */
-    protected function withShopifyCountryName(array $address): array
-    {
-        $code = strtoupper(trim((string) ($address['country_code'] ?? '')));
-        if ($code === '' || ! empty($address['country'])) {
-            return $address;
-        }
-
-        $names = [
-            'US' => 'United States',
-            'CA' => 'Canada',
-            'GB' => 'United Kingdom',
-            'AU' => 'Australia',
-            'MX' => 'Mexico',
-        ];
-        if (isset($names[$code])) {
-            $address['country'] = $names[$code];
-        }
-
-        return $address;
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? true);
     }
 
     public function importToShopify(FaireOrderMetric $order): ?string
@@ -720,67 +584,6 @@ class FaireOrderPushService
         }
 
         return [$orderPayload, $meta];
-    }
-
-    /**
-     * @param  array{store_url: string, token: string}  $config
-     * @param  array<string, mixed>  $payload
-     */
-    protected function putOrder(array $config, string $shopifyOrderId, array $payload): bool
-    {
-        $url = 'https://'.$config['store_url'].'/admin/api/2024-01/orders/'.$shopifyOrderId.'.json';
-        $maxAttempts = 5;
-        $backoff = [2, 4, 8, 16, 30];
-
-        try {
-            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $config['token'],
-                    'Content-Type' => 'application/json',
-                ])->timeout(60)->put($url, $payload);
-
-                $this->lastApiStatus = $response->status();
-
-                if ($response->successful()) {
-                    return true;
-                }
-
-                $retryable = $response->status() === 429 || $response->status() >= 500;
-                if ($retryable && $attempt < $maxAttempts) {
-                    $retryAfter = (int) ($response->header('Retry-After') ?? 0);
-                    $wait = max($retryAfter, $backoff[$attempt - 1] ?? 30);
-                    Log::warning('FaireOrderPushService: Shopify order address update retrying', [
-                        'shopify_order_id' => $shopifyOrderId,
-                        'status' => $response->status(),
-                        'attempt' => $attempt,
-                        'wait' => $wait,
-                    ]);
-                    sleep($wait);
-
-                    continue;
-                }
-
-                $this->lastFailureReason = 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300);
-                Log::error('FaireOrderPushService: Shopify order address update failed', [
-                    'shopify_order_id' => $shopifyOrderId,
-                    'status' => $response->status(),
-                    'body' => mb_substr($response->body(), 0, 500),
-                    'attempts' => $attempt,
-                ]);
-
-                return false;
-            }
-
-            return false;
-        } catch (\Throwable $e) {
-            $this->lastFailureReason = $e->getMessage();
-            Log::error('FaireOrderPushService: Shopify order address update exception', [
-                'shopify_order_id' => $shopifyOrderId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
     }
 
     /**
