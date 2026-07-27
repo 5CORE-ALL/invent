@@ -253,12 +253,11 @@
                                 <label for="mip-bulk-stage-select" class="mb-0 small fw-semibold text-nowrap text-secondary">Bulk Stage</label>
                             <select id="mip-bulk-stage-select" class="form-select form-select-sm" style="width: 120px;">
                                     <option value="">— Choose —</option>
-                                    <option value="appr_req">Appr. Req</option>
                                     <option value="mip">MIP</option>
                                     <option value="r2s">R2S</option>
                                     <option value="transit">Transit</option>
                                     <option value="all_good">😊 All Good</option>
-                                    <option value="to_order_analysis">2 Order</option>
+                                    <option value="to_order_analysis">Order</option>
                                 </select>
                                 <button type="button" class="btn btn-sm btn-primary" id="mip-bulk-stage-apply">Apply</button>
                         </div>
@@ -894,7 +893,7 @@
                                                 'mip' => 'MIP',
                                                 'r2s' => 'R2S — Ready to ship',
                                                 'transit' => 'Transit',
-                                                'to_order_analysis' => 'Order — 2 Order',
+                                                'to_order_analysis' => 'Order',
                                                 'all_good' => 'All Good',
                                             ];
                                             $mipStageTip = $mipStageTips[$sv] ?? 'Select stage';
@@ -925,12 +924,11 @@
                                                 data-parent="{{ e($item->parent ?? '') }}"
                                                 aria-label="{{ $mipStageTip }}">
                                                 <option value="">Select</option>
-                                                <option value="appr_req" {{ $sv === 'appr_req' ? 'selected' : '' }}>Appr. Req</option>
                                                 <option value="mip" {{ $sv === 'mip' ? 'selected' : '' }}>MIP</option>
                                                 <option value="r2s" {{ $sv === 'r2s' ? 'selected' : '' }}>R2S</option>
                                                 <option value="transit" {{ $sv === 'transit' ? 'selected' : '' }}>Transit</option>
                                                 <option value="all_good" {{ $sv === 'all_good' ? 'selected' : '' }}>😊 All Good</option>
-                                                <option value="to_order_analysis" {{ $sv === 'to_order_analysis' ? 'selected' : '' }}>2 Order</option>
+                                                <option value="to_order_analysis" {{ $sv === 'to_order_analysis' ? 'selected' : '' }}>Order</option>
                                             </select>
                                         </div>
                                     </td>
@@ -2290,7 +2288,7 @@
                 mip: 'MIP',
                 r2s: 'R2S — Ready to ship',
                 transit: 'Transit',
-                to_order_analysis: 'Order — 2 Order',
+                to_order_analysis: 'Order',
                 all_good: 'All Good',
             };
             return tips[v] || 'Select stage';

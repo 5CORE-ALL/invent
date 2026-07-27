@@ -1265,7 +1265,7 @@
                                             'mip' => 'MIP',
                                             'r2s' => 'R2S — Ready to ship',
                                             'transit' => 'Transit',
-                                            'to_order_analysis' => 'Order — 2 Order',
+                                            'to_order_analysis' => 'Order',
                                             'all_good' => 'All Good',
                                         ];
                                         $stageTip = $stageTips[$r2sStageNorm] ?? 'Select stage';
@@ -1297,7 +1297,6 @@
                                             data-initial-stage="{{ e($r2sStageNorm) }}"
                                             aria-label="{{ e($stageTip) }}">
                                             <option value="" {{ $r2sStageNorm === '' ? 'selected' : '' }}>Not Req Now</option>
-                                            <option value="appr_req" {{ $r2sStageNorm === 'appr_req' ? 'selected' : '' }}>Appr Req</option>
                                             <option value="mip" {{ $r2sStageNorm === 'mip' ? 'selected' : '' }}>MIP</option>
                                             <option value="r2s" {{ $r2sStageNorm === 'r2s' ? 'selected' : '' }}>R2S</option>
                                             <option value="transit" {{ $r2sStageNorm === 'transit' ? 'selected' : '' }}>Trn</option>
@@ -1739,7 +1738,7 @@
             const rowEditState = { anchorRow: null, targetRows: null, pendingTargets: null };
             const YESNO = [['Yes', 'Yes'], ['No', 'No']];
             const STAGE_OPTS = [
-                ['', 'Not Req Now'], ['appr_req', 'Appr Req'], ['mip', 'MIP'], ['r2s', 'R2S'],
+                ['', 'Not Req Now'], ['mip', 'MIP'], ['r2s', 'R2S'],
                 ['transit', 'Trn'], ['to_order_analysis', 'Order'], ['all_good', 'All Good']
             ];
             const NR_OPTS = [['REQ', 'REQ'], ['NR', '2BDC'], ['LATER', 'LATER']];
@@ -2404,7 +2403,7 @@
                 mip: 'MIP',
                 r2s: 'R2S — Ready to ship',
                 transit: 'Transit',
-                to_order_analysis: 'Order — 2 Order',
+                to_order_analysis: 'Order',
                 all_good: 'All Good'
             };
             const tip = tips[v] || 'Select stage';

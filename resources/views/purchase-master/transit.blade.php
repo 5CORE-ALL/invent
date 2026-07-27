@@ -108,12 +108,12 @@
                                 </ul>
                             </div>
 
-                            <!-- 2 ORDER Color Filter -->
+                            <!-- ORDER Color Filter -->
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-warning dropdown-toggle d-flex align-items-center gap-1 fw-semibold text-dark"
                                     type="button" id="order-color-filter-dropdown" data-bs-toggle="dropdown">
                                     <i class="bi bi-funnel-fill"></i>
-                                    2 ORDER
+                                    ORDER
                                 </button>
                                 <ul class="dropdown-menu p-2 shadow-lg border rounded-3">
                                     <li><button class="dropdown-item" data-filter="">All</button></li>
@@ -152,7 +152,7 @@
                             <!-- Stage Filter -->
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All Stages</option>
-                                <option value="to_order_analysis">2 Order</option>
+                                <option value="to_order_analysis">Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Transit</option>
@@ -225,7 +225,7 @@
 
                             <!-- Navigation Buttons -->
                             <a href="{{ route('to.order.analysis') }}" target="_blank" class="btn btn-sm btn-primary fw-semibold text-dark" style="text-decoration: none;">
-                                2 Order
+                                Order
                             </a>
 
                             <a href="{{ route('mfrg.in.progress') }}" target="_blank" class="btn btn-sm btn-success fw-semibold text-dark" style="text-decoration: none;">
@@ -820,12 +820,11 @@
                                 font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
                                 background-color: #fff;">
                             <option value="">Select</option>
-                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr. Req</option>
                             <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
                             <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
                             <option value="transit" ${value === 'transit' ? 'selected' : ''}>Transit</option>
                             <option value="all_good" ${value === 'all_good' ? 'selected' : ''}>😊 All Good</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
+                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>Order</option>
                         </select>
                     `;
                     }

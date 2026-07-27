@@ -411,39 +411,14 @@
             text-align: center;
             white-space: nowrap;
         }
-        /* SKU column expand / collapse control */
-        .forecast-sku-title-wrap {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            max-width: 100%;
-        }
-        .forecast-sku-expand-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 22px;
-            height: 22px;
-            padding: 0;
-            border: 1px solid rgba(0, 0, 0, 0.22);
-            border-radius: 4px;
-            background: rgba(255, 255, 255, 0.75);
-            color: #0f172a;
-            font-size: 11px;
-            line-height: 1;
+        /* SKU title click toggles column width (no icon) */
+        .forecast-sku-title-toggle {
             cursor: pointer;
-            flex-shrink: 0;
+            user-select: none;
         }
-        .forecast-sku-expand-btn:hover {
-            background: #fff;
-            border-color: #0f766e;
-            color: #0f766e;
-        }
-        .forecast-sku-expand-btn.is-expanded {
-            background: #0f766e;
-            border-color: #0f766e;
-            color: #fff;
+        .forecast-sku-title-toggle:hover {
+            text-decoration: underline;
+            text-underline-offset: 2px;
         }
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-header-filter {
             writing-mode: horizontal-tb !important;
@@ -1137,7 +1112,6 @@
                                         <span id="fre_stage_dd_label" class="text-truncate">Select stage(s)</span>
                                     </button>
                                     <ul class="dropdown-menu p-2 shadow-sm" style="min-width: 210px;">
-                                        <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="appr_req"><span>Appr Req</span></label></li>
                                         <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="to_order_analysis"><span>Order</span></label></li>
                                         <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="mip"><span>MIP</span></label></li>
                                         <li><label class="dropdown-item-text d-flex align-items-center gap-2 mb-1" style="cursor:pointer;"><input type="checkbox" class="form-check-input fre-stage-cb m-0" value="r2s"><span>R2S</span></label></li>
@@ -1146,7 +1120,6 @@
                                     </ul>
                                 </div>
                                 <select class="d-none" id="fre_stage" multiple>
-                                    <option value="appr_req">Appr Req</option>
                                     <option value="to_order_analysis">Order</option>
                                     <option value="mip">MIP</option>
                                     <option value="r2s">R2S</option>
@@ -1995,7 +1968,8 @@
             transit: 'Transit',
             all_good: 'All Good'
         };
-        const FORECAST_STAGE_ORDER = ['appr_req', 'to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
+        // Appr Req removed from selectable stages across Purchase pages.
+        const FORECAST_STAGE_ORDER = ['to_order_analysis', 'mip', 'r2s', 'transit', 'all_good'];
 
         // Executive list — dynamic from the users table (server-provided).
         const FORECAST_EXEC_USERS = @json($execUsers ?? []);
@@ -2125,13 +2099,18 @@
             const moqNum = parseFloat(rowData.MOQ) || 0;
             stage = String(stage || '').trim().toLowerCase();
 
+            // Appr Req removed from Purchase stage dropdowns — block set/clear via UI.
+            if (stage === 'appr_req') {
+                return Promise.resolve({ ok: false, message: 'Appr Req stage has been removed.' });
+            }
+
             let payload = null;
             if (checked) {
-                const needsMoq = (stage === 'appr_req' || stage === 'to_order_analysis' || stage === 'mip' || stage === 'r2s');
+                const needsMoq = (stage === 'to_order_analysis' || stage === 'mip' || stage === 'r2s');
                 if (needsMoq && moqNum <= 0) {
                     return Promise.resolve({ ok: false, message: 'MOQ cannot be empty or zero.' });
                 }
-                if (stage === 'appr_req' || stage === 'all_good') {
+                if (stage === 'all_good') {
                     payload = { sku: sku, parent: parent, column: 'Stage', value: stage };
                 } else if (FORECAST_STAGE_QTY_MAP[stage]) {
                     const cur = parseFloat(rowData[FORECAST_STAGE_QTY_MAP[stage].field]) || 0;
@@ -2140,7 +2119,7 @@
                     return Promise.resolve({ ok: false, message: FORECAST_STAGE_LABELS[stage] + ' is managed elsewhere.' });
                 }
             } else {
-                if (stage === 'appr_req' || stage === 'all_good') {
+                if (stage === 'all_good') {
                     payload = { sku: sku, parent: parent, column: 'Stage', value: '' };
                 } else if (FORECAST_STAGE_QTY_MAP[stage]) {
                     payload = { sku: sku, parent: parent, column: FORECAST_STAGE_QTY_MAP[stage].column, value: 0 };
@@ -2327,7 +2306,22 @@
             const patch = {};
             if (col === 'NR') patch.nr = value;
             else if (col === 'MOQ') patch.MOQ = value;
-            else if (col === 'ORDER') patch.two_order_qty = value;
+            else if (col === 'ORDER') {
+                // Order qty > 0 automatically adds the Orders (to_order_analysis) stage.
+                const orderNum = parseFloat(value) || 0;
+                patch.two_order_qty = value;
+                let next = getForecastStages(row.getData() || {});
+                if (orderNum > 0) {
+                    next = next.filter(function (s) { return s !== 'appr_req' && s !== 'all_good'; });
+                    if (next.indexOf('to_order_analysis') === -1) next.push('to_order_analysis');
+                } else {
+                    next = next.filter(function (s) { return s !== 'to_order_analysis'; });
+                }
+                next = normalizeForecastStages(next);
+                patch.stages = next;
+                patch.stage = next[0] || '';
+                patch.appr_req_qty = orderNum > 0 ? 0 : (parseFloat((row.getData() || {}).appr_req_qty) || 0);
+            }
             else if (col === 'MIP') patch.order_given = value;
             else if (col === 'R2S') patch.readyToShipQty = value;
             else if (col === 'Transit') patch.transit = value;
@@ -2348,7 +2342,12 @@
 
             if (!Object.keys(patch).length) return;
             row.update(patch, true);
+            if (typeof syncParentStageQtyColumns === 'function') {
+                const d = row.getData() || {};
+                syncParentStageQtyColumns(d.Parent || d.parentKey);
+            }
             if (typeof row.reformat === 'function') row.reformat();
+            if (col === 'ORDER' && typeof setCombinedFilters === 'function') setCombinedFilters();
         }
 
         // ── President-only Archive / Restore (selection state lives outside Tabulator
@@ -2524,14 +2523,8 @@
                 minWidth: w,
                 widthGrow: skuColumnExpanded ? 0 : 1,
             });
-            document.querySelectorAll('.forecast-sku-expand-btn').forEach(function(btn) {
-                btn.classList.toggle('is-expanded', skuColumnExpanded);
-                btn.title = skuColumnExpanded ? 'Collapse SKU column' : 'Expand SKU column';
-                btn.setAttribute('aria-label', btn.title);
-                const icon = btn.querySelector('i');
-                if (icon) {
-                    icon.className = skuColumnExpanded ? 'fas fa-compress-alt' : 'fas fa-expand-alt';
-                }
+            document.querySelectorAll('.forecast-sku-title-toggle').forEach(function(el) {
+                el.title = skuColumnExpanded ? 'Click to collapse SKU column' : 'Click to expand SKU column';
             });
         }
 
@@ -2697,26 +2690,14 @@
                     widthGrow: skuColumnExpanded ? 0 : 1,
                     accessor: row => (row ? row["SKU"] : ''),
                     titleFormatter: function(cell) {
-                        const titleText = cell.getValue() || 'SKU';
-                        const wrap = document.createElement('span');
-                        wrap.className = 'forecast-sku-title-wrap';
-
                         const label = document.createElement('span');
-                        label.textContent = titleText;
-                        wrap.appendChild(label);
-
-                        const btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'forecast-sku-expand-btn' + (skuColumnExpanded ? ' is-expanded' : '');
-                        btn.title = skuColumnExpanded ? 'Collapse SKU column' : 'Expand SKU column';
-                        btn.setAttribute('aria-label', btn.title);
-                        btn.innerHTML = skuColumnExpanded
-                            ? '<i class="fas fa-compress-alt" aria-hidden="true"></i>'
-                            : '<i class="fas fa-expand-alt" aria-hidden="true"></i>';
-                        btn.addEventListener('mousedown', function(e) {
+                        label.className = 'forecast-sku-title-toggle';
+                        label.textContent = cell.getValue() || 'SKU';
+                        label.title = skuColumnExpanded ? 'Click to collapse SKU column' : 'Click to expand SKU column';
+                        label.addEventListener('mousedown', function(e) {
                             e.stopPropagation();
                         });
-                        btn.addEventListener('click', function(e) {
+                        label.addEventListener('click', function(e) {
                             e.preventDefault();
                             e.stopPropagation();
                             skuColumnExpanded = !skuColumnExpanded;
@@ -2725,8 +2706,7 @@
                             } catch (err) { /* ignore */ }
                             applySkuColumnWidth(cell.getTable());
                         });
-                        wrap.appendChild(btn);
-                        return wrap;
+                        return label;
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData() || {};
@@ -3590,6 +3570,59 @@
                     }
                 },
                 {
+                    title: "New Photo",
+                    field: "r2s_new_photo",
+                    visible: false,
+                    hozAlign: "center",
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
+                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
+                    }
+                },
+                {
+                    title: "Edit",
+                    field: "_edit_row",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 52,
+                    minWidth: 44,
+                    maxWidth: 58,
+                    widthGrow: 0,
+                    widthShrink: 1,
+                    cssClass: "forecast-edit-actions-cell",
+                    download: false,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;">
+                            <button type="button" class="btn btn-sm btn-link forecast-edit-row-btn d-inline-flex align-items-center p-0" title="Edit row" style="line-height:1;"><i class="mdi mdi-pencil" style="font-size:1rem;"></i></button>
+                            <button type="button" class="btn btn-sm btn-link forecast-history-row-btn d-inline-flex align-items-center p-0" title="History — see who changed what" style="line-height:1;">
+                                <span class="nrp-status-dot" style="background-color:#22c55e;" aria-label="History"></span>
+                            </button>
+                        </div>`;
+                    },
+                    cellClick: function(e, cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) return;
+                        if (e.target.closest('.forecast-edit-row-btn')) {
+                            e.stopPropagation();
+                            openForecastEditModal(cell.getRow());
+                            return;
+                        }
+                        if (e.target.closest('.forecast-history-row-btn')) {
+                            e.stopPropagation();
+                            const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
+                            const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
+                            openForecastHistoryModal(sku, parent);
+                        }
+                    }
+                },
+                {
                     // Exec — reads/writes the same to_order_analysis.exec column used by
                     // the MFRG In Progress page and the /update-link "Exec" save path,
                     // so an exec change here is visible everywhere immediately.
@@ -3671,61 +3704,13 @@
                         if (!value) {
                             return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                         }
+                        const esc = function(s) {
+                            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                        };
+                        // Show first name only to save column space; full name on hover.
+                        const firstName = value.split(/\s+/)[0] || value;
                         const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
-                        return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
-                    }
-                },
-                {
-                    title: "New Photo",
-                    field: "r2s_new_photo",
-                    visible: false,
-                    hozAlign: "center",
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        const yes = String(cell.getValue() || 'No').trim().toUpperCase() === 'YES';
-                        return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background-color:${yes ? '#28a745' : '#dc3545'};"></span>`;
-                    }
-                },
-                {
-                    title: "Edit",
-                    field: "_edit_row",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 52,
-                    minWidth: 44,
-                    maxWidth: 58,
-                    widthGrow: 0,
-                    widthShrink: 1,
-                    cssClass: "forecast-edit-actions-cell",
-                    download: false,
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) {
-                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                        }
-                        return `<div style="display:flex;align-items:center;justify-content:center;gap:4px;">
-                            <button type="button" class="btn btn-sm btn-link forecast-edit-row-btn d-inline-flex align-items-center p-0" title="Edit row" style="line-height:1;"><i class="mdi mdi-pencil" style="font-size:1rem;"></i></button>
-                            <button type="button" class="btn btn-sm btn-link forecast-history-row-btn d-inline-flex align-items-center p-0" title="History — see who changed what" style="line-height:1;">
-                                <span class="nrp-status-dot" style="background-color:#22c55e;" aria-label="History"></span>
-                            </button>
-                        </div>`;
-                    },
-                    cellClick: function(e, cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (d.is_parent || d.isParent) return;
-                        if (e.target.closest('.forecast-edit-row-btn')) {
-                            e.stopPropagation();
-                            openForecastEditModal(cell.getRow());
-                            return;
-                        }
-                        if (e.target.closest('.forecast-history-row-btn')) {
-                            e.stopPropagation();
-                            const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
-                            const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
-                            openForecastHistoryModal(sku, parent);
-                        }
+                        return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="${esc(value)}">${esc(firstName)}</span>`;
                     }
                 },
             ],

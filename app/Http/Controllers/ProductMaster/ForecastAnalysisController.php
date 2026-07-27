@@ -1422,6 +1422,8 @@ class ForecastAnalysisController extends Controller
 
             $skuUpper = strtoupper(trim($sku));
             $parentNorm = strtoupper(trim($parent));
+            // Order qty > 0 always carries the Orders (to_order_analysis) stage.
+            $orderStage = $valueNum > 0 ? 'to_order_analysis' : '';
 
             $oldOrder = null;
             $orderQuery = DB::table('to_order_analysis')->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper]);
@@ -1433,30 +1435,29 @@ class ForecastAnalysisController extends Controller
                 $oldOrder = $orderRow->approved_qty;
             }
 
+            $orderPayload = [
+                'approved_qty' => $valueNum,
+                'date_apprvl' => now()->toDateString(),
+                'auth_user' => optional(Auth::user())->name,
+                'updated_at' => now(),
+                'deleted_at' => null,
+            ];
+            if ($orderStage !== '') {
+                $orderPayload['stage'] = $orderStage;
+            }
+
             $updated = 0;
             if ($parentNorm !== '') {
                 $updated = (int) DB::table('to_order_analysis')
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
                     ->whereRaw('TRIM(UPPER(COALESCE(parent, \'\'))) = ?', [$parentNorm])
-                    ->update([
-                        'approved_qty' => $valueNum,
-                        'date_apprvl' => now()->toDateString(),
-                        'auth_user' => optional(Auth::user())->name,
-                        'updated_at' => now(),
-                        'deleted_at' => null,
-                    ]);
+                    ->update($orderPayload);
             }
 
             if ($updated === 0) {
                 $updated = (int) DB::table('to_order_analysis')
                     ->whereRaw('TRIM(UPPER(sku)) = ?', [$skuUpper])
-                    ->update([
-                        'approved_qty' => $valueNum,
-                        'date_apprvl' => now()->toDateString(),
-                        'auth_user' => optional(Auth::user())->name,
-                        'updated_at' => now(),
-                        'deleted_at' => null,
-                    ]);
+                    ->update($orderPayload);
             }
 
             if ($updated === 0 && $sku !== '') {
@@ -1465,7 +1466,7 @@ class ForecastAnalysisController extends Controller
                     'parent' => $parent !== '' ? $parent : null,
                     'approved_qty' => $valueNum,
                     'date_apprvl' => now()->toDateString(),
-                    'stage' => '',
+                    'stage' => $orderStage,
                     'auth_user' => optional(Auth::user())->name,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -1474,6 +1475,38 @@ class ForecastAnalysisController extends Controller
             }
 
             $this->logForecastAnalysisChange($sku, $parent, 'order', $oldOrder, $valueNum);
+
+            // Auto-add Orders stage on forecast_analysis when Order qty > 0.
+            // Do not overwrite a later pipeline stage (mip / r2s / transit).
+            if ($valueNum > 0) {
+                $existingFa = DB::table('forecast_analysis')
+                    ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
+                    ->orderByRaw("CASE WHEN stage IS NOT NULL AND stage != '' THEN 0 ELSE 1 END")
+                    ->first();
+
+                if ($existingFa) {
+                    $currentStage = strtolower(trim((string) ($existingFa->stage ?? '')));
+                    $laterStages = ['mip', 'r2s', 'transit'];
+                    if ($currentStage !== 'to_order_analysis' && ! in_array($currentStage, $laterStages, true)) {
+                        DB::table('forecast_analysis')
+                            ->where('id', $existingFa->id)
+                            ->update([
+                                'stage' => 'to_order_analysis',
+                                'updated_at' => now(),
+                            ]);
+                        $this->logForecastAnalysisChange($sku, $parent, 'stage', $currentStage, 'to_order_analysis');
+                    }
+                } else {
+                    DB::table('forecast_analysis')->insert([
+                        'sku' => $sku,
+                        'parent' => $parent !== '' ? $parent : null,
+                        'stage' => 'to_order_analysis',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    $this->logForecastAnalysisChange($sku, $parent, 'stage', null, 'to_order_analysis');
+                }
+            }
 
             return response()->json(['success' => true, 'message' => 'Order updated successfully']);
         }
@@ -1773,8 +1806,11 @@ class ForecastAnalysisController extends Controller
             // Normalize Stage values to lowercase
             if ($columnKey === 'stage' && !empty($value)) {
                 $value = strtolower(trim($value));
-                // Ensure value is one of the valid options
-                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis', 'all_good'];
+                // Appr Req removed from Purchase stage dropdowns — reject set attempts.
+                if ($value === 'appr_req') {
+                    return response()->json(['success' => false, 'message' => 'Appr Req stage has been removed.'], 422);
+                }
+                $validStages = ['mip', 'r2s', 'transit', 'to_order_analysis', 'all_good'];
                 if (!in_array($value, $validStages)) {
                     $value = ''; // Default to empty if invalid
                 }
@@ -1794,16 +1830,6 @@ class ForecastAnalysisController extends Controller
                 $orderQty = $this->resolveForecastOrderQty($sku, $forecastApproved);
                 $stageLower = strtolower(trim((string) $value));
 
-                if ($stageLower === 'appr_req' && $orderQty !== null && $orderQty > 0) {
-                    DB::table('forecast_analysis')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
-                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
-                        ->update([
-                            'approved_qty' => $orderQty,
-                            'updated_at' => now(),
-                        ]);
-                    ToOrderSkuFieldSync::setStageForSku($sku, 'appr_req', $parent !== '' ? $parent : null);
-                }
 
                 if ($stageLower === 'to_order_analysis') {
                     $this->syncToOrderAnalysisForStage(
@@ -1876,8 +1902,10 @@ class ForecastAnalysisController extends Controller
             // Normalize Stage values to lowercase before inserting
             if ($columnKey === 'stage' && !empty($value)) {
                 $value = strtolower(trim($value));
-                // Ensure value is one of the valid options
-                $validStages = ['appr_req', 'mip', 'r2s', 'transit', 'to_order_analysis', 'all_good'];
+                if ($value === 'appr_req') {
+                    return response()->json(['success' => false, 'message' => 'Appr Req stage has been removed.'], 422);
+                }
+                $validStages = ['mip', 'r2s', 'transit', 'to_order_analysis', 'all_good'];
                 if (!in_array($value, $validStages)) {
                     $value = ''; // Default to empty if invalid
                 }
@@ -1895,17 +1923,6 @@ class ForecastAnalysisController extends Controller
             if (strtolower($column) === 'stage'){
                 $orderQty = $this->resolveForecastOrderQty($sku, null);
                 $stageLower = strtolower(trim((string) $value));
-
-                if ($stageLower === 'appr_req' && $orderQty !== null && $orderQty > 0) {
-                    DB::table('forecast_analysis')
-                        ->whereRaw('TRIM(LOWER(sku)) = ?', [strtolower($sku)])
-                        ->whereRaw('TRIM(LOWER(parent)) = ?', [strtolower($parent)])
-                        ->update([
-                            'approved_qty' => $orderQty,
-                            'updated_at' => now(),
-                        ]);
-                    ToOrderSkuFieldSync::setStageForSku($sku, 'appr_req', $parent !== '' ? $parent : null);
-                }
 
                 if ($stageLower === 'to_order_analysis') {
                     $this->syncToOrderAnalysisForStage($sku, $parent, '', $orderQty, null);
@@ -2571,7 +2588,7 @@ class ForecastAnalysisController extends Controller
             'moq' => 'MOQ (Approved Qty)',
             'cp' => 'CP',
             'cbm' => 'CBM',
-            'order' => '2 Order',
+            'order' => 'Order',
             'mip' => 'MIP',
             'r2s' => 'R2S',
             'transit' => 'Transit',

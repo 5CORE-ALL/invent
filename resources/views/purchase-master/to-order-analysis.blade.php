@@ -603,8 +603,7 @@
                             <label class="form-label fw-semibold d-block">🎯 Stage</label>
                             <select id="stage-filter" class="form-select">
                                 <option value="" selected>All</option>
-                                <option value="appr_req">Appr Req</option>
-                                <option value="to_order_analysis">2 Order</option>
+                                <option value="to_order_analysis">Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                             </select>
@@ -876,7 +875,7 @@
         </div>
     </div>
 
-    <!-- PKG details modal: shows all 6 packaging/design/CDR/issues fields for a SKU -->
+    <!-- PKG details modal: packaging / design / barcode / CDR / issues for a SKU -->
     <div class="modal fade" id="pkgModal" tabindex="-1" aria-labelledby="pkgModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content border-0 shadow-lg">
@@ -888,7 +887,11 @@
                 </div>
                 <div class="modal-body" id="pkgModalBody" style="background-color:#fff;"></div>
                 <div class="modal-footer">
+                    <span id="pkgModalStatus" class="me-auto small text-muted"></span>
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="pkgModalSaveBtn">
+                        <i class="fas fa-save me-1"></i> Save
+                    </button>
                 </div>
             </div>
         </div>
@@ -1176,12 +1179,11 @@
                             <label class="form-label fw-semibold">Stage</label>
                             <select id="toa-action-stage" class="form-select form-select-sm">
                                 <option value="">— Keep current —</option>
-                                <option value="appr_req">Appr. Req</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                                 <option value="transit">Transit</option>
                                 <option value="all_good">😊 All Good</option>
-                                <option value="to_order_analysis">2 Order</option>
+                                <option value="to_order_analysis">Order</option>
                             </select>
                             <div class="form-text small">Stage rows must have MOQ &gt; 0; rows without MOQ will be skipped.</div>
                         </div>
@@ -1470,6 +1472,7 @@
             }
 
             const TOA_DATA_FIELD_META = {
+                barcode: { title: "Barcode", editable: true, multiline: false, maxLength: 255, productMaster: true },
                 instructions_item_pkg: { title: "Item Pkg.", editable: true, multiline: true, maxLength: 2000 },
                 ctn_instructions: { title: "Instr Carton", editable: true, multiline: false, maxLength: 100 },
                 packing_instructions: { title: "Design Instr.", editable: false, multiline: true, maxLength: 0 },
@@ -1481,6 +1484,7 @@
             let activeToaDataRow = null;
             let activeToaDataField = null;
             let activeMoqRow = null;
+            let activePkgTabulatorRow = null;
 
             function renderDesignDataDot(rawValue, meta) {
                 meta = meta || {};
@@ -1545,35 +1549,133 @@
                 return /^https?:\/\//i.test(path) ? path : ("/" + path.replace(/^\//, ""));
             }
 
-            // Open the combined PKG modal showing all 6 packaging/design/CDR/issues fields.
-            function openPkgModal(rowData) {
+            // Open Packaging Details modal — editable fields as inputs; barcode included.
+            function openPkgModal(rowData, tabulatorRow) {
                 const body = document.getElementById("pkgModalBody");
                 const skuEl = document.getElementById("pkgModalSku");
+                const statusEl = document.getElementById("pkgModalStatus");
+                const saveBtn = document.getElementById("pkgModalSaveBtn");
                 skuEl.textContent = rowData.SKU ? `( ${rowData.SKU} )` : "";
+                if (statusEl) statusEl.textContent = "";
+                if (saveBtn) saveBtn.disabled = false;
+                activePkgTabulatorRow = tabulatorRow || null;
 
                 const html = Object.keys(TOA_DATA_FIELD_META).map(function(fieldKey) {
                     const meta = TOA_DATA_FIELD_META[fieldKey] || { title: fieldKey };
                     const raw = String(rowData[fieldKey] ?? "").trim();
+                    const title = escapeHtmlAttr(meta.title || fieldKey);
                     let valueHtml;
-                    if (!raw) {
-                        valueHtml = '<span class="text-danger fst-italic">No data</span>';
+
+                    if (meta.editable) {
+                        if (meta.multiline) {
+                            valueHtml = `<textarea class="form-control pkg-modal-input" data-field="${escapeHtmlAttr(fieldKey)}"
+                                rows="3" maxlength="${meta.maxLength || 2000}"
+                                placeholder="Enter ${title}…">${escapeHtml(raw)}</textarea>`;
+                        } else {
+                            valueHtml = `<input type="text" class="form-control pkg-modal-input" data-field="${escapeHtmlAttr(fieldKey)}"
+                                maxlength="${meta.maxLength || 255}" value="${escapeHtmlAttr(raw)}"
+                                placeholder="Enter ${title}…">`;
+                        }
+                    } else if (!raw) {
+                        valueHtml = '<div class="border rounded p-2 bg-light" style="font-size:13px;"><span class="text-danger fst-italic">No data</span></div>';
                     } else if (meta.isFilePath) {
                         const url = toaFileUrl(raw);
                         const name = raw.split(/[/\\]/).pop() || raw;
-                        valueHtml = `<a href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener noreferrer">
-                            <i class="fas fa-file-arrow-down me-1"></i>${escapeHtmlAttr(name)}</a>`;
+                        valueHtml = `<div class="border rounded p-2 bg-light" style="font-size:13px;">
+                            <a href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener noreferrer">
+                            <i class="fas fa-file-arrow-down me-1"></i>${escapeHtmlAttr(name)}</a></div>`;
                     } else {
-                        const esc = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        valueHtml = `<div style="white-space:pre-wrap;">${esc}</div>`;
+                        valueHtml = `<div class="border rounded p-2 bg-light" style="font-size:13px;white-space:pre-wrap;">${escapeHtml(raw)}</div>`;
                     }
+
                     return `<div class="pkg-modal-item mb-3">
-                        <div class="fw-bold text-primary mb-1">${escapeHtmlAttr(meta.title || fieldKey)}</div>
-                        <div class="border rounded p-2 bg-light" style="font-size:13px;">${valueHtml}</div>
+                        <label class="fw-bold text-primary mb-1 d-block">${title}</label>
+                        ${valueHtml}
                     </div>`;
                 }).join("");
 
                 body.innerHTML = html;
                 bootstrap.Modal.getOrCreateInstance(document.getElementById("pkgModal")).show();
+            }
+
+            async function savePkgModalBarcode(sku, value) {
+                const res = await fetch('/product_master/update-field', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify({ sku: sku, field: 'barcode', value: value == null ? '' : String(value) }),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || 'Failed to save barcode');
+                }
+                return data.data && data.data.value != null ? String(data.data.value) : String(value || '');
+            }
+
+            async function savePkgModalAll() {
+                const statusEl = document.getElementById("pkgModalStatus");
+                const saveBtn = document.getElementById("pkgModalSaveBtn");
+                if (!activePkgTabulatorRow) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">No row selected.</span>';
+                    return;
+                }
+                const rowData = activePkgTabulatorRow.getData() || {};
+                const sku = String(rowData.SKU || '').trim();
+                if (!sku) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">Missing SKU.</span>';
+                    return;
+                }
+
+                const inputs = Array.from(document.querySelectorAll('#pkgModalBody .pkg-modal-input'));
+                const patch = {};
+                const failed = [];
+
+                if (saveBtn) saveBtn.disabled = true;
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin"></i> Saving…</span>';
+
+                for (let i = 0; i < inputs.length; i++) {
+                    const el = inputs[i];
+                    const fieldKey = el.getAttribute('data-field');
+                    const meta = TOA_DATA_FIELD_META[fieldKey] || {};
+                    if (!meta.editable) continue;
+                    const newVal = String(el.value || '').trim();
+                    const prevVal = String(rowData[fieldKey] ?? '').trim();
+                    if (newVal === prevVal) continue;
+
+                    try {
+                        if (fieldKey === 'barcode' || meta.productMaster) {
+                            patch[fieldKey] = await savePkgModalBarcode(sku, newVal);
+                        } else {
+                            patch[fieldKey] = await saveToaDataField(fieldKey, rowData, newVal);
+                        }
+                    } catch (err) {
+                        failed.push((meta.title || fieldKey) + ': ' + (err.message || 'error'));
+                    }
+                }
+
+                if (Object.keys(patch).length) {
+                    activePkgTabulatorRow.update(patch, true);
+                    if (typeof activePkgTabulatorRow.reformat === 'function') {
+                        activePkgTabulatorRow.reformat();
+                    }
+                }
+
+                if (saveBtn) saveBtn.disabled = false;
+                if (failed.length) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-danger">' + escapeHtml(failed.join(' · ')) + '</span>';
+                    return;
+                }
+                if (!Object.keys(patch).length) {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-muted">No changes to save.</span>';
+                    return;
+                }
+                if (statusEl) statusEl.innerHTML = '<span class="text-success">Saved.</span>';
+                setTimeout(function () {
+                    bootstrap.Modal.getInstance(document.getElementById("pkgModal"))?.hide();
+                }, 500);
             }
 
             function toaFixTextBlock(label, value) {
@@ -2486,72 +2588,6 @@
                         width: 180,
                     },
                     {
-                        title: "Executive",
-                        titleFormatter: function() {
-                            return '<img src="{{ asset('assets/images/executive.png') }}" alt="Executive" title="Executive" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;">';
-                        },
-                        field: "Exec",
-                        hozAlign: "center",
-                        width: 72,
-                        minWidth: 60,
-                        headerSort: true,
-                        headerTooltip: "Executive assigned",
-                        cssClass: "toa-exec-cell",
-                        editor: "list",
-                        editorParams: {
-                            values: TOA_EXEC_EDITOR_VALUES,
-                            defaultValue: "",
-                            autocomplete: true,
-                            listOnEmpty: true,
-                            freetext: false,
-                            allowEmpty: true,
-                            clearable: true,
-                            placeholderEmpty: "No executive found",
-                            verticalNavigation: "editor",
-                        },
-                        editable: function(cell) {
-                            return isToaSelectableRow(cell.getRow());
-                        },
-                        cellClick: function(e, cell) {
-                            e.stopPropagation();
-                            if (!isToaSelectableRow(cell.getRow())) return;
-                            cell.edit();
-                        },
-                        cellEditing: function(cell) {
-                            cell._execPrev = cell.getValue();
-                        },
-                        cellEdited: async function(cell) {
-                            const row = cell.getRow();
-                            if (!isToaSelectableRow(row)) return;
-                            const next = String(cell.getValue() || '').trim();
-                            const prev = String(cell._execPrev || '').trim();
-                            delete cell._execPrev;
-                            if (next === prev) return;
-                            const sku = String(row.getData().SKU || '').trim().toUpperCase();
-                            const targets = getToaBulkTargetRows(sku);
-                            if (!targets.length) return;
-                            targets.forEach(function (r) { r.update({ Exec: next || '' }, true); });
-                            try {
-                                await applyExecutiveToRows(targets, next || '__unassigned__');
-                            } catch (err) {
-                                cell.setValue(prev, true);
-                                alert("Could not save executive: " + (err.message || 'Save failed'));
-                                table.replaceData();
-                            }
-                        },
-                        formatter: function(cell) {
-                            if (!isToaSelectableRow(cell.getRow())) {
-                                return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
-                            }
-                            const value = String(cell.getValue() || "").trim();
-                            if (!value) {
-                                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
-                            }
-                            const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
-                            return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">${value}</span>`;
-                        },
-                    },
-                    {
                         title: "SKU",
                         field: "SKU",
                         width: 180,
@@ -2562,6 +2598,7 @@
                         field: "specs",
                         width: 180,
                         minWidth: 120,
+                        visible: false,
                         hozAlign: "left",
                         headerTooltip: "Product specifications (product master)",
                         editor: "input",
@@ -2581,9 +2618,10 @@
                         field: "barcode",
                         width: 120,
                         minWidth: 100,
+                        visible: false,
                         headerSort: false,
                         hozAlign: "center",
-                        headerTooltip: "Barcode image from product master",
+                        headerTooltip: "Barcode — edit in Packaging Details (PKG)",
                         formatter: function (cell) {
                             const row = cell.getRow().getData();
                             const imgUrl = String(row.barcode_image || '').trim();
@@ -2822,9 +2860,10 @@
                         },
                         cellClick: function(e, cell) {
                             if (e.target.closest(".toa-pkg-view-btn")) {
-                                const row = cell.getRow().getData();
+                                const tRow = cell.getRow();
+                                const row = tRow.getData();
                                 if (row.is_parent) return;
-                                openPkgModal(row);
+                                openPkgModal(row, tRow);
                             }
                         }
                     },
@@ -3178,7 +3217,7 @@
                                 "r2s":              { label: "R2S",       color: "#198754" },
                                 "transit":          { label: "Transit",   color: "#fd7e14" },
                                 "all_good":         { label: "😊 All Good", color: "#20c997" },
-                                "to_order_analysis":{ label: "2 Order",   color: "#ffc107" },
+                                "to_order_analysis":{ label: "Order",   color: "#ffc107" },
                             };
                             const meta = STAGE_META[value] || STAGE_META[""];
 
@@ -3193,12 +3232,11 @@
                                         style="opacity:0;cursor:pointer;"
                                         aria-label="Stage: ${escapeHtmlAttr(meta.label)}">
                                         <option value="">Select</option>
-                                        <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr. Req</option>
                                         <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
                                         <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
                                         <option value="transit" ${value === 'transit' ? 'selected' : ''}>Transit</option>
                                         <option value="all_good" ${value === 'all_good' ? 'selected' : ''}>😊 All Good</option>
-                                        <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
+                                        <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>Order</option>
                                     </select>
                                 </div>`;
                             if (onRendered) onRendered(function() {
@@ -3307,6 +3345,73 @@
                             if (!e.target.closest('.toa-row-action-btn')) return;
                             e.stopPropagation();
                         }
+                    },
+                    {
+                        title: "Executive",
+                        titleFormatter: function() {
+                            return '<img src="{{ asset('assets/images/executive.png') }}" alt="Executive" title="Executive" style="width:26px;height:26px;object-fit:contain;vertical-align:middle;">';
+                        },
+                        field: "Exec",
+                        hozAlign: "center",
+                        width: 72,
+                        minWidth: 60,
+                        headerSort: true,
+                        headerTooltip: "Executive assigned",
+                        cssClass: "toa-exec-cell",
+                        editor: "list",
+                        editorParams: {
+                            values: TOA_EXEC_EDITOR_VALUES,
+                            defaultValue: "",
+                            autocomplete: true,
+                            listOnEmpty: true,
+                            freetext: false,
+                            allowEmpty: true,
+                            clearable: true,
+                            placeholderEmpty: "No executive found",
+                            verticalNavigation: "editor",
+                        },
+                        editable: function(cell) {
+                            return isToaSelectableRow(cell.getRow());
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                            if (!isToaSelectableRow(cell.getRow())) return;
+                            cell.edit();
+                        },
+                        cellEditing: function(cell) {
+                            cell._execPrev = cell.getValue();
+                        },
+                        cellEdited: async function(cell) {
+                            const row = cell.getRow();
+                            if (!isToaSelectableRow(row)) return;
+                            const next = String(cell.getValue() || '').trim();
+                            const prev = String(cell._execPrev || '').trim();
+                            delete cell._execPrev;
+                            if (next === prev) return;
+                            const sku = String(row.getData().SKU || '').trim().toUpperCase();
+                            const targets = getToaBulkTargetRows(sku);
+                            if (!targets.length) return;
+                            targets.forEach(function (r) { r.update({ Exec: next || '' }, true); });
+                            try {
+                                await applyExecutiveToRows(targets, next || '__unassigned__');
+                            } catch (err) {
+                                cell.setValue(prev, true);
+                                alert("Could not save executive: " + (err.message || 'Save failed'));
+                                table.replaceData();
+                            }
+                        },
+                        formatter: function(cell) {
+                            if (!isToaSelectableRow(cell.getRow())) {
+                                return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                            }
+                            const value = String(cell.getValue() || "").trim();
+                            if (!value) {
+                                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
+                            }
+                            const firstName = value.split(/\s+/)[0] || value;
+                            const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
+                            return `<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:${c.bg};color:${c.text};font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="${escapeHtmlAttr(value)}">${escapeHtml(firstName)}</span>`;
+                        },
                     },
                 ],
                 ajaxResponse: (url, params, response) => {
@@ -4733,7 +4838,11 @@
                 const colMenu = document.getElementById('toa-columns-menu');
                 if (!colBtn || !colMenu) return;
 
-                const TOA_FORCE_HIDDEN_FIELDS = ['issues', 'Reviews', 'rating', 'lmp_price', 'Review', 'RFQ Form Link'];
+                // Permanently hidden — also stripped from column picker / saved visibility / "Show all".
+                const TOA_FORCE_HIDDEN_FIELDS = [
+                    'specs', 'barcode',
+                    'issues', 'Reviews', 'rating', 'lmp_price', 'Review', 'RFQ Form Link',
+                ];
 
                 function enforceToaHiddenColumns() {
                     TOA_FORCE_HIDDEN_FIELDS.forEach(function (field) {
@@ -4832,7 +4941,12 @@
                 colMenu.addEventListener('click', function (e) {
                     e.stopPropagation();
                     if (e.target && e.target.id === 'toa-columns-all') {
-                        table.getColumns().forEach(function (col) { if (col.getField()) table.showColumn(col.getField()); });
+                        table.getColumns().forEach(function (col) {
+                            const field = col.getField();
+                            if (!field || TOA_FORCE_HIDDEN_FIELDS.indexOf(field) !== -1) return;
+                            table.showColumn(field);
+                        });
+                        enforceToaHiddenColumns();
                         table.redraw(true);
                         buildMenu();
                         saveVisibility();
@@ -4993,6 +5107,10 @@
                     try { document.execCommand("copy"); } catch (err) {}
                     document.body.removeChild(tmp);
                 }
+            });
+
+            document.getElementById("pkgModalSaveBtn")?.addEventListener("click", function () {
+                savePkgModalAll();
             });
 
             document.getElementById("toaDataModalSaveBtn")?.addEventListener("click", async function () {

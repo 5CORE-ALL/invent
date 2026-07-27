@@ -398,20 +398,39 @@ class ToOrderAnalysisController extends Controller
             
             // Same forecast row set as the Forecast Analysis page (read-only build — no derived-stage DB writes).
             // Include a SKU when ANY of these is true:
-            //   - stage = 'appr_req'           → row tagged for approval
-            //   - stage = 'to_order_analysis'  → row already moved to the 2-Order stage (matches the
-            //                                    "Stage = 2Order" rows shown on /approval.required)
-            //   - the Appr Req rule passes     → to_order >= 0 AND MOQ > 0 (matches the Forecast
-            //                                    "Appr Req" column and /approval.required filter)
+            //   - Forecast "Order" column displays > 0 (two_order_qty, or MOQ fallback when 2 Ord ≥ 0)
+            //   - stages includes 'to_order_analysis' (multi-stage; primary stage may be mip/r2s/…)
+            //   - stage = 'appr_req' / 'to_order_analysis'
+            //   - the Appr Req rule passes → to_order >= 0 AND MOQ > 0
             $snapshotRows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
             $yellowForecastBySku = [];
             foreach ($snapshotRows as $faRow) {
-                $stage = strtolower(trim((string) ($faRow->stage ?? '')));
-                $explicitStage = ($stage === 'appr_req' || $stage === 'to_order_analysis');
-                if (!$explicitStage && !$this->forecastRowMatchesYellowApprReqQueue($faRow)) {
+                $skuRaw = (string) ($faRow->SKU ?? '');
+                if ($skuRaw === '' || stripos($skuRaw, 'PARENT') !== false || ! empty($faRow->is_parent)) {
                     continue;
                 }
-                $norm = strtoupper(trim((string) ($faRow->SKU ?? '')));
+
+                $stage = strtolower(trim((string) ($faRow->stage ?? '')));
+                $explicitStage = ($stage === 'appr_req' || $stage === 'to_order_analysis');
+
+                $stages = [];
+                if (is_array($faRow->stages ?? null)) {
+                    $stages = array_map(static fn ($s) => strtolower(trim((string) $s)), $faRow->stages);
+                } elseif (! empty($stage)) {
+                    $stages = [$stage];
+                }
+                $hasOrderStage = in_array('to_order_analysis', $stages, true);
+
+                if (
+                    ! $this->forecastRowHasPositiveOrderColumn($faRow)
+                    && ! $hasOrderStage
+                    && ! $explicitStage
+                    && ! $this->forecastRowMatchesYellowApprReqQueue($faRow)
+                ) {
+                    continue;
+                }
+
+                $norm = strtoupper(trim($skuRaw));
                 if ($norm !== '') {
                     $yellowForecastBySku[$norm] = $faRow;
                 }
@@ -546,15 +565,23 @@ class ToOrderAnalysisController extends Controller
                 $shopifyImage = $shopifySkus->get($sheetSku)?->image_src ?? null;
                 $finalImage = $shopifyImage ?: $imagePath;
 
-                // MOQ display must match the Forecast Analysis page: use the stored
-                // approved_qty when it's been set (incl. an explicit 0), otherwise fall
-                // back to the product-master MOQ. Forecast does the same, so a SKU that
-                // has never had approved_qty saved shows the product-master MOQ (e.g. 50)
-                // on both pages instead of 0 here.
-                $rawApprovedQty = $toOrder->approved_qty ?? null;
-                $approvedQty = ($rawApprovedQty !== null && $rawApprovedQty !== '')
-                    ? (int) $rawApprovedQty
-                    : (int) $productMasterMoq;
+                // MOQ must match /forecast.analysis — same tables & resolution:
+                //   1) forecast_analysis.approved_qty when set (incl. explicit 0)
+                //   2) else product_master.Values.moq
+                // Prefer the shared snapshot field ($faItem->MOQ), which Forecast already
+                // resolved that way. Do NOT use to_order_analysis.approved_qty here — a
+                // stale/zero row there was causing mismatched values vs forecast.
+                $faMoq = $faItem->{'MOQ'} ?? null;
+                if ($faMoq !== null && $faMoq !== '' && is_numeric($faMoq)) {
+                    $approvedQty = (int) $faMoq;
+                } else {
+                    $forecastApproved = ($forecast && $forecast->approved_qty !== null && $forecast->approved_qty !== '')
+                        ? $forecast->approved_qty
+                        : null;
+                    $approvedQty = ($forecastApproved !== null && $forecastApproved !== '')
+                        ? (int) $forecastApproved
+                        : (int) $productMasterMoq;
+                }
 
                 $reviewKey = strtoupper(trim($sheetSku)) . '|' . strtoupper(trim($parent));
                 $review = $allReviews->get($reviewKey);
@@ -908,6 +935,51 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
+     * True when /forecast.analysis "Order" column would display a value > 0.
+     * Mirrors forecastRowOrderQty() in forecastAnalysis.blade.php:
+     *   - non-parent, NRP not 2BDC/LATER
+     *   - 2 Ord (msl − inv − transit − mip − r2s) ≥ 0
+     *   - no MIP qty and no R2S qty
+     *   - two_order_qty > 0, else MOQ > 0
+     */
+    private function forecastRowHasPositiveOrderColumn(object $item): bool
+    {
+        $sku = (string) ($item->SKU ?? '');
+        if ($sku === '' || stripos($sku, 'PARENT') !== false || ! empty($item->is_parent)) {
+            return false;
+        }
+
+        $nr = strtoupper(trim((string) ($item->nr ?? '')));
+        if ($nr === 'NR' || $nr === 'LATER') {
+            return false;
+        }
+
+        $msl = (float) ($item->msl ?? 0);
+        $inv = (float) ($item->INV ?? $item->inv ?? 0);
+        $transit = (float) ($item->transit ?? $item->{'Transit'} ?? 0);
+        $mip = (float) ($item->order_given ?? $item->{'Order Given'} ?? 0);
+        $r2s = (float) ($item->readyToShipQty ?? 0);
+
+        // Same multi-stage 2 Ord formula as forecastAnalysis.blade.php ajaxResponse.
+        $toOrd = (float) round($msl - $inv - $transit - $mip - $r2s);
+        if (! is_finite($toOrd) || $toOrd < 0) {
+            return false;
+        }
+        if ($mip != 0.0 || $r2s != 0.0) {
+            return false;
+        }
+
+        $approved = (float) ($item->two_order_qty ?? 0);
+        if (is_finite($approved) && $approved > 0) {
+            return true;
+        }
+
+        $moq = (float) ($item->MOQ ?? $item->{'Approved QTY'} ?? 0);
+
+        return is_finite($moq) && $moq > 0;
+    }
+
+    /**
      * Appr Req rule — mirrors getEffectiveApprReqValue() in forecastAnalysis.blade.php and
      * approvalRequired.blade.php. Includes a SKU when it would display a numeric value in
      * the Forecast Analysis "Appr Req" column:
@@ -1082,6 +1154,11 @@ class ToOrderAnalysisController extends Controller
             }
 
             return response()->json(['success' => true]);
+        }
+
+        // Appr Req removed from Purchase stage dropdowns — reject set attempts.
+        if ($column === 'Stage' && strtolower(trim((string) $value)) === 'appr_req') {
+            return response()->json(['success' => false, 'message' => 'Appr Req stage has been removed.'], 422);
         }
 
         try {

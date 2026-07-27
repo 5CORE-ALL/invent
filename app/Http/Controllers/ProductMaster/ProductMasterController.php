@@ -850,12 +850,15 @@ class ProductMasterController extends Controller
             $validated = $request->validate([
                 'sku' => 'required|string',
                 'field' => 'required|string',
-                'value' => 'required',
+                // barcode may be cleared; other fields still expect a value
+                'value' => $request->input('field') === 'barcode' ? 'nullable|string|max:255' : 'required',
             ]);
         }
 
         try {
-            $product = ProductMaster::where('sku', $validated['sku'])->first();
+            $skuKey = strtoupper(trim((string) $validated['sku']));
+            $product = ProductMaster::where('sku', $validated['sku'])->first()
+                ?: ProductMaster::whereRaw('TRIM(UPPER(sku)) = ?', [$skuKey])->first();
 
             if (! $product) {
                 return response()->json([
@@ -864,13 +867,31 @@ class ProductMasterController extends Controller
                 ], 404);
             }
 
+            $field = $validated['field'];
+
+            // Barcode lives on product_master.barcode (not Values JSON).
+            if (! $isImageField && $field === 'barcode') {
+                $barcodeVal = trim((string) ($validated['value'] ?? ''));
+                $product->barcode = $barcodeVal !== '' ? $barcodeVal : null;
+                $product->save();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Field updated successfully',
+                    'data' => [
+                        'sku' => $product->sku,
+                        'field' => 'barcode',
+                        'value' => $product->barcode,
+                    ],
+                ]);
+            }
+
             // Get current Values
             $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
             if (! is_array($values)) {
                 $values = [];
             }
 
-            $field = $validated['field'];
             $value = null;
 
             // Handle image upload

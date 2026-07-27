@@ -602,7 +602,7 @@
                 'r2s': 'R2S',
                 'transit': 'Transit',
                 'all_good': 'All Good',
-                'to_order_analysis': '2 Order',
+                'to_order_analysis': 'Order',
                 '': 'Not set',
             };
             const PLAT_ICON = { 'Website': 'fas fa-globe', 'Email': 'fas fa-envelope', 'WhatsApp': 'fab fa-whatsapp', 'WeChat': 'fab fa-weixin', 'Alibaba': 'fas fa-store' };
@@ -671,8 +671,10 @@
                 if (!value) {
                     return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:#e5e7eb;color:#6b7280;font-size:0.72rem;font-weight:600;cursor:pointer;white-space:nowrap;" title="Click to assign">NA</span>';
                 }
+                // Show first name only; full name on hover (matches Forecast / To Order).
+                const firstName = value.split(/\s+/)[0] || value;
                 const c = (window.ExecColors ? window.ExecColors.get(value) : { bg: '#6b7280', text: '#fff' });
-                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:' + c.bg + ';color:' + c.text + ';font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="Click to change">' + esc(value) + '</span>';
+                return '<span style="display:inline-block;padding:2px 6px;border-radius:6px;background:' + c.bg + ';color:' + c.text + ';font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;" title="' + esc(value) + '">' + esc(firstName) + '</span>';
             }
             function stageFormatter(cell) {
                 const d = cell.getRow().getData();
@@ -691,8 +693,8 @@
                 const mk = function (val, label) { return '<option value="' + val + '"' + (v === val ? ' selected' : '') + '>' + label + '</option>'; };
                 return '<div class="mip-stage-dot" title="' + esc(stageLabel) + '"><span class="mip-stage-marker">' + marker + '</span>' +
                     '<select class="stage-stage-select editable-stage" title="' + esc(stageLabel) + '">' +
-                    '<option value="">Select</option>' + mk('appr_req', 'Appr. Req') + mk('mip', 'MIP') + mk('r2s', 'R2S') +
-                    mk('transit', 'Transit') + mk('all_good', '😊 All Good') + mk('to_order_analysis', '2 Order') +
+                    '<option value="">Select</option>' + mk('mip', 'MIP') + mk('r2s', 'R2S') +
+                    mk('transit', 'Transit') + mk('all_good', '😊 All Good') + mk('to_order_analysis', 'Order') +
                     '</select></div>';
             }
             function dotToggleFormatter(column) {
@@ -1053,52 +1055,6 @@
                             return url ? '<div class="mip-new-img-aspect"><img src="' + esc(url) + '"></div>' : '<span class="text-muted">N/A</span>';
                         }
                     },
-                    { title: "Executive", field: "exec", width: 120, hozAlign: "center",
-                      cssClass: "mip-exec-cell",
-                      editor: "list",
-                      editorParams: {
-                          values: EXEC_EDITOR_VALUES,
-                          defaultValue: "",
-                          autocomplete: true,
-                          listOnEmpty: true,
-                          freetext: false,
-                          allowEmpty: true,
-                          clearable: true,
-                          placeholderEmpty: "No executive found",
-                          verticalNavigation: "editor",
-                      },
-                      editable: function () { return !showArchived; },
-                      cellClick: function (e, cell) {
-                          e.stopPropagation();
-                          if (showArchived) return;
-                          cell.edit();
-                      },
-                      cellEditing: function (cell) { cell._execPrev = cell.getValue(); },
-                      cellEdited: function (cell) {
-                          const row = cell.getRow();
-                          const d = row.getData();
-                          const next = String(cell.getValue() || '').trim();
-                          const prev = String(cell._execPrev || '').trim();
-                          delete cell._execPrev;
-                          if (next === prev) return;
-                          const sku = d.sku || '';
-                          const prevExec = (d.exec == null) ? null : d.exec;
-                          row.update({ exec: next });
-                          postUpdateLink(sku, 'Exec', next || null)
-                              .then(function (r) {
-                                  if (!r || !r.success) {
-                                      row.update({ exec: prevExec });
-                                      cell.setValue(prev, true);
-                                      alert((r && r.message) || 'Could not save executive.');
-                                  }
-                              })
-                              .catch(function (err) {
-                                  row.update({ exec: prevExec });
-                                  cell.setValue(prev, true);
-                                  alert('Could not save executive: ' + (err && err.message ? err.message : err));
-                              });
-                      },
-                      formatter: execFormatter },
                     { title: "Supplier", field: "supplier", width: 140, hozAlign: "center",
                       formatter: supplierFormatter,
                       editor: "list",
@@ -1213,6 +1169,52 @@
                             return '<button type="button" class="btn btn-sm btn-outline-primary mip-action-btn" title="Edit all fields"><i class="fas fa-pen"></i></button>';
                         }
                     }] : []),
+                    { title: "Executive", field: "exec", width: 120, hozAlign: "center",
+                      cssClass: "mip-exec-cell",
+                      editor: "list",
+                      editorParams: {
+                          values: EXEC_EDITOR_VALUES,
+                          defaultValue: "",
+                          autocomplete: true,
+                          listOnEmpty: true,
+                          freetext: false,
+                          allowEmpty: true,
+                          clearable: true,
+                          placeholderEmpty: "No executive found",
+                          verticalNavigation: "editor",
+                      },
+                      editable: function () { return !showArchived; },
+                      cellClick: function (e, cell) {
+                          e.stopPropagation();
+                          if (showArchived) return;
+                          cell.edit();
+                      },
+                      cellEditing: function (cell) { cell._execPrev = cell.getValue(); },
+                      cellEdited: function (cell) {
+                          const row = cell.getRow();
+                          const d = row.getData();
+                          const next = String(cell.getValue() || '').trim();
+                          const prev = String(cell._execPrev || '').trim();
+                          delete cell._execPrev;
+                          if (next === prev) return;
+                          const sku = d.sku || '';
+                          const prevExec = (d.exec == null) ? null : d.exec;
+                          row.update({ exec: next });
+                          postUpdateLink(sku, 'Exec', next || null)
+                              .then(function (r) {
+                                  if (!r || !r.success) {
+                                      row.update({ exec: prevExec });
+                                      cell.setValue(prev, true);
+                                      alert((r && r.message) || 'Could not save executive.');
+                                  }
+                              })
+                              .catch(function (err) {
+                                  row.update({ exec: prevExec });
+                                  cell.setValue(prev, true);
+                                  alert('Could not save executive: ' + (err && err.message ? err.message : err));
+                              });
+                      },
+                      formatter: execFormatter },
                     ...(CAN_DELETE ? [{
                         title: "Del", field: "row_delete", width: 52, hozAlign: "center", headerSort: false,
                         formatter: function () {
@@ -1812,7 +1814,7 @@
                 { key: 'o_links', label: 'O Links', type: 'text' },
                 { key: 'notes', label: 'Notes', type: 'textarea' },
                 { key: 'stage', label: 'Stage', type: 'select', options: function () {
-                    return [['', 'Select'], ['appr_req', 'Appr. Req'], ['mip', 'MIP'], ['r2s', 'R2S'], ['transit', 'Transit'], ['all_good', 'All Good'], ['to_order_analysis', '2 Order']];
+                    return [['', 'Select'], ['mip', 'MIP'], ['r2s', 'R2S'], ['transit', 'Transit'], ['all_good', 'All Good'], ['to_order_analysis', 'Order']];
                 } },
             ];
             function openEditModal(row) {
