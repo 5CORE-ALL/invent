@@ -1657,7 +1657,7 @@ class CvrMasterController extends Controller
                 })->values()->toArray()
             ]);
 
-            // Auto-save SKU-wise daily snapshot on refresh (for Inv, OV L30, Price, CVR graphs per SKU)
+            // Auto-save SKU-wise daily snapshot on refresh (for Inv, OV L30, Price, CVR, NPFT, NROI graphs per SKU)
             try {
                 $childRows = collect($finalResult)->filter(fn($r) => empty($r->is_parent_summary));
                 $today = now('America/Los_Angeles')->toDateString();
@@ -1666,20 +1666,39 @@ class CvrMasterController extends Controller
                     $raw = is_string($row->sku ?? null) ? $row->sku : (string) ($row->sku ?? '');
                     $sku = preg_replace('/\s+/', ' ', trim($raw));
                     if ($sku === '') continue;
-                    PricingMasterDailySnapshotSku::updateOrCreate(
-                        ['snapshot_date' => $today, 'sku' => $sku],
-                        [
-                            'inventory' => (int) ($row->inventory ?? 0),
-                            'overall_l30' => (int) ($row->overall_l30 ?? 0),
-                            'avg_price' => isset($row->avg_price) && $row->avg_price > 0 ? round((float) $row->avg_price, 2) : null,
-                            'avg_cvr' => isset($row->avg_cvr) && $row->avg_cvr !== null ? round((float) $row->avg_cvr, 2) : null,
-                            'dil_percent' => isset($row->dil_percent) && $row->dil_percent !== null ? round((float) $row->dil_percent, 2) : null,
-                            'amazon_price' => isset($row->amazon_price) && $row->amazon_price > 0 ? round((float) $row->amazon_price, 2) : null,
-                            'rating' => isset($row->rating) && $row->rating > 0 ? round((float) $row->rating, 2) : null,
-                            'total_views' => (int) ($row->total_views ?? 0),
-                        ]
-                    );
-                    $saved++;
+                    // inventory column is unsigned — clamp negatives so one bad SKU cannot abort the batch
+                    $invClamped = max(0, (int) ($row->inventory ?? 0));
+                    $snapshotPayload = [
+                        'inventory' => $invClamped,
+                        'overall_l30' => max(0, (int) ($row->overall_l30 ?? 0)),
+                        'avg_price' => isset($row->avg_price) && $row->avg_price > 0 ? round((float) $row->avg_price, 2) : null,
+                        'avg_cvr' => isset($row->avg_cvr) && $row->avg_cvr !== null ? round((float) $row->avg_cvr, 2) : null,
+                        'dil_percent' => isset($row->dil_percent) && $row->dil_percent !== null ? round((float) $row->dil_percent, 2) : null,
+                        'amazon_price' => isset($row->amazon_price) && $row->amazon_price > 0 ? round((float) $row->amazon_price, 2) : null,
+                        'rating' => isset($row->rating) && $row->rating > 0 ? round((float) $row->rating, 2) : null,
+                        'total_views' => max(0, (int) ($row->total_views ?? 0)),
+                    ];
+                    // Avg NPFT% / Avg NROI% (same fields as pricing-master-cvr main table / parent blue row)
+                    if (Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_pft')) {
+                        $snapshotPayload['avg_pft'] = isset($row->avg_pft) && $row->avg_pft !== null
+                            ? round((float) $row->avg_pft, 2) : null;
+                    }
+                    if (Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_nroi')) {
+                        $snapshotPayload['avg_nroi'] = isset($row->avg_nroi) && $row->avg_nroi !== null
+                            ? round((float) $row->avg_nroi, 2) : null;
+                    }
+                    try {
+                        PricingMasterDailySnapshotSku::updateOrCreate(
+                            ['snapshot_date' => $today, 'sku' => $sku],
+                            $snapshotPayload
+                        );
+                        $saved++;
+                    } catch (\Throwable $rowEx) {
+                        Log::warning('Master Analytics SKU snapshot row failed', [
+                            'sku' => $sku,
+                            'error' => $rowEx->getMessage(),
+                        ]);
+                    }
                 }
                 if ($saved > 0) {
                     Log::info('Master Analytics SKU snapshot saved', ['date' => $today, 'count' => $saved]);

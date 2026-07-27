@@ -3648,6 +3648,72 @@
                     }
                 },
                 {
+                    title: "NPFT",
+                    field: "avg_npft_pct",
+                    minWidth: 52,
+                    width: 56,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "NPFT";
+                        span.setAttribute("title", "Avg NPFT% from /pricing-master-cvr (parent blue row = avg of children)");
+                        return span;
+                    },
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.avg_npft_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        // Same slabs as /pricing-master-cvr Avg NPFT%
+                        let col = '#4e0dab';
+                        if (n < 30) col = '#dc3545';
+                        else if (n < 40) col = '#ff9c00';
+                        else if (n <= 50) col = '#28a745';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NPFT% (pricing-master-cvr)">${n}%</span>`;
+                    }
+                },
+                {
+                    title: "NROI",
+                    field: "avg_nroi_pct",
+                    minWidth: 52,
+                    width: 56,
+                    headerSort: true,
+                    hozAlign: "center",
+                    sorter: "number",
+                    titleFormatter: function() {
+                        const span = document.createElement("span");
+                        span.textContent = "NROI";
+                        span.setAttribute("title", "Avg NROI% from /pricing-master-cvr (parent blue row = avg of children)");
+                        return span;
+                    },
+                    accessor: function(row) {
+                        if (!row) return null;
+                        const v = parseFloat(row.avg_nroi_pct);
+                        return Number.isFinite(v) ? v : null;
+                    },
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v))) {
+                            return '<span style="display:block;text-align:center;color:#6c757d">—</span>';
+                        }
+                        const n = Math.round(parseFloat(v));
+                        // Same slabs as /pricing-master-cvr Avg NROI% / GROI%
+                        let col = '#e83e8c';
+                        if (n < 50) col = '#a00211';
+                        else if (n < 100) col = '#ff9c00';
+                        else if (n <= 150) col = '#28a745';
+                        return `<span style="display:block;text-align:center;font-weight:700;color:${col};" title="Avg NROI% (pricing-master-cvr)">${n}%</span>`;
+                    }
+                },
+                {
                     title: "Total CBM",
                     field: "total_cbm",
                     visible: false,

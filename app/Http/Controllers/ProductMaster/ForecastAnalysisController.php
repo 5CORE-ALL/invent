@@ -614,6 +614,41 @@ class ForecastAnalysisController extends Controller
             collect($productListData)->map(fn ($p) => $normalizeSku($p->sku ?? ''))->filter()->unique()->values()->all()
         );
 
+        // Avg NPFT% / Avg NROI% from /pricing-master-cvr (latest SKU snapshot; parent blue row = avg of children)
+        $cvrNpftNroiBySku = [];
+        $cvrNpftNroiBySkuNoSp = [];
+        if (
+            Schema::hasTable('pricing_master_daily_snapshots_sku')
+            && Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_pft')
+            && Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_nroi')
+        ) {
+            try {
+                $latestCvrSnapDate = DB::table('pricing_master_daily_snapshots_sku')->max('snapshot_date');
+                if ($latestCvrSnapDate) {
+                    $cvrSnapRows = DB::table('pricing_master_daily_snapshots_sku')
+                        ->where('snapshot_date', $latestCvrSnapDate)
+                        ->select(['sku', 'avg_pft', 'avg_nroi'])
+                        ->get();
+                    foreach ($cvrSnapRows as $snapRow) {
+                        $k = $normalizeSku($snapRow->sku ?? '');
+                        if ($k === '') {
+                            continue;
+                        }
+                        $entry = [
+                            'npft' => isset($snapRow->avg_pft) && $snapRow->avg_pft !== null
+                                ? (int) round((float) $snapRow->avg_pft) : null,
+                            'nroi' => isset($snapRow->avg_nroi) && $snapRow->avg_nroi !== null
+                                ? (int) round((float) $snapRow->avg_nroi) : null,
+                        ];
+                        $cvrNpftNroiBySku[$k] = $entry;
+                        $cvrNpftNroiBySkuNoSp[str_replace(' ', '', $k)] = $entry;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Forecast: failed to load pricing-master-cvr NPFT/NROI snapshot: '.$e->getMessage());
+            }
+        }
+
         foreach ($productListData as $prodData) {
             $sheetSku = $normalizeSku($prodData->sku);
             if (empty($sheetSku)) continue;
@@ -682,10 +717,14 @@ class ForecastAnalysisController extends Controller
 
             $adv = $getAmazonAdv($sheetSku);
             $item->avg_gpft_pct = null;
-            $item->avg_groi_pct = null; // legacy field; UI uses NPFT/NROI (marketplace-master formulas)
+            $item->avg_groi_pct = null; // legacy field
             $item->avg_ad_pct   = $defaultChannelAds;   // channel-level Ads% (same as /all-marketplace-master Amazon)
-            $item->avg_npft_pct = null;
-            $item->avg_nroi_pct = null;
+            // NPFT / NROI columns: same Avg NPFT% / Avg NROI% as /pricing-master-cvr (incl. parent blue-row avg)
+            $cvrMetrics = $cvrNpftNroiBySku[$sheetSku]
+                ?? $cvrNpftNroiBySkuNoSp[str_replace(' ', '', $sheetSku)]
+                ?? null;
+            $item->avg_npft_pct = is_array($cvrMetrics) ? ($cvrMetrics['npft'] ?? null) : null;
+            $item->avg_nroi_pct = is_array($cvrMetrics) ? ($cvrMetrics['nroi'] ?? null) : null;
             if (is_array($adv)) {
                 $gpft = (float) ($adv['GPFT'] ?? 0);
                 $roiPct = (float) ($adv['ROI'] ?? 0);
@@ -693,19 +732,6 @@ class ForecastAnalysisController extends Controller
                 if ($hasAdv || $gpft != 0.0 || $roiPct != 0.0) {
                     $item->avg_gpft_pct = (int) round($gpft);
                     $item->avg_groi_pct = (int) round($roiPct);
-                    // NPFT% = GPFT% − Ads% (same as /all-marketplace-master Amazon row / badge)
-                    $adsPct = is_numeric($defaultChannelAds) ? (float) $defaultChannelAds : 0.0;
-                    $item->avg_npft_pct = (int) round($gpft - $adsPct);
-                    // NROI% = (gross profit $ − ad spend $) / LP × 100
-                    // gross profit $ ≈ price × GPFT%/100; ad spend $ ≈ price × Ads%/100
-                    $amzPriceEarly = (float) $resolveAmazonPrice($sheetSku);
-                    $shipEarly = is_numeric($values['ship'] ?? null) ? (float) $values['ship'] : 0.0;
-                    if ($lp > 0 && $amzPriceEarly > 0) {
-                        // Same unit economics as Amazon GPFT: price×0.80 − ship − LP
-                        $grossPftDollar = ($amzPriceEarly * 0.80) - $shipEarly - $lp;
-                        $netPftDollar = $grossPftDollar - ($amzPriceEarly * $adsPct / 100);
-                        $item->avg_nroi_pct = (int) round(($netPftDollar / $lp) * 100);
-                    }
                 }
             }
             $item->reviews = $getJungleReviews($sheetSku);
