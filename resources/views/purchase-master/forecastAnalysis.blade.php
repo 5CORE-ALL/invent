@@ -411,6 +411,40 @@
             text-align: center;
             white-space: nowrap;
         }
+        /* SKU column expand / collapse control */
+        .forecast-sku-title-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            max-width: 100%;
+        }
+        .forecast-sku-expand-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            border: 1px solid rgba(0, 0, 0, 0.22);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.75);
+            color: #0f172a;
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .forecast-sku-expand-btn:hover {
+            background: #fff;
+            border-color: #0f766e;
+            color: #0f766e;
+        }
+        .forecast-sku-expand-btn.is-expanded {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+        }
         #forecast-table-wrap .tabulator .tabulator-header .tabulator-header-filter {
             writing-mode: horizontal-tb !important;
             transform: none !important;
@@ -2467,6 +2501,40 @@
             forecastClampPreviewPosition(wrap, clientX, clientY);
         }
 
+        // SKU column width toggle (header expand button)
+        const SKU_COL_WIDTH_COLLAPSED = 180;
+        const SKU_COL_WIDTH_EXPANDED = 380;
+        let skuColumnExpanded = false;
+        try {
+            skuColumnExpanded = sessionStorage.getItem('forecast.skuColumnExpanded') === '1';
+        } catch (e) { /* ignore */ }
+
+        function applySkuColumnWidth(tab) {
+            if (!tab || typeof tab.updateColumnDefinition !== 'function') return;
+            const w = skuColumnExpanded ? SKU_COL_WIDTH_EXPANDED : SKU_COL_WIDTH_COLLAPSED;
+            let currentTitle = 'SKU';
+            try {
+                const col = tab.getColumn('SKU');
+                const def = col && typeof col.getDefinition === 'function' ? col.getDefinition() : null;
+                if (def && def.title) currentTitle = def.title;
+            } catch (e) { /* ignore */ }
+            tab.updateColumnDefinition('SKU', {
+                title: currentTitle,
+                width: w,
+                minWidth: w,
+                widthGrow: skuColumnExpanded ? 0 : 1,
+            });
+            document.querySelectorAll('.forecast-sku-expand-btn').forEach(function(btn) {
+                btn.classList.toggle('is-expanded', skuColumnExpanded);
+                btn.title = skuColumnExpanded ? 'Collapse SKU column' : 'Expand SKU column';
+                btn.setAttribute('aria-label', btn.title);
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.className = skuColumnExpanded ? 'fas fa-compress-alt' : 'fas fa-expand-alt';
+                }
+            });
+        }
+
         const table = new Tabulator("#forecast-table", {
             ajaxURL: "/forecast-analysis-data-view",
             ajaxConfig: {
@@ -2623,10 +2691,43 @@
                     field: "SKU",
                     frozen: true,
                     movable: false,
-                    resizable: false,
-                    minWidth: 180,
-                    widthGrow: 1,
+                    resizable: true,
+                    width: skuColumnExpanded ? SKU_COL_WIDTH_EXPANDED : SKU_COL_WIDTH_COLLAPSED,
+                    minWidth: skuColumnExpanded ? SKU_COL_WIDTH_EXPANDED : SKU_COL_WIDTH_COLLAPSED,
+                    widthGrow: skuColumnExpanded ? 0 : 1,
                     accessor: row => (row ? row["SKU"] : ''),
+                    titleFormatter: function(cell) {
+                        const titleText = cell.getValue() || 'SKU';
+                        const wrap = document.createElement('span');
+                        wrap.className = 'forecast-sku-title-wrap';
+
+                        const label = document.createElement('span');
+                        label.textContent = titleText;
+                        wrap.appendChild(label);
+
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'forecast-sku-expand-btn' + (skuColumnExpanded ? ' is-expanded' : '');
+                        btn.title = skuColumnExpanded ? 'Collapse SKU column' : 'Expand SKU column';
+                        btn.setAttribute('aria-label', btn.title);
+                        btn.innerHTML = skuColumnExpanded
+                            ? '<i class="fas fa-compress-alt" aria-hidden="true"></i>'
+                            : '<i class="fas fa-expand-alt" aria-hidden="true"></i>';
+                        btn.addEventListener('mousedown', function(e) {
+                            e.stopPropagation();
+                        });
+                        btn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            skuColumnExpanded = !skuColumnExpanded;
+                            try {
+                                sessionStorage.setItem('forecast.skuColumnExpanded', skuColumnExpanded ? '1' : '0');
+                            } catch (err) { /* ignore */ }
+                            applySkuColumnWidth(cell.getTable());
+                        });
+                        wrap.appendChild(btn);
+                        return wrap;
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData() || {};
                         const v = cell.getValue() == null ? '' : String(cell.getValue());
@@ -3988,6 +4089,8 @@
                         table.updateColumnDefinition("readyToShipQty",  { title: "R2S" });
                         table.updateColumnDefinition("transit",         { title: "Trn" });
                         table.updateColumnDefinition("MOQ",             { title: "MOQ", headerTooltip: "Minimum Order Quantity" });
+                        // Keep SKU expand/collapse width after header title refresh
+                        applySkuColumnWidth(table);
                     } finally {
                         if (typeof table.restoreRedraw === 'function') table.restoreRedraw();
                     }
