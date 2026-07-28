@@ -896,13 +896,6 @@
                                 </ul>
                             </div>
 
-                            <label class="btn btn-sm btn-light border border-primary d-inline-flex align-items-center gap-2 mb-0 forecast-filter-field"
-                                title="When checked, edits apply to all child SKUs under the same Parent"
-                                style="cursor:pointer;white-space:nowrap;">
-                                <input type="checkbox" class="form-check-input m-0" id="forecast-siblings-mode" autocomplete="off">
-                                <span class="fw-semibold">Siblings</span>
-                            </label>
-
                             <select id="stage-filter" class="form-select form-select-sm border border-primary forecast-filter-field"
                                     title="Stage"
                                     aria-label="Stage">
@@ -1093,16 +1086,6 @@
                     <form id="forecastRowEditForm" autocomplete="off">
                         <input type="hidden" id="fre_sku">
                         <input type="hidden" id="fre_parent">
-
-                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-                            <label class="d-inline-flex align-items-center gap-2 mb-0" style="cursor:pointer;"
-                                title="Apply these changes to every child SKU under the same Parent">
-                                <input type="checkbox" class="form-check-input m-0" id="fre_siblings" autocomplete="off">
-                                <span class="fw-semibold">Siblings</span>
-                                <span class="text-muted small">Update all children of this Parent</span>
-                            </label>
-                            <span id="fre_siblings_hint" class="small text-muted"></span>
-                        </div>
 
                         <div class="row g-3">
                             <div class="col-12">
@@ -1410,128 +1393,25 @@
             return Math.round(n / 1000).toLocaleString('en-US') + 'K';
         }
 
-        function isForecastSiblingsMode() {
-            const toolbar = document.getElementById('forecast-siblings-mode');
-            const modalCb = document.getElementById('fre_siblings');
-            // Prefer modal checkbox while edit modal is open; else toolbar.
-            const modalEl = document.getElementById('forecastRowEditModal');
-            if (modalEl && modalEl.classList.contains('show') && modalCb) {
-                return !!modalCb.checked;
-            }
-            return !!(toolbar && toolbar.checked);
-        }
-
-        function setForecastSiblingsMode(checked) {
-            const on = !!checked;
-            const toolbar = document.getElementById('forecast-siblings-mode');
-            const modalCb = document.getElementById('fre_siblings');
-            if (toolbar) toolbar.checked = on;
-            if (modalCb) modalCb.checked = on;
-            updateForecastSiblingsHint();
-        }
-
-        function getForecastSiblingChildRows(parent) {
-            const p = String(parent || '').trim().toUpperCase();
-            if (!p) return [];
-            let tbl = null;
-            try {
-                tbl = (typeof table !== 'undefined' && table) ? table : null;
-            } catch (_) {
-                tbl = null;
-            }
-            if (!tbl && typeof Tabulator !== 'undefined') {
-                const found = Tabulator.findTable('#forecast-table');
-                tbl = found && found[0] ? found[0] : null;
-            }
-            if (!tbl) return [];
-            return (tbl.getRows('active') || []).filter(function(r) {
-                const d = r.getData() || {};
-                if (d.is_parent || d.isParent) return false;
-                return String(d.Parent || d.parent || '').trim().toUpperCase() === p;
-            });
-        }
-
-        function expandForecastTargetsWithSiblings(rows) {
-            const base = Array.isArray(rows) ? rows : [];
-            if (!isForecastSiblingsMode()) return base;
-            const parents = new Set();
-            base.forEach(function(r) {
-                const d = (r && r.getData) ? (r.getData() || {}) : {};
-                const p = String(d.Parent || d.parent || '').trim().toUpperCase();
-                if (p) parents.add(p);
-            });
-            let expanded = base.slice();
-            parents.forEach(function(p) {
-                expanded = dedupeForecastRows(expanded.concat(getForecastSiblingChildRows(p)));
-            });
-            return expanded;
-        }
-
-        function updateForecastSiblingsHint() {
-            const hint = document.getElementById('fre_siblings_hint');
-            if (!hint) return;
-            if (!isForecastSiblingsMode()) {
-                hint.textContent = '';
-                return;
-            }
-            const parent = String($('#fre_parent').val() || '').trim();
-            if (!parent) {
-                hint.textContent = 'Siblings on — parent required';
-                return;
-            }
-            const n = getForecastSiblingChildRows(parent).length;
-            hint.textContent = n > 0
-                ? ('Will update ' + n + ' sibling SKU(s) under ' + parent)
-                : 'No sibling children found for this parent';
-        }
-
         /** POST inline forecast updates (used by Tabulator MOQ editor and other handlers). */
         function updateForecastField(data, onSuccess, onFail) {
             onSuccess = typeof onSuccess === 'function' ? onSuccess : function() {};
             onFail = typeof onFail === 'function' ? onFail : function() {};
-
-            const payloads = [{ ...data }];
-            if (isForecastSiblingsMode() && data && data.parent) {
-                const primarySku = String(data.sku || '').trim().toUpperCase();
-                getForecastSiblingChildRows(data.parent).forEach(function(r) {
-                    const d = r.getData() || {};
-                    const sku = String(d.SKU || d.sku || '').trim();
-                    if (!sku || sku.toUpperCase() === primarySku) return;
-                    payloads.push({
-                        ...data,
-                        sku: sku,
-                        parent: String(d.Parent || d.parent || data.parent || '')
-                    });
-                });
-            }
-
-            let remaining = payloads.length;
-            let failed = false;
-            payloads.forEach(function(payload) {
-                $.post('/update-forecast-data', {
-                    ...payload,
-                    _token: $('meta[name="csrf-token"]').attr('content')
-                }).done(function(res) {
-                    if (!res || !res.success) {
-                        failed = true;
-                        console.warn('Not saved:', res && res.message, payload);
-                    } else if (res.message) {
-                        console.log('Saved:', res.message, payload.sku || '');
-                    }
-                }).fail(function(err) {
-                    failed = true;
-                    console.error('AJAX failed:', err);
-                }).always(function() {
-                    remaining -= 1;
-                    if (remaining > 0) return;
-                    if (failed) {
-                        if (payloads.length === 1) alert('Error saving data.');
-                        else alert('Some sibling updates failed. Check console for details.');
-                        onFail();
-                    } else {
-                        onSuccess();
-                    }
-                });
+            $.post('/update-forecast-data', {
+                ...data,
+                _token: $('meta[name="csrf-token"]').attr('content')
+            }).done(function(res) {
+                if (res.success) {
+                    if (res.message) console.log('Saved:', res.message);
+                    onSuccess();
+                } else {
+                    console.warn('Not saved:', res.message);
+                    onFail();
+                }
+            }).fail(function(err) {
+                console.error('AJAX failed:', err);
+                alert('Error saving data.');
+                onFail();
             });
         }
 
@@ -1701,19 +1581,13 @@
             const sku    = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
             const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
 
-            // Sync modal Siblings checkbox with toolbar mode.
-            const toolbarSiblings = document.getElementById('forecast-siblings-mode');
-            const modalSiblings = document.getElementById('fre_siblings');
-            if (modalSiblings) modalSiblings.checked = !!(toolbarSiblings && toolbarSiblings.checked);
-
             // Lock bulk targets when the modal opens so a later selection change
             // (e.g. clicking the Edit button) cannot shrink this to a single row.
-            let bulkTargets = (forecastRowEditState.pendingBulkTargets && forecastRowEditState.pendingBulkTargets.length)
+            const bulkTargets = (forecastRowEditState.pendingBulkTargets && forecastRowEditState.pendingBulkTargets.length)
                 ? forecastRowEditState.pendingBulkTargets
                 : ((typeof getForecastBulkTargetRows === 'function')
                     ? getForecastBulkTargetRows(sku, [row])
                     : [row]);
-            bulkTargets = expandForecastTargetsWithSiblings(bulkTargets);
             forecastRowEditState.pendingBulkTargets = null;
             forecastRowEditState.targetRows = bulkTargets;
 
@@ -1761,12 +1635,9 @@
             $('#fre_sku').val(sku);
             $('#fre_parent').val(parent);
             const bulkHint = bulkTargets.length > 1
-                ? (isForecastSiblingsMode()
-                    ? ' · Siblings: ' + bulkTargets.length + ' child SKUs'
-                    : ' · changes apply to ' + bulkTargets.length + ' selected rows')
+                ? ' · changes apply to ' + bulkTargets.length + ' selected rows'
                 : '';
             $('#forecastRowEditSubtitle').text(sku + (parent ? '  ·  ' + parent : '') + bulkHint);
-            updateForecastSiblingsHint();
 
             $('#fre_moq').val(original.moq);
             $('#fre_order').val(original.order);
@@ -1967,11 +1838,9 @@
                 return;
             }
 
-            let targetRows = (forecastRowEditState.targetRows && forecastRowEditState.targetRows.length)
+            const targetRows = (forecastRowEditState.targetRows && forecastRowEditState.targetRows.length)
                 ? forecastRowEditState.targetRows
                 : getForecastBulkTargetRows(sku, [row]);
-            // Re-expand at save time so toggling Siblings in the modal is respected.
-            targetRows = expandForecastTargetsWithSiblings(targetRows.length ? targetRows : [row]);
             if (!targetRows.length) {
                 $status.html('<span class="text-danger">No rows to update.</span>');
                 return;
@@ -2178,40 +2047,16 @@
                 ...getForecastActiveSelectedRows(),
                 ...(extraRows || [])
             ]);
-            if (merged.length > 0) return expandForecastTargetsWithSiblings(merged);
+            if (merged.length > 0) return merged;
 
             if (primarySku && typeof table !== 'undefined' && table) {
                 const match = table.getRows().find(function (r) {
                     return String((r.getData() || {}).SKU || '').trim() === String(primarySku).trim();
                 });
-                if (match && isSelectableForecastRow(match)) {
-                    return expandForecastTargetsWithSiblings([match]);
-                }
+                if (match && isSelectableForecastRow(match)) return [match];
             }
             return [];
         }
-
-        $(document).off('change.forecastSiblings', '#forecast-siblings-mode, #fre_siblings')
-            .on('change.forecastSiblings', '#forecast-siblings-mode, #fre_siblings', function() {
-                setForecastSiblingsMode(this.checked);
-                // Refresh modal targets/subtitle live when toggling Siblings.
-                if (forecastRowEditState.row) {
-                    const d = forecastRowEditState.row.getData() || {};
-                    const sku = String(forecastRowGetField(d, 'SKU', 'sku') || '').trim();
-                    const parent = String(forecastRowGetField(d, 'Parent', 'parent') || '').trim();
-                    const targets = expandForecastTargetsWithSiblings(
-                        getForecastBulkTargetRows(sku, [forecastRowEditState.row])
-                    );
-                    forecastRowEditState.targetRows = targets;
-                    const bulkHint = targets.length > 1
-                        ? (isForecastSiblingsMode()
-                            ? ' · Siblings: ' + targets.length + ' child SKUs'
-                            : ' · changes apply to ' + targets.length + ' selected rows')
-                        : '';
-                    $('#forecastRowEditSubtitle').text(sku + (parent ? '  ·  ' + parent : '') + bulkHint);
-                    updateForecastSiblingsHint();
-                }
-            });
 
         // ============================================================
         // Multi-stage Stage column
@@ -4054,41 +3899,27 @@
                         const sku = String(d.SKU || '').trim();
                         if (!sku) return;
                         const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
-                        const parent = String(d.Parent || d.parent || '').trim();
-                        const targets = isForecastSiblingsMode() && parent
-                            ? expandForecastTargetsWithSiblings([row])
-                            : [row];
-
                         // Same backend path used by MFRG In Progress for executive saves.
                         // value = null when the user picks "Unassigned" so the DB column
                         // gets a real NULL (matches the rest of the app).
-                        Promise.all(targets.map(function(tRow) {
-                            const td = tRow.getData() || {};
-                            const tSku = String(td.SKU || td.sku || '').trim();
-                            if (!tSku) return Promise.resolve({ ok: true, row: tRow });
-                            return fetch('/update-link', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-TOKEN': token,
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                    'Accept': 'application/json'
-                                },
-                                body: JSON.stringify({ sku: tSku, row_id: 0, column: 'Exec', value: next || null })
-                            })
-                            .then(r => r.json())
-                            .then(res => ({ ok: !!(res && res.success), row: tRow, message: res && res.message }));
-                        }))
-                        .then(function(results) {
-                            const failed = results.filter(function(r) { return !r.ok; });
-                            if (failed.length) {
+                        fetch('/update-link', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ sku: sku, row_id: 0, column: 'Exec', value: next || null })
+                        })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (!res || !res.success) {
                                 cell.setValue(prev, true);
-                                alert(failed[0].message || 'Failed to update Exec');
-                                return;
+                                alert(res?.message || 'Failed to update Exec');
+                            } else {
+                                row.update({ exec: next }, true);
                             }
-                            results.forEach(function(r) {
-                                try { r.row.update({ exec: next }, true); } catch (_) {}
-                            });
                         })
                         .catch(() => {
                             cell.setValue(prev, true);
