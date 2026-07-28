@@ -22,6 +22,7 @@ use App\Models\Supplier;
 use App\Models\TransitContainerDetail;
 use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
+use App\Models\ComparisonData;
 use App\Services\SupplierCategorySync;
 use App\Services\ToOrderSkuFieldSync;
 use App\Services\ToOrderSupplierSync;
@@ -649,6 +650,25 @@ class ForecastAnalysisController extends Controller
             }
         }
 
+        // SKUs that already have Comparison Data (CD) sheet cells saved.
+        $cdAvailableBySku = [];
+        try {
+            if (Schema::hasTable('comparison_data')) {
+                foreach (ComparisonData::query()->get(['sku', 'sheet_data']) as $cdRow) {
+                    $cdSku = $normalizeSku($cdRow->sku ?? '');
+                    if ($cdSku === '') {
+                        continue;
+                    }
+                    $cells = is_array($cdRow->sheet_data) ? ($cdRow->sheet_data['cells'] ?? []) : [];
+                    if (is_array($cells) && $cells !== []) {
+                        $cdAvailableBySku[$cdSku] = true;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Forecast: failed to load comparison_data availability: '.$e->getMessage());
+        }
+
         foreach ($productListData as $prodData) {
             $sheetSku = $normalizeSku($prodData->sku);
             if (empty($sheetSku)) continue;
@@ -656,6 +676,7 @@ class ForecastAnalysisController extends Controller
 
             $item = new \stdClass();
             $item->SKU = $sheetSku;
+            $item->has_cd = !empty($cdAvailableBySku[$sheetSku]);
             $item->Parent = $normalizeSku($prodData->parent ?? '');
             $toOrderKey = $sheetSku . '|' . $item->Parent;
             $item->two_order_qty = (float) (

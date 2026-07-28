@@ -133,6 +133,81 @@
         .forecast-edit-row-btn:hover {
             color: #0f766e !important;
         }
+
+        /* Edit Row: full-height right sidebar */
+        #forecastRowEditModal.modal {
+            padding-right: 0 !important;
+        }
+        #forecastRowEditModal .modal-dialog {
+            position: fixed;
+            top: 0;
+            right: 0;
+            left: auto;
+            margin: 0;
+            width: min(420px, 100vw);
+            max-width: min(420px, 100vw);
+            height: 100%;
+            max-height: 100%;
+            transform: none;
+        }
+        #forecastRowEditModal.modal.fade .modal-dialog {
+            transform: translateX(100%);
+            transition: transform 0.28s ease-out;
+        }
+        #forecastRowEditModal.modal.show .modal-dialog {
+            transform: translateX(0);
+        }
+        #forecastRowEditModal .modal-content {
+            height: 100%;
+            max-height: 100%;
+            border: 0;
+            border-radius: 0;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -8px 0 28px rgba(15, 23, 42, 0.18);
+        }
+        #forecastRowEditModal .modal-header {
+            flex-shrink: 0;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        #forecastRowEditModal .modal-title {
+            font-size: 1.05rem;
+            line-height: 1.3;
+            padding-right: 0.25rem;
+        }
+        #forecastRowEditModal #forecastRowEditSubtitle {
+            display: block;
+            margin-left: 0 !important;
+            margin-top: 0.25rem;
+            font-size: 0.8rem;
+            word-break: break-word;
+            white-space: normal;
+        }
+        #forecastRowEditModal .modal-body {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+        #forecastRowEditModal .modal-footer {
+            flex-shrink: 0;
+            justify-content: stretch;
+            gap: 0.5rem;
+        }
+        #forecastRowEditModal .modal-footer .btn {
+            flex: 1 1 0;
+        }
+        #forecastRowEditModal .fre-qty-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+        @media (max-width: 420px) {
+            #forecastRowEditModal .modal-dialog {
+                width: 100vw;
+                max-width: 100vw;
+            }
+        }
         .nrp-dot-cell .nrp-nr-select {
             opacity: 0;
             cursor: pointer;
@@ -1070,12 +1145,12 @@
          the user actually changes are sent; unchanged fields are skipped. --}}
     <div class="modal fade" id="forecastRowEditModal" tabindex="-1" role="dialog"
         aria-labelledby="forecastRowEditLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable shadow-none" role="document" style="max-width: 860px;">
-            <div class="modal-content border-0 shadow-lg">
+        <div class="modal-dialog forecast-edit-sidebar shadow-none" role="document">
+            <div class="modal-content border-0">
                 <div class="modal-header bg-primary text-dark border-0">
                     <h5 class="modal-title fw-bold text-dark" id="forecastRowEditLabel">
                         <i class="fas fa-edit me-2"></i> Edit Row
-                        <small class="text-dark fw-bold ms-2" id="forecastRowEditSubtitle"></small>
+                        <small class="text-dark fw-bold" id="forecastRowEditSubtitle"></small>
                     </h5>
                     <button type="button" class="close text-dark custom-close" data-bs-dismiss="modal"
                         aria-label="Close" style="font-size:25px; background-color: transparent; border: none;">
@@ -1089,61 +1164,47 @@
 
                         <div class="row g-3">
                             <div class="col-12">
-                                <div class="d-flex flex-nowrap gap-2">
-                                    <div class="flex-fill" style="min-width:0;">
+                                <div class="fre-qty-grid">
+                                    <div>
                                         <label class="form-label small mb-1">MOQ <span class="text-muted" style="font-weight:400;">(Min Order)</span></label>
                                         <input type="number" step="1" class="form-control" id="fre_moq">
                                     </div>
-                                    <div class="flex-fill" style="min-width:0;">
+                                    <div>
                                         <label class="form-label small mb-1">Order <span class="text-muted" style="font-weight:400;">(appr.)</span></label>
                                         <input type="number" step="1" min="0" class="form-control" id="fre_order" title="Approved order qty">
                                     </div>
-                                    <div class="flex-fill" style="min-width:0;">
+                                    <div>
                                         <label class="form-label small mb-1">MIP</label>
                                         <input type="number" step="1" min="0" class="form-control" id="fre_mip">
                                     </div>
-                                    <div class="flex-fill" style="min-width:0;">
+                                    <div>
                                         <label class="form-label small mb-1">R2S</label>
                                         <input type="number" step="1" min="0" class="form-control" id="fre_r2s">
                                     </div>
-                                    <div class="flex-fill" style="min-width:0;">
+                                    <div>
                                         <label class="form-label small mb-1">Transit</label>
                                         <input type="number" step="1" min="0" class="form-control" id="fre_transit">
                                     </div>
-                                    {{-- CP / CBM (live on product_master.Values) --}}
-                                    <div class="flex-fill" style="min-width:0;">
+                                    <div>
                                         <label class="form-label small mb-1">CP</label>
                                         <input type="number" step="0.01" class="form-control" id="fre_cp">
-                                    </div>
-                                    <div class="flex-fill" style="min-width:0;">
-                                        <label class="form-label small mb-1">CBM</label>
-                                        <input type="number" step="0.0001" class="form-control" id="fre_cbm">
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col-12">
                                 <label class="form-label small mb-1">Supplier</label>
                                 <select class="form-select select-searchable" id="fre_supplier">
                                     <option value="">-- Select --</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12">
                                 <label class="form-label small mb-1">Category</label>
                                 <select class="form-select select-searchable" id="fre_category">
                                     <option value="">-- Select --</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">Zone</label>
-                                <select class="form-select" id="fre_zone">
-                                    <option value="">-- Select --</option>
-                                    <option value="Ningbo">Ningbo</option>
-                                    <option value="Ghz">Ghz</option>
-                                    <option value="Tianjin">Tianjin</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
+                            <div class="col-12">
                                 <label class="form-label small mb-1">Exec</label>
                                 <select class="form-select select-searchable" id="fre_exec" data-search-placeholder="Search exec…">
                                     <option value="">NA</option>
@@ -1152,7 +1213,7 @@
                                     @endforeach
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12">
                                 <label class="form-label small mb-1">Stage <span class="text-muted" style="font-weight:400;">(multi)</span></label>
                                 <div class="dropdown" id="fre_stage_dd">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start d-flex justify-content-between align-items-center"
@@ -1176,7 +1237,7 @@
                                     <option value="all_good">All Good</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-12">
                                 <label class="form-label small mb-1">NR</label>
                                 <select class="form-select" id="fre_nr">
                                     <option value="">— None —</option>
@@ -1185,26 +1246,26 @@
                                     <option value="LATER">LATER</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label small mb-1">Date of Appr</label>
-                                <input type="date" class="form-control" id="fre_dateappr">
-                            </div>
-
-                            {{-- Links --}}
-                            <div class="col-12 mt-3">
+                            <div class="col-12 mt-1">
                                 <h6 class="text-muted small text-uppercase mb-2">Links</h6>
-                            </div>
-                            <div class="col-12">
                                 <label class="form-label small mb-1">Comparison Link (Clink)</label>
                                 <input type="url" class="form-control" id="fre_clink" placeholder="https://...">
                             </div>
-
                         </div>
 
-                        <div id="forecastRowEditStatus" class="small mt-3"></div>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                            <label class="d-inline-flex align-items-center gap-2 mb-0 small"
+                                title="Temporary: only this Save applies the same changes to all child SKUs under this Parent"
+                                style="cursor:pointer;user-select:none;">
+                                <input type="checkbox" class="form-check-input m-0" id="fre_siblings" autocomplete="off">
+                                <span class="fw-semibold">Siblings</span>
+                            </label>
+                            <span class="small text-muted" id="fre_siblings_hint"></span>
+                        </div>
+                        <div id="forecastRowEditStatus" class="small mt-2"></div>
                     </form>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer border-0">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="forecastRowEditSaveBtn">
                         <i class="fas fa-save me-2"></i> Save Changes
@@ -1537,7 +1598,46 @@
             targetRows: [],
             pendingBulkTargets: null,
             original: {},
+            /** Field keys the user actually edited in this modal open (Save sends only these). */
+            dirtyKeys: {},
+            stagesTouched: false,
+            /** True while pre-filling the form so programmatic .val() / SelectSearchable refresh do not count as edits. */
+            suppressDirty: false,
         };
+
+        const FORECAST_ROW_EDIT_FIELD_DEFS = [
+            { id: 'fre_moq',         column: 'MOQ',           key: 'moq',       numeric: true },
+            { id: 'fre_order',       column: 'ORDER',         key: 'order',     numeric: true },
+            { id: 'fre_mip',         column: 'MIP',           key: 'mip',       numeric: true },
+            { id: 'fre_r2s',         column: 'R2S',           key: 'r2s',       numeric: true },
+            { id: 'fre_transit',     column: 'Transit',       key: 'transit',   numeric: true },
+            { id: 'fre_cp',          column: 'CP',            key: 'cp',        numeric: true },
+            { id: 'fre_supplier',    column: 'supplier',      key: 'supplier',  numeric: false },
+            { id: 'fre_category',    column: 'Category',      key: 'category',  numeric: false },
+            { id: 'fre_exec',        column: 'Exec',          key: 'exec',      numeric: false },
+            { id: 'fre_nr',          column: 'NR',            key: 'nr',        numeric: false },
+            { id: 'fre_clink',       column: 'Clink',         key: 'clink',     numeric: false },
+        ];
+
+        function markForecastRowEditDirty(fieldKey) {
+            if (!fieldKey || forecastRowEditState.suppressDirty) return;
+            forecastRowEditState.dirtyKeys[fieldKey] = true;
+        }
+
+        function resetForecastRowEditDirty() {
+            forecastRowEditState.dirtyKeys = {};
+            forecastRowEditState.stagesTouched = false;
+        }
+
+        /** Normalize values before diff so "200" vs 200 / "" vs null do not look like edits. */
+        function forecastRowNormalizeForCompare(value, numeric) {
+            if (value === null || value === undefined) return '';
+            const s = String(value).trim();
+            if (!numeric) return s;
+            if (s === '') return '';
+            const n = Number(s);
+            return Number.isFinite(n) ? String(n) : s;
+        }
 
         function forecastRowGetField(d, ...keys) {
             for (const k of keys) {
@@ -1602,7 +1702,6 @@
                 r2s:        forecastRowGetField(d, 'readyToShipQty', 'ready_to_ship', 'r2s'),
                 transit:    forecastRowGetField(d, 'transit', 'Transit'),
                 cp:         forecastRowGetField(d, 'CP', 'cp', 'LP'),
-                cbm:        forecastRowGetField(d, 'CBM', 'cbm'),
                 stage:      String(forecastRowGetField(d, 'stage', 'Stage') || '').trim().toLowerCase(),
                 stages:     getForecastStages(d),
                 // Mirror the table cell's default: empty / invalid -> 'REQ'. This way the
@@ -1614,7 +1713,6 @@
                     if (raw === 'REQ' || raw === 'NR' || raw === 'LATER') return raw;
                     return 'REQ';
                 })(),
-                date_appr:  forecastRowToYmd(forecastRowGetField(d, 'date_apprvl', 'Date of Appr')),
                 req:        forecastRowGetField(d, 'req', 'REQ'),
                 clink:      forecastRowGetField(d, 'Clink', 'clink'),
                 hide:       (function(v) {
@@ -1626,7 +1724,6 @@
                 notes:      forecastRowGetField(d, 'notes', 'Notes'),
                 supplier:   forecastRowGetField(d, 'mfrg_supplier', 'Supplier'),
                 category:   forecastRowGetField(d, 'Category', 'category'),
-                zone:       forecastRowGetField(d, 'r2s_zone', 'zone'),
                 exec:       forecastRowGetField(d, 'exec', 'Exec'),
             };
             forecastRowEditState.original = original;
@@ -1639,29 +1736,125 @@
                 : '';
             $('#forecastRowEditSubtitle').text(sku + (parent ? '  ·  ' + parent : '') + bulkHint);
 
+            resetForecastRowEditDirty();
+            forecastRowEditState.suppressDirty = true;
+
             $('#fre_moq').val(original.moq);
             $('#fre_order').val(original.order);
-            syncFreStageDropdown();
             $('#fre_mip').val(original.mip);
             $('#fre_r2s').val(original.r2s);
             $('#fre_transit').val(original.transit);
             $('#fre_cp').val(original.cp);
-            $('#fre_cbm').val(original.cbm);
             $('#fre_stage').val(original.stages || []);
+            syncFreStageDropdown();
             $('#fre_nr').val(original.nr);
-            $('#fre_dateappr').val(original.date_appr);
             $('#fre_clink').val(original.clink);
             populateForecastRowEditSupplierSelect(original.supplier);
             populateForecastRowEditCategorySelect(original.category);
-            $('#fre_zone').val(original.zone);
             $('#fre_exec').val(original.exec);
             if (window.SelectSearchable) window.SelectSearchable.refresh(document.getElementById('fre_exec'));
+
+            // Re-baseline originals from the live form so Save diffs match what the user sees
+            // (avoids false "all fields changed" from type/format mismatches).
+            FORECAST_ROW_EDIT_FIELD_DEFS.forEach(function(f) {
+                let v = $('#' + f.id).val();
+                if (v === undefined || v === null) v = '';
+                original[f.key] = v;
+            });
+            original.stages = normalizeForecastStages($('#fre_stage').val() || []);
+            forecastRowEditState.original = original;
+            resetForecastRowEditDirty();
+            forecastRowEditState.suppressDirty = false;
+
             $('#forecastRowEditStatus').empty();
+            // Siblings is temporary per Save click — always start unchecked.
+            const siblingsCb = document.getElementById('fre_siblings');
+            if (siblingsCb) siblingsCb.checked = false;
+            updateForecastSiblingsHint();
 
             const modalEl = document.getElementById('forecastRowEditModal');
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
             modal.show();
         }
+
+        // Mark only inputs the user touches — Save / Siblings apply those fields only.
+        $(document).off('input.fredirty change.fredirty', '#forecastRowEditForm :input')
+            .on('input.fredirty change.fredirty', '#forecastRowEditForm :input', function() {
+                if (forecastRowEditState.suppressDirty) return;
+                const id = this.id || '';
+                if (id === 'fre_siblings' || id === 'fre_sku' || id === 'fre_parent') return;
+                if (id === 'fre_stage' || (this.classList && this.classList.contains('fre-stage-cb'))) {
+                    forecastRowEditState.stagesTouched = true;
+                    return;
+                }
+                if (!id) return;
+                const def = FORECAST_ROW_EDIT_FIELD_DEFS.find(function(f) { return f.id === id; });
+                if (def) markForecastRowEditDirty(def.key);
+            });
+        $(document).off('change.frestagedirty', '.fre-stage-cb')
+            .on('change.frestagedirty', '.fre-stage-cb', function() {
+                if (forecastRowEditState.suppressDirty) return;
+                forecastRowEditState.stagesTouched = true;
+            });
+
+        function getForecastSiblingChildRows(parent) {
+            const p = String(parent || '').trim().toUpperCase();
+            if (!p) return [];
+            let tbl = null;
+            try {
+                tbl = (typeof table !== 'undefined' && table) ? table : null;
+            } catch (_) {
+                tbl = null;
+            }
+            if (!tbl && typeof Tabulator !== 'undefined') {
+                const found = Tabulator.findTable('#forecast-table');
+                tbl = found && found[0] ? found[0] : null;
+            }
+            if (!tbl) return [];
+            return (tbl.getRows() || []).filter(function(r) {
+                const d = r.getData() || {};
+                if (d.is_parent || d.isParent) return false;
+                return String(d.Parent || d.parent || '').trim().toUpperCase() === p;
+            });
+        }
+
+        function expandForecastTargetsWithSiblings(rows) {
+            const base = Array.isArray(rows) ? rows : [];
+            const parents = new Set();
+            base.forEach(function(r) {
+                const d = (r && r.getData) ? (r.getData() || {}) : {};
+                const p = String(d.Parent || d.parent || '').trim().toUpperCase();
+                if (p) parents.add(p);
+            });
+            let expanded = base.slice();
+            parents.forEach(function(p) {
+                expanded = dedupeForecastRows(expanded.concat(getForecastSiblingChildRows(p)));
+            });
+            return expanded;
+        }
+
+        function updateForecastSiblingsHint() {
+            const hint = document.getElementById('fre_siblings_hint');
+            const cb = document.getElementById('fre_siblings');
+            if (!hint) return;
+            if (!cb || !cb.checked) {
+                hint.textContent = '';
+                return;
+            }
+            const parent = String($('#fre_parent').val() || '').trim();
+            if (!parent) {
+                hint.textContent = 'Parent required';
+                return;
+            }
+            const n = getForecastSiblingChildRows(parent).length;
+            hint.textContent = n > 0
+                ? ('This Save will update ' + n + ' child SKU(s) under ' + parent)
+                : 'No sibling children found for this parent';
+        }
+
+        $(document).on('change', '#fre_siblings', function() {
+            updateForecastSiblingsHint();
+        });
 
         function forecastHistoryEscapeHtml(text) {
             if (text == null) return '';
@@ -1777,9 +1970,9 @@
         }
 
         // Treat empty/null/undefined as equal so re-saving a never-set field doesn't fire.
-        function forecastRowValChanged(prev, next) {
-            const a = (prev === null || prev === undefined) ? '' : String(prev).trim();
-            const b = (next === null || next === undefined) ? '' : String(next).trim();
+        function forecastRowValChanged(prev, next, numeric) {
+            const a = forecastRowNormalizeForCompare(prev, !!numeric);
+            const b = forecastRowNormalizeForCompare(next, !!numeric);
             return a !== b;
         }
 
@@ -1794,60 +1987,58 @@
                 return;
             }
 
-            const fieldDefs = [
-                { id: 'fre_moq',         column: 'MOQ',           key: 'moq' },
-                { id: 'fre_order',       column: 'ORDER',         key: 'order' },
-                { id: 'fre_mip',         column: 'MIP',           key: 'mip' },
-                { id: 'fre_r2s',         column: 'R2S',           key: 'r2s' },
-                { id: 'fre_transit',     column: 'Transit',       key: 'transit' },
-                { id: 'fre_cp',          column: 'CP',            key: 'cp' },
-                { id: 'fre_cbm',         column: 'CBM',           key: 'cbm' },
-                { id: 'fre_supplier',    column: 'supplier',      key: 'supplier' },
-                { id: 'fre_category',    column: 'Category',      key: 'category' },
-                { id: 'fre_zone',        column: 'area',          key: 'zone' },
-                { id: 'fre_exec',        column: 'Exec',          key: 'exec' },
-                { id: 'fre_nr',          column: 'NR',            key: 'nr' },
-                { id: 'fre_dateappr',    column: 'Date of Appr',  key: 'date_appr' },
-                { id: 'fre_clink',       column: 'Clink',         key: 'clink' },
-            ];
-
+            const fieldDefs = FORECAST_ROW_EDIT_FIELD_DEFS;
             const original = forecastRowEditState.original || {};
+            const dirtyKeys = forecastRowEditState.dirtyKeys || {};
             const fieldChanges = [];
+            // Only fields the user edited in this modal session (not the whole form).
             fieldDefs.forEach(function(f) {
+                if (!dirtyKeys[f.key]) return;
                 let val = $('#' + f.id).val();
                 if (val === undefined || val === null) val = '';
-                if (forecastRowValChanged(original[f.key], val)) {
+                if (forecastRowValChanged(original[f.key], val, f.numeric)) {
                     fieldChanges.push({ column: f.column, value: val });
                 }
             });
 
-            // Multi-stage: diff the selected stage set against the original set and
-            // build add/remove operations (transit is managed by its own workflow).
-            const originalStages = Array.isArray(original.stages) ? original.stages : [];
-            const selectedStages = normalizeForecastStages($('#fre_stage').val() || []);
+            // Stage ops only if the user touched Stage in this modal session.
             const stageOps = [];
-            selectedStages.forEach(function(s) {
-                if (s !== 'transit' && originalStages.indexOf(s) === -1) stageOps.push({ stage: s, checked: true });
-            });
-            originalStages.forEach(function(s) {
-                if (s !== 'transit' && selectedStages.indexOf(s) === -1) stageOps.push({ stage: s, checked: false });
-            });
+            if (forecastRowEditState.stagesTouched) {
+                const originalStages = Array.isArray(original.stages) ? original.stages : [];
+                const selectedStages = normalizeForecastStages($('#fre_stage').val() || []);
+                selectedStages.forEach(function(s) {
+                    if (s !== 'transit' && originalStages.indexOf(s) === -1) stageOps.push({ stage: s, checked: true });
+                });
+                originalStages.forEach(function(s) {
+                    if (s !== 'transit' && selectedStages.indexOf(s) === -1) stageOps.push({ stage: s, checked: false });
+                });
+            }
 
             if (fieldChanges.length === 0 && stageOps.length === 0) {
                 $status.html('<span class="text-muted">No changes to save.</span>');
                 return;
             }
 
-            const targetRows = (forecastRowEditState.targetRows && forecastRowEditState.targetRows.length)
+            let targetRows = (forecastRowEditState.targetRows && forecastRowEditState.targetRows.length)
                 ? forecastRowEditState.targetRows
                 : getForecastBulkTargetRows(sku, [row]);
+            // Temporary Siblings: expand to all children of Parent for this Save only.
+            const siblingsCb = document.getElementById('fre_siblings');
+            const applySiblings = !!(siblingsCb && siblingsCb.checked);
+            if (applySiblings) {
+                targetRows = expandForecastTargetsWithSiblings(targetRows);
+            }
             if (!targetRows.length) {
                 $status.html('<span class="text-danger">No rows to update.</span>');
                 return;
             }
 
             $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Saving…');
-            $status.html('<span class="text-muted">Saving ' + (fieldChanges.length + stageOps.length) + ' change(s) to ' + targetRows.length + ' row(s)…</span>');
+            $status.html(
+                '<span class="text-muted">Saving ' + (fieldChanges.length + stageOps.length) +
+                ' change(s) to ' + targetRows.length + ' row(s)' +
+                (applySiblings ? ' (siblings)' : '') + '…</span>'
+            );
 
             (async function() {
                 const failed = [];
@@ -1929,6 +2120,9 @@
                 }
             })().finally(function() {
                 $btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i> Save Changes');
+                // One-shot: clear Siblings after this Save so it does not stick.
+                if (siblingsCb) siblingsCb.checked = false;
+                updateForecastSiblingsHint();
             });
         });
         
@@ -3595,10 +3789,15 @@
                         if (!sku) {
                             return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
                         }
+                        const hasCd = !!(d.has_cd === true || d.has_cd === 1 || d.has_cd === '1');
+                        const iconColor = hasCd ? '#16a34a' : '#dc2626';
+                        const borderColor = hasCd ? '#86efac' : '#fca5a5';
+                        const title = hasCd ? 'Comparison data available — open' : 'No comparison data yet — open to add';
                         const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                         return `<div style="display:flex;align-items:center;justify-content:center;">
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 forecast-cd-open" data-sku="${safeSku}" title="Open comparison data" aria-label="Open comparison data">
-                                <i class="mdi mdi-magnify"></i>
+                            <button type="button" class="btn btn-sm py-0 px-2 forecast-cd-open" data-sku="${safeSku}" title="${title}" aria-label="${title}"
+                                style="border:1px solid ${borderColor};background:#fff;">
+                                <i class="mdi mdi-magnify" style="color:${iconColor};"></i>
                             </button>
                         </div>`;
                     },
