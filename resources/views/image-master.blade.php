@@ -82,6 +82,7 @@
                         <button type="button" id="pushSelectedBtn" class="btn btn-secondary btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push Selected</button>
                         <button type="button" id="pushAllBtn" class="btn btn-warning btn-sm"><i class="fas fa-cloud-upload-alt"></i> Push ALL to All Marketplaces</button>
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
+                        <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
                     <div id="pushProgressBox" class="alert alert-info mb-3 py-2 px-3" style="display:none;word-break:break-word;">
@@ -99,6 +100,9 @@
                         <table id="im-master-table" class="table w-100">
                             <thead>
                                 <tr>
+                                    <th style="width:36px;text-align:center;">
+                                        <input type="checkbox" class="form-check-input" id="selectAllRowsIm" title="Select all visible rows" aria-label="Select all visible rows">
+                                    </th>
                                     <th>SKU <input type="text" id="skuSearchIm" class="form-control form-control-sm mt-1" placeholder="Search"></th>
                                     <th>Product Name</th>
                                     <th>Preview</th>
@@ -322,13 +326,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const EBAY3_WARN = 'eBay3 has different listing structure. Please verify images before pushing.';
 
     let tableData = [];
+    let visibleFilteredRows = [];
     const bySku = new Map();
+    const selectedSkus = new Set();
     let editModal;
     let shopifyPullModal;
     let shopifyPullConfirmModal;
     let shopifyPullPollTimer = null;
     let shopifyPullSelectedSkus = null;
     let shopifyPullConfirmResolver = null;
+    /** Remaining SKU chunks queued after the active background pull job. */
+    let shopifyPullChunkQueue = [];
+    let shopifyPullChunkMeta = { totalSkus: 0, chunkIndex: 0, chunkCount: 0, ok: 0, fail: 0, cancelled: false };
+    let shopifyPullAdvancingChunk = false;
+    const SHOPIFY_PULL_CHUNK_SIZE = 25;
     let modalUrls = [];
     let knownImageUrls = []; // every image URL seen this modal session (loaded + uploaded/fetched), to detect removals on Save
     let modalMainByMp = {};
@@ -540,19 +551,71 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<div class="marketplaces-cell"><div class="bp-mp-inline">${keys.map(mp => mpStackHtml(sku, mp, im[mp]||'')).join('')}</div></div>`;
     }
 
+    function updateSelectedCount() {
+        const badge = document.getElementById('selectedCountBadge');
+        if (badge) badge.textContent = selectedSkus.size + ' selected';
+    }
+
+    function syncSelectAllCheckbox() {
+        const selectAll = document.getElementById('selectAllRowsIm');
+        if (!selectAll) return;
+        const visibleSkus = visibleFilteredRows.map(r => String(r.SKU || '')).filter(Boolean);
+        if (!visibleSkus.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const selectedVisible = visibleSkus.filter(sku => selectedSkus.has(sku));
+        selectAll.checked = selectedVisible.length === visibleSkus.length;
+        selectAll.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleSkus.length;
+    }
+
+    /** Header checkbox: fill/clear all visible row checkboxes. */
+    function fillAllVisibleRows(checked) {
+        visibleFilteredRows.forEach(r => {
+            const sku = String(r.SKU || '');
+            if (!sku) return;
+            if (checked) selectedSkus.add(sku);
+            else selectedSkus.delete(sku);
+        });
+        document.querySelectorAll('.row-select-im[data-sku]').forEach(cb => {
+            cb.checked = !!checked;
+        });
+        updateSelectedCount();
+        syncSelectAllCheckbox();
+    }
+
+    function bindRowCheckboxEvents(root = document) {
+        root.querySelectorAll('.row-select-im[data-sku]').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const sku = String(this.dataset.sku || '');
+                if (!sku) return;
+                if (this.checked) selectedSkus.add(sku);
+                else selectedSkus.delete(sku);
+                updateSelectedCount();
+                syncSelectAllCheckbox();
+            });
+        });
+    }
+
     function renderTable(rows) {
         const tbody = document.getElementById('table-body');
         const q = (document.getElementById('skuSearchIm')?.value || '').trim().toLowerCase();
         if (q) rows = rows.filter(r => String(r.SKU||'').toLowerCase().includes(q));
+        visibleFilteredRows = rows;
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No products</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No products</td></tr>';
+            updateSelectedCount();
+            syncSelectAllCheckbox();
             return;
         }
         tbody.innerHTML = rows.map(r => {
             const sku = String(r.SKU||'');
+            const checked = selectedSkus.has(sku) ? 'checked' : '';
             const thumb = r.preview_thumb || r.main_image || r.image1 || r.image_path || '';
             const thumbImg = thumb ? `<img class="im-thumb" src="${esc(imgSrc(thumb))}" alt="">` : '<span class="text-muted">—</span>';
             return `<tr data-sku="${esc(sku)}">
+                <td class="text-center"><input type="checkbox" class="form-check-input row-select-im" data-sku="${esc(sku)}" ${checked} aria-label="Select ${esc(sku)}"></td>
                 <td>${esc(sku)}</td>
                 <td>${esc(r.Parent||sku)}</td>
                 <td>${thumbImg}</td>
@@ -566,6 +629,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${groupCell('gShopify', sku, r)}</td>
             </tr>`;
         }).join('');
+        bindRowCheckboxEvents(tbody);
+        updateSelectedCount();
+        syncSelectAllCheckbox();
         document.querySelectorAll('.edit-btn[data-edit]').forEach(b => b.addEventListener('click', () => openEditModal(b.dataset.edit)));
         document.querySelectorAll('.shopify-row-pull-btn[data-shopify-pull-sku]').forEach(b => b.addEventListener('click', () => startSingleShopifyPull(b.dataset.shopifyPullSku, b)));
         document.querySelectorAll('.bp-mp-stack[data-push-mp]:not(:disabled)').forEach(b => b.addEventListener('click', () => {
@@ -1289,8 +1355,6 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = '';
     });
 
-    document.getElementById('pushSelectedBtn')?.addEventListener('click', () => toast('Select rows in a future update, or use Edit → Push selected', false));
-
     let bulkPushAllRunning = false;
 
     function failedMarketplaceSummary(results) {
@@ -1300,14 +1364,28 @@ document.addEventListener('DOMContentLoaded', () => {
         return failed.map(mp => LABELS[mp] || mp).join(', ');
     }
 
-    async function bulkPushAll() {
+    function rowsForBulkPush(mode) {
+        const filtered = currentFilteredRowsForPull().filter(r => pmImageUrls(r).length > 0);
+        if (mode === 'selected') {
+            return filtered.filter(r => selectedSkus.has(String(r.SKU || '')));
+        }
+        return filtered;
+    }
+
+    async function bulkPushAll(mode = 'all') {
         if (bulkPushAllRunning) {
             toast('Bulk push is already running.', false);
             return;
         }
-        const rows = currentFilteredRowsForPull().filter(r => pmImageUrls(r).length > 0);
+        if (mode === 'selected' && selectedSkus.size === 0) {
+            toast('Select at least one row (checkbox) before Push Selected.', false);
+            return;
+        }
+        const rows = rowsForBulkPush(mode);
         if (!rows.length) {
-            toast('No products with images in the current view.', false);
+            toast(mode === 'selected'
+                ? 'No selected products with images to push.'
+                : 'No products with images in the current view.', false);
             return;
         }
         const configuredMps = typeof filterConfiguredMarketplaces === 'function'
@@ -1319,8 +1397,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const mpCount = configuredMps.length;
         const skuLabel = rows.length === 1 ? '1 product' : `${rows.length} products`;
+        const scopeLabel = mode === 'selected' ? 'selected ' : '';
         if (!window.confirm(
-            `Push images to ${mpCount} configured marketplace(s) for ${skuLabel}?\n\n`
+            `Push images to ${mpCount} configured marketplace(s) for ${scopeLabel}${skuLabel}?\n\n`
             + 'Per-platform main image settings (Image 1 by default) will be applied.\n'
             + 'Each product is sent in one batch; this may take a long time.'
         )) return;
@@ -1395,7 +1474,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // Progress stays visible until the user closes it (the ✕ on the progress box).
     }
 
-    document.getElementById('pushAllBtn')?.addEventListener('click', () => bulkPushAll());
+    document.getElementById('selectAllRowsIm')?.addEventListener('change', function() {
+        fillAllVisibleRows(!!this.checked);
+    });
+    document.getElementById('pushSelectedBtn')?.addEventListener('click', () => bulkPushAll('selected'));
+    document.getElementById('pushAllBtn')?.addEventListener('click', () => bulkPushAll('all'));
 
     // ── Shopify image pull (mirrors Bullet Points pull) ───────────────────────
 
@@ -1476,18 +1559,88 @@ document.addEventListener('DOMContentLoaded', () => {
         return payload.job || {};
     }
 
+    function clearShopifyPullChunkQueue(cancelled = false) {
+        shopifyPullChunkQueue = [];
+        if (cancelled) shopifyPullChunkMeta.cancelled = true;
+    }
+
+    function chunkArray(list, size) {
+        const out = [];
+        for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+        return out;
+    }
+
+    async function maybeStartNextShopifyPullChunk(finishedJob) {
+        if (shopifyPullAdvancingChunk) return;
+        if (shopifyPullChunkMeta.cancelled) {
+            clearShopifyPullChunkQueue();
+            return;
+        }
+        if (!shopifyPullChunkQueue.length) {
+            if (shopifyPullChunkMeta.chunkCount > 1 && finishedJob) {
+                const ok = shopifyPullChunkMeta.ok + Number(finishedJob.ok_count || 0);
+                const fail = shopifyPullChunkMeta.fail + Number(finishedJob.fail_count || 0);
+                const chunksDone = shopifyPullChunkMeta.chunkCount;
+                shopifyPullChunkMeta.chunkCount = 0; // prevent repeat toast on later polls
+                toast(`Shopify pull finished all chunks: ${ok} ok, ${fail} failed`, fail === 0);
+                appendShopifyPullLog(`All ${chunksDone} chunk(s) finished: ${ok} ok, ${fail} failed.`, fail === 0);
+            }
+            return;
+        }
+
+        shopifyPullAdvancingChunk = true;
+        try {
+            if (finishedJob) {
+                shopifyPullChunkMeta.ok += Number(finishedJob.ok_count || 0);
+                shopifyPullChunkMeta.fail += Number(finishedJob.fail_count || 0);
+            }
+
+            const nextChunk = shopifyPullChunkQueue.shift();
+            shopifyPullChunkMeta.chunkIndex += 1;
+            const label = `chunk ${shopifyPullChunkMeta.chunkIndex}/${shopifyPullChunkMeta.chunkCount} (${nextChunk.length} SKU(s))`;
+            appendShopifyPullLog(`Starting ${label}…`, true);
+            toast(`Starting Shopify pull ${label}…`);
+
+            const res = await fetch('/image-master/shopify-pull/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                body: JSON.stringify({ skus: nextChunk })
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start next pull chunk');
+            renderShopifyPullJob(payload.job);
+            startShopifyPullPolling();
+        } catch (e) {
+            appendShopifyPullLog('Next chunk failed to start: ' + e.message, false);
+            toast('Shopify pull chunk failed: ' + e.message, false);
+            clearShopifyPullChunkQueue(true);
+        } finally {
+            shopifyPullAdvancingChunk = false;
+        }
+    }
+
     async function pollShopifyPullStatus() {
         try {
             const job = await fetchShopifyPullStatus();
             const wasActive = shopifyPullPollTimer !== null;
+            const status = job.status || 'idle';
             renderShopifyPullJob(job);
-            if (isShopifyPullActive(job.status || 'idle')) {
+            if (isShopifyPullActive(status)) {
                 startShopifyPullPolling();
-            } else {
-                stopShopifyPullPolling();
-                if (wasActive && ['completed', 'stopped'].includes(job.status || '')) {
-                    loadData();
-                }
+                return;
+            }
+            stopShopifyPullPolling();
+            if (status === 'stopped') {
+                clearShopifyPullChunkQueue(true);
+                if (wasActive) loadData();
+                return;
+            }
+            if (status === 'completed') {
+                const hadMoreChunks = shopifyPullChunkQueue.length > 0 && !shopifyPullChunkMeta.cancelled;
+                await maybeStartNextShopifyPullChunk(job);
+                if (wasActive && !hadMoreChunks) loadData();
+                else if (hadMoreChunks) { /* next chunk polling already started */ }
+                else if (wasActive) loadData();
             }
         } catch (e) {
             appendShopifyPullLog('Status check failed: ' + e.message, false);
@@ -1511,9 +1664,15 @@ document.addEventListener('DOMContentLoaded', () => {
             : null;
         const scope = document.getElementById('shopifyPullScopeText');
         if (scope) {
-            scope.textContent = shopifyPullSelectedSkus
-                ? `Scope: selected SKU ${shopifyPullSelectedSkus.join(', ')}.`
-                : 'Scope: currently filtered SKUs.';
+            if (shopifyPullSelectedSkus) {
+                const n = shopifyPullSelectedSkus.length;
+                const preview = shopifyPullSelectedSkus.slice(0, 8).join(', ');
+                scope.textContent = n === 1
+                    ? `Scope: selected SKU ${preview}.`
+                    : `Scope: ${n} selected SKU(s) — ${preview}${n > 8 ? '…' : ''}. Pulled in chunks of ${SHOPIFY_PULL_CHUNK_SIZE}.`;
+            } else {
+                scope.textContent = `Scope: currently filtered SKUs. Pulled in chunks of ${SHOPIFY_PULL_CHUNK_SIZE}.`;
+            }
         }
         if (shopifyPullModal) shopifyPullModal.show();
         await pollShopifyPullStatus();
@@ -1542,24 +1701,46 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
 
-        const scopeText = options.scopeText || `${skus.length} SKU(s)`;
+        const chunks = chunkArray(skus, SHOPIFY_PULL_CHUNK_SIZE);
+        const chunkNote = chunks.length > 1
+            ? ` in ${chunks.length} chunks of up to ${SHOPIFY_PULL_CHUNK_SIZE}`
+            : '';
+        const scopeText = options.scopeText || `${skus.length} SKU(s)${chunkNote}`;
         if (!await confirmShopifyPull(scopeText)) {
             return false;
         }
+
+        shopifyPullChunkMeta = {
+            totalSkus: skus.length,
+            chunkIndex: 1,
+            chunkCount: chunks.length,
+            ok: 0,
+            fail: 0,
+            cancelled: false,
+        };
+        shopifyPullChunkQueue = chunks.slice(1);
+        const firstChunk = chunks[0];
 
         try {
             const res = await fetch('/image-master/shopify-pull/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-                body: JSON.stringify({ skus })
+                body: JSON.stringify({ skus: firstChunk })
             });
             const payload = await res.json().catch(() => ({}));
             if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start Shopify pull');
             renderShopifyPullJob(payload.job);
             startShopifyPullPolling();
-            toast(options.successMessage || payload.message || 'Background Shopify image pull started.');
+            const startedMsg = chunks.length > 1
+                ? `Background Shopify pull started (chunk 1/${chunks.length}, ${firstChunk.length} SKU(s)). Remaining chunks start automatically.`
+                : (options.successMessage || payload.message || 'Background Shopify image pull started.');
+            if (chunks.length > 1) {
+                appendShopifyPullLog(`Queued ${chunks.length} chunk(s) for ${skus.length} SKU(s).`, true);
+            }
+            toast(startedMsg);
             return true;
         } catch (e) {
+            clearShopifyPullChunkQueue(true);
             toast('Shopify pull start failed: ' + e.message, false);
             if (e.message.includes('already')) pollShopifyPullStatus();
             return false;
@@ -1594,22 +1775,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function startShopifyPullToLocal() {
-        const rows = shopifyPullSelectedSkus
+        const fromCheckboxes = Array.from(selectedSkus).filter(Boolean);
+        const rows = (shopifyPullSelectedSkus && shopifyPullSelectedSkus.length)
             ? shopifyPullSelectedSkus.map(sku => ({ SKU: sku }))
-            : currentFilteredRowsForPull();
+            : (fromCheckboxes.length
+                ? fromCheckboxes.map(sku => ({ SKU: sku }))
+                : currentFilteredRowsForPull());
         const skus = rows.map(row => String(row.SKU || '').trim()).filter(Boolean);
         if (!skus.length) {
             toast('No SKUs loaded to pull from Shopify.', false);
             return;
         }
-        const scopeText = shopifyPullSelectedSkus
-            ? `SKU: ${skus.join(', ')}`
+        const scopeText = (shopifyPullSelectedSkus && shopifyPullSelectedSkus.length) || fromCheckboxes.length
+            ? `${skus.length} selected SKU(s)`
             : `${skus.length} currently filtered SKU(s)`;
         await startShopifyPullJobForSkus(skus, { scopeText });
     }
 
     async function controlShopifyPull(action) {
         try {
+            if (action === 'stop') clearShopifyPullChunkQueue(true);
             const res = await fetch(`/image-master/shopify-pull/${action}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
@@ -1625,7 +1810,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    document.getElementById('pullShopifyBtn')?.addEventListener('click', () => openShopifyPullModal());
+    document.getElementById('pullShopifyBtn')?.addEventListener('click', () => {
+        const selected = Array.from(selectedSkus).filter(Boolean);
+        openShopifyPullModal(selected.length ? selected : null);
+    });
     document.getElementById('startShopifyPullBtn')?.addEventListener('click', startShopifyPullToLocal);
     document.getElementById('pauseShopifyPullBtn')?.addEventListener('click', () => controlShopifyPull('pause'));
     document.getElementById('resumeShopifyPullBtn')?.addEventListener('click', () => controlShopifyPull('resume'));

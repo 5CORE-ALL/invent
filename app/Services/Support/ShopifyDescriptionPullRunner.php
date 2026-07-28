@@ -7,12 +7,25 @@ use Illuminate\Http\Request;
 
 class ShopifyDescriptionPullRunner
 {
+    /** Process this many SKUs, then take a longer pause (rate-limit / timeout safety). */
+    private const CHUNK_SIZE = 25;
+
+    /** Extra seconds to wait after each completed chunk before continuing. */
+    private const CHUNK_PAUSE_SECONDS = 12;
+
+    /** Retry transient Shopify/API failures per SKU. */
+    private const MAX_ATTEMPTS_PER_SKU = 3;
+
     public function __construct(
         private readonly ShopifyDescriptionPullJobStore $store,
     ) {}
 
     public function run(): int
     {
+        @set_time_limit(0);
+
+        $processedInChunk = 0;
+
         while (true) {
             $state = $this->store->load();
             $status = $state['status'] ?? 'idle';
@@ -64,6 +77,10 @@ class ShopifyDescriptionPullRunner
             $sku = trim((string) ($skus[$index] ?? ''));
             if ($sku === '') {
                 $this->advance(false, 'Blank SKU skipped.');
+                $processedInChunk++;
+                if ($this->maybePauseBetweenChunks($processedInChunk, $index + 1, $total)) {
+                    $processedInChunk = 0;
+                }
                 continue;
             }
 
@@ -74,8 +91,31 @@ class ShopifyDescriptionPullRunner
                 return $state;
             });
 
-            $ok = false;
-            $message = "{$sku}: failed - Unable to pull Shopify description.";
+            [$ok, $message] = $this->pullSkuWithRetries($sku);
+
+            $this->advance($ok, $message);
+            $processedInChunk++;
+            $this->delayBeforeNextSku();
+
+            if ($this->maybePauseBetweenChunks($processedInChunk, $index + 1, $total)) {
+                $processedInChunk = 0;
+            }
+        }
+    }
+
+    /**
+     * @return array{0: bool, 1: string}
+     */
+    private function pullSkuWithRetries(string $sku): array
+    {
+        $ok = false;
+        $message = "{$sku}: failed - Unable to pull Shopify description.";
+
+        for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS_PER_SKU; $attempt++) {
+            if (($this->store->load()['status'] ?? 'idle') !== 'running') {
+                return [$ok, $message];
+            }
+
             try {
                 $response = app(DescriptionMasterController::class)->pullShopifyDescriptionToMaster(new Request(['sku' => $sku]));
                 $payload = method_exists($response, 'getData') ? $response->getData(true) : [];
@@ -84,12 +124,73 @@ class ShopifyDescriptionPullRunner
                     ? "{$sku}: ".($payload['status'] ?? 'imported').' - '.((int) ($payload['chars'] ?? 0)).' chars'
                     : "{$sku}: failed - ".($payload['message'] ?? 'Unable to pull Shopify description.');
             } catch (\Throwable $e) {
+                $ok = false;
                 $message = "{$sku}: failed - {$e->getMessage()}";
             }
 
-            $this->advance($ok, $message);
-            $this->delayBeforeNextSku();
+            if ($ok || ! $this->isRetryablePullFailure($message)) {
+                break;
+            }
+
+            if ($attempt < self::MAX_ATTEMPTS_PER_SKU) {
+                $this->store->appendMessage(
+                    "{$sku}: retry {$attempt}/".(self::MAX_ATTEMPTS_PER_SKU - 1).' after transient error…',
+                    false
+                );
+                $this->interruptibleSleep(min(8, 2 * $attempt));
+            }
         }
+
+        return [$ok, $message];
+    }
+
+    private function isRetryablePullFailure(string $message): bool
+    {
+        $haystack = strtolower($message);
+
+        foreach ([
+            'timeout',
+            'timed out',
+            'rate limit',
+            'too many requests',
+            '429',
+            '502',
+            '503',
+            '504',
+            'connection',
+            'curl error',
+            'temporarily',
+            'try again',
+            'unauthenticated',
+        ] as $needle) {
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function maybePauseBetweenChunks(int $processedInChunk, int $doneCount, int $total): bool
+    {
+        if ($processedInChunk < self::CHUNK_SIZE || $doneCount >= $total) {
+            return false;
+        }
+        if (($this->store->load()['status'] ?? 'idle') !== 'running') {
+            return false;
+        }
+
+        $chunkNum = (int) ceil($doneCount / self::CHUNK_SIZE);
+        $msg = "Chunk {$chunkNum} done ({$doneCount}/{$total}). Pausing ".self::CHUNK_PAUSE_SECONDS.'s before next chunk…';
+        $this->store->update(function (array $state) use ($msg) {
+            $state['last_message'] = $msg;
+
+            return $state;
+        });
+        $this->store->appendMessage($msg, true);
+        $this->interruptibleSleep(self::CHUNK_PAUSE_SECONDS);
+
+        return true;
     }
 
     private function advance(bool $ok, string $message): void
@@ -107,7 +208,12 @@ class ShopifyDescriptionPullRunner
     private function delayBeforeNextSku(): void
     {
         $delay = max(1, (int) ($this->store->load()['delay_seconds'] ?? 6));
-        for ($i = 0; $i < $delay; $i++) {
+        $this->interruptibleSleep($delay);
+    }
+
+    private function interruptibleSleep(int $seconds): void
+    {
+        for ($i = 0; $i < max(0, $seconds); $i++) {
             $status = $this->store->load()['status'] ?? 'idle';
             if ($status !== 'running') {
                 return;

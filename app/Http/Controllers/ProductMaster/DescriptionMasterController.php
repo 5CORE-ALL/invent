@@ -682,17 +682,21 @@ class DescriptionMasterController extends Controller
     public function startShopifyPullJob(Request $request, ShopifyDescriptionPullJobStore $store)
     {
         $validated = $request->validate([
-            'skus' => 'required|array|min:1',
-            'skus.*' => 'required|string',
+            'skus' => 'required|array|min:1|max:50',
+            'skus.*' => 'required|string|max:191',
         ]);
 
         $current = $store->load();
-        if ($store->isActive($current)) {
+        if ($store->isActive($current) && ! $store->isStale($current)) {
             return response()->json([
                 'success' => false,
-                'message' => 'A Shopify description pull is already running or paused.',
+                'message' => 'A Shopify description pull is already running or paused. Stop it first to start a new one.',
                 'job' => $current,
             ], 409);
+        }
+        if ($store->isActive($current)) {
+            $store->forceStop('Cleared a stale pull job (no worker was processing it).');
+            $this->releaseUniqueJobLock(RunShopifyDescriptionPullJob::class, 'shopify-description-pull');
         }
 
         $job = $store->create($validated['skus'], 6);
@@ -763,15 +767,8 @@ class DescriptionMasterController extends Controller
 
     public function stopShopifyPullJob(ShopifyDescriptionPullJobStore $store)
     {
-        $job = $store->update(function (array $state) {
-            if (in_array($state['status'] ?? 'idle', ['running', 'paused'], true)) {
-                $state['status'] = 'stopping';
-                $state['last_message'] = 'Stop requested. Current SKU will finish first.';
-            }
-
-            return $state;
-        });
-        $store->appendMessage('Stop requested. Current SKU will finish first.', false);
+        $job = $store->forceStop('Stopped by user.');
+        $this->releaseUniqueJobLock(RunShopifyDescriptionPullJob::class, 'shopify-description-pull');
 
         return response()->json(['success' => true, 'job' => $job]);
     }
@@ -779,6 +776,15 @@ class DescriptionMasterController extends Controller
     private function dispatchShopifyDescriptionPullJob(): void
     {
         RunShopifyDescriptionPullJob::dispatch();
+    }
+
+    private function releaseUniqueJobLock(string $jobClass, string $uniqueId): void
+    {
+        try {
+            \Illuminate\Support\Facades\Cache::lock('laravel_unique_job:'.$jobClass.':'.$uniqueId)->forceRelease();
+        } catch (\Throwable) {
+            // best-effort
+        }
     }
 
     /**

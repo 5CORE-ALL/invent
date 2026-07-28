@@ -349,6 +349,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let shopifyPullPollTimer = null;
     let shopifyPullSelectedSkus = null;
     let shopifyPullConfirmResolver = null;
+    /** Remaining SKU chunks queued after the active background pull job. */
+    let shopifyPullChunkQueue = [];
+    let shopifyPullChunkMeta = { totalSkus: 0, chunkIndex: 0, chunkCount: 0, ok: 0, fail: 0, cancelled: false };
+    let shopifyPullAdvancingChunk = false;
+    let shopifyPullStatusFailCount = 0;
+    const SHOPIFY_PULL_CHUNK_SIZE = 25;
     let marketplacePushConfirmResolver = null;
     let tableBodyBound = false;
     let lastViewPlainText = '';
@@ -1167,6 +1173,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return Array.from(selectedSkus).map((sku) => String(sku || '').trim()).filter(Boolean);
     }
 
+    function shopifyPullHeaders(includeJsonContentType = true) {
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || csrfToken;
+        const headers = {
+            'X-CSRF-TOKEN': token,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+        };
+        if (includeJsonContentType) headers['Content-Type'] = 'application/json';
+        return headers;
+    }
+
     function appendShopifyPullLog(message, ok = true) {
         const log = document.getElementById('shopifyPullLog');
         if (!log) return;
@@ -1203,7 +1220,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pauseBtn) pauseBtn.style.display = status === 'running' ? '' : 'none';
         if (resumeBtn) resumeBtn.style.display = status === 'paused' ? '' : 'none';
         if (stopBtn) stopBtn.style.display = active ? '' : 'none';
-        setShopifyPullProgress(done, total, job.last_message || status);
+        let statusText = job.last_message || status;
+        if (shopifyPullChunkMeta.chunkCount > 1) {
+            statusText = `Chunk ${shopifyPullChunkMeta.chunkIndex}/${shopifyPullChunkMeta.chunkCount}: ${statusText}`;
+        }
+        setShopifyPullProgress(done, total, statusText);
         const log = document.getElementById('shopifyPullLog');
         if (log && Array.isArray(job.messages)) {
             log.innerHTML = '';
@@ -1211,29 +1232,111 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function clearShopifyPullChunkQueue(cancelled = false) {
+        shopifyPullChunkQueue = [];
+        if (cancelled) shopifyPullChunkMeta.cancelled = true;
+    }
+
+    function chunkArray(list, size) {
+        const out = [];
+        for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+        return out;
+    }
+
     async function fetchShopifyPullStatus() {
         const res = await fetch('/product-description/shopify-pull/status', {
-            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+            headers: shopifyPullHeaders(false),
         });
         const payload = await res.json().catch(() => ({}));
+        if (res.status === 401 || res.status === 419) {
+            throw new Error(payload.message || 'Unauthenticated. Refresh the page and try again.');
+        }
         if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to load Shopify pull status');
         return payload.job || {};
+    }
+
+    async function maybeStartNextShopifyPullChunk(finishedJob) {
+        if (shopifyPullAdvancingChunk) return;
+        if (shopifyPullChunkMeta.cancelled) {
+            clearShopifyPullChunkQueue();
+            return;
+        }
+        if (!shopifyPullChunkQueue.length) {
+            if (shopifyPullChunkMeta.chunkCount > 1 && finishedJob) {
+                const ok = shopifyPullChunkMeta.ok + Number(finishedJob.ok_count || 0);
+                const fail = shopifyPullChunkMeta.fail + Number(finishedJob.fail_count || 0);
+                const chunksDone = shopifyPullChunkMeta.chunkCount;
+                shopifyPullChunkMeta.chunkCount = 0;
+                toast(`Shopify pull finished all chunks: ${ok} ok, ${fail} failed`, fail === 0);
+                appendShopifyPullLog(`All ${chunksDone} chunk(s) finished: ${ok} ok, ${fail} failed.`, fail === 0);
+            }
+            return;
+        }
+
+        shopifyPullAdvancingChunk = true;
+        try {
+            if (finishedJob) {
+                shopifyPullChunkMeta.ok += Number(finishedJob.ok_count || 0);
+                shopifyPullChunkMeta.fail += Number(finishedJob.fail_count || 0);
+            }
+            const nextChunk = shopifyPullChunkQueue.shift();
+            shopifyPullChunkMeta.chunkIndex += 1;
+            const label = `chunk ${shopifyPullChunkMeta.chunkIndex}/${shopifyPullChunkMeta.chunkCount} (${nextChunk.length} SKU(s))`;
+            appendShopifyPullLog(`Starting ${label}…`, true);
+            toast(`Starting Shopify pull ${label}…`);
+
+            const res = await fetch('/product-description/shopify-pull/start', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: shopifyPullHeaders(),
+                body: JSON.stringify({ skus: nextChunk }),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start next pull chunk');
+            renderShopifyPullJob(payload.job);
+            startShopifyPullPolling();
+        } catch (e) {
+            appendShopifyPullLog('Next chunk failed to start: ' + e.message, false);
+            toast('Shopify pull chunk failed: ' + e.message, false);
+            clearShopifyPullChunkQueue(true);
+        } finally {
+            shopifyPullAdvancingChunk = false;
+        }
     }
 
     async function pollShopifyPullStatus() {
         try {
             const job = await fetchShopifyPullStatus();
+            shopifyPullStatusFailCount = 0;
+            const wasActive = shopifyPullPollTimer !== null;
+            const status = job.status || 'idle';
             renderShopifyPullJob(job);
-            if (isShopifyPullActive(job.status || 'idle')) {
+            if (isShopifyPullActive(status)) {
                 startShopifyPullPolling();
-            } else {
-                stopShopifyPullPolling();
-                if (['completed', 'stopped'].includes(job.status || '')) {
-                    loadData(currentPage);
-                }
+                return;
+            }
+            stopShopifyPullPolling();
+            if (status === 'stopped') {
+                clearShopifyPullChunkQueue(true);
+                if (wasActive) loadData(currentPage);
+                return;
+            }
+            if (status === 'completed') {
+                const hadMoreChunks = shopifyPullChunkQueue.length > 0 && !shopifyPullChunkMeta.cancelled;
+                await maybeStartNextShopifyPullChunk(job);
+                if (wasActive && !hadMoreChunks) loadData(currentPage);
             }
         } catch (e) {
-            appendShopifyPullLog('Status check failed: ' + e.message, false);
+            shopifyPullStatusFailCount += 1;
+            // Avoid flooding the log with the same auth/network error every 3s.
+            if (shopifyPullStatusFailCount <= 2 || shopifyPullStatusFailCount % 10 === 0) {
+                appendShopifyPullLog('Status check failed: ' + e.message, false);
+            }
+            if (String(e.message || '').toLowerCase().includes('unauthenticated') || String(e.message || '').includes('419')) {
+                stopShopifyPullPolling();
+                toast('Session expired. Refresh the page, then reopen Shopify Pull — the background job may still be running.', false);
+            }
         }
     }
 
@@ -1259,9 +1362,10 @@ document.addEventListener('DOMContentLoaded', () => {
         shopifyPullSelectedSkus = checked;
         const scope = document.getElementById('shopifyPullScopeText');
         if (scope) {
+            const preview = checked.slice(0, 12).join(', ');
             scope.textContent = checked.length === 1
                 ? ('Scope: checked SKU ' + checked[0] + '.')
-                : ('Scope: ' + checked.length + ' checked SKU(s) — ' + checked.slice(0, 12).join(', ') + (checked.length > 12 ? '…' : '') + '.');
+                : (`Scope: ${checked.length} checked SKU(s) — ${preview}${checked.length > 12 ? '…' : ''}. Pulled in chunks of ${SHOPIFY_PULL_CHUNK_SIZE}.`);
         }
         if (shopifyPullModal) shopifyPullModal.show();
         await pollShopifyPullStatus();
@@ -1285,21 +1389,49 @@ document.addEventListener('DOMContentLoaded', () => {
             toast('No SKUs selected to pull from Shopify.', false);
             return false;
         }
-        const scopeText = options.scopeText || (skus.length + ' SKU(s)');
+        const chunks = chunkArray(skus, SHOPIFY_PULL_CHUNK_SIZE);
+        const chunkNote = chunks.length > 1
+            ? ` in ${chunks.length} chunks of up to ${SHOPIFY_PULL_CHUNK_SIZE}`
+            : '';
+        const scopeText = options.scopeText || (`${skus.length} SKU(s)${chunkNote}`);
         if (!await confirmShopifyPull(scopeText)) return false;
+
+        shopifyPullChunkMeta = {
+            totalSkus: skus.length,
+            chunkIndex: 1,
+            chunkCount: chunks.length,
+            ok: 0,
+            fail: 0,
+            cancelled: false,
+        };
+        shopifyPullChunkQueue = chunks.slice(1);
+        shopifyPullStatusFailCount = 0;
+        const firstChunk = chunks[0];
+
         try {
             const res = await fetch('/product-description/shopify-pull/start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
-                body: JSON.stringify({ skus }),
+                credentials: 'same-origin',
+                headers: shopifyPullHeaders(),
+                body: JSON.stringify({ skus: firstChunk }),
             });
             const payload = await res.json().catch(() => ({}));
+            if (res.status === 401 || res.status === 419) {
+                throw new Error(payload.message || 'Unauthenticated. Refresh the page and try again.');
+            }
             if (!res.ok || !payload.success) throw new Error(payload.message || 'Unable to start Shopify pull');
             renderShopifyPullJob(payload.job);
             startShopifyPullPolling();
-            toast(options.successMessage || payload.message || 'Background Shopify pull started.');
+            const startedMsg = chunks.length > 1
+                ? `Background Shopify pull started (chunk 1/${chunks.length}, ${firstChunk.length} SKU(s)). Remaining chunks start automatically.`
+                : (options.successMessage || payload.message || 'Background Shopify pull started.');
+            if (chunks.length > 1) {
+                appendShopifyPullLog(`Queued ${chunks.length} chunk(s) for ${skus.length} SKU(s).`, true);
+            }
+            toast(startedMsg);
             return true;
         } catch (e) {
+            clearShopifyPullChunkQueue(true);
             toast('Shopify pull start failed: ' + e.message, false);
             if (String(e.message || '').includes('already')) pollShopifyPullStatus();
             return false;
@@ -1325,7 +1457,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = false;
             btn.innerHTML = oldHtml || '<i class="fas fa-download"></i>';
         } else if (btn) {
-            // Keep spinner until job finishes; polling reloads table.
             setTimeout(() => {
                 if (btn) {
                     btn.disabled = false;
@@ -1349,9 +1480,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function controlShopifyPull(action) {
         try {
+            if (action === 'stop') clearShopifyPullChunkQueue(true);
             const res = await fetch('/product-description/shopify-pull/' + action, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                credentials: 'same-origin',
+                headers: shopifyPullHeaders(),
                 body: JSON.stringify({}),
             });
             const payload = await res.json().catch(() => ({}));
