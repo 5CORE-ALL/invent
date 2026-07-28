@@ -72,6 +72,22 @@ class ReviewMasterController extends Controller
         if ($sku = $request->input('sku')) {
             $query->where('sku_reviews.sku', 'like', "%{$sku}%");
         }
+        if ($parent = trim((string) $request->input('parent', ''))) {
+            $parentSkus = ProductMaster::query()
+                ->whereRaw('TRIM(parent) = ?', [$parent])
+                ->pluck('sku')
+                ->filter(fn ($s) => trim((string) $s) !== '')
+                ->values()
+                ->all();
+            if ($parentSkus === []) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where(function ($q) use ($parentSkus, $parent) {
+                    $q->whereIn('sku_reviews.sku', $parentSkus)
+                        ->orWhereRaw('TRIM(product_master.parent) = ?', [$parent]);
+                });
+            }
+        }
         if ($supplier = $request->input('supplier_id')) {
             $query->where('sku_reviews.supplier_id', $supplier);
         }

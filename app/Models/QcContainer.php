@@ -4,42 +4,40 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes; // ✅ Correct import
 
-class TransitContainerDetail extends Model
+class QcContainer extends Model
 {
-    use HasFactory, SoftDeletes; // ✅ Add trait here
+    use HasFactory;
+
+    protected $table = 'qc_containers';
 
     protected $fillable = [
+        'transit_container_id',
+        'arrived_container_id',
         'tab_name',
         'supplier_name',
         'company_name',
         'hsn_code',
-        'parent',
         'our_sku',
-        'photos',
-        'specification',
-        'package_size',
-        'product_size_link',
-        'status',
-        'changes',
-        'rec_qty',
+        'parent',
         'no_of_units',
         'total_ctn',
         'rate',
         'unit',
-        'cbm',
-        'order_link',
+        'status',
+        'changes',
+        'package_size',
+        'product_size_link',
         'comparison_link',
-        'auth_user',
-        'created_by'
+        'order_link',
+        'image_src',
+        'photos',
+        'specification',
+        'created_by',
     ];
-
-    protected $dates = ['deleted_at']; 
 
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
-
 }

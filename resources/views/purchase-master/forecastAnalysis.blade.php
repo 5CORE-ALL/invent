@@ -868,16 +868,16 @@
                     <div id="forecast-filter-bar">
                         <div class="forecast-filter-fields">
                             @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'forecast'])
-                            <input type="text" id="search-parent" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Parent…" autocomplete="off">
-                            <input type="text" id="search-sku" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="SKU…" autocomplete="off">
-                            <input type="text" id="search-supplier" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Supplier…" autocomplete="off">
+                            <input type="text" id="search-parent" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Parent" aria-label="Parent" autocomplete="off">
+                            <input type="text" id="search-sku" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="SKU" aria-label="SKU" autocomplete="off">
+                            <input type="text" id="search-supplier" class="form-control form-control-sm border-primary forecast-filter-field" placeholder="Supplier" aria-label="Supplier" autocomplete="off">
 
                             <select id="executive-filter"
                                     class="form-select form-select-sm border-primary forecast-filter-field exec-typeahead"
-                                    title="Filter by Exec (all executives when unset)"
-                                    aria-label="Exec filter"
-                                    data-eta-placeholder="Search executive…">
-                                <option value="">Exec</option>
+                                    title="Executive"
+                                    aria-label="Executive"
+                                    data-eta-placeholder="Executive">
+                                <option value="">Executive</option>
                                 <option value="__unassigned__">NA</option>
                                 @foreach (($execUsers ?? []) as $execName)
                                     <option value="{{ $execName }}">{{ $execName }}</option>
@@ -897,8 +897,9 @@
                             </div>
 
                             <select id="stage-filter" class="form-select form-select-sm border border-primary forecast-filter-field"
-                                    title="Stage — child SKU rows currently visible after Stage and all other filters. QTY is the sum of that stage’s quantity column (e.g. appr_req_qty for Appr Req).">
-                                <option value="">All Stage</option>
+                                    title="Stage"
+                                    aria-label="Stage">
+                                <option value="">Stage</option>
                                 <option value="two_ord_nonneg">2 Ord</option>
                                 <option value="to_order_analysis">Order</option>
                                 <option value="mip">MIP</option>

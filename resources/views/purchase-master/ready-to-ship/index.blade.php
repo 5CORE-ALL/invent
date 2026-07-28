@@ -513,10 +513,9 @@
                 <div class="column-controls card mb-3 p-3 shadow-sm" id="columnControls" style="background: #f8f9fa; border-radius: 8px;">
                     <div class="d-flex flex-wrap align-items-center gap-3">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'r2s'])
-                        <!-- Navigation -->
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
-                            <div class="btn-group time-navigation-group" role="group">
+                        <!-- Navigation (no label — title on group) -->
+                        <div class="col-auto" title="Navigation — play by supplier">
+                            <div class="btn-group time-navigation-group" role="group" aria-label="Navigation">
                                 <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2" title="Previous supplier">
                                     <i class="fas fa-step-backward"></i>
                                 </button>
@@ -540,7 +539,6 @@
 
                         <!-- Toggle Columns Dropdown -->
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Columns</label>
                             <div class="column-dropdown position-relative">
                                 <button type="button" class="btn text-white column-dropdown-btn column-dropdown-btn--icon-only d-flex align-items-center justify-content-center" id="columnDropdownBtn" style="border-radius: 6px;" title="Toggle Columns" aria-label="Toggle Columns">
                                     <i class="mdi mdi-format-columns" aria-hidden="true"></i>
@@ -552,11 +550,10 @@
                             </div>
                         </div>
 
-                        <!-- Zone filter: matches Zone column (zone_x). No separate "Select zone" option. -->
+                        <!-- Zone filter: matches Zone column (zone_x). -->
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Zone</label>
-                            <select id="zoneFilter" class="form-select border-2 rounded-2 fw-bold" style="min-width: 120px;" title="Filter by zone (Zone column)">
-                                <option value="">All Zones</option>
+                            <select id="zoneFilter" class="form-select border-2 rounded-2 fw-bold" style="min-width: 120px;" title="Zone" aria-label="Zone">
+                                <option value="">Zone</option>
                                 @foreach(($supplierZoneListOptions ?? ['GHZ', 'Ningbo', 'Tianjin']) as $zf)
                                     <option value="{{ $zf }}">{{ $zf }}</option>
                                 @endforeach
@@ -564,12 +561,10 @@
                         </div>
 
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">SKU</label>
-                            <input type="search" id="r2sToolbarSkuFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 132px; height: 42px;" placeholder="Filter SKU…" autocomplete="off" title="Contains match on SKU" aria-label="Filter rows by SKU">
+                            <input type="search" id="r2sToolbarSkuFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 132px; height: 42px;" placeholder="SKU" autocomplete="off" title="SKU" aria-label="SKU">
                         </div>
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Supplier</label>
-                            <input type="search" id="r2sToolbarSupplierFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 148px; height: 42px;" placeholder="Filter Supplier…" autocomplete="off" title="Contains match on Supplier column" aria-label="Filter rows by supplier">
+                            <input type="search" id="r2sToolbarSupplierFilter" class="form-control border-2 rounded-2 fw-bold" style="min-width: 148px; height: 42px;" placeholder="Supplier" autocomplete="off" title="Supplier" aria-label="Supplier">
                         </div>
                         {{-- SKU/Supplier filter MUST register here: main page script is 1000+ lines; any JS error above blocks late listeners --}}
                         <script>
@@ -610,9 +605,8 @@
 
                         <!-- Move to transit: container + Move (always visible) -->
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">To container</label>
                             <div class="d-flex align-items-center gap-2 flex-nowrap">
-                                <select id="r2s-move-tab-select" class="form-select border-2 rounded-2 fw-bold" style="min-width: 160px;" title="Target container">
+                                <select id="r2s-move-tab-select" class="form-select border-2 rounded-2 fw-bold" style="min-width: 160px;" title="Container" aria-label="Container">
                                     <option value="">Container</option>
                                     @foreach($transitTabs as $tab)
                                         <option value="{{ $tab }}">{{ $tab }}</option>
@@ -767,7 +761,6 @@
 
                         <!-- 💰 Advance + Pending Summary -->
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Advance</label>
                             <div id="advance-total-wrapper" style="display: none;">
                                 <div id="advance-total-display" class="py-1 px-2 rounded shadow-sm d-inline-flex align-items-center gap-2 flex-wrap"
                                     style="background: linear-gradient(90deg, #e6f4f1 60%, #f8f9fa 100%); color: #10635b; font-weight: 600; font-size: 16px; border: 1.5px solid #3bc0c3; box-shadow: 0 2px 8px rgba(60,192,195,0.08); transition: all 0.3s ease;">
@@ -798,7 +791,6 @@
 
                         <!-- Action Buttons -->
                         <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block" style="visibility: hidden;">Actions</label>
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <button id="delete-selected-btn" class="btn btn-primary text-black d-none" style="border-radius: 6px;">
                                     <i class="mdi mdi-backup-restore"></i> Revert to MFRG

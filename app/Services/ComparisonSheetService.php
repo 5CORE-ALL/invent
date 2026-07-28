@@ -450,8 +450,9 @@ class ComparisonSheetService
             $anchorLeft = $colLefts[$placement['col']] ?? ($placement['col'] * 100);
             $absLeft = $anchorLeft + max(0, $placement['x']);
             $targetCol = $this->columnAtOffset($colWidths, $colLefts, $absLeft, $placement['col']);
-            if ($targetCol === $labelCol) {
-                $targetCol++; // never drop a supplier photo onto the Spec/label column
+            // Never drop a supplier photo onto Spec, Critical, or QC columns.
+            if ($targetCol <= $labelCol + 2) {
+                $targetCol = $labelCol + 3;
             }
 
             $resolved[] = [
@@ -1539,7 +1540,7 @@ class ComparisonSheetService
             }
         }
 
-        $firstSupplierCol = $specCol + 1;
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $specCol);
         $colCount = max(array_map(fn ($sheetRow) => is_array($sheetRow) ? count($sheetRow) : 0, $cells));
 
         foreach (['usd', 'rmb'] as $needle) {
@@ -1639,7 +1640,7 @@ class ComparisonSheetService
         $cells = ComparisonData::normalizeCells($cells);
         $specCol = $this->detectSpecColumnIndex($cells);
         $colCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells));
-        $firstSupplierCol = $specCol + 1;
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $specCol);
 
         if ($firstSupplierCol >= $colCount) {
             return $cells;
@@ -1701,7 +1702,7 @@ class ComparisonSheetService
                 continue;
             }
             $newRow = [];
-            for ($col = 0; $col <= $specCol; $col++) {
+            for ($col = 0; $col < $firstSupplierCol; $col++) {
                 $newRow[$col] = $row[$col] ?? '';
             }
             foreach ($newOrder as $origCol) {
@@ -1724,7 +1725,7 @@ class ComparisonSheetService
         }
 
         $colCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells));
-        $firstSupplierCol = $specCol + 1;
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $specCol);
         $bestCol = null;
         $bestValue = PHP_FLOAT_MAX;
 
@@ -1778,7 +1779,180 @@ class ComparisonSheetService
             $this->stampColumnHeader($cells, $fiveCoreCol, '5 Core');
         }
 
+        $cells = $this->ensureCriticalColumn($cells);
+        $cells = $this->ensureQcColumn($cells);
+
         return ComparisonData::normalizeCells($cells);
+    }
+
+    protected function isPriorityValue(string $value): bool
+    {
+        $text = strtolower(trim($value));
+
+        return in_array($text, ['critical', 'important', 'normal'], true);
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    protected function findColumnHeaderIndex(array $cells, string $headerName, int $fromCol = 0): ?int
+    {
+        $needle = strtolower(trim($headerName));
+        if ($needle === '') {
+            return null;
+        }
+
+        $colCount = max(array_map(fn ($row) => is_array($row) ? count($row) : 0, $cells) ?: [0]);
+        for ($colIndex = max(0, $fromCol); $colIndex < $colCount; $colIndex++) {
+            $header = strtolower(trim((string) ($cells[0][$colIndex] ?? '')));
+            if ($header === $needle) {
+                return $colIndex;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    protected function columnLooksLikePriorityOnly(array $cells, int $colIndex): bool
+    {
+        if ($colIndex < 0) {
+            return false;
+        }
+
+        $sawPriority = false;
+        $maxRows = min(count($cells), 40);
+        for ($rowIndex = 0; $rowIndex < $maxRows; $rowIndex++) {
+            $text = trim((string) ($cells[$rowIndex][$colIndex] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+            $lower = strtolower($text);
+            if ($rowIndex === 0 && ($lower === 'critical' || $lower === 'qc')) {
+                continue;
+            }
+            if ($this->isPriorityValue($text)) {
+                $sawPriority = true;
+            } else {
+                return false;
+            }
+        }
+
+        return $sawPriority;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function detectCriticalColumnIndex(array $cells, ?int $specCol = null): ?int
+    {
+        $specCol ??= $this->detectSpecColumnIndex($cells);
+        $byHeader = $this->findColumnHeaderIndex($cells, 'Critical', $specCol + 1);
+        if ($byHeader !== null) {
+            return $byHeader;
+        }
+
+        $candidate = $specCol + 1;
+        $header = strtolower(trim((string) ($cells[0][$candidate] ?? '')));
+        if ($header === 'qc') {
+            return null;
+        }
+
+        return $this->columnLooksLikePriorityOnly($cells, $candidate) ? $candidate : null;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function detectQcColumnIndex(array $cells, ?int $specCol = null): ?int
+    {
+        $specCol ??= $this->detectSpecColumnIndex($cells);
+        $byHeader = $this->findColumnHeaderIndex($cells, 'QC', $specCol + 1);
+        if ($byHeader !== null) {
+            return $byHeader;
+        }
+
+        $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
+        $candidate = ($criticalCol !== null ? $criticalCol : $specCol) + 1;
+        $header = strtolower(trim((string) ($cells[0][$candidate] ?? '')));
+        if ($header === 'critical') {
+            return null;
+        }
+
+        return $this->columnLooksLikePriorityOnly($cells, $candidate) ? $candidate : null;
+    }
+
+    /**
+     * Ensure a Critical (PUR) priority column exists immediately after Spec.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array<int, string>>
+     */
+    public function ensureCriticalColumn(array $cells): array
+    {
+        $cells = ComparisonData::normalizeCells($cells);
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
+
+        if ($criticalCol === null) {
+            $cells = $this->insertColumnAt($cells, $specCol + 1);
+            $criticalCol = $specCol + 1;
+        }
+
+        if (! isset($cells[0]) || ! is_array($cells[0])) {
+            $cells[0] = [];
+        }
+        $cells[0][$criticalCol] = 'Critical';
+
+        return ComparisonData::normalizeCells($cells);
+    }
+
+    /**
+     * Ensure a QC priority column exists immediately after Critical.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array<int, string>>
+     */
+    public function ensureQcColumn(array $cells): array
+    {
+        $cells = ComparisonData::normalizeCells($cells);
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
+        $qcCol = $this->detectQcColumnIndex($cells, $specCol);
+
+        if ($qcCol === null) {
+            $insertAt = ($criticalCol !== null ? $criticalCol : $specCol) + 1;
+            $cells = $this->insertColumnAt($cells, $insertAt);
+            $qcCol = $insertAt;
+        }
+
+        if (! isset($cells[0]) || ! is_array($cells[0])) {
+            $cells[0] = [];
+        }
+        $cells[0][$qcCol] = 'QC';
+
+        return ComparisonData::normalizeCells($cells);
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    public function getFirstSupplierColumnIndex(array $cells, ?int $specCol = null): int
+    {
+        $specCol ??= $this->detectSpecColumnIndex($cells);
+        $qcCol = $this->detectQcColumnIndex($cells, $specCol);
+        if ($qcCol !== null) {
+            return $qcCol + 1;
+        }
+
+        $criticalCol = $this->detectCriticalColumnIndex($cells, $specCol);
+        if ($criticalCol !== null) {
+            return $criticalCol + 1;
+        }
+
+        return $specCol + 1;
     }
 
     /**

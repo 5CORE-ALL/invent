@@ -2708,6 +2708,15 @@
                             <a href="{{ route('arrived.container') }}">Arrived Container</a>
                         </li>
                         <li>
+                            <a href="{{ route('qc.container') }}">QC Container</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('pricing.container') }}">Pricing Container</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inv.verify.container') }}">Inv Verify Container</a>
+                        </li>
+                        <li>
                             <a href="{{ route('container.summary') }}">Container Summary</a>
                         </li>
                         {{-- <li>

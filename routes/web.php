@@ -14,6 +14,9 @@ use App\Http\Controllers\AmazonAds\AmazonCampaignLinkController;
 use App\Http\Controllers\AmazonAds\AmazonNegativeCampaignLinkController;
 use App\Http\Controllers\AmazonAds\AmazonAdsPushLogController;
 use App\Http\Controllers\ArrivedContainerController;
+use App\Http\Controllers\QcContainerController;
+use App\Http\Controllers\PricingContainerController;
+use App\Http\Controllers\InvVerifyContainerController;
 use App\Http\Controllers\Auth\UserController;
 use App\Http\Controllers\Kpi\KpiShippingController;
 use App\Http\Controllers\Campaigns\AmazonAdRunningController;
@@ -4812,6 +4815,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/suppliers-for-sku', 'suppliersForSku')->name('comparison.suppliers-for-sku');
         Route::get('/history', 'getHistory')->name('comparison.history');
         Route::get('/sheet', 'getSheet')->name('comparison.sheet.get');
+        Route::get('/sheet/image', 'getSheetImage')->name('comparison.sheet.image');
         Route::post('/sheet/save', 'saveSheet')->name('comparison.sheet.save');
         Route::post('/sheet/import-google', 'importGoogleSheet')->name('comparison.sheet.import-google');
         Route::post('/sheet/sync-clink', 'syncFromClink')->name('comparison.sheet.sync-clink');
@@ -4853,6 +4857,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/transit-container-details', [TransitContainerDetailsController::class, 'index'])->name('transit.container.details');
     Route::post('/transit-container/add-tab', [TransitContainerDetailsController::class, 'addTab']);
     Route::post('/transit-container/save-row', [TransitContainerDetailsController::class, 'saveRow']);
+    Route::post('/transit-container/dropdown-option', [TransitContainerDetailsController::class, 'addDropdownOption']);
     Route::post('/transit-container/sync-all-to-on-sea', [TransitContainerDetailsController::class, 'syncAllToOnSea']);
     Route::post('/upload-image', [TransitContainerDetailsController::class, 'uploadImage'])->name('transit.upload-image');
     Route::get('/transit-container-changes', [TransitContainerDetailsController::class, 'transitContainerChanges'])->name('transit.container.changes');
@@ -4881,6 +4886,26 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/arrived/container/save-row', 'saveArrivedRow');
         Route::get('/arrived/container/history', 'getHistory');
         Route::get('/arrived/container/summary', 'containerSummary')->name('container.summary');
+    });
+
+    Route::controller(QcContainerController::class)->group(function () {
+        Route::get('/qc/container', 'index')->name('qc.container');
+        Route::get('/qc/container/specs', 'getSpecs')->name('qc.container.specs');
+        Route::post('/qc/container/audit', 'saveAudit')->name('qc.container.audit');
+        Route::post('/qc/container/action', 'addAction')->name('qc.container.action');
+    });
+
+    Route::controller(PricingContainerController::class)->group(function () {
+        Route::get('/pricing/container', 'index')->name('pricing.container');
+        Route::post('/pricing/container/save-po', 'savePo')->name('pricing.container.save-po');
+        Route::post('/pricing/container/save-approval', 'saveApproval')->name('pricing.container.save-approval');
+    });
+
+    Route::controller(InvVerifyContainerController::class)->group(function () {
+        Route::get('/inv-verify/container', 'index')->name('inv.verify.container');
+        Route::post('/inv-verify/container/save-cartons', 'saveCartons')->name('inv.verify.container.save-cartons');
+        Route::post('/inv-verify/container/save-discrepancy', 'saveDiscrepancy')->name('inv.verify.container.save-discrepancy');
+        Route::post('/inv-verify/container/action', 'addAction')->name('inv.verify.container.action');
     });
 
     Route::controller(QualityEnhanceController::class)->group(function () {

@@ -464,8 +464,16 @@
         $(document).ready(function () {
             $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': CSRF_TOKEN } });
 
+            const urlParams = new URLSearchParams(window.location.search);
+            const deepParent = (urlParams.get('parent') || '').trim();
+            const deepSku = (urlParams.get('sku') || '').trim();
+            const reviewsAjaxParams = {};
+            if (deepParent) reviewsAjaxParams.parent = deepParent;
+            if (deepSku) reviewsAjaxParams.sku = deepSku;
+
             table = new Tabulator('#reviews-table', {
                 ajaxURL: REVIEWS_DATA_URL,
+                ajaxParams: reviewsAjaxParams,
                 layout: 'fitDataStretch',
                 pagination: true,
                 paginationSize: 50,
@@ -497,6 +505,19 @@
             table.on('dataFiltered',   updateSummary);
             table.on('dataProcessed',  updateSummary);
             table.on('renderComplete', updateSummary);
+
+            if (deepSku) {
+                $('#sku-search').val(deepSku);
+            }
+            if (deepParent) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-primary-subtle text-primary border ms-1';
+                badge.id = 'reviews-parent-filter-badge';
+                badge.textContent = 'Parent: ' + deepParent;
+                const searchWrap = document.getElementById('sku-search')?.parentElement;
+                if (searchWrap) searchWrap.appendChild(badge);
+                else document.querySelector('h4')?.appendChild(badge);
+            }
 
             // --- SKU search ---
             $('#sku-search').on('keyup', function () {
@@ -543,7 +564,7 @@
 
             // --- Refresh ---
             $('#refresh-btn').on('click', function () {
-                table.setData(REVIEWS_DATA_URL).then(() => showToast('Reviews reloaded', 'success'));
+                table.setData(REVIEWS_DATA_URL, reviewsAjaxParams).then(() => showToast('Reviews reloaded', 'success'));
             });
 
             // --- Row actions ---

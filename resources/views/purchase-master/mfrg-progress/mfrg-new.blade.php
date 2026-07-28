@@ -377,7 +377,7 @@
                             </div>
 
                             <div class="mip-field">
-                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field exec-typeahead" aria-label="Executive filter" title="Executive filter" data-eta-placeholder="Search executive…">
+                                <select id="mip-exec-filter" class="form-select form-select-sm border-primary mip-filter-field exec-typeahead" aria-label="Executive" title="Executive" data-eta-placeholder="Executive">
                                     <option value="">Executive</option>
                                     <option value="__un__">Unassigned</option>
                                     @foreach (($execUsers ?? []) as $execName)
@@ -387,11 +387,11 @@
                             </div>
 
                             <div class="mip-field">
-                                <input type="text" id="mip-sku-search" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--sku" placeholder="SKU…" autocomplete="off" aria-label="SKU filter">
+                                <input type="text" id="mip-sku-search" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--sku" placeholder="SKU" autocomplete="off" aria-label="SKU">
                             </div>
 
                             <div class="mip-field">
-                                <input type="text" id="mip-supplier-search" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--supplier" placeholder="Supplier…" autocomplete="off" aria-label="Supplier filter">
+                                <input type="text" id="mip-supplier-search" class="form-control form-control-sm border-primary mip-filter-field mip-filter-field--supplier" placeholder="Supplier" autocomplete="off" aria-label="Supplier">
                             </div>
 
                             {{-- ── Supplier Play/Pause (mirrors /forecast.analysis Supplier play) ── --}}

@@ -570,6 +570,60 @@
         }
 
         addNewRow();
+
+        // Open Add Claim modal when linked from QC Container (open_add=1).
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('open_add') === '1') {
+                const sku = String(params.get('sku') || '').trim();
+                const supplierName = String(params.get('supplier') || '').trim();
+
+                const supplierSelect = document.getElementById('supplier');
+                if (supplierSelect && supplierName) {
+                    const target = supplierName.toLowerCase();
+                    let matched = '';
+                    Array.from(supplierSelect.options).forEach(function (opt) {
+                        if (!matched && String(opt.text || '').trim().toLowerCase() === target) {
+                            matched = opt.value;
+                        }
+                    });
+                    if (!matched) {
+                        Array.from(supplierSelect.options).forEach(function (opt) {
+                            const text = String(opt.text || '').trim().toLowerCase();
+                            if (!matched && text && (text.includes(target) || target.includes(text))) {
+                                matched = opt.value;
+                            }
+                        });
+                    }
+                    if (matched) {
+                        supplierSelect.value = matched;
+                    }
+                }
+
+                const modalEl = document.getElementById('claimModal');
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    modal.show();
+
+                    if (sku) {
+                        setTimeout(function () {
+                            const skuSelect = document.querySelector('#claimTableBody tr .sku-select');
+                            if (skuSelect && window.jQuery) {
+                                const option = new Option(sku, sku, true, true);
+                                jQuery(skuSelect).append(option).trigger('change');
+                            }
+                        }, 350);
+                    }
+                }
+
+                // Clean query params so refresh doesn't re-open the modal.
+                params.delete('open_add');
+                const clean = window.location.pathname + (params.toString() ? ('?' + params.toString()) : '');
+                window.history.replaceState({}, '', clean);
+            }
+        } catch (e) {
+            console.warn('Unable to auto-open claim modal', e);
+        }
     });
 
     function addNewRow() {

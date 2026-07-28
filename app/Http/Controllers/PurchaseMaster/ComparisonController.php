@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\AmazonDatasheet;
+use App\Models\AmazonListingStatus;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\Category;
 use App\Models\ComparisonData;
 use App\Models\ComparisonHistory;
 use App\Models\EbaySkuCompetitor;
 use App\Models\ForecastAnalysisHistory;
+use App\Models\InstructionsItemPkg;
+use App\Models\JungleScoutProductData;
 use App\Models\ProductCategory;
 use App\Models\ProductMaster;
+use App\Models\QcMastersEntry;
 use App\Models\RfqForm;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
@@ -446,7 +451,10 @@ class ComparisonController extends Controller
             );
         }
 
-        $cells = $this->sheetStorage->cellsForSku($sheetSku)
+        $fileCells = is_array($filePayload) && ! empty($filePayload['cells']) && is_array($filePayload['cells'])
+            ? ComparisonData::normalizeCells($filePayload['cells'])
+            : null;
+        $cells = $fileCells
             ?? $record?->sheet_data['cells']
             ?? ComparisonData::defaultSheetCells();
         $cells = $this->sheetService->ensureLeadColumns($cells);
@@ -455,13 +463,41 @@ class ComparisonController extends Controller
         if ($formats === ComparisonData::defaultSheetFormats() && is_array($record?->sheet_data)) {
             $formats = ComparisonData::normalizeFormats($record->sheet_data['formats'] ?? []);
         }
-        $autoFormats = $this->sheetService->computeAutoFormats($cells);
+        // Extract base64 / legacy placeholders into stable photo files + DB-safe tokens.
+        $cells = $this->sheetStorage->persistPhotosInCells($sheetSku, $cells);
+        $browserCells = $this->sheetStorage->cellsForBrowser($cells, $sheetSku);
+        // Keep migrated photo tokens in file + DB (Google Sheet no longer required for photos).
+        $this->sheetStorage->save($sheetSku, array_merge(
+            is_array($filePayload) ? $filePayload : [],
+            [
+                'cells' => $cells,
+                'formats' => $formats,
+                'parent' => $record?->parent ?? ($filePayload['parent'] ?? null),
+                'google_sheet_url' => $record?->google_sheet_url
+                    ?? ($filePayload['google_sheet_url'] ?? null),
+                'google_sheet_tab' => $record?->google_sheet_tab
+                    ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'),
+            ]
+        ));
+        ComparisonData::updateOrCreate(
+            ['sku' => $sheetSku],
+            [
+                'parent' => $record?->parent ?? ($filePayload['parent'] ?? null),
+                'sheet_data' => $this->sheetStorage->sheetDataForDatabase($cells, $formats),
+                'google_sheet_url' => $record?->google_sheet_url
+                    ?? ($filePayload['google_sheet_url'] ?? null),
+                'google_sheet_tab' => $record?->google_sheet_tab
+                    ?? ($filePayload['google_sheet_tab'] ?? 'Sheet1'),
+                'updated_by' => $record?->updated_by ?? ($filePayload['updated_by'] ?? null),
+            ]
+        );
+        $autoFormats = $this->sheetService->computeAutoFormats($browserCells);
         $sheetUrl = $record?->google_sheet_url
             ?: ($filePayload['google_sheet_url'] ?? null)
             ?: ($this->sheetStorage->isGoogleSheetUrl($this->clinkForSku($sheetSku)) ? $this->clinkForSku($sheetSku) : null);
         $hasSheetData = (bool) ($sharedSheet['has_sheet_data'] ?? false)
-            || $this->sheetHasContent($cells)
-            || $this->sheetStorage->cellsForSku($sheetSku) !== null;
+            || $fileCells !== null
+            || $this->sheetHasContent($browserCells);
 
         $parent = trim((string) $request->query('parent', ''));
         if ($parent === '') {
@@ -476,9 +512,14 @@ class ComparisonController extends Controller
             'sheet_sku' => $sheetSku,
             'linked_skus' => $skuGroup,
             'parent' => $parent !== '' ? $parent : $record?->parent,
-            'cells' => ComparisonData::normalizeCells($cells),
+            // Never send multi-MB data:image payloads to the browser (Page Unresponsive).
+            'cells' => $browserCells,
             'formats' => $formats,
             'auto_formats' => $autoFormats,
+            'dim_wt' => $this->dimWtPayloadForSku($sku),
+            'qc_issues' => $this->qcIssuesPayloadForSku($sku),
+            'reviews' => $this->reviewsPayloadForSku($sku),
+            'siblings' => $this->siblingsPayloadForSku($sku, $parent),
             'clink' => $clink,
             'clink_sku' => ($sharedClink['clink_sku'] ?? null) !== $sku ? ($sharedClink['clink_sku'] ?? null) : null,
             'clink_is_sheet' => $this->sheetStorage->isGoogleSheetUrl($clink),
@@ -488,6 +529,392 @@ class ComparisonController extends Controller
             'sheet_file' => $this->sheetStorage->pathForSku($sheetSku),
             'updated_by' => $record?->updated_by,
             'updated_at' => $record?->updated_at?->format('m-d-Y H:i'),
+        ]);
+    }
+
+    /**
+     * Sibling SKUs under the same parent (for sheet-view "Siblings" sync badge).
+     *
+     * @return array{parent: string|null, siblings: list<string>, count: int}
+     */
+    protected function siblingsPayloadForSku(string $sku, string $parent = ''): array
+    {
+        $skuTrim = trim($sku);
+        $parentTrim = trim($parent);
+
+        if ($parentTrim === '' && $skuTrim !== '') {
+            $parentTrim = trim((string) (ProductMaster::query()
+                ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($skuTrim)])
+                ->value('parent') ?? ''));
+        }
+
+        if ($parentTrim === '') {
+            return [
+                'parent' => null,
+                'siblings' => $skuTrim !== '' ? [$skuTrim] : [],
+                'count' => $skuTrim !== '' ? 1 : 0,
+            ];
+        }
+
+        $siblings = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->whereRaw('TRIM(parent) = ?', [$parentTrim])
+            ->orderBy('sku')
+            ->pluck('sku')
+            ->map(fn ($s) => trim((string) $s))
+            ->filter(fn ($s) => $s !== '')
+            ->unique(fn ($s) => strtoupper($s))
+            ->values()
+            ->all();
+
+        if ($skuTrim !== '' && ! in_array($skuTrim, $siblings, true)) {
+            $siblings[] = $skuTrim;
+        }
+
+        return [
+            'parent' => $parentTrim,
+            'siblings' => $siblings,
+            'count' => count($siblings),
+        ];
+    }
+
+    /**
+     * Dim/Wt Master fields for Inner Pkg + Ctn Pkg sections on the comparison sheet.
+     *
+     * @return array<string, string|null>
+     */
+    protected function dimWtPayloadForSku(string $sku): array
+    {
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['id', 'sku', 'Values']);
+
+        if (! $product) {
+            return [];
+        }
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        $fmt = static function ($value, int $decimals = 2): string {
+            if ($value === null || $value === '') {
+                return '';
+            }
+            if (! is_numeric($value)) {
+                return trim((string) $value);
+            }
+            $num = (float) $value;
+            if ($num == 0.0) {
+                return '';
+            }
+
+            return rtrim(rtrim(number_format($num, $decimals, '.', ''), '0'), '.');
+        };
+
+        $l = $values['l'] ?? null;
+        $w = $values['w'] ?? null;
+        $h = $values['h'] ?? null;
+        $lCm = $values['l_cm'] ?? (is_numeric($l) ? ((float) $l * 2.54) : null);
+        $wCm = $values['w_cm'] ?? (is_numeric($w) ? ((float) $w * 2.54) : null);
+        $hCm = $values['h_cm'] ?? (is_numeric($h) ? ((float) $h * 2.54) : null);
+        $ctnL = $values['ctn_l'] ?? null;
+        $ctnW = $values['ctn_w'] ?? null;
+        $ctnH = $values['ctn_h'] ?? null;
+        $ctnQty = $values['ctn_qty'] ?? null;
+        $ctnCbm = $values['ctn_cbm'] ?? null;
+        if (($ctnCbm === null || $ctnCbm === '') && is_numeric($ctnL) && is_numeric($ctnW) && is_numeric($ctnH)) {
+            $ctnCbm = ((float) $ctnL * (float) $ctnW * (float) $ctnH) / 1000000;
+        }
+        $itemCbm = $values['cbm'] ?? null;
+        if (($itemCbm === null || $itemCbm === '') && is_numeric($l) && is_numeric($w) && is_numeric($h)) {
+            $itemCbm = ((float) $l * 2.54 * (float) $w * 2.54 * (float) $h * 2.54) / 1000000;
+        }
+
+        $itemPkg = InstructionsItemPkg::query()
+            ->where('product_master_id', $product->id)
+            ->value('instructions');
+
+        $joinDims = static function ($a, $b, $c) use ($fmt): string {
+            $parts = array_filter([$fmt($a, 2), $fmt($b, 2), $fmt($c, 2)], fn ($p) => $p !== '');
+
+            return $parts === [] ? '' : implode(' × ', $parts);
+        };
+
+        return [
+            'sku' => (string) $product->sku,
+            'item_l' => $fmt($l, 2),
+            'item_w' => $fmt($w, 2),
+            'item_h' => $fmt($h, 2),
+            'item_lwh_in' => $joinDims($l, $w, $h),
+            'wt_act' => $fmt($values['wt_act'] ?? null, 2),
+            'cbm' => $fmt($itemCbm, 4),
+            'item_lwh_cm' => $joinDims($lCm, $wCm, $hCm),
+            'instructions_item_pkg' => trim((string) ($itemPkg ?? '')),
+            'ctn_l' => $fmt($ctnL, 2),
+            'ctn_w' => $fmt($ctnW, 2),
+            'ctn_h' => $fmt($ctnH, 2),
+            'ctn_lwh_cm' => $joinDims($ctnL, $ctnW, $ctnH),
+            'ctn_qty' => $fmt($ctnQty, 0),
+            'ctn_cbm' => $fmt($ctnCbm, 4),
+            'ctn_instructions' => trim((string) ($values['ctn_instructions'] ?? '')),
+        ];
+    }
+
+    /**
+     * Rating + reviews from Jungle Scout (same source as Forecast Analysis "Rat" column),
+     * plus parent / Amazon links for Reviews badge actions.
+     *
+     * @return array{
+     *     sku: string,
+     *     parent: string|null,
+     *     rating: float|null,
+     *     reviews: int|null,
+     *     asin: string|null,
+     *     amazon_buyer_url: string|null,
+     *     amazon_reviews_url: string|null,
+     *     has_data: bool
+     * }
+     */
+    protected function reviewsPayloadForSku(string $sku): array
+    {
+        $normalize = static function (?string $value): string {
+            if ($value === null || $value === '') {
+                return '';
+            }
+            $value = strtoupper(trim(str_replace("\u{00a0}", ' ', $value)));
+            $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+            return trim($value);
+        };
+
+        $needle = $normalize($sku);
+        $needleNoSp = str_replace(' ', '', $needle);
+        $skuTrim = trim($sku);
+
+        $parent = ProductMaster::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$needle])
+            ->value('parent');
+        if (! $parent && $needleNoSp !== '') {
+            $parent = ProductMaster::query()
+                ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$needleNoSp])
+                ->value('parent');
+        }
+        $parent = $parent !== null && trim((string) $parent) !== '' ? trim((string) $parent) : null;
+
+        $asin = null;
+        $sheet = AmazonDatasheet::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$needle])
+            ->first(['sku', 'asin']);
+        if (! $sheet && $needleNoSp !== '') {
+            $sheet = AmazonDatasheet::query()
+                ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$needleNoSp])
+                ->first(['sku', 'asin']);
+        }
+        if ($sheet && ! empty($sheet->asin)) {
+            $asin = strtoupper(trim((string) $sheet->asin));
+        }
+
+        $buyerUrl = null;
+        $listing = AmazonListingStatus::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$needle])
+            ->first(['sku', 'value']);
+        if (! $listing && $needleNoSp !== '') {
+            $listing = AmazonListingStatus::query()
+                ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$needleNoSp])
+                ->first(['sku', 'value']);
+        }
+        if ($listing) {
+            $val = is_array($listing->value) ? $listing->value : [];
+            $rawBuyer = trim((string) ($val['buyer_link'] ?? ''));
+            if ($rawBuyer !== '' && filter_var($rawBuyer, FILTER_VALIDATE_URL)) {
+                $buyerUrl = $rawBuyer;
+            }
+        }
+
+        if (! $buyerUrl && $asin) {
+            $buyerUrl = 'https://www.amazon.com/dp/' . $asin;
+        }
+
+        $reviewsUrl = null;
+        if ($asin) {
+            $reviewsUrl = 'https://www.amazon.com/product-reviews/' . $asin;
+        } elseif ($buyerUrl && preg_match('#/(?:dp|gp/product)/([A-Z0-9]{10})#i', $buyerUrl, $m)) {
+            $asin = strtoupper($m[1]);
+            $reviewsUrl = 'https://www.amazon.com/product-reviews/' . $asin;
+        }
+
+        $empty = [
+            'sku' => $skuTrim,
+            'parent' => $parent,
+            'rating' => null,
+            'reviews' => null,
+            'asin' => $asin,
+            'amazon_buyer_url' => $buyerUrl,
+            'amazon_reviews_url' => $reviewsUrl,
+            'has_data' => false,
+        ];
+
+        if ($needle === '') {
+            return $empty;
+        }
+
+        $row = JungleScoutProductData::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [$needle])
+            ->orderByDesc('updated_at')
+            ->first(['sku', 'asin', 'data', 'updated_at']);
+
+        if (! $row) {
+            $row = JungleScoutProductData::query()
+                ->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [$needleNoSp])
+                ->orderByDesc('updated_at')
+                ->first(['sku', 'asin', 'data', 'updated_at']);
+        }
+
+        if (! $row) {
+            return $empty;
+        }
+
+        if (! $asin && ! empty($row->asin)) {
+            $asin = strtoupper(trim((string) $row->asin));
+            if (! $buyerUrl) {
+                $buyerUrl = 'https://www.amazon.com/dp/' . $asin;
+            }
+            $reviewsUrl = 'https://www.amazon.com/product-reviews/' . $asin;
+        }
+
+        $data = is_array($row->data) ? $row->data : [];
+        $rating = null;
+        $rawRating = $data['rating'] ?? null;
+        if ($rawRating !== null && $rawRating !== '' && is_numeric($rawRating)) {
+            $rating = round((float) $rawRating, 2);
+        }
+
+        $reviews = null;
+        $rawReviews = $data['reviews'] ?? null;
+        if ($rawReviews !== null && $rawReviews !== '' && is_numeric($rawReviews)) {
+            $reviews = (int) $rawReviews;
+        }
+
+        return [
+            'sku' => (string) ($row->sku ?: $skuTrim),
+            'parent' => $parent,
+            'rating' => $rating,
+            'reviews' => $reviews,
+            'asin' => $asin,
+            'amazon_buyer_url' => $buyerUrl,
+            'amazon_reviews_url' => $reviewsUrl,
+            'has_data' => $rating !== null || $reviews !== null,
+        ];
+    }
+
+    /**
+     * QC Masters issue fields for the comparison-sheet "QC Issues" badge/modal.
+     *
+     * @return array<string, mixed>
+     */
+    protected function qcIssuesPayloadForSku(string $sku): array
+    {
+        $product = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['id', 'sku']);
+
+        if (! $product) {
+            return [
+                'sku' => trim($sku),
+                'product_id' => null,
+                'has_data' => false,
+                'problem_issue' => '',
+                'suggestion_improve' => '',
+                'image_path' => null,
+                'image_size_kb' => null,
+                'video_path' => null,
+                'video_size_kb' => null,
+                'user_history_label' => '',
+            ];
+        }
+
+        $entry = QcMastersEntry::query()
+            ->where('product_master_id', $product->id)
+            ->first();
+
+        $problem = trim((string) ($entry?->problem_issue ?? ''));
+        $suggestion = trim((string) ($entry?->suggestion_improve ?? ''));
+        $imagePath = $entry?->image_path
+            ? '/storage/'.ltrim((string) $entry->image_path, '/')
+            : null;
+        $videoPath = $entry?->video_path
+            ? '/storage/'.ltrim((string) $entry->video_path, '/')
+            : null;
+
+        return [
+            'sku' => (string) $product->sku,
+            'product_id' => (int) $product->id,
+            'has_data' => $problem !== '' || $suggestion !== '' || $imagePath || $videoPath,
+            'problem_issue' => $problem,
+            'suggestion_improve' => $suggestion,
+            'image_path' => $imagePath,
+            'image_size_kb' => $entry?->image_size_kb,
+            'video_path' => $videoPath,
+            'video_size_kb' => $entry?->video_size_kb,
+            'user_history_label' => $entry ? $entry->latestUserHistoryLabel() : '',
+        ];
+    }
+
+    /**
+     * Serve one sheet photo as a real image response (keeps JSON light).
+     * Prefer stable ?photo=hash.ext tokens; legacy ?row=&col= still supported.
+     */
+    public function getSheetImage(Request $request)
+    {
+        $sheetSku = trim((string) $request->query('sheet_sku', $request->query('sku', '')));
+        $photoId = trim((string) $request->query('photo', ''));
+        $row = (int) $request->query('row', -1);
+        $col = (int) $request->query('col', -1);
+
+        if ($sheetSku === '') {
+            abort(404);
+        }
+
+        $decoded = null;
+        $etagSeed = '';
+
+        if ($photoId !== '') {
+            $decoded = $this->sheetStorage->readPhotoById($sheetSku, $photoId);
+            $etagSeed = 'photo|' . $photoId;
+        } elseif ($row >= 0 && $col >= 0) {
+            $cells = $this->sheetStorage->cellsForSku($sheetSku);
+            if (is_array($cells)) {
+                $cells = $this->sheetService->ensureLeadColumns($cells);
+                $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
+                $cells = $this->sheetStorage->persistPhotosInCells($sheetSku, $cells);
+                $cellVal = trim((string) ($cells[$row][$col] ?? ''));
+                $tokenPhoto = $this->sheetStorage->photoIdFromToken($cellVal);
+                if ($tokenPhoto) {
+                    $decoded = $this->sheetStorage->readPhotoById($sheetSku, $tokenPhoto);
+                    $etagSeed = 'photo|' . $tokenPhoto;
+                } else {
+                    $decoded = $this->sheetStorage->readImageFile($sheetSku, $row, $col)
+                        ?? $this->sheetStorage->decodeEmbeddedImage($cellVal);
+                    $etagSeed = "cell|{$row}|{$col}";
+                }
+            }
+        }
+
+        if (! is_array($decoded) || empty($decoded['bytes'])) {
+            abort(404);
+        }
+
+        $etag = '"' . sha1(strtoupper($sheetSku) . '|' . $etagSeed . '|' . strlen($decoded['bytes'])) . '"';
+        if ($request->headers->get('If-None-Match') === $etag) {
+            return response('', 304, [
+                'ETag' => $etag,
+                'Cache-Control' => 'private, max-age=86400',
+            ]);
+        }
+
+        return response($decoded['bytes'], 200, [
+            'Content-Type' => $decoded['mime'] ?? 'image/jpeg',
+            'Cache-Control' => 'private, max-age=86400',
+            'ETag' => $etag,
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -517,8 +944,19 @@ class ComparisonController extends Controller
         $cells = ComparisonData::normalizeCells($validated['cells']);
         $cells = $this->sheetService->ensureLeadColumns($cells);
         $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
+        // Align stored photos to the same layout, then put photo tokens / bytes back.
+        $existingFileCells = $this->sheetStorage->cellsForSku($sku);
+        if (is_array($existingFileCells)) {
+            $existingFileCells = $this->sheetService->ensureLeadColumns($existingFileCells);
+            $existingFileCells = $this->sheetService->moveLowestPriceSupplierAfterSpec($existingFileCells);
+            $existingFileCells = $this->sheetStorage->persistPhotosInCells($sku, $existingFileCells);
+        }
+        $cells = $this->sheetStorage->restoreEmbeddedImages($cells, $existingFileCells);
+        $cells = $this->sheetStorage->persistPhotosInCells($sku, $cells);
         $formats = ComparisonData::normalizeFormats($validated['formats'] ?? []);
-        $autoFormats = $this->sheetService->computeAutoFormats($cells);
+        $autoFormats = $this->sheetService->computeAutoFormats(
+            $this->sheetStorage->cellsForBrowser($cells, $sku)
+        );
         $user = Auth::user()?->name ?? 'N/A';
         $clink = $this->clinkForSku($sku);
         $url = trim((string) ($validated['google_sheet_url'] ?? ''))
@@ -543,7 +981,8 @@ class ComparisonController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Comparison sheet saved.',
-            'cells' => $cells,
+            // Keep response light — photo tokens only, never base64.
+            'cells' => $this->sheetStorage->cellsForBrowser($cells, $sku),
             'formats' => $formats,
             'auto_formats' => $autoFormats,
         ]);
@@ -783,6 +1222,7 @@ class ComparisonController extends Controller
             $oldCells = $record?->sheet_data['cells'] ?? [];
 
             $this->persistSheetForSku($sku, $parent, $cells, $url, $tab, $user, $url, ComparisonData::defaultSheetFormats());
+            $this->sheetStorage->syncImageFiles($sku, $cells);
 
             ComparisonHistory::create([
                 'sku' => $sku,
@@ -798,7 +1238,7 @@ class ComparisonController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Comparison sheet loaded from C link.',
-                'cells' => $cells,
+                'cells' => $this->sheetStorage->cellsForBrowser($cells, $sku),
                 'formats' => ComparisonData::defaultSheetFormats(),
                 'auto_formats' => $autoFormats,
                 'clink' => $url,
@@ -830,6 +1270,8 @@ class ComparisonController extends Controller
         ?array $formats = null
     ): void {
         $cells = ComparisonData::normalizeCells($cells);
+        // Always extract photos to disk + keep [cmp-photo:…] tokens in file and DB.
+        $cells = $this->sheetStorage->persistPhotosInCells($sku, $cells);
         $formats = ComparisonData::normalizeFormats($formats);
 
         $this->sheetStorage->save($sku, [
@@ -873,7 +1315,18 @@ class ComparisonController extends Controller
                 continue;
             }
             foreach ($row as $value) {
-                if (trim((string) $value) !== '') {
+                if (! is_string($value)) {
+                    if (trim((string) $value) !== '') {
+                        return true;
+                    }
+
+                    continue;
+                }
+                if ($value === '') {
+                    continue;
+                }
+                // Avoid trim() on multi-MB base64 strings.
+                if (str_starts_with($value, 'data:image/') || trim($value) !== '') {
                     return true;
                 }
             }
@@ -1810,7 +2263,7 @@ class ComparisonController extends Controller
             'message' => 'ROI value saved.',
             'updated_by' => $user,
             'updated_at' => now()->format('m-d-Y H:i'),
-            'cells' => $cells,
+            'cells' => $this->sheetStorage->cellsForBrowser($cells, $sku),
         ]);
     }
 

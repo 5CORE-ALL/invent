@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\InventoryWarehouse;
 use App\Models\TransitContainerDetail;
 use App\Models\TransitContainerHistory;
+use App\Models\TransitDropdownOption;
 use App\Models\Supplier;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -116,20 +117,59 @@ class TransitContainerDetailsController extends Controller
             $tabs = ['Container 1'];
         }
 
+        $normalizeSku = static function ($s) {
+            return strtoupper(trim(preg_replace('/\s+/', ' ', (string) $s)));
+        };
+
         $skuParentMap = ProductMaster::pluck('parent', 'sku')
-            ->mapWithKeys(function ($parent, $sku) {
-                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
-                return [$normSku => strtoupper(trim($parent))];
+            ->mapWithKeys(function ($parent, $sku) use ($normalizeSku) {
+                return [$normalizeSku($sku) => $normalizeSku($parent)];
             })->toArray();
 
-        $supplierData = Supplier::select('name', 'parent')->get();
+        // Same supplier source as /forecast.analysis:
+        // 1) to_order_analysis.supplier_name (when set, incl. empty string)
+        // 2) else mfrg_progress.supplier
+        // Parent-linked suppliers used only as related tags (type = Supplier).
+        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
         $parentSupplierMap = [];
-        foreach ($supplierData as $supplier) {
-            $parentList = array_map('trim', explode(',', $supplier->parent));
+        foreach ($supplierRows as $supplier) {
+            $parentList = array_map('trim', explode(',', strtoupper($supplier->parent ?? '')));
             foreach ($parentList as $parent) {
-                $key = strtoupper(trim(preg_replace('/\s+/', ' ', $parent)));
-                $parentSupplierMap[$key][] = $supplier->name;
+                if ($parent === '') {
+                    continue;
+                }
+                $parentSupplierMap[$parent][] = $supplier->name;
             }
+        }
+
+        $toOrderSupplierBySku = [];
+        $toOrderRows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'supplier_name']);
+        foreach ($toOrderRows as $r) {
+            $k = $normalizeSku($r->sku);
+            if ($k === '' || array_key_exists($k, $toOrderSupplierBySku)) {
+                continue;
+            }
+            if ($r->supplier_name !== null) {
+                $toOrderSupplierBySku[$k] = (string) $r->supplier_name;
+            }
+        }
+
+        $mfrgSupplierBySku = [];
+        $mfrgRows = DB::table('mfrg_progress')
+            ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'supplier']);
+        foreach ($mfrgRows as $r) {
+            $k = $normalizeSku($r->sku);
+            if ($k === '' || array_key_exists($k, $mfrgSupplierBySku)) {
+                continue;
+            }
+            $mfrgSupplierBySku[$k] = trim((string) ($r->supplier ?? ''));
         }
 
         $shopifyImages = ShopifySku::pluck('image_src', 'sku')->mapWithKeys(function ($value, $key) {
@@ -187,9 +227,21 @@ class TransitContainerDetailsController extends Controller
         );
 
         // Transform TransitContainerDetail Records
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap, $pushedMap, $clinkBySku, $lastSavedMap, $categoryBySku) {
-            $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
-            $tabKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->tab_name ?? '')));
+        $allRecords->transform(function ($record) use (
+            $skuParentMap,
+            $parentSupplierMap,
+            $shopifyImages,
+            $productValuesMap,
+            $pushedMap,
+            $clinkBySku,
+            $lastSavedMap,
+            $categoryBySku,
+            $toOrderSupplierBySku,
+            $mfrgSupplierBySku,
+            $normalizeSku
+        ) {
+            $sku = $normalizeSku($record->our_sku ?? '');
+            $tabKey = $normalizeSku($record->tab_name ?? '');
             // $rowId = $record->id; 
 
             $key = "{$tabKey}|{$record->id}";
@@ -200,8 +252,17 @@ class TransitContainerDetailsController extends Controller
                 $record->parent = $parent;
             }
 
-            $parentKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->parent ?? '')));
-            $record->supplier_names = $parentSupplierMap[$parentKey] ?? [];
+            $parentKey = $normalizeSku($record->parent ?? '');
+            $record->supplier_names = isset($parentSupplierMap[$parentKey])
+                ? array_values(array_unique($parentSupplierMap[$parentKey]))
+                : [];
+
+            // Display supplier = same as Forecast Supplier column (mfrg_supplier)
+            if (array_key_exists($sku, $toOrderSupplierBySku)) {
+                $record->supplier_name = $toOrderSupplierBySku[$sku];
+            } else {
+                $record->supplier_name = $mfrgSupplierBySku[$sku] ?? '';
+            }
 
             $record->image_src = $shopifyImages[$sku] ?? null;
             $record->Values = $productValuesMap[$sku] ?? null;
@@ -231,9 +292,12 @@ class TransitContainerDetailsController extends Controller
             }
         }
 
-        $suppliers = Supplier::select('id', 'name')->get();
+        $suppliers = Supplier::where('type', 'Supplier')->select('id', 'name')->orderBy('name')->get();
 
         $skus = ProductMaster::pluck('sku')->toArray();
+
+        $impNameOptions = TransitDropdownOption::optionsFor(TransitDropdownOption::FIELD_IMP);
+        $hsnCodeOptions = TransitDropdownOption::optionsFor(TransitDropdownOption::FIELD_HSN);
 
         return view('purchase-master.transit_container.index', [
             'tabs' => $tabs,
@@ -242,6 +306,40 @@ class TransitContainerDetailsController extends Controller
             'skus'=> $skus,
             'productValuesMap' => json_encode($productValuesMap),
             'canEditDelete' => $this->canEditDeleteTransit(),
+            'impNameOptions' => $impNameOptions,
+            'hsnCodeOptions' => $hsnCodeOptions,
+            'lastImpName' => TransitDropdownOption::lastUsed(TransitDropdownOption::FIELD_IMP),
+            'lastHsnCode' => TransitDropdownOption::lastUsed(TransitDropdownOption::FIELD_HSN),
+        ]);
+    }
+
+    /**
+     * Add Imp name / HSN Code option for transit dropdowns.
+     */
+    public function addDropdownOption(Request $request)
+    {
+        $field = trim((string) $request->input('field', ''));
+        $value = trim((string) $request->input('value', ''));
+
+        $allowed = [TransitDropdownOption::FIELD_IMP, TransitDropdownOption::FIELD_HSN];
+        if (! in_array($field, $allowed, true)) {
+            return response()->json(['success' => false, 'message' => 'Invalid field.'], 422);
+        }
+        if ($value === '') {
+            return response()->json(['success' => false, 'message' => 'Value is required.'], 422);
+        }
+        if (mb_strlen($value) > 191) {
+            return response()->json(['success' => false, 'message' => 'Value is too long.'], 422);
+        }
+
+        $row = TransitDropdownOption::addOption($field, $value);
+
+        return response()->json([
+            'success' => true,
+            'field' => $field,
+            'value' => $row->value,
+            'options' => TransitDropdownOption::optionsFor($field),
+            'last' => TransitDropdownOption::lastUsed($field),
         ]);
     }
 
@@ -305,6 +403,13 @@ class TransitContainerDetailsController extends Controller
                 );
                 $row->update($updateData);
 
+                if (array_key_exists('company_name', $data)) {
+                    TransitDropdownOption::rememberSelection(TransitDropdownOption::FIELD_IMP, $data['company_name'] ?? '');
+                }
+                if (array_key_exists('hsn_code', $data)) {
+                    TransitDropdownOption::rememberSelection(TransitDropdownOption::FIELD_HSN, $data['hsn_code'] ?? '');
+                }
+
                 if ($fromTab !== $toTab) {
                     $this->logHistory('row_moved', $row->id, $fromTab, $toTab, $row->our_sku, [
                         'sku' => $row->our_sku,
@@ -320,6 +425,12 @@ class TransitContainerDetailsController extends Controller
             }
         } else {
             $row = TransitContainerDetail::create($data);
+            if (array_key_exists('company_name', $data)) {
+                TransitDropdownOption::rememberSelection(TransitDropdownOption::FIELD_IMP, $data['company_name'] ?? '');
+            }
+            if (array_key_exists('hsn_code', $data)) {
+                TransitDropdownOption::rememberSelection(TransitDropdownOption::FIELD_HSN, $data['hsn_code'] ?? '');
+            }
             $this->logHistory('row_created', $row->id, null, $row->tab_name, $row->our_sku, null);
         }
 
@@ -441,10 +552,14 @@ class TransitContainerDetailsController extends Controller
         ]);
 
         foreach ($request->our_sku as $index => $sku) {
+            $imp = $request->company_name[$index] ?? null;
+            $hsn = $request->hsn_code[$index] ?? null;
             $data = [
                 'tab_name'      => $request->tab_name,
                 'our_sku'       => $sku,
                 'supplier_name' => $request->supplier_name[$index] ?? null,
+                'company_name'  => $imp,
+                'hsn_code'      => $hsn,
                 'no_of_units'   => $request->no_of_units[$index] ?? null,
                 'total_ctn'     => $request->total_ctn[$index] ?? null,
                 'pcs_qty'       => $request->pcs_qty[$index] ?? null,
@@ -463,6 +578,9 @@ class TransitContainerDetailsController extends Controller
                 ],
                 $data
             );
+
+            TransitDropdownOption::rememberSelection(TransitDropdownOption::FIELD_IMP, $imp);
+            TransitDropdownOption::rememberSelection(TransitDropdownOption::FIELD_HSN, $hsn);
         }
         $this->logHistory('purchase_added', null, null, $request->tab_name, null, [
             'tab_name' => $request->tab_name,

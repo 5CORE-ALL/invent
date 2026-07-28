@@ -300,7 +300,6 @@
             color: #ff2727 !important;
         }
         .to-order-filter-row { gap: 0.75rem; padding: 0.5rem 0; }
-        .filter-item .form-label { white-space: nowrap; font-size: 0.95rem !important; margin-bottom: 0.4rem !important; }
         .filter-item .form-select,
         .filter-item .form-control { min-height: 38px; font-size: 0.95rem; padding: 0.4rem 0.65rem; }
         .filter-item .form-select { min-width: 145px; }
@@ -733,21 +732,18 @@
             <div class="card shadow-sm">
                 <div class="card-body">
 
-                    {{-- Filters + search row --}}
-                    <div class="d-flex flex-wrap align-items-end to-order-filter-row mb-3">
+                    {{-- Filters + search row (labels live in placeholders / default options) --}}
+                    <div class="d-flex flex-wrap align-items-center to-order-filter-row mb-3">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'to_order'])
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">Parent</label>
-                            <input type="text" id="toa-search-parent" class="form-control toa-search-input border border-primary" placeholder="Search Parent...">
+                            <input type="text" id="toa-search-parent" class="form-control toa-search-input border border-primary" placeholder="Parent" aria-label="Parent">
                         </div>
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">SKU</label>
-                            <input type="text" id="toa-search-sku" class="form-control toa-search-input border border-primary" placeholder="Search SKU...">
+                            <input type="text" id="toa-search-sku" class="form-control toa-search-input border border-primary" placeholder="SKU" aria-label="SKU">
                         </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">▶️ Navigation</label>
+                        <div class="filter-item" title="Navigation — play by supplier">
                             <div class="d-flex align-items-center gap-1">
-                                <div class="btn-group" role="group">
+                                <div class="btn-group" role="group" aria-label="Navigation">
                                     <button id="play-backward" class="btn btn-light rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Previous supplier"><i class="fas fa-step-backward"></i></button>
                                     <button id="play-pause" class="btn btn-warning rounded-circle shadow-sm" style="width: 38px; height: 38px; display: none;" title="Stop supplier play"><i class="fas fa-pause"></i></button>
                                     <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Play by supplier"><i class="fas fa-play"></i></button>
@@ -757,9 +753,8 @@
                             </div>
                         </div>
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">👤 Executive</label>
-                            <select id="executive-filter" class="form-select border border-primary exec-typeahead" title="Filter by assigned executive" data-eta-placeholder="Search executive…">
-                                <option value="" selected>All Executives</option>
+                            <select id="executive-filter" class="form-select border border-primary exec-typeahead" title="Executive" aria-label="Executive" data-eta-placeholder="Executive">
+                                <option value="" selected>Executive</option>
                                 <option value="__unassigned__">— Unassigned —</option>
                                 @foreach (($execUsers ?? []) as $execName)
                                     <option value="{{ $execName }}">{{ $execName }}</option>
@@ -767,27 +762,16 @@
                             </select>
                         </div>
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">Pending Status</label>
-                            <select id="row-data-pending-status" class="form-select border border-primary">
-                                <option value="">Color</option>
-                                <option value="green">Green <span id="greenCount"></span></option>
-                                <option value="yellow">Yellow <span id="yellowCount"></span></option>
-                                <option value="red">Red <span id="redCount"></span></option>
-                            </select>
-                        </div>
-                        <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">🎯 Stage</label>
-                            <select id="stage-filter" class="form-select">
-                                <option value="" selected>All</option>
+                            <select id="stage-filter" class="form-select" title="Stage" aria-label="Stage">
+                                <option value="" selected>Stage</option>
                                 <option value="to_order_analysis">Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                             </select>
                         </div>
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block">🏢 Supplier</label>
-                            <select id="supplier-filter" class="form-select">
-                                <option value="">All Suppliers</option>
+                            <select id="supplier-filter" class="form-select" title="Supplier" aria-label="Supplier">
+                                <option value="">Supplier</option>
                                 <option value="__blank__">Blank / No supplier</option>
                                 @foreach($allSuppliers ?? [] as $s)
                                 <option value="{{ $s }}">{{ $s }}</option>
@@ -795,7 +779,6 @@
                             </select>
                         </div>
                         <div class="filter-item">
-                            <label class="form-label fw-semibold d-block" style="visibility: hidden;">Export</label>
                             <button type="button" id="toa-export-btn" class="btn btn-sm btn-success fw-semibold d-flex align-items-center"
                                 title="Export filtered rows: Image, SKU, MOQ, PKG, QC, CP, Amount (MOQ × CP)"
                                 aria-label="Export filtered rows">
@@ -4611,7 +4594,6 @@
             let currentSupplierFilter = null;
 
             function rowPassesToaFilters(row, skipSupplierFilters) {
-                const pending = document.getElementById("row-data-pending-status").value;
                 const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
                 const supplierFilterEl = document.getElementById("supplier-filter");
                 const manualSupplierFilter = supplierFilterEl ? supplierFilterEl.value.trim() : '';
@@ -4633,8 +4615,6 @@
                 }
 
                 if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
-
-                if (pending) keep = keep && getRowColor(row) === pending;
 
                 // When building the supplier play list, skip ALL supplier filters
                 // (dropdown is synced to current supplier during play and would collapse the list).
@@ -4764,15 +4744,6 @@
                 return Math.floor((today - d) / (1000 * 60 * 60 * 24));
             }
 
-            // Get DOA color
-            function getRowColor(row) {
-                const diffDays = getDaysSinceDoa(row);
-                if (diffDays === null) return "";
-                if (diffDays >= 14) return "red";
-                if (diffDays >= 7) return "yellow";
-                return "green";
-            }
-
             function formatToaBadgeK(value) {
                 const n = parseFloat(value);
                 if (!Number.isFinite(n)) return '0';
@@ -4782,16 +4753,10 @@
 
             // Update counts & totals based on filtered rows
             function updateCounts() {
-                const tableData = table.getData("active"); 
-                let green=0, yellow=0, red=0;
+                const tableData = table.getData("active");
                 let totalApproved=0, pendingItems=0, totalCBM=0, totalOrderDays=0, totalOrderValue=0;
 
                 tableData.forEach(row => {
-                    const color = getRowColor(row);
-                    if(color === "green") green++;
-                    else if(color === "yellow") yellow++;
-                    else if(color === "red") red++;
-
                     const qty = parseFloat(row["approved_qty"]) || 0;
                     totalApproved += qty;
                     // Every visible row on this page is an item still pending to be ordered,
@@ -4809,9 +4774,6 @@
                 });
 
                 // Update the display counts immediately
-                document.getElementById("greenCount").innerText = `(${green})`;
-                document.getElementById("yellowCount").innerText = `(${yellow})`;
-                document.getElementById("redCount").innerText = `(${red})`;
                 document.getElementById("pendingItemsCount").innerText = pendingItems.toString();
                 document.getElementById("totalApprovedQty").innerText = totalApproved.toString();
                 document.getElementById("totalCBM").innerText = totalCBM.toFixed(0);
@@ -4909,7 +4871,6 @@
             });
 
             // Filter change events
-            document.getElementById("row-data-pending-status").addEventListener("change", () => applyToolbarFilters());
             document.getElementById("stage-filter").addEventListener("change", () => applyToolbarFilters());
             document.getElementById("toa-search-parent")?.addEventListener("input", debounce(() => applyFilters(), 300));
             document.getElementById("toa-search-sku")?.addEventListener("input", debounce(() => applyFilters(), 300));

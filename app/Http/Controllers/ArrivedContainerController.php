@@ -9,12 +9,14 @@ use App\Models\ShopifySku;
 use App\Models\Supplier;
 use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
+use App\Models\Task;
 use App\Models\TransitContainerDetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\OnSeaTransit;
+use Carbon\Carbon;
 
 class ArrivedContainerController extends Controller
 {
@@ -59,34 +61,78 @@ class ArrivedContainerController extends Controller
             return ((int) ($mB[1] ?? 0)) <=> ((int) ($mA[1] ?? 0));
         });
 
+        $normalizeSku = static function ($value) {
+            return strtoupper(trim(preg_replace('/\s+/', ' ', (string) $value)));
+        };
+
         $skuParentMap = ProductMaster::pluck('parent', 'sku')
-            ->mapWithKeys(function ($parent, $sku) {
-                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
-                return [$normSku => strtoupper(trim($parent))];
+            ->mapWithKeys(function ($parent, $sku) use ($normalizeSku) {
+                return [$normalizeSku($sku) => $normalizeSku($parent)];
             })->toArray();
 
-        $supplierData = Supplier::select('name', 'parent')->get();
+        // Same supplier source as /forecast.analysis:
+        // 1) to_order_analysis.supplier_name (when set, incl. empty string)
+        // 2) else mfrg_progress.supplier
+        $supplierRows = Supplier::where('type', 'Supplier')->get(['name', 'parent']);
         $parentSupplierMap = [];
-        foreach ($supplierData as $supplier) {
-            $parentList = array_map('trim', explode(',', $supplier->parent));
+        foreach ($supplierRows as $supplier) {
+            $parentList = array_map('trim', explode(',', strtoupper($supplier->parent ?? '')));
             foreach ($parentList as $parent) {
-                $key = strtoupper(trim(preg_replace('/\s+/', ' ', $parent)));
-                $parentSupplierMap[$key][] = $supplier->name;
+                if ($parent === '') {
+                    continue;
+                }
+                $parentSupplierMap[$parent][] = $supplier->name;
             }
         }
 
-        $shopifyImages = ShopifySku::pluck('image_src', 'sku')->mapWithKeys(function ($value, $key) {
-            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $key)));
-            return [$normSku => $value];
+        $toOrderSupplierBySku = [];
+        $toOrderRows = DB::table('to_order_analysis')
+            ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'supplier_name']);
+        foreach ($toOrderRows as $r) {
+            $k = $normalizeSku($r->sku);
+            if ($k === '' || array_key_exists($k, $toOrderSupplierBySku)) {
+                continue;
+            }
+            if ($r->supplier_name !== null) {
+                $toOrderSupplierBySku[$k] = (string) $r->supplier_name;
+            }
+        }
+
+        $mfrgSupplierBySku = [];
+        $mfrgRows = DB::table('mfrg_progress')
+            ->whereNull('deleted_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get(['sku', 'supplier']);
+        foreach ($mfrgRows as $r) {
+            $k = $normalizeSku($r->sku);
+            if ($k === '' || array_key_exists($k, $mfrgSupplierBySku)) {
+                continue;
+            }
+            $mfrgSupplierBySku[$k] = trim((string) ($r->supplier ?? ''));
+        }
+
+        $shopifyImages = ShopifySku::pluck('image_src', 'sku')->mapWithKeys(function ($value, $key) use ($normalizeSku) {
+            return [$normalizeSku($key) => $value];
         })->toArray();
 
-        $productValuesMap = ProductMaster::pluck('Values', 'sku')->mapWithKeys(function ($value, $key) {
-            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', $key)));
-            return [$normSku => $value];
+        $productValuesMap = ProductMaster::pluck('Values', 'sku')->mapWithKeys(function ($value, $key) use ($normalizeSku) {
+            return [$normalizeSku($key) => $value];
         })->toArray();
 
-        $allRecords->transform(function ($record) use ($skuParentMap, $parentSupplierMap, $shopifyImages, $productValuesMap) {
-            $sku = strtoupper(trim(preg_replace('/\s+/', ' ', $record->our_sku ?? '')));
+        $allRecords->transform(function ($record) use (
+            $skuParentMap,
+            $parentSupplierMap,
+            $shopifyImages,
+            $productValuesMap,
+            $toOrderSupplierBySku,
+            $mfrgSupplierBySku,
+            $normalizeSku
+        ) {
+            $sku = $normalizeSku($record->our_sku ?? '');
 
             $parent = $skuParentMap[$sku] ?? null;
 
@@ -94,11 +140,28 @@ class ArrivedContainerController extends Controller
                 $record->parent = $parent;
             }
 
-            $parentKey = strtoupper(trim(preg_replace('/\s+/', ' ', $record->parent ?? '')));
-            $record->supplier_names = $parentSupplierMap[$parentKey] ?? [];
+            $parentKey = $normalizeSku($record->parent ?? '');
+            $record->supplier_names = isset($parentSupplierMap[$parentKey])
+                ? array_values(array_unique($parentSupplierMap[$parentKey]))
+                : [];
+
+            // Display supplier = same as Forecast Supplier column (mfrg_supplier)
+            if (array_key_exists($sku, $toOrderSupplierBySku)) {
+                $record->supplier_name = $toOrderSupplierBySku[$sku];
+            } else {
+                $record->supplier_name = $mfrgSupplierBySku[$sku] ?? '';
+            }
 
             $record->image_src = $shopifyImages[$sku] ?? null;
-            $record->Values = $productValuesMap[$sku] ?? null;
+            $values = $productValuesMap[$sku] ?? null;
+            if (is_string($values)) {
+                $decoded = json_decode($values, true);
+                $values = is_array($decoded) ? $decoded : null;
+            }
+            $record->Values = $values;
+            // Unit from CP Master (product_master.Values.unit) — same as /product-master datatable.
+            $pmUnit = is_array($values) ? trim((string) ($values['unit'] ?? '')) : '';
+            $record->unit = $pmUnit !== '' ? $pmUnit : null;
             $record->created_by_name = $record->user->name ?? '—';
 
             return $record;
@@ -222,11 +285,161 @@ class ArrivedContainerController extends Controller
             }
         }
 
+        $pricingTask = $this->createVerifyPricingContainerTask($tabName, count($rows));
+        $invVerifyTask = $this->createInvVerifyContainerTask($tabName, count($rows));
+        $qcTask = $this->createQcContainerTask($tabName, count($rows));
+
         return response()->json([
             'success' => true,
             'message' => 'Inventory pushed successfully',
             'count'   => count($rows),
+            'task'    => $pricingTask,
+            'inv_verify_task' => $invVerifyTask,
+            'qc_task' => $qcTask,
         ]);
+    }
+
+    /**
+     * Extract container number from tab labels like "Container 12" / "C 12".
+     */
+    private function containerNumberFromTabName(?string $tabName): string
+    {
+        if (preg_match('/(\d+)/', (string) $tabName, $m)) {
+            return $m[1];
+        }
+
+        return '';
+    }
+
+    /**
+     * Shared one-time Task Manager create after Push to Arrived.
+     *
+     * @return array{created:bool,id:?int,title:string,message:string}
+     */
+    private function createPushArrivedTask(string $title, string $link, ?string $tabName, int $rowCount, string $purpose): array
+    {
+        $assignorEmail = 'president@5core.com';
+        $assigneeEmail = 'inventory@5core.com';
+
+        try {
+            $startDate = now();
+            $completionDate = Carbon::parse($startDate)->addDays(5);
+            $containerLabel = trim((string) $tabName);
+            $description = 'Auto-created when container was Push to Arrived.'
+                .($containerLabel !== '' ? ' Container: '.$containerLabel.'.' : '')
+                .($rowCount > 0 ? ' Items pushed: '.$rowCount.'.' : '')
+                .' '.$purpose;
+
+            $task = Task::create([
+                'title' => $title,
+                'description' => $description,
+                'group' => 'Purchase',
+                'priority' => 'high',
+                'assignor' => $assignorEmail,
+                'assign_to' => $assigneeEmail,
+                'status' => 'Todo',
+                'eta_time' => 30,
+                'start_date' => $startDate,
+                'completion_date' => $completionDate,
+                'due_date' => $completionDate,
+                'completion_day' => 0,
+                'etc_done' => 0,
+                'is_missed' => 0,
+                'is_missed_track' => 0,
+                'workspace' => 0,
+                'order' => 0,
+                'task_id' => '',
+                'link1' => $link,
+                'link2' => '',
+                'link3' => '',
+                'link4' => '',
+                'link5' => '',
+                'link6' => '',
+                'link7' => '',
+                'link8' => '',
+                'link9' => '',
+                'is_data_from' => 0,
+                'is_automate_task' => 0,
+                'task_type' => 'manual',
+                'rework_reason' => '',
+                'delete_rating' => 0,
+                'delete_feedback' => '',
+                'split_tasks' => 0,
+            ]);
+
+            return [
+                'created' => true,
+                'id' => (int) $task->id,
+                'title' => $title,
+                'message' => 'Task "'.$title.'" created for Ritu.',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Failed to create Push to Arrived task "'.$title.'": '.$e->getMessage());
+
+            return [
+                'created' => false,
+                'id' => null,
+                'title' => $title,
+                'message' => 'Arrived push succeeded but task "'.$title.'" creation failed.',
+            ];
+        }
+    }
+
+    /**
+     * One-time Task Manager task after Push to Arrived:
+     * title "Verify pricing Container", L1 = /pricing/container.
+     *
+     * @return array{created:bool,id:?int,title:string,message:string}
+     */
+    private function createVerifyPricingContainerTask(?string $tabName, int $rowCount): array
+    {
+        return $this->createPushArrivedTask(
+            'Verify pricing Container',
+            '/pricing/container',
+            $tabName,
+            $rowCount,
+            'Open Pricing Container to verify pricing.'
+        );
+    }
+
+    /**
+     * One-time Task Manager task after Push to Arrived:
+     * title "inv Verify Container {N}", L1 = /inv-verify/container.
+     *
+     * @return array{created:bool,id:?int,title:string,message:string}
+     */
+    private function createInvVerifyContainerTask(?string $tabName, int $rowCount): array
+    {
+        $containerNo = $this->containerNumberFromTabName($tabName);
+        $title = 'inv Verify Container'.($containerNo !== '' ? ' '.$containerNo : '');
+
+        return $this->createPushArrivedTask(
+            $title,
+            '/inv-verify/container',
+            $tabName,
+            $rowCount,
+            'Open Inv Verify Container to verify carton quantities.'
+        );
+    }
+
+    /**
+     * One-time Task Manager task after Push to Arrived:
+     * title "QC Container {N}", L1 = /qc/container.
+     *
+     * @return array{created:bool,id:?int,title:string,message:string}
+     */
+    private function createQcContainerTask(?string $tabName, int $rowCount): array
+    {
+        $containerNo = $this->containerNumberFromTabName($tabName);
+        $title = 'QC Container'.($containerNo !== '' ? ' '.$containerNo : '');
+
+        return $this->createPushArrivedTask(
+            $title,
+            '/qc/container',
+            $tabName,
+            $rowCount,
+            'Open QC Container to complete specs audit.'
+        );
     }
 
     public function containerSummary(Request $request)

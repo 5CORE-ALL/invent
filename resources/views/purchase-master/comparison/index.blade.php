@@ -364,6 +364,57 @@
         vertical-align: middle;
     }
 
+    .comparison-cd-header-image-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 0.5rem;
+        vertical-align: middle;
+    }
+
+    .comparison-cd-header-image {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        background: #fff;
+        cursor: zoom-in;
+        vertical-align: middle;
+    }
+
+    .comparison-cd-image-refresh-btn {
+        padding: 2px 6px;
+        line-height: 1.2;
+        border-color: rgba(255, 255, 255, 0.65) !important;
+        color: #fff !important;
+        background: rgba(255, 255, 255, 0.12) !important;
+    }
+
+    .comparison-cd-image-refresh-btn:hover {
+        background: rgba(255, 255, 255, 0.28) !important;
+        color: #fff !important;
+    }
+
+    #comparison-cd-image-hover-preview {
+        position: fixed;
+        z-index: 2000;
+        display: none;
+        padding: 6px;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28);
+        pointer-events: none;
+    }
+
+    #comparison-cd-image-hover-preview img {
+        display: block;
+        max-width: 360px;
+        max-height: 360px;
+        object-fit: contain;
+    }
+
     #comparisonCdModal .modal-dialog {
         max-width: 96vw;
     }
@@ -406,7 +457,58 @@
         background: #f8f9fa;
         border: 1px solid #dee2e6;
         border-radius: 8px;
-        padding: 10px 12px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .cd-sheet-toolbar-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 6px;
+        min-height: 34px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: thin;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .cd-sheet-toolbar-row::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .cd-sheet-toolbar-row::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+    }
+
+    .cd-sheet-toolbar-row > * {
+        flex: 0 0 auto;
+    }
+
+    .cd-sheet-toolbar-divider {
+        width: 1px;
+        align-self: stretch;
+        background: #dee2e6;
+        margin: 2px 2px;
+        flex: 0 0 1px;
+    }
+
+    .cd-sheet-toolbar-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+    }
+
+    .cd-sheet-toolbar .btn-sm {
+        white-space: nowrap;
+    }
+
+    .cd-sheet-toolbar .cd-sheet-tab-input {
+        width: 88px;
     }
 
     .cd-sheet-wrap {
@@ -529,6 +631,19 @@
         line-height: 0;
     }
 
+    .cd-sheet-table .cd-sheet-img-ph {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+        background: #e2e8f0;
+        color: #64748b;
+        font-size: 14px;
+        line-height: 1;
+    }
+
     .cd-sheet-table .cd-sheet-cell-link {
         padding: 2px 4px;
         text-align: center;
@@ -539,6 +654,596 @@
         padding: 2px 4px;
         text-align: center;
         line-height: 0;
+    }
+
+    .cd-sheet-table th.cd-priority-col,
+    .cd-sheet-table td.cd-priority-col {
+        min-width: 52px;
+        max-width: 58px;
+        width: 54px;
+        padding: 2px;
+    }
+
+    .cd-sheet-table .cd-sheet-cell-priority {
+        position: relative;
+        padding: 2px;
+        text-align: center;
+        line-height: 1;
+        min-height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .cd-sheet-table .cd-priority-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-height: 24px;
+    }
+
+    .cd-sheet-table .cd-priority-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    }
+
+    .cd-sheet-table .cd-priority-dot-critical {
+        background-color: #dc2626;
+    }
+
+    .cd-sheet-table .cd-priority-dot-important {
+        background-color: #2563eb;
+    }
+
+    .cd-sheet-table .cd-priority-dot-normal {
+        background-color: #eab308;
+    }
+
+    .cd-sheet-table th.cd-row-select-col,
+    .cd-sheet-table td.cd-row-select-col {
+        min-width: 36px;
+        max-width: 36px;
+        width: 36px;
+        padding: 2px;
+        text-align: center;
+        background: #f8fafc;
+        position: sticky;
+        left: 42px;
+        z-index: 1;
+    }
+
+    .cd-sheet-table th.cd-row-select-col {
+        z-index: 3;
+        top: 0;
+    }
+
+    .cd-sheet-table .cd-sheet-row-select,
+    .cd-sheet-table #cd-sheet-select-all-rows {
+        width: 0.95rem;
+        height: 0.95rem;
+        margin: 0;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+
+    .cd-sheet-table th.cd-row-edit-col,
+    .cd-sheet-table td.cd-row-edit-col {
+        min-width: 42px;
+        max-width: 42px;
+        width: 42px;
+        padding: 2px;
+        text-align: center;
+        background: #f8fafc;
+        position: sticky;
+        right: 0;
+        z-index: 1;
+    }
+
+    .cd-sheet-table th.cd-row-edit-col {
+        z-index: 3;
+        top: 0;
+    }
+
+    .cd-sheet-table .cd-sheet-row-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        color: #64748b;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .cd-sheet-table .cd-sheet-row-edit-btn:hover,
+    .cd-sheet-table .cd-sheet-row-edit-btn:focus {
+        background: #e2e8f0;
+        color: #1e293b;
+        border-color: #94a3b8;
+    }
+
+    .cd-sheet-table .cd-sheet-row-edit-btn i {
+        font-size: 15px;
+        line-height: 1;
+    }
+
+    .cd-sheet-table .cd-col-header-inner {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-width: 100%;
+    }
+
+    .cd-sheet-table .cd-col-header-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cd-sheet-table .cd-sheet-col-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        color: #64748b;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .cd-sheet-table .cd-sheet-col-edit-btn:hover,
+    .cd-sheet-table .cd-sheet-col-edit-btn:focus {
+        background: #e2e8f0;
+        color: #1e293b;
+        border-color: #94a3b8;
+    }
+
+    .cd-sheet-table .cd-sheet-col-edit-btn i {
+        font-size: 13px;
+        line-height: 1;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-table {
+        margin-bottom: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        --bs-table-bg: transparent;
+        --bs-table-accent-bg: transparent;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-table thead,
+    #comparisonColumnEditModal .cd-col-edit-table thead tr {
+        background-color: #bfdbfe !important;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background-color: #bfdbfe !important;
+        background-image: none !important;
+        color: #1e3a8a !important;
+        font-weight: 700;
+        border-bottom: 1px solid #93c5fd !important;
+        box-shadow: 0 1px 0 #93c5fd;
+        --bs-table-bg: #bfdbfe;
+        --bs-table-color: #1e3a8a;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-label {
+        width: 34%;
+        min-width: 120px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #475569;
+        vertical-align: middle;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-input,
+    #comparisonColumnEditModal .cd-col-edit-select {
+        font-size: 0.85rem;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-hint {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-actions {
+        width: 72px;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-row-del-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid #fca5a5;
+        border-radius: 6px;
+        background: #fff;
+        color: #dc2626;
+        line-height: 1;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-row-del-btn:hover,
+    #comparisonColumnEditModal .cd-col-edit-row-del-btn:focus {
+        background: #fef2f2;
+        border-color: #ef4444;
+        color: #b91c1c;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .cd-field-clip-wrap {
+        display: flex;
+        align-items: stretch;
+        gap: 4px;
+    }
+
+    .cd-field-clip-wrap .cd-col-edit-field,
+    .cd-field-clip-wrap .form-select,
+    .cd-field-clip-wrap .form-control {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .cd-field-clip-btns {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+    }
+
+    .cd-field-clip-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        color: #64748b;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .cd-field-clip-btn:hover,
+    .cd-field-clip-btn:focus {
+        background: #e2e8f0;
+        color: #1e293b;
+        border-color: #94a3b8;
+    }
+
+    .cd-field-clip-btn.cd-field-cut-btn:hover,
+    .cd-field-clip-btn.cd-field-cut-btn:focus {
+        background: #fff7ed;
+        color: #c2410c;
+        border-color: #fdba74;
+    }
+
+    .cd-field-clip-btn.cd-field-paste-btn:hover,
+    .cd-field-clip-btn.cd-field-paste-btn:focus {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #6ee7b7;
+    }
+
+    .cd-field-clip-btn i {
+        font-size: 14px;
+        line-height: 1;
+    }
+
+    .cd-sheet-table tr.cd-multi-selected > td:not([style*="background-color"]) {
+        background-color: #ecfdf5;
+    }
+
+    .cd-sheet-table .cd-priority-menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 40;
+        min-width: 118px;
+        padding: 4px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    }
+
+    .cd-sheet-table .cd-priority-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #334155;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .cd-sheet-table .cd-priority-menu-item:hover,
+    .cd-sheet-table .cd-priority-menu-item.is-active {
+        background: #eff6ff;
+    }
+
+    .cd-sheet-table .cd-priority-header-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #64748b;
+        letter-spacing: 0.01em;
+    }
+
+    .cd-priority-filter-dropdown .dropdown-menu {
+        min-width: 170px;
+        padding: 6px;
+    }
+
+    .cd-priority-filter-dropdown .cd-priority-filter-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        padding: 6px 8px;
+        border-radius: 6px;
+        color: #334155;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .cd-priority-filter-dropdown .cd-priority-filter-item:hover {
+        background: #f1f5f9;
+    }
+
+    .cd-priority-filter-dropdown .cd-priority-filter-item.is-checked {
+        background: #eff6ff;
+    }
+
+    .cd-priority-filter-dropdown .cd-priority-filter-check {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: #2563eb;
+        cursor: pointer;
+    }
+
+    .cd-priority-filter-dropdown .cd-priority-dot {
+        width: 10px;
+        height: 10px;
+    }
+
+    .cd-priority-filter-dropdown .cd-priority-filter-summary {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #64748b;
+        margin-left: 4px;
+    }
+
+    .cd-priority-filter-dropdown .btn.active-filter {
+        border-color: #93c5fd;
+        background: #eff6ff;
+        color: #1d4ed8;
+    }
+
+    .cd-sheet-table tr.cd-inner-pkg-row > td {
+        background-color: #dbeafe !important;
+    }
+
+    .cd-sheet-table tr.cd-ctn-pkg-row > td {
+        background-color: #fef9c3 !important;
+    }
+
+    .cd-sheet-table tr.cd-inner-pkg-row .cd-label-cell,
+    .cd-sheet-table tr.cd-ctn-pkg-row .cd-label-cell {
+        font-weight: 600;
+    }
+
+    .cd-sheet-table tr.cd-pkg-section-header .cd-label-cell {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    #comparison-cd-qc-issues-btn.has-qc-data {
+        border-color: #86efac;
+        background: #f0fdf4;
+        color: #166534;
+    }
+
+    #comparison-cd-qc-issues-btn.no-qc-data {
+        border-color: #fca5a5;
+        background: #fef2f2;
+        color: #991b1b;
+    }
+
+    #comparison-cd-reviews-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        padding: 4px 8px;
+        line-height: 1.1;
+        position: relative;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-badge-inner {
+        display: inline-flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-rating-line {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-count-line {
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: #5c5c5c;
+        white-space: nowrap;
+    }
+
+    #comparison-cd-reviews-btn.cd-reviews-hot {
+        background: #fce7f3;
+        border-color: #f9a8d4;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-action-dots {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        margin-top: 0;
+        padding-left: 4px;
+        border-left: 1px solid #e2e8f0;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        cursor: pointer;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        padding: 0;
+        flex-shrink: 0;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-dot:hover {
+        transform: scale(1.25);
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-dot-graph {
+        background: #e83e8c;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-dot-intel {
+        background: #0d6efd;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-dot-amazon {
+        background: #ff9900;
+    }
+
+    #comparison-cd-reviews-btn .cd-reviews-dot.is-disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    #comparison-cd-siblings-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        cursor: pointer;
+        user-select: none;
+        border-color: #ced4da;
+        background: #fff;
+        color: #495057;
+    }
+
+    #comparison-cd-siblings-badge .form-check-input {
+        margin: 0;
+        cursor: pointer;
+        width: 0.95rem;
+        height: 0.95rem;
+    }
+
+    #comparison-cd-siblings-badge.is-active {
+        background: #dcfce7;
+        border-color: #86efac;
+        color: #166534;
+        font-weight: 600;
+    }
+
+    #comparison-cd-siblings-badge.is-active .form-check-input {
+        background-color: #16a34a;
+        border-color: #15803d;
+    }
+
+    #comparison-cd-siblings-badge.is-disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+    #comparison-cd-siblings-count {
+        font-size: 0.68rem;
+        font-weight: 600;
+    }
+
+    #comparisonQcIssuesModal .cd-qc-issues-table thead th {
+        background: #b2ebf2;
+        font-size: 0.72rem;
+        text-align: center;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    #comparisonQcIssuesModal .cd-qc-issues-table td {
+        text-align: center;
+        vertical-align: middle;
+        min-width: 70px;
+    }
+
+    #comparisonQcIssuesModal .cd-qc-search-icon {
+        font-size: 14px;
+        cursor: help;
+    }
+
+    #comparisonQcIssuesModal .cd-qc-issue-thumb {
+        width: 36px;
+        height: 36px;
+        object-fit: cover;
+        border-radius: 4px;
+        border: 1px solid #cbd5e1;
+        cursor: pointer;
+    }
+
+    #comparisonQcIssuesModal .cd-qc-media-btn {
+        min-width: 34px;
     }
 
     .cd-sheet-table .cd-sheet-comm-cell {
@@ -566,7 +1271,7 @@
         transform: scale(1.05);
     }
 
-    .cd-sheet-table tr.cd-comm-row td:not(.cd-label-cell):not(.cd-row-num) {
+    .cd-sheet-table tr.cd-comm-row td:not(.cd-label-cell):not(.cd-row-num):not(.cd-row-select-col):not(.cd-row-edit-col) {
         background: #e0f7fa;
     }
 
@@ -755,17 +1460,6 @@
         box-shadow: inset 0 0 0 2px #2563eb;
     }
 
-    .cd-sheet-toolbar .form-control-color {
-        width: 42px;
-        height: 32px;
-        padding: 2px;
-    }
-
-    .cd-sheet-toolbar .cd-sheet-fill-target-select {
-        width: auto;
-        min-width: 72px;
-    }
-
     .cd-sheet-layout-menu .dropdown-header {
         font-size: 11px;
         padding: 4px 12px 2px;
@@ -888,6 +1582,7 @@
 </div>
 
 <div id="cd-hover-preview"></div>
+<div id="comparison-cd-image-hover-preview" aria-hidden="true"></div>
 
 <div class="modal fade" id="comparisonCdModal" tabindex="-1" aria-labelledby="comparisonCdModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-fullscreen-lg-down modal-dialog-scrollable">
@@ -899,6 +1594,13 @@
                     </a>
                     <span><i class="fas fa-balance-scale"></i> Comparison Data</span>
                     <span class="badge bg-light text-dark ms-2" id="comparison-cd-modal-sku-badge"></span>
+                    <span class="comparison-cd-header-image-wrap d-none" id="comparison-cd-modal-image-wrap">
+                        <img id="comparison-cd-modal-image" class="comparison-cd-header-image" src="" alt="SKU image" title="Hover to enlarge">
+                        <button type="button" class="btn btn-sm btn-outline-light comparison-cd-image-refresh-btn"
+                            id="comparison-cd-image-refresh-btn" title="Refresh SKU image" aria-label="Refresh SKU image">
+                            <i class="mdi mdi-refresh"></i>
+                        </button>
+                    </span>
                     <span class="visually-hidden" id="comparison-cd-modal-sku"></span>
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -920,13 +1622,13 @@
                 <div class="tab-content">
                     <div class="tab-pane fade show active" id="cd-sheet-tab-pane" role="tabpanel">
                         <div class="cd-sheet-toolbar mb-3">
-                            <div class="d-flex flex-wrap align-items-end gap-2">
-                                <div>
-                                    <label class="form-label small mb-1">C link Sheet URL</label>
+                            {{-- Line 1: sheet source + primary actions --}}
+                            <div class="cd-sheet-toolbar-row" aria-label="Sheet source and primary actions">
+                                <div class="cd-sheet-toolbar-group" title="C link Sheet URL">
                                     <div class="comparison-cd-clink-url-wrap" id="comparison-cd-google-url-wrap">
                                         <a id="comparison-cd-google-url-link" href="#" target="_blank" rel="noopener noreferrer"
                                             class="comparison-clink-dot-link comparison-clink-dot-empty"
-                                            title="Set Google Sheet URL">
+                                            title="C link Sheet URL">
                                             <span class="comparison-clink-dot comparison-clink-dot-muted" id="comparison-cd-google-url-dot" aria-hidden="true"></span>
                                         </a>
                                         <input type="url" id="comparison-cd-google-url" class="form-control form-control-sm comparison-cd-clink-url-input"
@@ -936,14 +1638,13 @@
                                             <i class="mdi mdi-pencil-outline"></i>
                                         </button>
                                     </div>
+                                    <input type="text" id="comparison-cd-google-tab" class="form-control form-control-sm cd-sheet-tab-input"
+                                        value="Sheet1" title="Tab name" placeholder="Tab" aria-label="Tab name">
                                 </div>
-                                <div>
-                                    <label class="form-label small mb-1">Tab name</label>
-                                    <input type="text" id="comparison-cd-google-tab" class="form-control form-control-sm" value="Sheet1">
-                                </div>
-                                <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn">
+                                <button type="button" class="btn btn-sm btn-success" id="comparison-cd-import-btn" title="Pull data from Google Sheet once (import only — does not push local edits back)">
                                     <i class="fab fa-google"></i> C Link Refresh
                                 </button>
+                                <span class="cd-sheet-toolbar-divider" aria-hidden="true"></span>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category">
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
                                 </button>
@@ -956,6 +1657,82 @@
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-replace-specs-btn" title="Replace Spec column with the saved template from memory">
                                     <i class="mdi mdi-clipboard-arrow-down"></i> Replace Specs
                                 </button>
+                            </div>
+
+                            {{-- Line 2: filters, insights, layout & fill --}}
+                            <div class="cd-sheet-toolbar-row" aria-label="Filters, insights, and formatting">
+                                <div class="dropdown cd-priority-filter-dropdown" id="comparison-cd-critical-filters">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                        id="comparison-cd-critical-filter-btn"
+                                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                        aria-expanded="false" title="Filter rows by Critical (PUR)">
+                                        <i class="mdi mdi-filter-outline"></i> Critical
+                                        <span class="cd-priority-filter-summary" data-filter-summary="critical">All</span>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-sm" aria-labelledby="comparison-cd-critical-filter-btn">
+                                        <label class="cd-priority-filter-item is-checked">
+                                            <input type="checkbox" class="cd-priority-filter-check" data-filter-col="critical" value="Critical" checked>
+                                            <span class="cd-priority-dot cd-priority-dot-critical" aria-hidden="true"></span>
+                                            Critical
+                                        </label>
+                                        <label class="cd-priority-filter-item is-checked">
+                                            <input type="checkbox" class="cd-priority-filter-check" data-filter-col="critical" value="Important" checked>
+                                            <span class="cd-priority-dot cd-priority-dot-important" aria-hidden="true"></span>
+                                            Important
+                                        </label>
+                                        <label class="cd-priority-filter-item is-checked">
+                                            <input type="checkbox" class="cd-priority-filter-check" data-filter-col="critical" value="Normal" checked>
+                                            <span class="cd-priority-dot cd-priority-dot-normal" aria-hidden="true"></span>
+                                            Normal
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="dropdown cd-priority-filter-dropdown" id="comparison-cd-qc-filters">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                        id="comparison-cd-qc-filter-btn"
+                                        data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                        aria-expanded="false" title="Filter rows by QC">
+                                        <i class="mdi mdi-filter-outline"></i> QC
+                                        <span class="cd-priority-filter-summary" data-filter-summary="qc">All</span>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-sm" aria-labelledby="comparison-cd-qc-filter-btn">
+                                        <label class="cd-priority-filter-item is-checked">
+                                            <input type="checkbox" class="cd-priority-filter-check" data-filter-col="qc" value="Critical" checked>
+                                            <span class="cd-priority-dot cd-priority-dot-critical" aria-hidden="true"></span>
+                                            Critical
+                                        </label>
+                                        <label class="cd-priority-filter-item is-checked">
+                                            <input type="checkbox" class="cd-priority-filter-check" data-filter-col="qc" value="Important" checked>
+                                            <span class="cd-priority-dot cd-priority-dot-important" aria-hidden="true"></span>
+                                            Important
+                                        </label>
+                                        <label class="cd-priority-filter-item is-checked">
+                                            <input type="checkbox" class="cd-priority-filter-check" data-filter-col="qc" value="Normal" checked>
+                                            <span class="cd-priority-dot cd-priority-dot-normal" aria-hidden="true"></span>
+                                            Normal
+                                        </label>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary no-qc-data" id="comparison-cd-qc-issues-btn" title="View QC Masters issues for this SKU">
+                                    <i class="fas fa-search me-1"></i> QC Issues
+                                    <span class="badge rounded-pill bg-secondary ms-1" id="comparison-cd-qc-issues-dot" aria-hidden="true">•</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-reviews-btn" title="Rating & reviews from Forecast Analysis (Jungle Scout)">
+                                    <span id="comparison-cd-reviews-badge-inner" class="cd-reviews-badge-inner">
+                                        <i class="bi bi-star me-1"></i> Reviews
+                                    </span>
+                                    <span class="cd-reviews-action-dots" id="comparison-cd-reviews-dots">
+                                        <span class="cd-reviews-dot cd-reviews-dot-graph is-disabled" data-reviews-action="graph" title="Lifetime rating graph" role="button" tabindex="0" aria-label="Lifetime rating graph"></span>
+                                        <span class="cd-reviews-dot cd-reviews-dot-intel is-disabled" data-reviews-action="intel" title="Review Intelligence (parent)" role="button" tabindex="0" aria-label="Open Review Intelligence"></span>
+                                        <span class="cd-reviews-dot cd-reviews-dot-amazon is-disabled" data-reviews-action="amazon" title="Amazon buyer reviews" role="button" tabindex="0" aria-label="Open Amazon reviews"></span>
+                                    </span>
+                                </button>
+                                <label class="btn btn-sm btn-outline-secondary" id="comparison-cd-siblings-badge" title="Sync this sheet to all sibling SKUs under the same parent">
+                                    <input type="checkbox" class="form-check-input" id="comparison-cd-siblings-sync" autocomplete="off">
+                                    <span>Siblings</span>
+                                    <span class="badge rounded-pill bg-secondary" id="comparison-cd-siblings-count">0</span>
+                                </label>
+                                <span class="cd-sheet-toolbar-divider" aria-hidden="true"></span>
                                 <div class="dropdown">
                                     <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" id="comparison-cd-layout-menu-btn"
                                         data-bs-toggle="dropdown" aria-expanded="false" title="Move, insert, or delete rows and columns">
@@ -1007,23 +1784,8 @@
                                         </li>
                                     </ul>
                                 </div>
-                                <div class="d-flex align-items-center gap-1">
-                                    <label class="small mb-0 fw-semibold" for="comparison-cd-fill-color">Fill</label>
-                                    <input type="color" id="comparison-cd-fill-color" class="form-control form-control-color" value="#f97316" title="Pick fill color">
-                                    <select id="comparison-cd-fill-target" class="form-select form-select-sm cd-sheet-fill-target-select" title="Fill target">
-                                        <option value="cell" selected>Cell</option>
-                                        <option value="row">Row</option>
-                                        <option value="col">Column</option>
-                                    </select>
-                                    <button type="button" class="btn btn-sm btn-outline-primary" id="comparison-cd-apply-fill-btn" title="Apply fill color to selected cell, row, or column">
-                                        <i class="mdi mdi-format-color-fill"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="comparison-cd-clear-fill-btn" title="Clear fill color from selected cell, row, or column">
-                                        <i class="mdi mdi-format-color-marker-cancel"></i>
-                                    </button>
-                                </div>
                             </div>
-                            <div class="cd-sheet-status mt-2 d-none" id="comparison-cd-sheet-status" aria-hidden="true"></div>
+                            <div class="cd-sheet-status d-none" id="comparison-cd-sheet-status" aria-hidden="true"></div>
                         </div>
                         <div id="comparison-cd-sheet-loading" class="text-center py-4 d-none">
                             <div class="spinner-border text-primary" role="status">
@@ -1208,6 +1970,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const historyUrl = @json(route('comparison.history'));
     const sheetGetUrl = @json(route('comparison.sheet.get'));
     const sheetSaveUrl = @json(route('comparison.sheet.save'));
+    const sheetImageUrl = @json(route('comparison.sheet.image'));
     const sheetSyncClinkUrl = @json(route('comparison.sheet.sync-clink'));
     const suppliersForSkuUrl = @json(route('comparison.suppliers-for-sku'));
     const supplierListUrl = @json(route('supplier.list'));
@@ -1230,6 +1993,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const comparisonCategorySaveUrl = @json(route('comparison.category.save'));
     const comparisonIndexUrl = @json(route('comparison.index'));
     const comparisonSheetPageUrl = @json(route('comparison.sheet.page'));
+    const reviewsIntelligenceUrl = @json(route('reviews.index'));
+    const cvrMasterChartDataUrl = @json(route('cvr.master.chart.data'));
     // When set, this page is the dedicated full-page CD editor for one SKU.
     const COMPARISON_CD_PAGE_SKU = @json($cdPageSku ?? null);
     const cdHoverPreview = document.getElementById('cd-hover-preview');
@@ -1299,6 +2064,11 @@ document.addEventListener('DOMContentLoaded', function () {
     let selectedSheetRow = null;
     let selectedSheetCol = null;
     let selectedSheetCell = null;
+    let selectedSheetMultiRows = new Set();
+    let priorityBulkEditTargetRows = [];
+    let columnEditTargetCol = null;
+    let sheetRenderColCache = null;
+    let sheetDimWtApplyTimer = null;
     let lmpLoadedForSku = null;
     let currentAmazonLmpSku = null;
     let currentAmazonLmpListEl = null;
@@ -1325,6 +2095,50 @@ document.addEventListener('DOMContentLoaded', function () {
     let clinkPreloadedSupplierNames = new Set();
     let roiCellEditPrevious = {};
     let roiSaveInFlight = false;
+    let currentDimWtData = {};
+    let currentQcIssuesData = null;
+    let currentReviewsData = null;
+    let currentSiblingsData = { parent: null, siblings: [], count: 0 };
+    const SIBLINGS_SYNC_STORAGE_KEY = 'comparison.siblingsSync';
+    let siblingsSyncEnabled = false;
+    try {
+        siblingsSyncEnabled = localStorage.getItem(SIBLINGS_SYNC_STORAGE_KEY) === '1';
+    } catch (e) {
+        siblingsSyncEnabled = false;
+    }
+    const comparisonQcIssuesModalEl = document.getElementById('comparisonQcIssuesModal');
+    const comparisonQcIssuesModal = comparisonQcIssuesModalEl ? new bootstrap.Modal(comparisonQcIssuesModalEl) : null;
+    const comparisonQcIssueTextModalEl = document.getElementById('comparisonQcIssueTextModal');
+    const comparisonQcIssueTextModal = comparisonQcIssueTextModalEl ? new bootstrap.Modal(comparisonQcIssueTextModalEl) : null;
+
+    const INNER_PKG_SECTION_COLOR = '#dbeafe';
+    const CTN_PKG_SECTION_COLOR = '#fef9c3';
+    const INNER_PKG_SECTION = {
+        header: 'Inner Pkg',
+        color: INNER_PKG_SECTION_COLOR,
+        rows: [
+            { label: 'Item L (IN)', key: 'item_l' },
+            { label: 'Item W (IN)', key: 'item_w' },
+            { label: 'Item H (IN)', key: 'item_h' },
+            { label: 'Itm wt GW', key: 'wt_act' },
+            { label: 'Itm CBM', key: 'cbm' },
+            { label: 'pkg inst', key: 'instructions_item_pkg', aliases: ['item PKG', 'item pkg', 'Pkg Inst'] },
+        ],
+        obsoleteLabels: ['Item L / W / H (IN)', 'item L / W / H (IN)'],
+    };
+    const CTN_PKG_SECTION = {
+        header: 'Ctn Pkg',
+        color: CTN_PKG_SECTION_COLOR,
+        rows: [
+            { label: 'CTN L (CM)', key: 'ctn_l' },
+            { label: 'CTN W (CM)', key: 'ctn_w' },
+            { label: 'CTN H (CM)', key: 'ctn_h' },
+            { label: 'CTN QTY', key: 'ctn_qty' },
+            { label: 'Carton CBM', key: 'ctn_cbm' },
+            { label: 'ctn Instr', key: 'ctn_instructions', aliases: ['Ctn pkg', 'ctn pkg', 'CTN Instructions', 'Instr Carton'] },
+        ],
+        obsoleteLabels: ['CTN L / W / H (CM)', 'Ctn L / W / H (CM)'],
+    };
 
     function getCopiedSpecLabels() {
         if (copiedSpecLabels.length) {
@@ -1385,12 +2199,100 @@ document.addEventListener('DOMContentLoaded', function () {
         return comparisonBulkEditSkus.filter(Boolean);
     }
 
+    function siblingSkusForSave(row) {
+        const fromPayload = Array.isArray(currentSiblingsData?.siblings)
+            ? currentSiblingsData.siblings.filter(Boolean)
+            : [];
+        if (fromPayload.length) {
+            return fromPayload;
+        }
+        const currentSku = String(row?.sku || '').trim();
+        return currentSku ? [currentSku] : [];
+    }
+
     function sheetSaveTargetSkus(row) {
         const bulk = comparisonBulkEditPayload();
         if (bulk.length) {
             return bulk;
         }
-        return linkedSkusForRow(row);
+        const linked = linkedSkusForRow(row);
+        if (!siblingsSyncEnabled) {
+            return linked;
+        }
+        const merged = [];
+        const seen = new Set();
+        [...linked, ...siblingSkusForSave(row)].forEach(function (sku) {
+            const text = String(sku || '').trim();
+            if (!text) return;
+            const key = text.toUpperCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            merged.push(text);
+        });
+        return merged;
+    }
+
+    function updateSiblingsBadge(siblingsData) {
+        const badge = document.getElementById('comparison-cd-siblings-badge');
+        const checkbox = document.getElementById('comparison-cd-siblings-sync');
+        const countEl = document.getElementById('comparison-cd-siblings-count');
+        if (!badge || !checkbox) {
+            return;
+        }
+
+        currentSiblingsData = siblingsData && typeof siblingsData === 'object'
+            ? siblingsData
+            : { parent: null, siblings: [], count: 0 };
+
+        const siblings = Array.isArray(currentSiblingsData.siblings)
+            ? currentSiblingsData.siblings.filter(Boolean)
+            : [];
+        const count = Number(currentSiblingsData.count) || siblings.length;
+        const otherCount = Math.max(0, count - 1);
+        const parent = String(currentSiblingsData.parent || currentCdRow?.parent || '').trim();
+        const canSync = otherCount > 0 && parent !== '';
+
+        if (countEl) {
+            countEl.textContent = String(count);
+            countEl.classList.toggle('bg-success', siblingsSyncEnabled && canSync);
+            countEl.classList.toggle('bg-secondary', !(siblingsSyncEnabled && canSync));
+        }
+
+        checkbox.disabled = !canSync;
+        checkbox.checked = siblingsSyncEnabled && canSync;
+        badge.classList.toggle('is-active', siblingsSyncEnabled && canSync);
+        badge.classList.toggle('is-disabled', !canSync);
+
+        if (!canSync) {
+            badge.title = parent
+                ? 'No sibling SKUs under this parent'
+                : 'No parent available for sibling sync';
+        } else if (siblingsSyncEnabled) {
+            badge.title = `Syncing sheet to ${count} sibling SKU(s) under parent ${parent}`;
+        } else {
+            badge.title = `Sync this sheet to ${otherCount} other sibling SKU(s) under parent ${parent}`;
+        }
+    }
+
+    function setSiblingsSyncEnabled(enabled, { persist = true, triggerSave = false } = {}) {
+        const canSync = (Number(currentSiblingsData?.count) || 0) > 1
+            && String(currentSiblingsData?.parent || currentCdRow?.parent || '').trim() !== '';
+        siblingsSyncEnabled = !!(enabled && canSync);
+
+        if (persist) {
+            try {
+                localStorage.setItem(SIBLINGS_SYNC_STORAGE_KEY, siblingsSyncEnabled ? '1' : '0');
+            } catch (e) {
+                // ignore storage failures
+            }
+        }
+
+        updateSiblingsBadge(currentSiblingsData);
+
+        if (triggerSave && siblingsSyncEnabled && currentCdRow) {
+            scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+            setSheetStatus(`Syncing sheet to ${currentSiblingsData.count} sibling SKU(s)…`, false);
+        }
     }
 
     function getSelectedComparisonRows() {
@@ -1494,8 +2396,1627 @@ document.addEventListener('DOMContentLoaded', function () {
         return label === 'comm' || label.includes('communication');
     }
 
+    function isPriorityValue(value) {
+        const text = String(value || '').trim().toLowerCase();
+        return text === 'critical' || text === 'important' || text === 'normal';
+    }
+
+    function normalizePriorityValue(value) {
+        const text = String(value || '').trim().toLowerCase();
+        if (text === 'critical') return 'Critical';
+        if (text === 'important') return 'Important';
+        return 'Normal';
+    }
+
+    function priorityDotClass(value) {
+        const normalized = normalizePriorityValue(value);
+        if (normalized === 'Critical') return 'cd-priority-dot-critical';
+        if (normalized === 'Important') return 'cd-priority-dot-important';
+        return 'cd-priority-dot-normal';
+    }
+
+    function findColumnHeaderIndex(cells, headerName, fromCol) {
+        const needle = String(headerName || '').trim().toLowerCase();
+        if (!needle) {
+            return null;
+        }
+        const colCount = Math.max(...(cells || []).map(row => (Array.isArray(row) ? row.length : 0)), 0);
+        for (let colIndex = Math.max(0, fromCol || 0); colIndex < colCount; colIndex++) {
+            const header = String((cells[0] || [])[colIndex] || '').trim().toLowerCase();
+            if (header === needle) {
+                return colIndex;
+            }
+        }
+        return null;
+    }
+
+    function columnLooksLikePriorityOnly(cells, colIndex) {
+        if (colIndex < 0) {
+            return false;
+        }
+        let sawPriority = false;
+        const maxRows = Math.min(cells.length, 40);
+        for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+            const text = String((cells[rowIndex] || [])[colIndex] || '').trim();
+            if (!text) {
+                continue;
+            }
+            if (rowIndex === 0 && (text.toLowerCase() === 'critical' || text.toLowerCase() === 'qc')) {
+                continue;
+            }
+            if (isPriorityValue(text)) {
+                sawPriority = true;
+            } else {
+                return false;
+            }
+        }
+        return sawPriority;
+    }
+
+    function detectCriticalColumnIndex(cells, specCol) {
+        cells = cells || currentSheetCells;
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        const byHeader = findColumnHeaderIndex(cells, 'Critical', specCol + 1);
+        if (byHeader !== null) {
+            return byHeader;
+        }
+        const candidate = specCol + 1;
+        const header = String((cells[0] || [])[candidate] || '').trim().toLowerCase();
+        if (header === 'qc') {
+            return null;
+        }
+        if (columnLooksLikePriorityOnly(cells, candidate) && header !== 'qc') {
+            return candidate;
+        }
+        return null;
+    }
+
+    function detectQcColumnIndex(cells, specCol) {
+        cells = cells || currentSheetCells;
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        const byHeader = findColumnHeaderIndex(cells, 'QC', specCol + 1);
+        if (byHeader !== null) {
+            return byHeader;
+        }
+        const criticalCol = detectCriticalColumnIndex(cells, specCol);
+        const candidate = (criticalCol !== null ? criticalCol : specCol) + 1;
+        const header = String((cells[0] || [])[candidate] || '').trim().toLowerCase();
+        if (header === 'critical') {
+            return null;
+        }
+        if (columnLooksLikePriorityOnly(cells, candidate)) {
+            return candidate;
+        }
+        return null;
+    }
+
+    function isSheetCriticalColumn(colIndex) {
+        if (sheetRenderColCache) {
+            return sheetRenderColCache.criticalCol !== null && colIndex === sheetRenderColCache.criticalCol;
+        }
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        return criticalCol !== null && colIndex === criticalCol;
+    }
+
+    function isSheetQcColumn(colIndex) {
+        if (sheetRenderColCache) {
+            return sheetRenderColCache.qcCol !== null && colIndex === sheetRenderColCache.qcCol;
+        }
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        return qcCol !== null && colIndex === qcCol;
+    }
+
+    function isSheetPriorityColumn(colIndex) {
+        return isSheetCriticalColumn(colIndex) || isSheetQcColumn(colIndex);
+    }
+
+    function priorityCellEditorHtml(value, rowIndex, colIndex, columnLabel) {
+        const label = columnLabel || 'Priority';
+        if (rowIndex === 0 && String(value || '').trim().toLowerCase() === label.toLowerCase()) {
+            return `<div class="cd-sheet-cell cd-sheet-cell-priority" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(label)}" title="${escapeHtmlAttr(label)}">
+                <span class="cd-priority-header-label">${escapeHtml(label)}</span>
+            </div>`;
+        }
+        const normalized = normalizePriorityValue(value);
+        return `<div class="cd-sheet-cell cd-sheet-cell-priority" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(normalized)}" title="${escapeHtmlAttr(normalized)}" aria-label="${escapeHtmlAttr(label + ': ' + normalized)}">
+            <div class="cd-priority-wrap">
+                <span class="cd-priority-dot ${priorityDotClass(normalized)}" aria-hidden="true"></span>
+            </div>
+        </div>`;
+    }
+
+    function closeAllPriorityMenus() {
+        document.querySelectorAll('.cd-priority-menu').forEach(menu => {
+            menu.classList.add('d-none');
+        });
+    }
+
+    function setPriorityCellValue(cell, value) {
+        if (!cell) {
+            return;
+        }
+        const rowIndex = parseInt(cell.dataset.row, 10);
+        const colIndex = parseInt(cell.dataset.col, 10);
+        const normalized = normalizePriorityValue(value);
+        cell.dataset.value = normalized;
+        cell.setAttribute('title', normalized);
+        if (!Number.isNaN(rowIndex) && !Number.isNaN(colIndex) && currentSheetCells[rowIndex]) {
+            currentSheetCells[rowIndex][colIndex] = normalized;
+        }
+
+        const dot = cell.querySelector('.cd-priority-wrap > .cd-priority-dot');
+        if (dot) {
+            dot.classList.remove('cd-priority-dot-critical', 'cd-priority-dot-important', 'cd-priority-dot-normal');
+            dot.classList.add(priorityDotClass(normalized));
+        }
+    }
+
+    function getSelectedSheetMultiRows() {
+        return [...selectedSheetMultiRows]
+            .map(r => parseInt(r, 10))
+            .filter(r => Number.isFinite(r) && r > 0 && r < (currentSheetCells || []).length)
+            .sort((a, b) => a - b);
+    }
+
+    function syncSheetSelectAllCheckbox() {
+        const selectAll = document.getElementById('cd-sheet-select-all-rows');
+        if (!selectAll) return;
+        const selectable = [];
+        for (let r = 1; r < (currentSheetCells || []).length; r++) {
+            selectable.push(r);
+        }
+        const checkedCount = selectable.filter(r => selectedSheetMultiRows.has(r)).length;
+        selectAll.disabled = selectable.length === 0;
+        selectAll.checked = selectable.length > 0 && checkedCount === selectable.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < selectable.length;
+    }
+
+    function setSheetMultiRowSelected(rowIndex, selected) {
+        const r = parseInt(rowIndex, 10);
+        if (!Number.isFinite(r) || r <= 0) {
+            return;
+        }
+        if (selected) {
+            selectedSheetMultiRows.add(r);
+        } else {
+            selectedSheetMultiRows.delete(r);
+        }
+        const rowCheckbox = document.querySelector(`.cd-sheet-row-select[data-row="${r}"]`);
+        if (rowCheckbox) {
+            rowCheckbox.checked = !!selected;
+        }
+        const tr = document.querySelector(`#comparison-cd-sheet-body tr:nth-child(${r + 1})`);
+        if (tr) {
+            tr.classList.toggle('cd-multi-selected', !!selected);
+        }
+        syncSheetSelectAllCheckbox();
+    }
+
+    function commonPriorityValueForRows(rows, colIndex) {
+        if (colIndex === null || colIndex === undefined || !rows.length) {
+            return '';
+        }
+        let common = null;
+        for (let i = 0; i < rows.length; i++) {
+            const val = normalizePriorityValue((currentSheetCells[rows[i]] || [])[colIndex]);
+            if (common === null) {
+                common = val;
+            } else if (common !== val) {
+                return '';
+            }
+        }
+        return common || '';
+    }
+
+    function openPriorityBulkEditModal(anchorRow) {
+        let rows = getSelectedSheetMultiRows();
+        const anchor = parseInt(anchorRow, 10);
+        if (Number.isFinite(anchor) && anchor > 0) {
+            if (!rows.includes(anchor)) {
+                if (rows.length === 0) {
+                    setSheetMultiRowSelected(anchor, true);
+                    rows = [anchor];
+                } else {
+                    setSheetMultiRowSelected(anchor, true);
+                    rows = getSelectedSheetMultiRows();
+                }
+            }
+        }
+        if (!rows.length) {
+            setSheetStatus('Select at least one row to edit Critical / QC.', true);
+            return;
+        }
+
+        priorityBulkEditTargetRows = rows.slice();
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+
+        const countEl = document.getElementById('comparison-priority-bulk-count');
+        if (countEl) {
+            countEl.textContent = String(rows.length);
+        }
+        const rowsEl = document.getElementById('comparison-priority-bulk-rows');
+        if (rowsEl) {
+            rowsEl.textContent = rows.map(r => r + 1).join(', ');
+        }
+
+        const criticalSelect = document.getElementById('comparison-priority-bulk-critical');
+        const qcSelect = document.getElementById('comparison-priority-bulk-qc');
+        if (criticalSelect) {
+            criticalSelect.value = commonPriorityValueForRows(rows, criticalCol);
+        }
+        if (qcSelect) {
+            qcSelect.value = commonPriorityValueForRows(rows, qcCol);
+        }
+
+        refreshPriorityBulkEditModalMeta();
+
+        const modalEl = document.getElementById('comparisonPriorityBulkEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function savePriorityBulkEditModal() {
+        const rows = (priorityBulkEditTargetRows || []).filter(r => r > 0 && r < currentSheetCells.length);
+        if (!rows.length) {
+            setSheetStatus('No rows selected for edit.', true);
+            return;
+        }
+
+        const criticalSelect = document.getElementById('comparison-priority-bulk-critical');
+        const qcSelect = document.getElementById('comparison-priority-bulk-qc');
+        const criticalVal = String(criticalSelect?.value || '').trim();
+        const qcVal = String(qcSelect?.value || '').trim();
+
+        if (!criticalVal && !qcVal) {
+            setSheetStatus('Choose a Critical and/or QC value to apply.', true);
+            return;
+        }
+
+        readCellsFromEditor();
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+
+        rows.forEach(rowIndex => {
+            if (!currentSheetCells[rowIndex]) {
+                return;
+            }
+            if (criticalVal && criticalCol !== null) {
+                const normalized = normalizePriorityValue(criticalVal);
+                currentSheetCells[rowIndex][criticalCol] = normalized;
+                const cell = document.querySelector(
+                    `.cd-sheet-cell-priority[data-row="${rowIndex}"][data-col="${criticalCol}"]`
+                );
+                setPriorityCellValue(cell, normalized);
+            }
+            if (qcVal && qcCol !== null) {
+                const normalized = normalizePriorityValue(qcVal);
+                currentSheetCells[rowIndex][qcCol] = normalized;
+                const cell = document.querySelector(
+                    `.cd-sheet-cell-priority[data-row="${rowIndex}"][data-col="${qcCol}"]`
+                );
+                setPriorityCellValue(cell, normalized);
+            }
+        });
+
+        applyPriorityRowFilters();
+        // Quiet local save — no full sheet rebuild / list reload.
+        scheduleAutoSaveComparisonSheet(200, { rerender: false, refreshTable: false });
+
+        const parts = [];
+        if (criticalVal) parts.push(`Critical → ${normalizePriorityValue(criticalVal)}`);
+        if (qcVal) parts.push(`QC → ${normalizePriorityValue(qcVal)}`);
+        setSheetStatus(`Updated ${rows.length} row(s): ${parts.join(', ')}.`, false);
+
+        const modalEl = document.getElementById('comparisonPriorityBulkEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    }
+
+    function refreshPriorityBulkEditModalMeta() {
+        const rows = (priorityBulkEditTargetRows || [])
+            .filter(r => r > 0 && r < currentSheetCells.length)
+            .sort((a, b) => a - b);
+        priorityBulkEditTargetRows = rows;
+        const countEl = document.getElementById('comparison-priority-bulk-count');
+        if (countEl) {
+            countEl.textContent = String(rows.length);
+        }
+        const rowsEl = document.getElementById('comparison-priority-bulk-rows');
+        if (rowsEl) {
+            rowsEl.textContent = rows.length ? rows.map(r => r + 1).join(', ') : '—';
+        }
+        const deleteBtn = document.getElementById('comparison-priority-bulk-delete-row-btn');
+        if (deleteBtn) {
+            deleteBtn.disabled = !rows.length || currentSheetCells.length <= 1;
+        }
+        const addBtn = document.getElementById('comparison-priority-bulk-add-row-btn');
+        if (addBtn) {
+            addBtn.disabled = !rows.length;
+        }
+    }
+
+    function deleteRowsFromPriorityBulkEditModal() {
+        const rows = (priorityBulkEditTargetRows || [])
+            .filter(r => r > 0 && r < currentSheetCells.length)
+            .sort((a, b) => b - a);
+        if (!rows.length) {
+            setSheetStatus('No row selected to delete.', true);
+            return;
+        }
+        if (currentSheetCells.length <= 1 || rows.length >= currentSheetCells.length) {
+            setSheetStatus('Cannot delete the last row.', true);
+            return;
+        }
+
+        readCellsFromEditor({ expandImages: false });
+        rows.forEach((idx) => {
+            if (idx < 0 || idx >= currentSheetCells.length || currentSheetCells.length <= 1) {
+                return;
+            }
+            currentSheetCells.splice(idx, 1);
+            currentSheetFormats.rows = shiftNumericFormatMap(currentSheetFormats.rows, idx, -1);
+            currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, idx, 'row', -1);
+
+            if (selectedSheetCell && selectedSheetCell.row === idx) {
+                selectedSheetCell = null;
+            } else if (selectedSheetCell && selectedSheetCell.row > idx) {
+                selectedSheetCell = { row: selectedSheetCell.row - 1, col: selectedSheetCell.col };
+            }
+            if (selectedSheetRow !== null) {
+                if (selectedSheetRow === idx) {
+                    selectedSheetRow = currentSheetCells.length
+                        ? Math.min(idx, currentSheetCells.length - 1)
+                        : null;
+                } else if (selectedSheetRow > idx) {
+                    selectedSheetRow--;
+                }
+            }
+            selectedSheetMultiRows = new Set(
+                [...selectedSheetMultiRows]
+                    .filter(r => r !== idx)
+                    .map(r => (r > idx ? r - 1 : r))
+            );
+        });
+
+        priorityBulkEditTargetRows = [];
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+        setSheetStatus(`Deleted ${rows.length} row(s).`, false);
+
+        const modalEl = document.getElementById('comparisonPriorityBulkEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    }
+
+    function addRowBelowFromPriorityBulkEditModal() {
+        const rows = (priorityBulkEditTargetRows || [])
+            .filter(r => r > 0 && r < currentSheetCells.length)
+            .sort((a, b) => a - b);
+        if (!rows.length) {
+            setSheetStatus('No row selected to insert below.', true);
+            return;
+        }
+
+        readCellsFromEditor({ expandImages: false });
+        const insertAfter = rows[rows.length - 1];
+        const insertAt = Math.min(insertAfter + 1, currentSheetCells.length);
+        const colCount = Math.max(...currentSheetCells.map(row => (Array.isArray(row) ? row.length : 0)), 1);
+        const newRow = Array.from({ length: colCount }, () => '');
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        if (criticalCol !== null) {
+            newRow[criticalCol] = 'Normal';
+        }
+        if (qcCol !== null) {
+            newRow[qcCol] = 'Normal';
+        }
+
+        currentSheetCells.splice(insertAt, 0, newRow);
+        currentSheetFormats.rows = shiftNumericFormatMap(currentSheetFormats.rows, insertAt, 1);
+        currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, insertAt, 'row', 1);
+        if (selectedSheetRow !== null && insertAt <= selectedSheetRow) {
+            selectedSheetRow++;
+        }
+        if (selectedSheetCell && selectedSheetCell.row >= insertAt) {
+            selectedSheetCell = { row: selectedSheetCell.row + 1, col: selectedSheetCell.col };
+        }
+        selectedSheetMultiRows = new Set(
+            [...selectedSheetMultiRows].map(r => (r >= insertAt ? r + 1 : r))
+        );
+        // Keep selection on original rows (shifted) and focus the new blank row.
+        priorityBulkEditTargetRows = rows.map(r => (r >= insertAt ? r + 1 : r));
+        priorityBulkEditTargetRows.push(insertAt);
+        setSheetMultiRowSelected(insertAt, true);
+
+        const criticalSelect = document.getElementById('comparison-priority-bulk-critical');
+        const qcSelect = document.getElementById('comparison-priority-bulk-qc');
+        if (criticalSelect && !criticalSelect.value) {
+            criticalSelect.value = 'Normal';
+        }
+        if (qcSelect && !qcSelect.value) {
+            qcSelect.value = 'Normal';
+        }
+
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        refreshPriorityBulkEditModalMeta();
+        scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+        setSheetStatus(`Blank row inserted below row ${insertAfter + 1}.`, false);
+    }
+
+    function getSheetColumnHeaderLabel(colIndex, cells) {
+        const sheetCells = cells || currentSheetCells;
+        const specCol = detectSpecColumnIndex(sheetCells);
+        const criticalCol = detectCriticalColumnIndex(sheetCells, specCol);
+        const qcCol = detectQcColumnIndex(sheetCells, specCol);
+        if (colIndex === specCol - 2) return 'Amazon';
+        if (colIndex === specCol - 1) return '5 Core';
+        if (colIndex === specCol) return 'Spec';
+        if (criticalCol !== null && colIndex === criticalCol) return 'Critical';
+        if (qcCol !== null && colIndex === qcCol) return 'QC';
+        const supplierName = getSupplierNameForColumn(colIndex, sheetCells);
+        if (supplierName) return supplierName;
+        const headerCell = String((sheetCells[0] || [])[colIndex] || '').trim();
+        if (headerCell) return headerCell;
+        return columnLetter(colIndex);
+    }
+
+    function fieldClipboardActionsHtml(fieldId) {
+        const idAttr = fieldId ? ` data-field-id="${escapeHtmlAttr(fieldId)}"` : '';
+        return `<span class="cd-field-clip-btns">
+            <button type="button" class="cd-field-clip-btn cd-field-copy-btn" title="Copy"${idAttr} aria-label="Copy">
+                <i class="mdi mdi-content-copy" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="cd-field-clip-btn cd-field-cut-btn" title="Cut"${idAttr} aria-label="Cut">
+                <i class="mdi mdi-content-cut" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="cd-field-clip-btn cd-field-paste-btn" title="Paste"${idAttr} aria-label="Paste">
+                <i class="mdi mdi-content-paste" aria-hidden="true"></i>
+            </button>
+        </span>`;
+    }
+
+    function wrapFieldWithClipboardActions(fieldHtml, fieldId) {
+        return `<div class="cd-field-clip-wrap">
+            ${fieldHtml}
+            ${fieldClipboardActionsHtml(fieldId)}
+        </div>`;
+    }
+
+    function resolveClipboardField(btn) {
+        if (!btn) {
+            return null;
+        }
+        const fieldId = btn.dataset.fieldId || '';
+        if (fieldId) {
+            const byId = document.getElementById(fieldId);
+            if (byId) {
+                return byId;
+            }
+        }
+        const wrap = btn.closest('.cd-field-clip-wrap');
+        return wrap
+            ? wrap.querySelector('.cd-col-edit-field, .form-control, .form-select, input, select, textarea')
+            : null;
+    }
+
+    function copyFieldValueToClipboard(field) {
+        if (!field) {
+            return Promise.reject(new Error('No field'));
+        }
+        const value = String(field.value ?? '');
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            return navigator.clipboard.writeText(value);
+        }
+        return new Promise((resolve, reject) => {
+            try {
+                field.focus();
+                if (typeof field.select === 'function') {
+                    field.select();
+                }
+                const ok = document.execCommand('copy');
+                if (ok) {
+                    resolve();
+                } else {
+                    reject(new Error('Copy failed'));
+                }
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
+    function cutFieldValueToClipboard(field) {
+        return copyFieldValueToClipboard(field).then(() => {
+            if (!field || field.readOnly || field.disabled) {
+                return;
+            }
+            if (field.tagName === 'SELECT') {
+                const emptyOpt = Array.from(field.options || []).find(opt => opt.value === '');
+                field.value = emptyOpt ? '' : (field.options[0] ? field.options[0].value : '');
+            } else {
+                field.value = '';
+            }
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+
+    function readClipboardText() {
+        if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            return navigator.clipboard.readText();
+        }
+        return Promise.reject(new Error('Clipboard paste is not available in this browser.'));
+    }
+
+    function pasteFieldValueFromClipboard(field) {
+        if (!field || field.readOnly || field.disabled) {
+            return Promise.reject(new Error('Field is not editable'));
+        }
+        return readClipboardText().then((text) => {
+            const pasted = String(text ?? '').replace(/\r\n/g, '\n').trimEnd();
+            if (field.tagName === 'SELECT') {
+                const options = Array.from(field.options || []);
+                const exact = options.find(opt => opt.value === pasted);
+                if (exact) {
+                    field.value = exact.value;
+                } else {
+                    const byLabel = options.find(
+                        opt => String(opt.textContent || '').trim().toLowerCase() === pasted.trim().toLowerCase()
+                    );
+                    if (!byLabel) {
+                        throw new Error('Clipboard value is not valid for this field.');
+                    }
+                    field.value = byLabel.value;
+                }
+            } else {
+                field.value = pasted;
+            }
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    }
+
+    function applyColumnEditModalDrafts() {
+        const col = columnEditTargetCol;
+        if (col === null || col === undefined || Number.isNaN(col)) {
+            return 0;
+        }
+
+        const fields = document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-field');
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const isPriorityCol = (criticalCol !== null && col === criticalCol)
+            || (qcCol !== null && col === qcCol);
+        let changed = 0;
+
+        fields.forEach((field) => {
+            const rowIndex = parseInt(field.dataset.row, 10);
+            if (Number.isNaN(rowIndex) || rowIndex < 0 || !currentSheetCells[rowIndex]) {
+                return;
+            }
+            if (field.tagName === 'INPUT' && field.type === 'hidden') {
+                return;
+            }
+            if (isCommRow(rowIndex, currentSheetCells) && !isPriorityCol && col !== specCol) {
+                return;
+            }
+
+            let nextVal = String(field.value ?? '');
+            if (isPriorityCol && rowIndex > 0) {
+                nextVal = normalizePriorityValue(nextVal);
+            }
+
+            const prev = String(currentSheetCells[rowIndex][col] ?? '');
+            if (
+                (nextVal.startsWith('[embedded-image:') || nextVal.startsWith('[cmp-photo:'))
+                && (
+                    prev.startsWith('data:image/')
+                    || prev.startsWith('[embedded-image:')
+                    || prev.startsWith('[cmp-photo:')
+                )
+                && nextVal === prev
+            ) {
+                return;
+            }
+            if (
+                nextVal.startsWith('[embedded-image:')
+                && (prev.startsWith('data:image/') || prev.startsWith('[cmp-photo:'))
+            ) {
+                return;
+            }
+            if (prev === nextVal) {
+                return;
+            }
+            while (currentSheetCells[rowIndex].length <= col) {
+                currentSheetCells[rowIndex].push('');
+            }
+            currentSheetCells[rowIndex][col] = nextVal;
+            changed += 1;
+        });
+
+        return changed;
+    }
+
+    function isProtectedSheetColumn(colIndex, cells) {
+        const sheetCells = cells || currentSheetCells;
+        const specCol = detectSpecColumnIndex(sheetCells);
+        const criticalCol = detectCriticalColumnIndex(sheetCells, specCol);
+        const qcCol = detectQcColumnIndex(sheetCells, specCol);
+        return colIndex === specCol
+            || colIndex === specCol - 1
+            || colIndex === specCol - 2
+            || (criticalCol !== null && colIndex === criticalCol)
+            || (qcCol !== null && colIndex === qcCol);
+    }
+
+    function renderColumnEditModalRows() {
+        const col = columnEditTargetCol;
+        const tbody = document.getElementById('comparison-column-edit-tbody');
+        if (col === null || col === undefined || Number.isNaN(col) || !tbody) {
+            return;
+        }
+
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const isPriorityCol = (criticalCol !== null && col === criticalCol)
+            || (qcCol !== null && col === qcCol);
+        const isSpecCol = col === specCol;
+
+        const parts = [];
+        for (let r = 0; r < currentSheetCells.length; r++) {
+            const row = currentSheetCells[r] || [];
+            const rawValue = row[col] ?? '';
+            const value = String(rawValue ?? '');
+            const displayValue = value.startsWith('data:image/')
+                ? `[embedded-image:${r}:${col}]`
+                : value;
+            let rowLabel = isSpecCol
+                ? `Row ${r + 1}`
+                : String(row[specCol] ?? '').trim();
+            if (!rowLabel) {
+                rowLabel = r === 0 ? 'Header' : `Row ${r + 1}`;
+            }
+
+            if (isCommRow(r, currentSheetCells) && !isSpecCol && !isPriorityCol) {
+                parts.push(`<tr data-edit-row="${r}">
+                    <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
+                    <td>
+                        <input type="hidden" class="cd-col-edit-field" data-row="${r}" value="">
+                        <span class="cd-col-edit-hint">Comm actions are managed in the sheet (not edited here).</span>
+                    </td>
+                </tr>`);
+                continue;
+            }
+
+            if (isPriorityCol && r > 0) {
+                const normalized = normalizePriorityValue(displayValue);
+                const fieldHtml = `<select class="form-select form-select-sm cd-col-edit-field cd-col-edit-select" data-row="${r}">
+                            <option value="Normal" ${normalized === 'Normal' ? 'selected' : ''}>Normal</option>
+                            <option value="Important" ${normalized === 'Important' ? 'selected' : ''}>Important</option>
+                            <option value="Critical" ${normalized === 'Critical' ? 'selected' : ''}>Critical</option>
+                        </select>`;
+                parts.push(`<tr data-edit-row="${r}">
+                    <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
+                    <td>${wrapFieldWithClipboardActions(fieldHtml)}</td>
+                </tr>`);
+                continue;
+            }
+
+            if (isPriorityCol && r === 0) {
+                const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" readonly>`;
+                parts.push(`<tr data-edit-row="${r}">
+                    <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
+                    <td>${wrapFieldWithClipboardActions(fieldHtml)}</td>
+                </tr>`);
+                continue;
+            }
+
+            const isImage = isSheetImageUrl(displayValue);
+            const hint = isImage && (
+                String(displayValue).startsWith('[embedded-image:')
+                || String(displayValue).startsWith('[cmp-photo:')
+            )
+                ? '<div class="cd-col-edit-hint mt-1">Embedded photo — leave as-is to keep, or paste an image URL to replace.</div>'
+                : '';
+            const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" ${isImage ? 'placeholder="Image URL or keep embedded placeholder"' : ''}>`;
+            parts.push(`<tr data-edit-row="${r}">
+                <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
+                <td>${wrapFieldWithClipboardActions(fieldHtml)}${hint}</td>
+            </tr>`);
+        }
+        tbody.innerHTML = parts.join('');
+    }
+
+    function refreshColumnEditModalChrome() {
+        const col = columnEditTargetCol;
+        if (col === null || col === undefined || Number.isNaN(col)) {
+            return;
+        }
+        const colLabel = getSheetColumnHeaderLabel(col);
+        const titleEl = document.getElementById('comparisonColumnEditModalLabel');
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="mdi mdi-pencil-outline me-1"></i> Edit column: ${escapeHtml(colLabel)} <span class="text-muted fw-normal">(${escapeHtml(columnLetter(col))})</span>`;
+        }
+
+        const colCount = Math.max(...currentSheetCells.map(row => (Array.isArray(row) ? row.length : 0)), 0);
+        const canDeleteCol = colCount > 1 && !isProtectedSheetColumn(col);
+        document.querySelectorAll('#comparison-column-edit-delete-col-btn-footer')
+            .forEach((btn) => {
+                btn.disabled = !canDeleteCol;
+                btn.title = canDeleteCol
+                    ? `Delete column ${colLabel}`
+                    : (isProtectedSheetColumn(col)
+                        ? 'Protected column (Amazon / 5 Core / Spec / Critical / QC) cannot be deleted'
+                        : 'Cannot delete the last column');
+            });
+    }
+
+    function openColumnEditModal(colIndex) {
+        const col = parseInt(colIndex, 10);
+        if (Number.isNaN(col) || col < 0) {
+            return;
+        }
+        readCellsFromEditor({ expandImages: false });
+        if (!currentSheetCells.length) {
+            setSheetStatus('Load a comparison sheet first.', true);
+            return;
+        }
+
+        columnEditTargetCol = col;
+        selectedSheetCol = col;
+        applySheetSelectionHighlight();
+        refreshColumnEditModalChrome();
+        renderColumnEditModalRows();
+
+        const modalEl = document.getElementById('comparisonColumnEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function addBlankColumnFromColumnEditModal() {
+        const col = columnEditTargetCol;
+        if (col === null || col === undefined || Number.isNaN(col)) {
+            return;
+        }
+
+        applyColumnEditModalDrafts();
+        readCellsFromEditor({ expandImages: false });
+
+        const insertAt = col + 1;
+        currentSheetCells = currentSheetCells.map(row => {
+            const next = Array.isArray(row) ? row.slice() : [String(row || '')];
+            next.splice(insertAt, 0, '');
+            return next;
+        });
+        currentSheetFormats.cols = shiftNumericFormatMap(currentSheetFormats.cols, insertAt, 1);
+        currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, insertAt, 'col', 1);
+
+        if (selectedSheetCell && selectedSheetCell.col >= insertAt) {
+            selectedSheetCell = { row: selectedSheetCell.row, col: selectedSheetCell.col + 1 };
+        }
+
+        columnEditTargetCol = insertAt;
+        selectedSheetCol = insertAt;
+
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        refreshColumnEditModalChrome();
+        renderColumnEditModalRows();
+        scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+        setSheetStatus(`Blank column inserted at ${columnLetter(insertAt)}.`, false);
+
+        window.setTimeout(function () {
+            const input = document.querySelector('#comparison-column-edit-tbody .cd-col-edit-field:not([type="hidden"]):not([readonly])');
+            if (input && typeof input.focus === 'function') {
+                input.focus();
+            }
+        }, 50);
+    }
+
+    function deleteCurrentColumnFromColumnEditModal() {
+        const col = columnEditTargetCol;
+        if (col === null || col === undefined || Number.isNaN(col)) {
+            return;
+        }
+
+        const colCount = Math.max(...currentSheetCells.map(row => (Array.isArray(row) ? row.length : 0)), 0);
+        if (colCount <= 1) {
+            setSheetStatus('Cannot delete the last column.', true);
+            return;
+        }
+        if (isProtectedSheetColumn(col)) {
+            setSheetStatus('Protected column (Amazon / 5 Core / Spec / Critical / QC) cannot be deleted.', true);
+            return;
+        }
+
+        applyColumnEditModalDrafts();
+        readCellsFromEditor({ expandImages: false });
+
+        const deletedLabel = getSheetColumnHeaderLabel(col);
+        currentSheetCells = currentSheetCells.map(row => {
+            const next = Array.isArray(row) ? row.slice() : [String(row || '')];
+            if (next.length > col) {
+                next.splice(col, 1);
+            }
+            return next;
+        });
+        currentSheetFormats.cols = shiftNumericFormatMap(currentSheetFormats.cols, col, -1);
+        currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, col, 'col', -1);
+
+        if (selectedSheetCell && selectedSheetCell.col === col) {
+            selectedSheetCell = null;
+        } else if (selectedSheetCell && selectedSheetCell.col > col) {
+            selectedSheetCell = { row: selectedSheetCell.row, col: selectedSheetCell.col - 1 };
+        }
+
+        const nextColCount = Math.max(...currentSheetCells.map(row => (Array.isArray(row) ? row.length : 0)), 0);
+        if (!nextColCount) {
+            columnEditTargetCol = null;
+            selectedSheetCol = null;
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+            scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+            const modalEl = document.getElementById('comparisonColumnEditModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            }
+            setSheetStatus(`Column ${deletedLabel} deleted.`, false);
+            return;
+        }
+
+        columnEditTargetCol = Math.min(col, nextColCount - 1);
+        selectedSheetCol = columnEditTargetCol;
+
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        refreshColumnEditModalChrome();
+        renderColumnEditModalRows();
+        scheduleAutoSaveComparisonSheet(400, { rerender: false, refreshTable: false });
+        setSheetStatus(`Column ${deletedLabel} deleted.`, false);
+    }
+
+    function saveColumnEditModal() {
+        const col = columnEditTargetCol;
+        if (col === null || col === undefined || Number.isNaN(col)) {
+            setSheetStatus('No column selected for edit.', true);
+            return;
+        }
+
+        readCellsFromEditor({ expandImages: false });
+        const changed = applyColumnEditModalDrafts();
+
+        if (!changed) {
+            const modalEl = document.getElementById('comparisonColumnEditModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            }
+            setSheetStatus('No changes in this column.', false);
+            return;
+        }
+
+        // Light rebuild for this column’s display (priority dots / links / photos).
+        renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
+        scheduleAutoSaveComparisonSheet(300, { rerender: false, refreshTable: false });
+        setSheetStatus(`Updated ${changed} cell(s) in column ${getSheetColumnHeaderLabel(col)}.`, false);
+
+        const modalEl = document.getElementById('comparisonColumnEditModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+        columnEditTargetCol = null;
+    }
+
+    function ensureCriticalColumn(cells) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        const specCol = detectSpecColumnIndex(cells);
+        let criticalCol = detectCriticalColumnIndex(cells, specCol);
+        let insertedAt = null;
+        if (criticalCol === null) {
+            // Insert before QC when QC already sits right after Spec.
+            cells = insertSheetColumnAt(cells, specCol + 1);
+            criticalCol = specCol + 1;
+            insertedAt = criticalCol;
+        }
+        if (!cells[0]) {
+            cells[0] = [];
+        }
+        cells[0][criticalCol] = 'Critical';
+        return { cells, insertedAt, criticalCol };
+    }
+
+    function ensureQcColumn(cells) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        const specCol = detectSpecColumnIndex(cells);
+        const criticalCol = detectCriticalColumnIndex(cells, specCol);
+        let qcCol = detectQcColumnIndex(cells, specCol);
+        let insertedAt = null;
+        if (qcCol === null) {
+            const insertAt = (criticalCol !== null ? criticalCol : specCol) + 1;
+            cells = insertSheetColumnAt(cells, insertAt);
+            qcCol = insertAt;
+            insertedAt = qcCol;
+        }
+        if (!cells[0]) {
+            cells[0] = [];
+        }
+        cells[0][qcCol] = 'QC';
+        return { cells, insertedAt, qcCol };
+    }
+
+    function getFirstSupplierColumnIndex(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        const qcCol = detectQcColumnIndex(cells, specCol);
+        if (qcCol !== null) {
+            return qcCol + 1;
+        }
+        const criticalCol = detectCriticalColumnIndex(cells, specCol);
+        if (criticalCol !== null) {
+            return criticalCol + 1;
+        }
+        return specCol + 1;
+    }
+
+    function normalizeSpecLabel(value) {
+        return String(value || '')
+            .replace(/[\u00a0\u2000-\u200b]/g, ' ')
+            .replace(/[\/⁄∕]/g, '/')
+            .replace(/[×✕✖]/g, 'x')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+    }
+
+    function isObsoleteCombinedLwhLabel(label, kind) {
+        const text = normalizeSpecLabel(label);
+        if (!text) return false;
+        if (kind === 'item') {
+            return /^item\s*l\s*\/\s*w\s*\/\s*h(\b|\s*\(|$)/.test(text);
+        }
+        if (kind === 'ctn') {
+            return /^ctn\s*l\s*\/\s*w\s*\/\s*h(\b|\s*\(|$)/.test(text);
+        }
+        return /^((item|ctn)\s*l\s*\/\s*w\s*\/\s*h)(\b|\s*\(|$)/.test(text);
+    }
+
+    function parseCombinedLwhParts(value) {
+        const text = String(value == null ? '' : value).trim();
+        if (!text) {
+            return ['', '', ''];
+        }
+        const parts = text
+            .split(/\s*[×xX*\/]\s*/)
+            .map(part => String(part || '').trim())
+            .filter((part, index, arr) => !(part === '' && index > 0 && index < arr.length - 1));
+        return [parts[0] || '', parts[1] || '', parts[2] || ''];
+    }
+
+    function isInnerPkgSectionLabel(label) {
+        const text = normalizeSpecLabel(label);
+        if (!text) return false;
+        if (text === normalizeSpecLabel(INNER_PKG_SECTION.header)) return true;
+        if (isObsoleteCombinedLwhLabel(label, 'item')) return true;
+        return INNER_PKG_SECTION.rows.some(row => normalizeSpecLabel(row.label) === text);
+    }
+
+    function isCtnPkgSectionLabel(label) {
+        const text = normalizeSpecLabel(label);
+        if (!text) return false;
+        if (text === normalizeSpecLabel(CTN_PKG_SECTION.header)) return true;
+        if (isObsoleteCombinedLwhLabel(label, 'ctn')) return true;
+        return CTN_PKG_SECTION.rows.some(row => normalizeSpecLabel(row.label) === text);
+    }
+
+    function isPkgSectionHeaderLabel(label) {
+        const text = normalizeSpecLabel(label);
+        return text === normalizeSpecLabel(INNER_PKG_SECTION.header)
+            || text === normalizeSpecLabel(CTN_PKG_SECTION.header);
+    }
+
+    function findExactSpecRowIndex(cells, label, specCol) {
+        const needle = normalizeSpecLabel(label);
+        for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
+            if (normalizeSpecLabel((cells[rowIndex] || [])[specCol]) === needle) {
+                return rowIndex;
+            }
+        }
+        return null;
+    }
+
+    function findSpecRowIndexWithAliases(cells, label, aliases, specCol) {
+        let rowIndex = findExactSpecRowIndex(cells, label, specCol);
+        if (rowIndex !== null) {
+            return rowIndex;
+        }
+        const aliasList = Array.isArray(aliases) ? aliases : [];
+        for (let i = 0; i < aliasList.length; i++) {
+            rowIndex = findExactSpecRowIndex(cells, aliasList[i], specCol);
+            if (rowIndex !== null) {
+                return rowIndex;
+            }
+        }
+        return null;
+    }
+
+    function splitObsoleteCombinedLwhRows(cells, section, specCol) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        const kind = normalizeSpecLabel(section.header) === 'inner pkg' ? 'item' : 'ctn';
+        const splitLabels = kind === 'item'
+            ? ['Item L (IN)', 'Item W (IN)', 'Item H (IN)']
+            : ['CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)'];
+        const amazonCol = Math.max(0, specCol - 2);
+        const fiveCoreCol = Math.max(0, specCol - 1);
+        const colCount = Math.max(...cells.map(row => row.length), specCol + 1, 6);
+        const obsoleteExact = new Set(
+            (Array.isArray(section.obsoleteLabels) ? section.obsoleteLabels : [])
+                .map(label => normalizeSpecLabel(label))
+        );
+
+        for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
+            const label = (cells[rowIndex] || [])[specCol];
+            const normalized = normalizeSpecLabel(label);
+            if (!obsoleteExact.has(normalized) && !isObsoleteCombinedLwhLabel(label, kind)) {
+                continue;
+            }
+
+            // Skip if the three split rows already exist nearby.
+            const alreadySplit = splitLabels.every(splitLabel => findExactSpecRowIndex(cells, splitLabel, specCol) !== null);
+            if (alreadySplit) {
+                cells.splice(rowIndex, 1);
+                rowIndex -= 1;
+                continue;
+            }
+
+            const parts = parseCombinedLwhParts(
+                (cells[rowIndex] || [])[fiveCoreCol]
+                || (cells[rowIndex] || [])[amazonCol]
+                || ''
+            );
+            const replacement = splitLabels.map((splitLabel, idx) => {
+                const newRow = Array.from({ length: colCount }, () => '');
+                newRow[specCol] = splitLabel;
+                // Defaults belong in 5 Core only; Amazon/suppliers stay blank until edited.
+                newRow[fiveCoreCol] = parts[idx] || '';
+                return newRow;
+            });
+            cells.splice(rowIndex, 1, ...replacement);
+            rowIndex += replacement.length - 1;
+        }
+
+        return cells;
+    }
+
+    function ensureDimWtPkgSection(cells, section, specCol) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        cells = splitObsoleteCombinedLwhRows(cells, section, specCol);
+        const colCount = Math.max(...cells.map(row => row.length), specCol + 1, 6);
+        const ensureLabels = [
+            { label: section.header, aliases: [] },
+            ...section.rows.map(row => ({ label: row.label, aliases: row.aliases || [] })),
+        ];
+
+        let insertAt = findExactSpecRowIndex(cells, section.header, specCol);
+        if (insertAt === null) {
+            insertAt = cells.length - 1;
+        }
+
+        ensureLabels.forEach(entry => {
+            let rowIndex = findSpecRowIndexWithAliases(cells, entry.label, entry.aliases, specCol);
+            if (rowIndex === null) {
+                const newRow = Array.from({ length: colCount }, () => '');
+                newRow[specCol] = entry.label;
+                insertAt = Math.min(insertAt + 1, cells.length);
+                cells.splice(insertAt, 0, newRow);
+                rowIndex = insertAt;
+            } else {
+                cells[rowIndex][specCol] = entry.label;
+                insertAt = rowIndex;
+            }
+            while (cells[rowIndex].length < colCount) {
+                cells[rowIndex].push('');
+            }
+        });
+
+        return cells;
+    }
+
+    function ensureDimWtPkgSections(cells) {
+        cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
+        const specCol = detectSpecColumnIndex(cells);
+        cells = ensureDimWtPkgSection(cells, INNER_PKG_SECTION, specCol);
+        cells = ensureDimWtPkgSection(cells, CTN_PKG_SECTION, specCol);
+        return cells;
+    }
+
+    function sheetNeedsDimWtMigration(cells) {
+        cells = cells || [];
+        const specCol = detectSpecColumnIndex(cells);
+        if (findExactSpecRowIndex(cells, INNER_PKG_SECTION.header, specCol) === null
+            || findExactSpecRowIndex(cells, CTN_PKG_SECTION.header, specCol) === null) {
+            return true;
+        }
+        if (findExactSpecRowIndex(cells, 'Item L (IN)', specCol) === null
+            || findExactSpecRowIndex(cells, 'CTN L (CM)', specCol) === null) {
+            return true;
+        }
+        for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
+            const label = (cells[rowIndex] || [])[specCol];
+            if (isObsoleteCombinedLwhLabel(label, 'item') || isObsoleteCombinedLwhLabel(label, 'ctn')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function applyDimWtDataToSheet(cells, dimWt) {
+        cells = cells || [];
+        // Only run expensive section migration when headers / split rows are missing.
+        if (sheetNeedsDimWtMigration(cells)) {
+            cells = ensureDimWtPkgSections(cells);
+        }
+        const data = dimWt && typeof dimWt === 'object' ? dimWt : {};
+        const specCol = detectSpecColumnIndex(cells);
+        const fiveCoreCol = Math.max(0, specCol - 1);
+        const criticalCol = detectCriticalColumnIndex(cells, specCol);
+        const qcCol = detectQcColumnIndex(cells, specCol);
+        const protectedCols = new Set(
+            [specCol, fiveCoreCol, criticalCol, qcCol].filter(col => col !== null && col !== undefined)
+        );
+
+        const writeValue = (label, value) => {
+            const rowIndex = findExactSpecRowIndex(cells, label, specCol);
+            if (rowIndex === null) {
+                return;
+            }
+            const text = value == null ? '' : String(value);
+            const row = cells[rowIndex];
+            while (row.length <= Math.max(fiveCoreCol, specCol)) {
+                row.push('');
+            }
+
+            // Dim/Wt defaults fill 5 Core only. Other columns stay blank unless user-edited.
+            row[fiveCoreCol] = text;
+
+            // Clear mirrored auto-fill leftovers (Amazon/suppliers) that still match the default.
+            for (let c = 0; c < row.length; c++) {
+                if (protectedCols.has(c)) {
+                    continue;
+                }
+                const cellVal = String(row[c] ?? '').trim();
+                if (cellVal === '') {
+                    continue;
+                }
+                if (text !== '' && cellVal === text) {
+                    row[c] = '';
+                }
+            }
+        };
+
+        writeValue(INNER_PKG_SECTION.header, '');
+        INNER_PKG_SECTION.rows.forEach(row => writeValue(row.label, data[row.key] || ''));
+        writeValue(CTN_PKG_SECTION.header, '');
+        CTN_PKG_SECTION.rows.forEach(row => writeValue(row.label, data[row.key] || ''));
+
+        return cells;
+    }
+
+    function applyDimWtSectionFormats(cells, formats) {
+        formats = normalizeSheetFormats(formats || currentSheetFormats);
+        const specCol = detectSpecColumnIndex(cells || currentSheetCells);
+        (cells || currentSheetCells).forEach((row, rowIndex) => {
+            const label = (row || [])[specCol];
+            if (isInnerPkgSectionLabel(label)) {
+                formats.rows[String(rowIndex)] = INNER_PKG_SECTION_COLOR;
+            } else if (isCtnPkgSectionLabel(label)) {
+                formats.rows[String(rowIndex)] = CTN_PKG_SECTION_COLOR;
+            }
+        });
+        return formats;
+    }
+
+    function updateQcIssuesBadge(qcIssues) {
+        const btn = document.getElementById('comparison-cd-qc-issues-btn');
+        const dot = document.getElementById('comparison-cd-qc-issues-dot');
+        if (!btn) {
+            return;
+        }
+        const data = qcIssues && typeof qcIssues === 'object' ? qcIssues : {};
+        const hasData = !!data.has_data;
+        btn.classList.toggle('has-qc-data', hasData);
+        btn.classList.toggle('no-qc-data', !hasData);
+        btn.title = hasData
+            ? 'QC issues recorded — click to view'
+            : 'No QC issues recorded — click to view';
+        if (dot) {
+            dot.className = 'badge rounded-pill ms-1 ' + (hasData ? 'bg-success' : 'bg-danger');
+            dot.textContent = '•';
+        }
+    }
+
+    function qcIssuesSearchIconHtml(value) {
+        const text = String(value || '').trim();
+        const hasData = text !== '';
+        const color = hasData ? '#28a745' : '#dc3545';
+        const title = hasData ? text : 'No data';
+        return `<i class="fas fa-search cd-qc-search-icon" style="color:${color};" title="${escapeHtmlAttr(title)}" data-qc-text="${escapeHtmlAttr(text)}" data-qc-title="${escapeHtmlAttr(hasData ? 'Details' : 'No data')}"></i>`;
+    }
+
+    function renderQcIssuesModal(qcIssues) {
+        const data = qcIssues && typeof qcIssues === 'object' ? qcIssues : {};
+        const skuLabel = document.getElementById('comparison-qc-issues-sku-label');
+        const tbody = document.getElementById('comparison-qc-issues-tbody');
+        const historyEl = document.getElementById('comparison-qc-issues-history');
+        if (skuLabel) {
+            skuLabel.textContent = data.sku || currentCdRow?.sku || '—';
+        }
+        if (!tbody) {
+            return;
+        }
+
+        const problemHtml = qcIssuesSearchIconHtml(data.problem_issue);
+        const suggestionHtml = qcIssuesSearchIconHtml(data.suggestion_improve);
+
+        let imageHtml = '';
+        if (data.image_path) {
+            const kb = data.image_size_kb != null ? `${data.image_size_kb} KB` : 'View image';
+            imageHtml = `<img src="${escapeHtmlAttr(data.image_path)}" class="cd-qc-issue-thumb" alt="QC issue" title="${escapeHtmlAttr(kb)}" data-qc-image="${escapeHtmlAttr(data.image_path)}">`;
+        } else {
+            imageHtml = `<button type="button" class="btn btn-sm btn-outline-secondary cd-qc-media-btn" disabled title="No image"><i class="fas fa-camera"></i></button>`;
+        }
+
+        let videoHtml = '';
+        if (data.video_path) {
+            const kb = data.video_size_kb != null ? `${data.video_size_kb} KB` : 'Play video';
+            videoHtml = `<a href="${escapeHtmlAttr(data.video_path)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-success cd-qc-media-btn" title="${escapeHtmlAttr(kb)}"><i class="fas fa-play"></i></a>`;
+        } else {
+            videoHtml = `<button type="button" class="btn btn-sm btn-outline-secondary cd-qc-media-btn" disabled title="No video"><i class="fas fa-video"></i></button>`;
+        }
+
+        tbody.innerHTML = `<tr>
+            <td>${problemHtml}</td>
+            <td>${suggestionHtml}</td>
+            <td>${imageHtml}</td>
+            <td>${videoHtml}</td>
+        </tr>`;
+
+        if (historyEl) {
+            historyEl.textContent = data.user_history_label
+                ? `Last update: ${data.user_history_label}`
+                : 'No QC Masters history for this SKU.';
+        }
+    }
+
+    function openComparisonQcIssuesModal() {
+        renderQcIssuesModal(currentQcIssuesData || {
+            sku: currentCdRow?.sku || '',
+            has_data: false,
+        });
+        comparisonQcIssuesModal?.show();
+    }
+
+    function updateReviewsBadge(reviewsData) {
+        const btn = document.getElementById('comparison-cd-reviews-btn');
+        const inner = document.getElementById('comparison-cd-reviews-badge-inner');
+        if (!btn || !inner) {
+            return;
+        }
+
+        const data = reviewsData && typeof reviewsData === 'object' ? reviewsData : {};
+        currentReviewsData = data;
+        const rawR = data.rating;
+        const rawRev = data.reviews;
+        const rVal = parseFloat(rawR);
+        const hasRating = rawR !== null && rawR !== undefined && String(rawR).trim() !== '' && Number.isFinite(rVal);
+        const revParsed = parseInt(String(rawRev == null ? '' : rawRev).replace(/,/g, ''), 10);
+        const hasReviews = Number.isFinite(revParsed) && revParsed >= 0 && String(rawRev).trim() !== '';
+
+        const parent = String(data.parent || currentCdRow?.parent || '').trim();
+        const sku = String(data.sku || currentCdRow?.sku || '').trim();
+        const amazonUrl = String(data.amazon_reviews_url || data.amazon_buyer_url || '').trim();
+
+        btn.classList.remove('cd-reviews-hot');
+        btn.title = 'Rating & reviews from Forecast Analysis (Jungle Scout)';
+
+        if (!hasRating && !hasReviews) {
+            inner.innerHTML = '<span class="cd-reviews-rating-line text-muted"><i class="bi bi-star"></i> Reviews</span>';
+        } else {
+            let starColor = '#dc2626';
+            if (hasRating) {
+                if (rVal >= 4.5) {
+                    starColor = '#9d174d';
+                    btn.classList.add('cd-reviews-hot');
+                } else if (rVal >= 4) {
+                    starColor = '#15803d';
+                } else if (rVal >= 3.5) {
+                    starColor = '#a16207';
+                } else {
+                    starColor = '#dc2626';
+                }
+            }
+
+            const ratingLine = hasRating
+                ? (Number.isInteger(rVal) ? String(rVal) : rVal.toFixed(1))
+                : '—';
+            const revLine = hasReviews
+                ? `(${revParsed.toLocaleString('en-US')})`
+                : (hasRating ? '(0)' : '');
+            const revMuted = hasRating && rVal >= 4.5 ? '#861657' : '#5c5c5c';
+
+            inner.innerHTML =
+                `<span class="cd-reviews-rating-line" style="color:${starColor};">` +
+                `<i class="bi bi-star-fill" style="font-size:0.72rem;"></i>` +
+                `<span>${ratingLine}</span></span>` +
+                (revLine ? `<span class="cd-reviews-count-line" style="color:${revMuted};">${revLine}</span>` : '');
+
+            btn.title = `Rating ${hasRating ? ratingLine : '—'} · Reviews ${hasReviews ? revParsed.toLocaleString('en-US') : '—'} (Forecast Analysis / Jungle Scout)`;
+        }
+
+        const graphDot = btn.querySelector('[data-reviews-action="graph"]');
+        const intelDot = btn.querySelector('[data-reviews-action="intel"]');
+        const amazonDot = btn.querySelector('[data-reviews-action="amazon"]');
+
+        if (graphDot) {
+            const canGraph = !!(sku || parent);
+            graphDot.classList.toggle('is-disabled', !canGraph);
+            graphDot.title = canGraph
+                ? `Lifetime rating graph${parent ? ' (parent)' : ' (SKU)'}`
+                : 'No SKU/parent for graph';
+        }
+        if (intelDot) {
+            const canIntel = !!parent;
+            intelDot.classList.toggle('is-disabled', !canIntel);
+            intelDot.title = canIntel
+                ? `Open Review Intelligence for parent ${parent}`
+                : 'No parent available for Review Intelligence';
+        }
+        if (amazonDot) {
+            const canAmazon = !!amazonUrl;
+            amazonDot.classList.toggle('is-disabled', !canAmazon);
+            amazonDot.title = canAmazon
+                ? 'Open Amazon buyer reviews'
+                : 'No Amazon buyer/ASIN link for this SKU';
+        }
+    }
+
+    let comparisonReviewsChart = null;
+    let comparisonReviewsChartDays = 0;
+
+    function openComparisonReviewsGraph() {
+        const data = currentReviewsData || {};
+        const parent = String(data.parent || currentCdRow?.parent || '').trim();
+        const sku = String(data.sku || currentCdRow?.sku || '').trim();
+        if (!parent && !sku) {
+            return;
+        }
+
+        comparisonReviewsChartDays = 0;
+        const rangeEl = document.getElementById('comparison-reviews-chart-range');
+        if (rangeEl) rangeEl.value = '0';
+
+        const titleEl = document.getElementById('comparisonReviewsChartModalLabel');
+        const label = parent || sku;
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> Rating status — ${escapeHtml(label)}${parent ? ' (Parent)' : ''} · Lifetime`;
+        }
+
+        const modalEl = document.getElementById('comparisonReviewsChartModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        loadComparisonReviewsChart();
+    }
+
+    function loadComparisonReviewsChart() {
+        const loading = document.getElementById('comparison-reviews-chart-loading');
+        const container = document.getElementById('comparison-reviews-chart-container');
+        const noData = document.getElementById('comparison-reviews-chart-nodata');
+        if (loading) loading.style.display = '';
+        if (container) container.style.display = 'none';
+        if (noData) noData.style.display = 'none';
+
+        const data = currentReviewsData || {};
+        const parent = String(data.parent || currentCdRow?.parent || '').trim();
+        const sku = String(data.sku || currentCdRow?.sku || '').trim();
+        const params = new URLSearchParams();
+        params.set('metric', 'rating');
+        params.set('days', String(comparisonReviewsChartDays || 0));
+        if (parent) {
+            params.set('parent', parent);
+        } else {
+            params.set('sku', sku);
+        }
+
+        fetch(cvrMasterChartDataUrl + '?' + params.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(r => r.json())
+            .then(response => {
+                if (loading) loading.style.display = 'none';
+                const points = response && response.success && Array.isArray(response.data) ? response.data : [];
+                if (!points.length) {
+                    if (noData) noData.style.display = '';
+                    return;
+                }
+                if (container) container.style.display = '';
+                renderComparisonReviewsChart(points);
+            })
+            .catch(() => {
+                if (loading) loading.style.display = 'none';
+                if (noData) noData.style.display = '';
+            });
+    }
+
+    function renderComparisonReviewsChart(points) {
+        const el = document.getElementById('comparison-reviews-chart');
+        if (!el || typeof Highcharts === 'undefined') {
+            return;
+        }
+        const categories = points.map(p => p.date);
+        const values = points.map(p => {
+            const v = parseFloat(p.value);
+            return Number.isFinite(v) ? Math.round(v * 100) / 100 : null;
+        });
+
+        if (comparisonReviewsChart) {
+            try { comparisonReviewsChart.destroy(); } catch (e) {}
+            comparisonReviewsChart = null;
+        }
+
+        comparisonReviewsChart = Highcharts.chart(el, {
+            chart: { type: 'line', height: 260, backgroundColor: 'transparent' },
+            title: { text: null },
+            credits: { enabled: false },
+            xAxis: { categories, tickInterval: Math.max(1, Math.floor(categories.length / 8)) },
+            yAxis: {
+                title: { text: 'Rating' },
+                min: 0,
+                max: 5,
+                tickInterval: 0.5,
+            },
+            legend: { enabled: false },
+            tooltip: {
+                pointFormatter: function () {
+                    return `<b>${Number(this.y).toFixed(1)}</b> stars`;
+                },
+            },
+            plotOptions: {
+                line: {
+                    marker: { enabled: true, radius: 3 },
+                    color: '#e83e8c',
+                    lineWidth: 2,
+                },
+            },
+            series: [{ name: 'Rating', data: values }],
+        });
+    }
+
+    function openComparisonReviewsIntelligence() {
+        const parent = String((currentReviewsData && currentReviewsData.parent) || currentCdRow?.parent || '').trim();
+        if (!parent) {
+            return;
+        }
+        const url = reviewsIntelligenceUrl + '?parent=' + encodeURIComponent(parent);
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function openComparisonAmazonReviews() {
+        const data = currentReviewsData || {};
+        const url = String(data.amazon_reviews_url || data.amazon_buyer_url || '').trim();
+        if (!url) {
+            return;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function handleReviewsBadgeAction(action) {
+        if (action === 'graph') {
+            openComparisonReviewsGraph();
+        } else if (action === 'intel') {
+            openComparisonReviewsIntelligence();
+        } else if (action === 'amazon') {
+            openComparisonAmazonReviews();
+        }
+    }
+
+    function getSelectedPriorityFilters(filterCol) {
+        const checked = Array.from(
+            document.querySelectorAll(`.cd-priority-filter-check[data-filter-col="${filterCol}"]:checked`)
+        ).map(el => normalizePriorityValue(el.value));
+        return new Set(checked);
+    }
+
+    function syncPriorityFilterBadgeStyles() {
+        document.querySelectorAll('.cd-priority-filter-item').forEach(label => {
+            const input = label.querySelector('.cd-priority-filter-check');
+            label.classList.toggle('is-checked', !!(input && input.checked));
+        });
+
+        ['critical', 'qc'].forEach(filterCol => {
+            const checked = Array.from(
+                document.querySelectorAll(`.cd-priority-filter-check[data-filter-col="${filterCol}"]:checked`)
+            ).map(el => normalizePriorityValue(el.value));
+            const summaryEl = document.querySelector(`[data-filter-summary="${filterCol}"]`);
+            const btn = document.getElementById(
+                filterCol === 'critical' ? 'comparison-cd-critical-filter-btn' : 'comparison-cd-qc-filter-btn'
+            );
+            let summary = 'All';
+            if (!checked.length) {
+                summary = 'None';
+            } else if (checked.length < 3) {
+                summary = String(checked.length);
+            }
+            if (summaryEl) {
+                summaryEl.textContent = summary;
+            }
+            btn?.classList.toggle('active-filter', checked.length > 0 && checked.length < 3);
+        });
+    }
+
+    function rowMatchesPriorityFilters(rowIndex, cells, criticalCol, qcCol, criticalAllowed, qcAllowed) {
+        // Keep the stamped header row visible so column labels stay in place.
+        if (rowIndex === 0) {
+            return true;
+        }
+
+        if (criticalCol !== null && criticalAllowed.size > 0 && criticalAllowed.size < 3) {
+            const criticalValue = normalizePriorityValue((cells[rowIndex] || [])[criticalCol]);
+            if (!criticalAllowed.has(criticalValue)) {
+                return false;
+            }
+        }
+
+        if (qcCol !== null && qcAllowed.size > 0 && qcAllowed.size < 3) {
+            const qcValue = normalizePriorityValue((cells[rowIndex] || [])[qcCol]);
+            if (!qcAllowed.has(qcValue)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function applyPriorityRowFilters() {
+        syncPriorityFilterBadgeStyles();
+        const body = document.getElementById('comparison-cd-sheet-body');
+        if (!body) {
+            return;
+        }
+
+        const cells = currentSheetCells || [];
+        const specCol = detectSpecColumnIndex(cells);
+        const criticalCol = detectCriticalColumnIndex(cells, specCol);
+        const qcCol = detectQcColumnIndex(cells, specCol);
+        const criticalAllowed = getSelectedPriorityFilters('critical');
+        const qcAllowed = getSelectedPriorityFilters('qc');
+
+        Array.from(body.children).forEach((tr, rowIndex) => {
+            if (!tr || tr.tagName !== 'TR') {
+                return;
+            }
+            const visible = rowMatchesPriorityFilters(
+                rowIndex,
+                cells,
+                criticalCol,
+                qcCol,
+                criticalAllowed,
+                qcAllowed
+            );
+            tr.style.display = visible ? '' : 'none';
+        });
+    }
+
     function isCommDataCell(rowIndex, colIndex) {
-        if (isSheetSpecColumn(colIndex) || !isCommRow(rowIndex, currentSheetCells)) {
+        if (isSheetSpecColumn(colIndex) || isSheetPriorityColumn(colIndex) || !isCommRow(rowIndex, currentSheetCells)) {
             return false;
         }
         return true;
@@ -1674,7 +4195,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function isCompanyNameDataCell(rowIndex, colIndex, forceText) {
-        if (forceText || isSheetSpecColumn(colIndex)) {
+        if (forceText || isSheetSpecColumn(colIndex) || isSheetPriorityColumn(colIndex)) {
             return false;
         }
         return isCompanyNameRow(rowIndex, currentSheetCells);
@@ -2219,19 +4740,48 @@ document.addEventListener('DOMContentLoaded', function () {
         return bg ? ` style="background-color:${bg};"` : '';
     }
 
+    function looksLikeHeavyCellValue(value) {
+        if (value == null || value === '') {
+            return false;
+        }
+        if (typeof value !== 'string') {
+            return false;
+        }
+        // Never run trim/toLowerCase on multi-MB base64 — that freezes the tab.
+        return value.startsWith('data:image/')
+            || value.startsWith('[embedded-image:')
+            || value.length > 400;
+    }
+
+    function sanitizeSheetCellsForUi(cells) {
+        return (cells || []).map((row, rowIndex) => {
+            if (!Array.isArray(row)) {
+                const text = String(row || '');
+                return text.startsWith('data:image/')
+                    ? [`[embedded-image:${rowIndex}:0]`]
+                    : [text];
+            }
+            return row.map((value, colIndex) => {
+                if (typeof value === 'string' && value.startsWith('data:image/')) {
+                    return `[embedded-image:${rowIndex}:${colIndex}]`;
+                }
+                return value == null ? '' : value;
+            });
+        });
+    }
+
     function detectSpecColumnIndex(cells) {
         const scores = {};
         const maxRows = Math.min(cells.length, 30);
         for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
             const row = cells[rowIndex] || [];
             for (let colIndex = 0; colIndex < row.length; colIndex++) {
-                const text = String(row[colIndex] || '').trim().toLowerCase();
-                if (
-                    !text
-                    || text.startsWith('http')
-                    || text.startsWith('data:image/')
-                    || text.startsWith('[embedded-image:')
-                ) {
+                const raw = row[colIndex];
+                if (raw == null || raw === '' || looksLikeHeavyCellValue(raw)) {
+                    continue;
+                }
+                const text = String(raw).trim().toLowerCase();
+                if (!text || text.startsWith('http')) {
                     continue;
                 }
                 if (text.includes('supplier') || text.includes('product photo') || text.includes('person name review') || text.includes('company name')) {
@@ -2318,6 +4868,18 @@ document.addEventListener('DOMContentLoaded', function () {
             stampColumnHeader(cells, fiveCoreCol, '5 Core');
         }
 
+        const criticalEnsured = ensureCriticalColumn(cells);
+        cells = criticalEnsured.cells;
+        if (criticalEnsured.insertedAt !== null) {
+            shiftFormatsForInsertedColumn(criticalEnsured.insertedAt);
+        }
+
+        const qcEnsured = ensureQcColumn(cells);
+        cells = qcEnsured.cells;
+        if (qcEnsured.insertedAt !== null) {
+            shiftFormatsForInsertedColumn(qcEnsured.insertedAt);
+        }
+
         const colCount = Math.max(...cells.map(row => row.length), 1);
         return cells.map(row => {
             while (row.length < colCount) {
@@ -2325,6 +4887,14 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             return row.slice(0, colCount);
         });
+    }
+
+    function shiftFormatsForInsertedColumn(insertAt) {
+        if (insertAt === null || insertAt === undefined) {
+            return;
+        }
+        currentSheetFormats.cols = shiftNumericFormatMap(currentSheetFormats.cols, insertAt, 1);
+        currentSheetFormats.cells = shiftCellFormatMap(currentSheetFormats.cells, insertAt, 'col', 1);
     }
 
     function parseSheetNumber(value) {
@@ -2360,7 +4930,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return null;
         }
 
-        const firstSupplierCol = specCol + 1;
+        const firstSupplierCol = getFirstSupplierColumnIndex(cells, specCol);
         const colCount = Math.max(...cells.map(row => row.length), 0);
         let bestCol = null;
         let bestValue = Infinity;
@@ -2394,7 +4964,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function moveLowestPriceSupplierAfterSpec(cells) {
         cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
         const specCol = detectSpecColumnIndex(cells);
-        const firstSupplierCol = specCol + 1;
+        const firstSupplierCol = getFirstSupplierColumnIndex(cells, specCol);
         const colCount = Math.max(...cells.map(row => row.length), 0);
 
         if (firstSupplierCol >= colCount) {
@@ -2418,13 +4988,13 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    // Order ALL supplier columns (everything after Spec) by PRICE USD ascending, keeping
+    // Order ALL supplier columns (everything after Spec/Critical/QC) by PRICE USD ascending, keeping
     // equal prices side-by-side in their original order (stable). Columns without a price
     // stay after the priced ones, in their original order.
     function sortSupplierColumnsByPrice(cells) {
         cells = (cells || []).map(row => Array.isArray(row) ? row.slice() : [String(row || '')]);
         const specCol = detectSpecColumnIndex(cells);
-        const firstSupplierCol = specCol + 1;
+        const firstSupplierCol = getFirstSupplierColumnIndex(cells, specCol);
         const colCount = Math.max(...cells.map(row => row.length), 0);
         if (firstSupplierCol >= colCount) {
             return { cells, mapping: null };
@@ -2463,11 +5033,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const mapping = {};
-        for (let c = 0; c <= specCol; c++) mapping[c] = c;
+        for (let c = 0; c < firstSupplierCol; c++) mapping[c] = c;
         newOrder.forEach((origCol, k) => { mapping[origCol] = firstSupplierCol + k; });
 
         const newCells = cells.map(row => {
-            const head = row.slice(0, specCol + 1);
+            const head = row.slice(0, firstSupplierCol);
             const tail = newOrder.map(origCol => (row[origCol] !== undefined ? row[origCol] : ''));
             return head.concat(tail);
         });
@@ -2513,12 +5083,17 @@ document.addEventListener('DOMContentLoaded', function () {
         formats.cols[String(specCol)] = SPEC_COLUMN_COLOR;
 
         for (let rowIndex = 0; rowIndex < cells.length; rowIndex++) {
-            if (isSupplierNameRow(cells, rowIndex, specCol)) {
+            const label = (cells[rowIndex] || [])[specCol];
+            if (isInnerPkgSectionLabel(label)) {
+                formats.rows[String(rowIndex)] = INNER_PKG_SECTION_COLOR;
+            } else if (isCtnPkgSectionLabel(label)) {
+                formats.rows[String(rowIndex)] = CTN_PKG_SECTION_COLOR;
+            } else if (isSupplierNameRow(cells, rowIndex, specCol)) {
                 formats.rows[String(rowIndex)] = SUPPLIER_NAME_ROW_COLOR;
             }
         }
 
-        const firstSupplierCol = specCol + 1;
+        const firstSupplierCol = getFirstSupplierColumnIndex(cells, specCol);
         const colCount = Math.max(...cells.map(row => row.length), 0);
 
         ['usd', 'rmb'].forEach(needle => {
@@ -2725,90 +5300,62 @@ document.addEventListener('DOMContentLoaded', function () {
         return { cells, rows: { ...formats.rows }, cols };
     }
 
-    function getSheetFillTarget() {
-        return document.getElementById('comparison-cd-fill-target')?.value || 'cell';
+    function parseCmpPhotoId(value) {
+        const match = String(value || '').match(/^\[cmp-photo:([A-Za-z0-9._-]+\.(?:jpe?g|png|gif|webp))\]$/i);
+        return match ? match[1] : '';
     }
 
-    function getSheetFillColor() {
-        return normalizeSheetColor(document.getElementById('comparison-cd-fill-color')?.value || '');
-    }
-
-    function applySheetFillColor() {
-        readCellsFromEditor();
-        const color = getSheetFillColor();
-        if (!color) {
-            setSheetStatus('Pick a valid fill color first.', true);
-            return;
+    function parseEmbeddedImageCoords(value, fallbackRow, fallbackCol) {
+        const match = String(value || '').match(/^\[embedded-image:(\d+):(\d+)\]$/);
+        if (!match) {
+            return { row: fallbackRow, col: fallbackCol };
         }
+        return {
+            row: parseInt(match[1], 10),
+            col: parseInt(match[2], 10),
+        };
+    }
 
-        const target = getSheetFillTarget();
-        if (target === 'cell') {
-            if (!selectedSheetCell) {
-                setSheetStatus('Select a cell first (click inside the grid).', true);
-                return;
-            }
-            currentSheetFormats.cells[`${selectedSheetCell.row}:${selectedSheetCell.col}`] = color;
-            setSheetStatus(`Applied fill to cell ${columnLetter(selectedSheetCell.col)}${selectedSheetCell.row + 1}.`, false);
-        } else if (target === 'row') {
-            if (selectedSheetRow === null) {
-                setSheetStatus('Select a row first (click the row number).', true);
-                return;
-            }
-            currentSheetFormats.rows[String(selectedSheetRow)] = color;
-            setSheetStatus(`Applied fill to row ${selectedSheetRow + 1}.`, false);
+    function sheetEmbeddedImageSrc(rowIndex, colIndex, value) {
+        const sheetSku = String(currentCdRow?.sheet_sku || currentCdRow?.sku || '').trim();
+        if (!sheetSku || !sheetImageUrl) {
+            return '';
+        }
+        const params = new URLSearchParams({
+            sheet_sku: sheetSku,
+            sku: String(currentCdRow?.sku || sheetSku).trim(),
+            v: String(currentCdRow?.sheet_image_v || 1),
+        });
+        const photoId = parseCmpPhotoId(value);
+        if (photoId) {
+            params.set('photo', photoId);
         } else {
-            if (selectedSheetCol === null) {
-                setSheetStatus('Select a column first (click the column letter).', true);
-                return;
-            }
-            currentSheetFormats.cols[String(selectedSheetCol)] = color;
-            setSheetStatus(`Applied fill to column ${columnLetter(selectedSheetCol)}.`, false);
+            params.set('row', String(rowIndex));
+            params.set('col', String(colIndex));
         }
-
-        currentSheetFormats = normalizeSheetFormats(currentSheetFormats);
-        renderSheetEditor(currentSheetCells);
-        scheduleAutoSaveComparisonSheet(400);
-    }
-
-    function clearSheetFillColor() {
-        readCellsFromEditor();
-        const target = getSheetFillTarget();
-
-        if (target === 'cell') {
-            if (!selectedSheetCell) {
-                setSheetStatus('Select a cell first (click inside the grid).', true);
-                return;
-            }
-            delete currentSheetFormats.cells[`${selectedSheetCell.row}:${selectedSheetCell.col}`];
-            setSheetStatus(`Cleared fill from cell ${columnLetter(selectedSheetCell.col)}${selectedSheetCell.row + 1}.`, false);
-        } else if (target === 'row') {
-            if (selectedSheetRow === null) {
-                setSheetStatus('Select a row first (click the row number).', true);
-                return;
-            }
-            delete currentSheetFormats.rows[String(selectedSheetRow)];
-            setSheetStatus(`Cleared fill from row ${selectedSheetRow + 1}.`, false);
-        } else {
-            if (selectedSheetCol === null) {
-                setSheetStatus('Select a column first (click the column letter).', true);
-                return;
-            }
-            delete currentSheetFormats.cols[String(selectedSheetCol)];
-            setSheetStatus(`Cleared fill from column ${columnLetter(selectedSheetCol)}.`, false);
-        }
-
-        currentSheetFormats = normalizeSheetFormats(currentSheetFormats);
-        renderSheetEditor(currentSheetCells);
-        scheduleAutoSaveComparisonSheet(400);
+        return `${sheetImageUrl}?${params.toString()}`;
     }
 
     function isSheetImageUrl(value) {
-        const url = String(value || '').trim();
-        if (!url) {
+        if (value == null || value === '') {
             return false;
         }
-        if (url.startsWith('data:image/')) {
-            return true;
+        if (typeof value === 'string') {
+            if (
+                value.startsWith('data:image/')
+                || value.startsWith('[embedded-image:')
+                || value.startsWith('[cmp-photo:')
+            ) {
+                return true;
+            }
+            // Skip expensive checks on huge non-URL blobs.
+            if (value.length > 2000) {
+                return false;
+            }
+        }
+        const url = String(value).trim();
+        if (!url) {
+            return false;
         }
         if (url.startsWith('/')) {
             return /\.(jpe?g|png|gif|webp|bmp|svg)(\?|$)/i.test(url)
@@ -2905,11 +5452,36 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function sheetCellEditorHtml(value, rowIndex, colIndex, forceText) {
+        if (!forceText && isSheetCriticalColumn(colIndex)) {
+            return priorityCellEditorHtml(value, rowIndex, colIndex, 'Critical');
+        }
+        if (!forceText && isSheetQcColumn(colIndex)) {
+            return priorityCellEditorHtml(value, rowIndex, colIndex, 'QC');
+        }
         const rawText = String(value ?? '');
         const text = rawText.trim();
         if (!forceText && isSheetImageUrl(text)) {
-            const attrValue = text.startsWith('data:image/') ? `[embedded-image:${rowIndex}:${colIndex}]` : text;
-            return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" title="Embedded image"><img src="${escapeHtmlAttr(text)}" class="cd-sheet-img" alt="Product photo" referrerpolicy="no-referrer" loading="lazy"></div>`;
+            const isStoredPhoto = text.startsWith('[cmp-photo:')
+                || text.startsWith('data:image/')
+                || text.startsWith('[embedded-image:');
+            const attrValue = text.startsWith('data:image/')
+                ? `[embedded-image:${rowIndex}:${colIndex}]`
+                : text;
+            // NEVER put megabyte base64 data-URLs into innerHTML — that freezes the page.
+            // Load stored photos via /sheet/image?photo=… (stable) or legacy row/col.
+            if (isStoredPhoto) {
+                const coords = parseEmbeddedImageCoords(attrValue, rowIndex, colIndex);
+                const src = sheetEmbeddedImageSrc(coords.row, coords.col, attrValue);
+                if (src) {
+                    return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Product photo">
+                        <img src="${escapeHtmlAttr(src)}" class="cd-sheet-img" alt="Product photo" loading="lazy" decoding="async">
+                    </div>`;
+                }
+                return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Embedded image">
+                    <span class="cd-sheet-img-ph" aria-hidden="true"><i class="mdi mdi-image-outline"></i></span>
+                </div>`;
+            }
+            return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" title="Product photo"><img src="${escapeHtmlAttr(text)}" class="cd-sheet-img" alt="Product photo" referrerpolicy="no-referrer" loading="lazy" decoding="async"></div>`;
         }
         if (!forceText && isSheetLinkUrl(text)) {
             return `<div class="cd-sheet-cell cd-sheet-cell-link" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(text)}" title="${escapeHtmlAttr(text)}">
@@ -2935,68 +5507,135 @@ document.addEventListener('DOMContentLoaded', function () {
         return `<div class="cd-sheet-cell" contenteditable="true" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}">${escapeHtml(text)}</div>`;
     }
 
-    function renderSheetEditor(cells) {
-        currentSheetCells = ensureLeadColumns(cells || []);
+    function renderSheetEditor(cells, options) {
+        const opts = Object.assign({ migrateDimWt: false, sortByPrice: false }, options || {});
+        // Avoid deep-copy + column surgery on every paint unless migration requested.
+        if (opts.migrateDimWt) {
+            currentSheetCells = ensureLeadColumns(cells || []);
+            currentSheetCells = ensureDimWtPkgSections(currentSheetCells);
+        } else {
+            currentSheetCells = Array.isArray(cells) ? cells : (currentSheetCells || []);
+            if (!currentSheetCells.length) {
+                currentSheetCells = ensureLeadColumns([]);
+            }
+        }
         if (currentSheetCells.length === 0) {
-            currentSheetCells = [['Amazon', '5 Core', 'Product Photo', '', '']];
+            currentSheetCells = [['Amazon', '5 Core', 'Product Photo', 'Critical', 'QC', '', '']];
         }
 
         const colCountBeforeMove = Math.max(...currentSheetCells.map(row => row.length), 1);
-        currentSheetCells = currentSheetCells.map(row => {
+        for (let r = 0; r < currentSheetCells.length; r++) {
+            const row = currentSheetCells[r];
+            if (!Array.isArray(row)) {
+                currentSheetCells[r] = Array.from({ length: colCountBeforeMove }, () => '');
+                continue;
+            }
             while (row.length < colCountBeforeMove) row.push('');
-            return row.slice(0, colCountBeforeMove);
-        });
+            if (row.length > colCountBeforeMove) {
+                currentSheetCells[r] = row.slice(0, colCountBeforeMove);
+            }
+        }
 
-        const priceSort = sortSupplierColumnsByPrice(currentSheetCells);
-        currentSheetCells = priceSort.cells;
-        if (priceSort.mapping) {
-            currentSheetFormats = remapFormatColumns(currentSheetFormats, priceSort.mapping);
+        if (opts.sortByPrice) {
+            const priceSort = sortSupplierColumnsByPrice(currentSheetCells);
+            currentSheetCells = priceSort.cells;
+            if (priceSort.mapping) {
+                currentSheetFormats = remapFormatColumns(currentSheetFormats, priceSort.mapping);
+            }
         }
 
         const colCount = Math.max(...currentSheetCells.map(row => row.length), 1);
-        currentSheetCells = currentSheetCells.map(row => {
-            while (row.length < colCount) row.push('');
-            return row.slice(0, colCount);
-        });
-
         refreshAutoSheetFormats(currentSheetCells);
         const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
         const head = document.getElementById('comparison-cd-sheet-head');
         const body = document.getElementById('comparison-cd-sheet-body');
         if (!head || !body) return;
 
+        // Cache column roles for cell helpers during this render.
+        sheetRenderColCache = { specCol, criticalCol, qcCol };
+
+        selectedSheetMultiRows = new Set(
+            [...selectedSheetMultiRows].filter(r => r > 0 && r < currentSheetCells.length)
+        );
+        const selectableCount = Math.max(0, currentSheetCells.length - 1);
+        const checkedCount = selectedSheetMultiRows.size;
+        const allSelectableChecked = selectableCount > 0 && checkedCount === selectableCount;
+
         let headHtml = '<tr><th class="cd-row-num">#</th>';
+        headHtml += `<th class="cd-row-select-col" title="Select rows for bulk Critical / QC edit">
+            <input type="checkbox" id="cd-sheet-select-all-rows" title="Select all rows" ${allSelectableChecked ? 'checked' : ''} ${selectableCount ? '' : 'disabled'}>
+        </th>`;
         for (let c = 0; c < colCount; c++) {
             const selectedClass = selectedSheetCol === c ? ' cd-axis-selected' : '';
-            let headerText = columnLetter(c);
-            if (c === specCol - 2) headerText = 'Amazon';
-            else if (c === specCol - 1) headerText = '5 Core';
-            else if (c === specCol) headerText = 'Spec';
-            headHtml += `<th class="cd-col-header cd-select-col${selectedClass}" data-col="${c}" draggable="true" title="Click to select · drag to move column ${headerText}">${headerText}</th>`;
+            const isPriorityCol = (criticalCol !== null && c === criticalCol) || (qcCol !== null && c === qcCol);
+            let headerText = getSheetColumnHeaderLabel(c, currentSheetCells);
+            if (c !== specCol - 2 && c !== specCol - 1 && c !== specCol
+                && !(criticalCol !== null && c === criticalCol)
+                && !(qcCol !== null && c === qcCol)) {
+                // Keep short letter for unnamed supplier cols when no supplier name yet.
+                if (!getSupplierNameForColumn(c, currentSheetCells) && !String((currentSheetCells[0] || [])[c] || '').trim()) {
+                    headerText = columnLetter(c);
+                }
+            }
+            headHtml += `<th class="cd-col-header cd-select-col${isPriorityCol ? ' cd-priority-col' : ''}${selectedClass}" data-col="${c}" draggable="true" title="Click to select · drag to move column ${escapeHtmlAttr(headerText)}">
+                <span class="cd-col-header-inner">
+                    <span class="cd-col-header-label">${escapeHtml(headerText)}</span>
+                    <button type="button" class="cd-sheet-col-edit-btn" data-col="${c}" draggable="false" title="Edit column ${escapeHtmlAttr(headerText)}" aria-label="Edit column ${escapeHtmlAttr(headerText)}">
+                        <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
+                    </button>
+                </span>
+            </th>`;
         }
+        headHtml += '<th class="cd-row-edit-col" title="Edit Critical / QC for selected rows">Edit</th>';
         headHtml += '</tr>';
         head.innerHTML = headHtml;
 
-        body.innerHTML = currentSheetCells.map((row, r) => {
+        const parts = [];
+        for (let r = 0; r < currentSheetCells.length; r++) {
+            const row = currentSheetCells[r] || [];
             const rowSelectedClass = selectedSheetRow === r ? ' cd-axis-selected' : '';
+            const multiSelectedClass = selectedSheetMultiRows.has(r) ? ' cd-multi-selected' : '';
             const commRowClass = isCommRow(r, currentSheetCells) ? ' cd-comm-row' : '';
-            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${commRowClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" draggable="true" title="Click to select · drag to move row ${r + 1}">${r + 1}</td>`;
+            const specLabel = row[specCol] ?? '';
+            const innerPkgClass = isInnerPkgSectionLabel(specLabel) ? ' cd-inner-pkg-row' : '';
+            const ctnPkgClass = isCtnPkgSectionLabel(specLabel) ? ' cd-ctn-pkg-row' : '';
+            const pkgHeaderClass = isPkgSectionHeaderLabel(specLabel) ? ' cd-pkg-section-header' : '';
+            const canSelectRow = r > 0;
+            let rowHtml = `<tr class="${selectedSheetRow === r ? 'cd-row-selected' : ''}${multiSelectedClass}${commRowClass}${innerPkgClass}${ctnPkgClass}${pkgHeaderClass}"><td class="cd-row-num cd-select-row${rowSelectedClass}" data-row="${r}" draggable="true" title="Click to select · drag to move row ${r + 1}">${r + 1}</td>`;
+            rowHtml += `<td class="cd-row-select-col">`;
+            if (canSelectRow) {
+                rowHtml += `<input type="checkbox" class="cd-sheet-row-select" data-row="${r}" title="Select row ${r + 1}" ${selectedSheetMultiRows.has(r) ? 'checked' : ''}>`;
+            }
+            rowHtml += `</td>`;
             for (let c = 0; c < colCount; c++) {
                 const value = row[c] ?? '';
                 const isSpec = c === specCol;
+                const isPriority = (criticalCol !== null && c === criticalCol) || (qcCol !== null && c === qcCol);
                 const colSelectedClass = selectedSheetCol === c ? ' cd-col-selected' : '';
                 const cellSelectedClass = selectedSheetCell && selectedSheetCell.row === r && selectedSheetCell.col === c
                     ? ' cd-cell-selected'
                     : '';
                 let cellInner = sheetCellEditorHtml(value, r, c, isSpec);
-                if (!isSpec && isCommRow(r, currentSheetCells)) {
+                if (!isSpec && !isPriority && isCommRow(r, currentSheetCells)) {
                     cellInner = commCellEditorHtml(r, c, getSupplierNameForColumn(c));
                 }
-                rowHtml += `<td class="${isSpec ? 'cd-label-cell' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
+                rowHtml += `<td data-sheet-col="${c}" class="${isSpec ? 'cd-label-cell' : ''}${isPriority ? ' cd-priority-col' : ''}${colSelectedClass}${cellSelectedClass}"${sheetCellTdStyle(r, c, isSpec)}>${cellInner}</td>`;
             }
-            rowHtml += '</tr>';
-            return rowHtml;
-        }).join('');
+            rowHtml += `<td class="cd-row-edit-col">`;
+            if (canSelectRow) {
+                rowHtml += `<button type="button" class="cd-sheet-row-edit-btn" data-row="${r}" title="Edit Critical / QC" aria-label="Edit Critical and QC for selected rows">
+                    <i class="mdi mdi-pencil-outline" aria-hidden="true"></i>
+                </button>`;
+            }
+            rowHtml += `</td></tr>`;
+            parts.push(rowHtml);
+        }
+        body.innerHTML = parts.join('');
+        sheetRenderColCache = null;
+
+        applyPriorityRowFilters();
     }
 
     function applySheetSelectionHighlight() {
@@ -3013,9 +5652,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         table.querySelectorAll('#comparison-cd-sheet-body tr').forEach((tr, index) => {
             tr.classList.toggle('cd-row-selected', selectedSheetRow === index);
-            tr.querySelectorAll('td').forEach((td, colIndex) => {
-                if (colIndex === 0) return;
-                const dataCol = colIndex - 1;
+            tr.classList.toggle('cd-multi-selected', selectedSheetMultiRows.has(index));
+            tr.querySelectorAll('td[data-sheet-col]').forEach((td) => {
+                const dataCol = parseInt(td.dataset.sheetCol, 10);
+                if (Number.isNaN(dataCol)) return;
                 td.classList.toggle('cd-col-selected', selectedSheetCol === dataCol);
                 td.classList.toggle(
                     'cd-cell-selected',
@@ -3223,6 +5863,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const body = document.getElementById('comparison-cd-sheet-body');
         if (!body) return currentSheetCells;
 
+        const baseColCount = Math.max(
+            ...((currentSheetCells || []).map(row => (Array.isArray(row) ? row.length : 0))),
+            1
+        );
         const rows = [];
         const trList = body.children;
         for (let rowIndex = 0; rowIndex < trList.length; rowIndex++) {
@@ -3230,50 +5874,84 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!tr || tr.tagName !== 'TR') {
                 continue;
             }
-            const row = [];
-            const tdList = tr.children;
-            for (let tdIndex = 0; tdIndex < tdList.length; tdIndex++) {
-                if (tdIndex === 0) {
-                    continue;
+
+            // Prefer data-sheet-col tds (ignores # / select / Edit chrome columns).
+            const dataTds = tr.querySelectorAll('td[data-sheet-col]');
+            const row = Array.from({ length: baseColCount }, (_, colIndex) =>
+                (currentSheetCells[rowIndex] || [])[colIndex] || ''
+            );
+
+            if (!dataTds.length) {
+                rows.push(row);
+                continue;
+            }
+
+            dataTds.forEach(td => {
+                const colIndex = parseInt(td.dataset.sheetCol, 10);
+                if (Number.isNaN(colIndex) || colIndex < 0) {
+                    return;
                 }
-                const td = tdList[tdIndex];
-                const colIndex = tdIndex - 1;
+                while (row.length <= colIndex) {
+                    row.push('');
+                }
+
                 if (isCommRow(rowIndex, currentSheetCells)) {
-                    row.push((currentSheetCells[rowIndex] || [])[colIndex] || '');
-                    continue;
+                    row[colIndex] = (currentSheetCells[rowIndex] || [])[colIndex] || '';
+                    return;
                 }
 
                 const cell = td.firstElementChild && td.firstElementChild.classList?.contains('cd-sheet-cell')
                     ? td.firstElementChild
                     : td.querySelector('.cd-sheet-cell');
                 if (!cell) {
-                    row.push((currentSheetCells[rowIndex] || [])[colIndex] || '');
-                    continue;
+                    row[colIndex] = (currentSheetCells[rowIndex] || [])[colIndex] || '';
+                    return;
                 }
 
                 const stored = cell.dataset.value || '';
 
-                // Photo cells: never pull megabyte data: URLs into memory unless saving.
+                if (cell.classList.contains('cd-sheet-cell-priority')) {
+                    row[colIndex] = normalizePriorityValue(
+                        stored || (currentSheetCells[rowIndex] || [])[colIndex] || 'Normal'
+                    );
+                    return;
+                }
+
+                // Photo cells: keep tokens / data:image in memory; never pull base64 from DOM.
                 if (cell.classList.contains('cd-sheet-cell-image')) {
-                    if (!expandImages) {
-                        row.push(stored || (currentSheetCells[rowIndex] || [])[colIndex] || '');
-                        continue;
+                    const fromMemory = (currentSheetCells[rowIndex] || [])[colIndex] || '';
+                    if (
+                        fromMemory
+                        && (
+                            String(fromMemory).startsWith('data:image/')
+                            || String(fromMemory).startsWith('[cmp-photo:')
+                        )
+                    ) {
+                        row[colIndex] = fromMemory;
+                        return;
                     }
-                    if (stored && !stored.startsWith('[embedded-image:')) {
-                        row.push(stored);
-                        continue;
+                    if (stored && (stored.startsWith('[cmp-photo:') || !stored.startsWith('[embedded-image:'))) {
+                        row[colIndex] = stored;
+                        return;
+                    }
+                    if (!expandImages) {
+                        row[colIndex] = fromMemory || stored || '';
+                        return;
                     }
                     const img = cell.querySelector('img');
-                    row.push((img && img.src) ? img.src : (stored || ''));
-                    continue;
+                    row[colIndex] = (img && img.src && !img.src.startsWith('data:') && !img.src.includes('/sheet/image'))
+                        ? img.src
+                        : (fromMemory || stored || '');
+                    return;
                 }
 
                 if (stored) {
-                    row.push(stored);
-                    continue;
+                    row[colIndex] = stored;
+                    return;
                 }
-                row.push((cell.textContent || '').trimEnd());
-            }
+                row[colIndex] = (cell.textContent || '').trimEnd();
+            });
+
             rows.push(row);
         }
 
@@ -3299,27 +5977,32 @@ document.addEventListener('DOMContentLoaded', function () {
         el.classList.remove('text-success');
     }
 
+    let sheetAutoSaveOpts = { rerender: false, refreshTable: false };
+    let sheetAutoSaveQueuedOpts = null;
+
     function cancelScheduledAutoSave() {
         clearTimeout(sheetAutoSaveTimer);
         sheetAutoSaveTimer = null;
     }
 
-    function scheduleAutoSaveComparisonSheet(delay = 800) {
+    function scheduleAutoSaveComparisonSheet(delay = 1200, options) {
         if (sheetEditorHydrating || !currentCdRow) return;
+        sheetAutoSaveOpts = Object.assign({ rerender: false, refreshTable: false }, options || {});
         clearTimeout(sheetAutoSaveTimer);
-        sheetAutoSaveTimer = setTimeout(() => autoSaveComparisonSheet(), delay);
+        sheetAutoSaveTimer = setTimeout(() => autoSaveComparisonSheet(sheetAutoSaveOpts), delay);
     }
 
-    function autoSaveComparisonSheet() {
+    function autoSaveComparisonSheet(options) {
         if (sheetEditorHydrating || !currentCdRow) return;
+        const opts = Object.assign({ rerender: false, refreshTable: false }, options || sheetAutoSaveOpts || {});
         if (sheetSaveInFlight) {
             sheetSaveQueued = true;
+            sheetAutoSaveQueuedOpts = opts;
             return;
         }
 
-        const activeElement = document.activeElement;
-        const editingCell = activeElement?.closest?.('.cd-sheet-cell[contenteditable="true"]');
-        const cells = readCellsFromEditor();
+        // Keep placeholders — expanding embedded images on every autosave freezes the UI.
+        const cells = readCellsFromEditor({ expandImages: false });
 
         sheetSaveInFlight = true;
 
@@ -3338,6 +6021,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 bulk_edit_skus: comparisonBulkEditPayload(),
                 cells: cells,
                 formats: currentSheetFormats,
+                // Persist URL metadata only — Google Sheet is pull-only via C Link Refresh.
                 google_sheet_url: document.getElementById('comparison-cd-google-url').value.trim(),
                 google_sheet_tab: document.getElementById('comparison-cd-google-tab').value.trim() || 'Sheet1',
             }),
@@ -3348,23 +6032,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(data.message || 'Save failed.');
             }
             currentSheetFormats = normalizeSheetFormats(data.formats || currentSheetFormats);
-            const returnedCells = data.cells || cells;
+            const returnedCells = sanitizeSheetCellsForUi(data.cells || cells);
+            // Keep editor state in sync without rebuilding DOM (quiet save).
             currentSheetCells = returnedCells;
             applyAutoSheetFormatsFromPayload(data, returnedCells);
 
-            const stillEditing = editingCell
-                && document.body.contains(editingCell)
-                && document.activeElement === editingCell;
-
-            if (!stillEditing) {
-                renderSheetEditor(returnedCells);
-            } else {
-                currentSheetCells = returnedCells;
-                applyAutoSheetFormatsFromPayload(data, returnedCells);
+            // Quiet save by default: no full sheet rebuild / Tabulator reload (those hang the page).
+            if (opts.rerender) {
+                renderSheetEditor(returnedCells, { migrateDimWt: false, sortByPrice: false });
             }
-
-            clearTimeout(tableRefreshTimer);
-            tableRefreshTimer = setTimeout(() => { if (table) table.replaceData(); }, 150);
+            if (opts.refreshTable) {
+                clearTimeout(tableRefreshTimer);
+                tableRefreshTimer = setTimeout(() => { if (table) table.replaceData(); }, 400);
+            }
         })
         .catch(err => {
             setSheetStatus(err.message || 'Auto-save failed.', true);
@@ -3373,7 +6053,9 @@ document.addEventListener('DOMContentLoaded', function () {
             sheetSaveInFlight = false;
             if (sheetSaveQueued) {
                 sheetSaveQueued = false;
-                scheduleAutoSaveComparisonSheet(300);
+                const queuedOpts = sheetAutoSaveQueuedOpts || { rerender: false, refreshTable: false };
+                sheetAutoSaveQueuedOpts = null;
+                scheduleAutoSaveComparisonSheet(500, queuedOpts);
             }
         });
     }
@@ -3387,24 +6069,64 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('comparison-cd-google-url').value = sheetUrl;
         updateCdGoogleUrlDotUI();
         document.getElementById('comparison-cd-google-tab').value = data.google_sheet_tab || 'Sheet1';
+        if (data && data.dim_wt && typeof data.dim_wt === 'object') {
+            currentDimWtData = data.dim_wt;
+        }
+        if (data && data.qc_issues && typeof data.qc_issues === 'object') {
+            currentQcIssuesData = data.qc_issues;
+        }
+        if (data && data.reviews && typeof data.reviews === 'object') {
+            currentReviewsData = data.reviews;
+        }
+        if (data && data.siblings && typeof data.siblings === 'object') {
+            currentSiblingsData = data.siblings;
+        } else if (row?.parent) {
+            currentSiblingsData = {
+                parent: row.parent,
+                siblings: linkedSkusForRow(row),
+                count: linkedSkusForRow(row).length || 1,
+            };
+        }
+        updateQcIssuesBadge(currentQcIssuesData);
+        updateReviewsBadge(currentReviewsData);
+        updateSiblingsBadge(currentSiblingsData);
         currentSheetFormats = normalizeSheetFormats(data.formats || {});
-        applyAutoSheetFormatsFromPayload(data, data.cells || []);
-        let sheetCells = ensureLeadColumns(data.cells || []);
+        // Drop any residual data:image values before any scans / DOM work.
+        const safeCells = sanitizeSheetCellsForUi(data.cells || []);
+        applyAutoSheetFormatsFromPayload(data, safeCells);
+        // Fast first paint: skip dim/wt migration + price sort (those block the UI).
+        let sheetCells = ensureLeadColumns(safeCells);
         const specCol = detectSpecColumnIndex(sheetCells);
         sheetCells = ensureCommRow(sheetCells, specCol).cells;
-        renderSheetEditor(sheetCells);
+        renderSheetEditor(sheetCells, { migrateDimWt: false, sortByPrice: false });
         captureClinkPreloadedSuppliers(currentSheetCells);
-        // Load suppliers for ALL categories on this row so preloaded C-link supplier
-        // names from any category resolve/colour correctly.
         const categoryNames = (Array.isArray(row?.categories) && row.categories.length)
             ? row.categories.map(function (c) { return String((c && c.name != null) ? c.name : '').trim(); }).filter(Boolean)
             : String(row?.category || currentCdRow?.category || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-        loadComparisonSuppliersForCategory(categoryNames).then(function () {
-            if (document.getElementById('comparison-cd-sheet-wrap')?.classList.contains('d-none') === false) {
-                renderSheetEditor(currentSheetCells);
-            }
-        });
+        loadComparisonSuppliersForCategory(categoryNames);
         sheetEditorHydrating = false;
+
+        // Apply Dim/Wt rows after the page is responsive (cancel prior timer on rapid SKU switches).
+        const applySku = String(row?.sku || currentCdRow?.sku || '');
+        if (sheetDimWtApplyTimer) {
+            clearTimeout(sheetDimWtApplyTimer);
+            sheetDimWtApplyTimer = null;
+        }
+        sheetDimWtApplyTimer = window.setTimeout(function () {
+            sheetDimWtApplyTimer = null;
+            if (!currentCdRow || String(currentCdRow.sku || '') !== applySku) {
+                return;
+            }
+            sheetEditorHydrating = true;
+            try {
+                let next = applyDimWtDataToSheet(currentSheetCells, currentDimWtData);
+                next = sanitizeSheetCellsForUi(next);
+                currentSheetFormats = applyDimWtSectionFormats(next, currentSheetFormats);
+                renderSheetEditor(next, { migrateDimWt: false, sortByPrice: false });
+            } finally {
+                sheetEditorHydrating = false;
+            }
+        }, 250);
     }
 
     function syncComparisonFromClink(row, options) {
@@ -3480,16 +6202,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 row.clink_is_sheet = !!data.clink_is_sheet;
                 row.clink_sku = data.clink_sku || null;
             }
-            currentCdRow = { ...row, sheet_sku: data.sheet_sku || row.sheet_sku };
+            currentCdRow = {
+                ...row,
+                sheet_sku: data.sheet_sku || row.sheet_sku,
+                sheet_image_v: data.updated_at || Date.now(),
+            };
 
             applySheetPayload(data, currentCdRow || row);
 
-            const clinkIsSheet = !!data.clink_is_sheet || isGoogleSheetUrl(row.clink);
-            if (clinkIsSheet && !data.has_sheet_data) {
-                return syncComparisonFromClink(row, {
-                    message: 'No saved sheet — loading from C link...',
-                    refreshTable: true,
-                });
+            // Google Sheet is pull-only via "C Link Refresh". Do not auto-import on open
+            // (that sync was a major cause of repeated Page Unresponsive freezes).
+            if ((!!data.clink_is_sheet || isGoogleSheetUrl(row.clink)) && !data.has_sheet_data) {
+                setSheetStatus('No local sheet yet. Click "C Link Refresh" to pull from Google Sheet.', false);
             }
         })
         .catch(err => {
@@ -4593,7 +7317,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const specCol = detectSpecColumnIndex(currentSheetCells);
         let colCount = Math.max(
             ...currentSheetCells.map(row => row.length),
-            specCol + 1,
+            getFirstSupplierColumnIndex(currentSheetCells, specCol),
             6
         );
 
@@ -4739,6 +7463,60 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function getComparisonSkuImageUrl(row, bustCache) {
+        const raw = String(row?.image || '').trim();
+        if (!raw) return '';
+        if (!bustCache) return raw;
+        const sep = raw.includes('?') ? '&' : '?';
+        return raw + sep + '_ts=' + Date.now();
+    }
+
+    function setComparisonHeaderSkuImage(row, options) {
+        const wrap = document.getElementById('comparison-cd-modal-image-wrap');
+        const img = document.getElementById('comparison-cd-modal-image');
+        const refreshBtn = document.getElementById('comparison-cd-image-refresh-btn');
+        const bustCache = !!(options && options.bustCache);
+        const url = getComparisonSkuImageUrl(row, bustCache);
+        hideComparisonImageHover();
+        if (!wrap || !img) return;
+        if (!url) {
+            img.removeAttribute('src');
+            img.dataset.fullSrc = '';
+            wrap.classList.add('d-none');
+            if (refreshBtn) refreshBtn.classList.add('d-none');
+            return;
+        }
+        img.dataset.fullSrc = String(row?.image || '').trim();
+        img.src = url;
+        img.alt = (row?.sku || 'SKU') + ' image';
+        wrap.classList.remove('d-none');
+        if (refreshBtn) refreshBtn.classList.remove('d-none');
+    }
+
+    function hideComparisonImageHover() {
+        const preview = document.getElementById('comparison-cd-image-hover-preview');
+        if (preview) {
+            preview.style.display = 'none';
+            preview.innerHTML = '';
+        }
+    }
+
+    function showComparisonImageHover(url, clientX, clientY) {
+        const preview = document.getElementById('comparison-cd-image-hover-preview');
+        if (!preview || !url) return;
+        preview.innerHTML = `<img src="${escapeHtmlAttr(url)}" alt="SKU preview">`;
+        preview.style.display = 'block';
+        const pad = 16;
+        const maxLeft = window.innerWidth - 380;
+        const maxTop = window.innerHeight - 380;
+        let left = (clientX || 0) + pad;
+        let top = (clientY || 0) + pad;
+        if (left > maxLeft) left = Math.max(8, (clientX || 0) - 380);
+        if (top > maxTop) top = Math.max(8, (clientY || 0) - 380);
+        preview.style.left = left + 'px';
+        preview.style.top = top + 'px';
+    }
+
     function openComparisonModal(row) {
         if (!cdModal) return;
 
@@ -4771,6 +7549,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (skuHidden) {
             skuHidden.textContent = row.sku || '';
         }
+        setComparisonHeaderSkuImage(row);
 
         const sheetTabBtn = document.getElementById('cd-sheet-tab-btn');
         if (sheetTabBtn) {
@@ -4779,6 +7558,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         cdModal.show();
         hideCdHover();
+        hideComparisonImageHover();
         loadComparisonSheet(row);
     }
 
@@ -4891,8 +7671,9 @@ document.addEventListener('DOMContentLoaded', function () {
             return '<span class="text-muted">No Image</span>';
         }
 
-        return `<img src="${escapeHtmlAttr(url)}" alt="Product"
-            style="height:40px;max-width:60px;border-radius:4px;border:1px solid #ccc;object-fit:contain;">`;
+        return `<img src="${escapeHtmlAttr(url)}" alt="Product" class="comparison-table-sku-image"
+            data-full-src="${escapeHtmlAttr(url)}"
+            style="height:40px;max-width:60px;border-radius:4px;border:1px solid #ccc;object-fit:contain;cursor:zoom-in;">`;
     }
 
     function supplierListCategoryUrl(category, searchSku) {
@@ -6354,6 +9135,49 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     document.getElementById('comparison-cd-import-btn')?.addEventListener('click', importComparisonGoogleSheet);
+    document.getElementById('comparison-cd-image-refresh-btn')?.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!currentCdRow) return;
+        setComparisonHeaderSkuImage(currentCdRow, { bustCache: true });
+        showComparisonToast('success', 'SKU image refreshed.');
+    });
+    const headerSkuImg = document.getElementById('comparison-cd-modal-image');
+    if (headerSkuImg) {
+        headerSkuImg.addEventListener('mouseenter', function (e) {
+            const url = this.dataset.fullSrc || this.getAttribute('src') || '';
+            showComparisonImageHover(url, e.clientX, e.clientY);
+        });
+        headerSkuImg.addEventListener('mousemove', function (e) {
+            const url = this.dataset.fullSrc || this.getAttribute('src') || '';
+            if (!url) return;
+            showComparisonImageHover(url, e.clientX, e.clientY);
+        });
+        headerSkuImg.addEventListener('mouseleave', hideComparisonImageHover);
+    }
+    document.addEventListener('mouseover', function (e) {
+        const img = e.target.closest?.('.comparison-table-sku-image');
+        if (!img) return;
+        const url = img.dataset.fullSrc || img.getAttribute('src') || '';
+        showComparisonImageHover(url, e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', function (e) {
+        const img = e.target.closest?.('.comparison-table-sku-image');
+        if (!img) return;
+        const url = img.dataset.fullSrc || img.getAttribute('src') || '';
+        if (!url) return;
+        showComparisonImageHover(url, e.clientX, e.clientY);
+    });
+    document.addEventListener('mouseout', function (e) {
+        const img = e.target.closest?.('.comparison-table-sku-image');
+        if (!img) return;
+        const related = e.relatedTarget;
+        if (related && typeof related.closest === 'function' && related.closest('.comparison-table-sku-image')) {
+            return;
+        }
+        hideComparisonImageHover();
+    });
+    document.getElementById('comparisonCdModal')?.addEventListener('hidden.bs.modal', hideComparisonImageHover);
     document.getElementById('comparison-cd-autopopulate-suppliers-btn')?.addEventListener('click', autopopulateSupplierNamesFromList);
     document.getElementById('comparison-cd-roi-btn')?.addEventListener('click', openRoiModal);
     document.getElementById('comparison-roi-apply-manual-lmp')?.addEventListener('click', applyManualLmpToBoth);
@@ -6364,6 +9188,62 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
     document.getElementById('comparison-cd-copy-specs-btn')?.addEventListener('click', copySpecsToMemory);
+    document.getElementById('comparison-cd-qc-issues-btn')?.addEventListener('click', openComparisonQcIssuesModal);
+
+    document.getElementById('comparison-cd-siblings-sync')?.addEventListener('change', function () {
+        setSiblingsSyncEnabled(!!this.checked, { persist: true, triggerSave: !!this.checked });
+    });
+
+    // Keep initial badge state in sync with stored preference.
+    updateSiblingsBadge(currentSiblingsData);
+
+    document.getElementById('comparison-cd-reviews-btn')?.addEventListener('click', function (e) {
+        const dot = e.target.closest('[data-reviews-action]');
+        if (!dot || dot.classList.contains('is-disabled')) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        handleReviewsBadgeAction(dot.getAttribute('data-reviews-action'));
+    });
+
+    document.getElementById('comparison-reviews-chart-range')?.addEventListener('change', function () {
+        const days = parseInt(this.value, 10);
+        comparisonReviewsChartDays = Number.isFinite(days) ? days : 0;
+        const data = currentReviewsData || {};
+        const parent = String(data.parent || currentCdRow?.parent || '').trim();
+        const sku = String(data.sku || currentCdRow?.sku || '').trim();
+        const label = parent || sku;
+        const rangeLabel = comparisonReviewsChartDays <= 0
+            ? 'Lifetime'
+            : ('Rolling L' + comparisonReviewsChartDays);
+        const titleEl = document.getElementById('comparisonReviewsChartModalLabel');
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="fas fa-chart-line me-1"></i> Rating status — ${escapeHtml(label)}${parent ? ' (Parent)' : ''} · ${rangeLabel}`;
+        }
+        loadComparisonReviewsChart();
+    });
+
+    document.getElementById('comparison-qc-issues-tbody')?.addEventListener('click', function (e) {
+        const searchIcon = e.target.closest('.cd-qc-search-icon');
+        if (searchIcon) {
+            const title = searchIcon.dataset.qcTitle || 'Details';
+            const text = searchIcon.dataset.qcText || '';
+            const labelEl = document.getElementById('comparisonQcIssueTextModalLabel');
+            const bodyEl = document.getElementById('comparison-qc-issue-text-body');
+            if (labelEl) labelEl.textContent = title;
+            if (bodyEl) {
+                bodyEl.textContent = text.trim() ? text : 'No data recorded.';
+            }
+            comparisonQcIssueTextModal?.show();
+            return;
+        }
+
+        const thumb = e.target.closest('.cd-qc-issue-thumb');
+        if (thumb?.dataset.qcImage) {
+            window.open(thumb.dataset.qcImage, '_blank', 'noopener,noreferrer');
+        }
+    });
 
     // Deep-link: /purchase-master/comparison?cd_sku=SKU filters to that SKU and
     // auto-opens its CD modal. Used by the Forecast Analysis CD column iframe.
@@ -6483,10 +9363,13 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('comparison-cd-google-url')?.addEventListener('input', updateCdGoogleUrlDotUI);
-    document.getElementById('comparison-cd-google-url')?.addEventListener('change', () => scheduleAutoSaveComparisonSheet(600));
-    document.getElementById('comparison-cd-google-tab')?.addEventListener('change', () => scheduleAutoSaveComparisonSheet(600));
-    document.getElementById('comparison-cd-apply-fill-btn')?.addEventListener('click', applySheetFillColor);
-    document.getElementById('comparison-cd-clear-fill-btn')?.addEventListener('click', clearSheetFillColor);
+    // URL/tab metadata only — quiet save, never pull/push Google Sheet here.
+    document.getElementById('comparison-cd-google-url')?.addEventListener('change', () =>
+        scheduleAutoSaveComparisonSheet(800, { rerender: false, refreshTable: false })
+    );
+    document.getElementById('comparison-cd-google-tab')?.addEventListener('change', () =>
+        scheduleAutoSaveComparisonSheet(800, { rerender: false, refreshTable: false })
+    );
     document.getElementById('comparison-cd-move-row-up-btn')?.addEventListener('click', () => moveSheetRow('up'));
     document.getElementById('comparison-cd-move-row-down-btn')?.addEventListener('click', () => moveSheetRow('down'));
     document.getElementById('comparison-cd-insert-row-btn')?.addEventListener('click', insertSheetRow);
@@ -6509,13 +9392,130 @@ document.addEventListener('DOMContentLoaded', function () {
 
         e.preventDefault();
         convertSheetCellValue(cell, pasted, false);
-        scheduleAutoSaveComparisonSheet(400);
+        scheduleAutoSaveComparisonSheet(1000, { rerender: false, refreshTable: false });
     }, true);
 
-    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('input', function (e) {
-        if (e.target.closest('.cd-sheet-cell[contenteditable="true"]')) {
-            // Snappier autosave while typing so changes reflect quickly.
-            scheduleAutoSaveComparisonSheet(350);
+    // Do not autosave on every keystroke — that re-read/rebuild loop hangs the page.
+
+    document.getElementById('comparison-cd-critical-filters')?.addEventListener('change', function (e) {
+        if (!e.target.classList.contains('cd-priority-filter-check')) {
+            return;
+        }
+        applyPriorityRowFilters();
+    });
+
+    document.getElementById('comparison-cd-qc-filters')?.addEventListener('change', function (e) {
+        if (!e.target.classList.contains('cd-priority-filter-check')) {
+            return;
+        }
+        applyPriorityRowFilters();
+    });
+
+    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'cd-sheet-select-all-rows') {
+            const checked = !!e.target.checked;
+            for (let r = 1; r < (currentSheetCells || []).length; r++) {
+                setSheetMultiRowSelected(r, checked);
+            }
+            applySheetSelectionHighlight();
+            return;
+        }
+
+        const rowCheck = e.target?.closest?.('.cd-sheet-row-select');
+        if (rowCheck) {
+            const rowIndex = parseInt(rowCheck.dataset.row, 10);
+            setSheetMultiRowSelected(rowIndex, !!rowCheck.checked);
+            applySheetSelectionHighlight();
+        }
+    });
+
+    document.getElementById('comparison-cd-sheet-wrap')?.addEventListener('click', function (e) {
+        const rowEditBtn = e.target.closest('.cd-sheet-row-edit-btn');
+        if (rowEditBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const rowIndex = parseInt(rowEditBtn.dataset.row, 10);
+            if (!Number.isNaN(rowIndex)) {
+                selectedSheetRow = rowIndex;
+                applySheetSelectionHighlight();
+                openPriorityBulkEditModal(rowIndex);
+            }
+            return;
+        }
+
+        const colEditBtn = e.target.closest('.cd-sheet-col-edit-btn');
+        if (colEditBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const colIndex = parseInt(colEditBtn.dataset.col, 10);
+            if (!Number.isNaN(colIndex)) {
+                openColumnEditModal(colIndex);
+            }
+            return;
+        }
+
+        if (e.target.closest('.cd-row-select-col, .cd-sheet-row-select, #cd-sheet-select-all-rows')) {
+            e.stopPropagation();
+        }
+    }, true);
+
+    document.addEventListener('click', function (e) {
+        const copyFieldBtn = e.target.closest('.cd-field-copy-btn');
+        if (copyFieldBtn) {
+            e.preventDefault();
+            const field = resolveClipboardField(copyFieldBtn);
+            copyFieldValueToClipboard(field)
+                .then(() => setSheetStatus('Copied to clipboard.', false))
+                .catch(() => setSheetStatus('Could not copy value.', true));
+            return;
+        }
+        const cutFieldBtn = e.target.closest('.cd-field-cut-btn');
+        if (cutFieldBtn) {
+            e.preventDefault();
+            const field = resolveClipboardField(cutFieldBtn);
+            cutFieldValueToClipboard(field)
+                .then(() => setSheetStatus('Cut to clipboard.', false))
+                .catch(() => setSheetStatus('Could not cut value.', true));
+            return;
+        }
+        const pasteFieldBtn = e.target.closest('.cd-field-paste-btn');
+        if (pasteFieldBtn) {
+            e.preventDefault();
+            const field = resolveClipboardField(pasteFieldBtn);
+            pasteFieldValueFromClipboard(field)
+                .then(() => setSheetStatus('Pasted from clipboard.', false))
+                .catch((err) => setSheetStatus(err?.message || 'Could not paste value.', true));
+            return;
+        }
+
+        if (e.target.closest('#comparison-priority-bulk-save-btn')) {
+            e.preventDefault();
+            savePriorityBulkEditModal();
+            return;
+        }
+        if (e.target.closest('#comparison-priority-bulk-delete-row-btn')) {
+            e.preventDefault();
+            deleteRowsFromPriorityBulkEditModal();
+            return;
+        }
+        if (e.target.closest('#comparison-priority-bulk-add-row-btn')) {
+            e.preventDefault();
+            addRowBelowFromPriorityBulkEditModal();
+            return;
+        }
+        if (e.target.closest('#comparison-column-edit-save-btn')) {
+            e.preventDefault();
+            saveColumnEditModal();
+            return;
+        }
+        if (e.target.closest('#comparison-column-edit-add-col-btn-footer')) {
+            e.preventDefault();
+            addBlankColumnFromColumnEditModal();
+            return;
+        }
+        if (e.target.closest('#comparison-column-edit-delete-col-btn-footer')) {
+            e.preventDefault();
+            deleteCurrentColumnFromColumnEditModal();
         }
     });
 
@@ -6523,26 +9523,27 @@ document.addEventListener('DOMContentLoaded', function () {
         const cell = e.target.closest('.cd-sheet-cell[contenteditable="true"]');
         if (!cell) return;
 
-        // Finishing a cell edit persists immediately so the change is reflected at once.
+        // Finishing a cell edit: quiet local save only (no full rebuild / Google push).
         if (maybeConvertSheetCellToLink(cell)) {
-            scheduleAutoSaveComparisonSheet(0);
+            scheduleAutoSaveComparisonSheet(600, { rerender: false, refreshTable: false });
             return;
         }
 
         if (maybeRefreshCompanyNameCell(cell)) {
-            scheduleAutoSaveComparisonSheet(0);
+            scheduleAutoSaveComparisonSheet(600, { rerender: false, refreshTable: false });
             return;
         }
 
-        readCellsFromEditor();
+        readCellsFromEditor({ expandImages: false });
         const rowIndex = parseInt(cell.dataset.row, 10);
         const specCol = detectSpecColumnIndex(currentSheetCells);
         if (isSupplierNameRow(currentSheetCells, rowIndex, specCol)) {
             syncCommRowOnSheet();
-            renderSheetEditor(currentSheetCells);
+            // Supplier-name change needs a light rebuild for Comm dots — still no list reload.
+            renderSheetEditor(currentSheetCells, { migrateDimWt: false, sortByPrice: false });
         }
 
-        scheduleAutoSaveComparisonSheet(0);
+        scheduleAutoSaveComparisonSheet(800, { rerender: false, refreshTable: false });
     }, true);
 
     // ---- Drag & drop to reorder rows (drag the row number) and columns (drag the header) ----
@@ -6565,6 +9566,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         wrap.addEventListener('dragstart', function (e) {
+            if (e.target.closest('.cd-sheet-col-edit-btn, .cd-sheet-row-edit-btn')) {
+                e.preventDefault();
+                return;
+            }
             const rowHandle = e.target.closest('.cd-select-row');
             const colHandle = e.target.closest('.cd-col-header');
             if (rowHandle) {
@@ -6652,6 +9657,22 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        if (e.target.closest('.cd-sheet-row-edit-btn, .cd-row-select-col, .cd-sheet-cell-priority')) {
+            e.stopPropagation();
+            const cellTarget = e.target.closest('.cd-sheet-cell');
+            if (cellTarget) {
+                const rowIndex = parseInt(cellTarget.dataset.row, 10);
+                const colIndex = parseInt(cellTarget.dataset.col, 10);
+                if (!Number.isNaN(rowIndex) && !Number.isNaN(colIndex)) {
+                    selectedSheetRow = rowIndex;
+                    selectedSheetCol = colIndex;
+                    selectedSheetCell = { row: rowIndex, col: colIndex };
+                    applySheetSelectionHighlight();
+                }
+            }
+            return;
+        }
+
         const rowTarget = e.target.closest('.cd-select-row');
         if (rowTarget) {
             e.preventDefault();
@@ -6731,6 +9752,208 @@ document.addEventListener('DOMContentLoaded', function () {
 @endsection
 
 @section('modal')
+<div class="modal fade" id="comparisonPriorityBulkEditModal" tabindex="-1" aria-labelledby="comparisonPriorityBulkEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonPriorityBulkEditModalLabel">
+                    <i class="mdi mdi-pencil-outline me-1"></i> Edit Critical / QC
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    Applying to <strong id="comparison-priority-bulk-count">0</strong> selected row(s):
+                    <span id="comparison-priority-bulk-rows" class="fw-semibold"></span>
+                </p>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold mb-1" for="comparison-priority-bulk-critical">Critical</label>
+                    <div class="cd-field-clip-wrap">
+                        <select id="comparison-priority-bulk-critical" class="form-select form-select-sm">
+                            <option value="">— Keep current —</option>
+                            <option value="Normal">Normal</option>
+                            <option value="Important">Important</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                        <span class="cd-field-clip-btns">
+                            <button type="button" class="cd-field-clip-btn cd-field-copy-btn" data-field-id="comparison-priority-bulk-critical" title="Copy" aria-label="Copy Critical">
+                                <i class="mdi mdi-content-copy" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="cd-field-clip-btn cd-field-cut-btn" data-field-id="comparison-priority-bulk-critical" title="Cut" aria-label="Cut Critical">
+                                <i class="mdi mdi-content-cut" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="cd-field-clip-btn cd-field-paste-btn" data-field-id="comparison-priority-bulk-critical" title="Paste" aria-label="Paste Critical">
+                                <i class="mdi mdi-content-paste" aria-hidden="true"></i>
+                            </button>
+                        </span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold mb-1" for="comparison-priority-bulk-qc">QC</label>
+                    <div class="cd-field-clip-wrap">
+                        <select id="comparison-priority-bulk-qc" class="form-select form-select-sm">
+                            <option value="">— Keep current —</option>
+                            <option value="Normal">Normal</option>
+                            <option value="Important">Important</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                        <span class="cd-field-clip-btns">
+                            <button type="button" class="cd-field-clip-btn cd-field-copy-btn" data-field-id="comparison-priority-bulk-qc" title="Copy" aria-label="Copy QC">
+                                <i class="mdi mdi-content-copy" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="cd-field-clip-btn cd-field-cut-btn" data-field-id="comparison-priority-bulk-qc" title="Cut" aria-label="Cut QC">
+                                <i class="mdi mdi-content-cut" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" class="cd-field-clip-btn cd-field-paste-btn" data-field-id="comparison-priority-bulk-qc" title="Paste" aria-label="Paste QC">
+                                <i class="mdi mdi-content-paste" aria-hidden="true"></i>
+                            </button>
+                        </span>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="comparison-priority-bulk-delete-row-btn" title="Delete the selected row(s)">
+                        <i class="mdi mdi-delete-outline me-1"></i> Delete current row
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" id="comparison-priority-bulk-add-row-btn" title="Insert a blank row below the selected row">
+                        <i class="mdi mdi-plus me-1"></i> Add Additional Row Below
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="comparison-priority-bulk-save-btn">
+                    <i class="mdi mdi-content-save-outline me-1"></i> Save to selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonColumnEditModal" tabindex="-1" aria-labelledby="comparisonColumnEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonColumnEditModalLabel">
+                    <i class="mdi mdi-pencil-outline me-1"></i> Edit column
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive" style="max-height: min(65vh, 560px);">
+                    <table class="table table-sm table-bordered align-middle cd-col-edit-table">
+                        <thead>
+                            <tr>
+                                <th>Spec / Row</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-column-edit-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-danger" id="comparison-column-edit-delete-col-btn-footer" title="Delete this column">
+                    <i class="mdi mdi-delete-outline me-1"></i> Delete column
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success me-auto" id="comparison-column-edit-add-col-btn-footer" title="Insert a blank column after this one">
+                    <i class="mdi mdi-plus me-1"></i> Add blank column
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="comparison-column-edit-save-btn">
+                    <i class="mdi mdi-content-save-outline me-1"></i> Save column
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonReviewsChartModal" tabindex="-1" aria-labelledby="comparisonReviewsChartModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonReviewsChartModalLabel">
+                    <i class="fas fa-chart-line me-1"></i> Rating status
+                </h6>
+                <div class="d-flex align-items-center gap-2 ms-auto me-2">
+                    <select id="comparison-reviews-chart-range" class="form-select form-select-sm" style="width: 110px;">
+                        <option value="0" selected>Lifetime</option>
+                        <option value="90">L90</option>
+                        <option value="60">L60</option>
+                        <option value="30">L30</option>
+                        <option value="7">L7</option>
+                    </select>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-3">
+                <div id="comparison-reviews-chart-loading" class="text-center py-4 text-muted" style="display:none;">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Loading rating history…
+                </div>
+                <div id="comparison-reviews-chart-nodata" class="text-center py-4 text-muted" style="display:none;">
+                    No rating snapshot history for this SKU/parent yet.
+                </div>
+                <div id="comparison-reviews-chart-container" style="display:none;">
+                    <div id="comparison-reviews-chart" style="min-height: 260px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonQcIssuesModal" tabindex="-1" aria-labelledby="comparisonQcIssuesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-2 bg-info text-white">
+                <h6 class="modal-title mb-0" id="comparisonQcIssuesModalLabel">
+                    <i class="fas fa-search me-1"></i> QC Issues —
+                    <span id="comparison-qc-issues-sku-label"></span>
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle mb-0 cd-qc-issues-table">
+                        <thead>
+                            <tr>
+                                <th>Problem / Issue</th>
+                                <th>Suggestion / Improve</th>
+                                <th>Image</th>
+                                <th>Video</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-qc-issues-tbody">
+                            <tr>
+                                <td colspan="4" class="text-muted text-center py-3">No QC issue data loaded.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-2" id="comparison-qc-issues-history"></div>
+                <div class="mt-2">
+                    <a href="{{ route('qc.masters') }}" target="_blank" rel="noopener noreferrer" class="small">
+                        Open QC Masters page
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="comparisonQcIssueTextModal" tabindex="-1" aria-labelledby="comparisonQcIssueTextModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="comparisonQcIssueTextModalLabel">Details</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="comparison-qc-issue-text-body" class="small" style="white-space: pre-wrap;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="comparisonRoiModal" tabindex="-1" aria-labelledby="comparisonRoiModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">

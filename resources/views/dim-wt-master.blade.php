@@ -817,6 +817,19 @@
 
                         <div class="row mb-1">
                             <div class="col-12">
+                                <small class="text-secondary fw-semibold">Ctn pkg</small>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label for="editCtnInstructions" class="form-label">Ctn pkg <span class="text-muted small fw-normal">(max 100 characters)</span></label>
+                                <input type="text" class="form-control" id="editCtnInstructions" name="ctn_instructions" maxlength="100" placeholder="Carton packaging instructions (max 100 characters)" autocomplete="off">
+                                <small class="text-muted">Leave blank to clear. Not saved for PARENT rows.</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-1">
+                            <div class="col-12">
                                 <small class="text-secondary fw-semibold">Instructions item PKG</small>
                             </div>
                         </div>
@@ -840,6 +853,19 @@
                                     <option value="0">🔴 Not Verified</option>
                                     <option value="1">🟢 Verified</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2">
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="editSaveAlsoToSiblings"
+                                           style="border-color:#198754; accent-color:#198754;">
+                                    <label class="form-check-label fw-semibold text-success" for="editSaveAlsoToSiblings">
+                                        save also to Siblings
+                                    </label>
+                                    <div class="small text-muted">When checked, changes also apply to all child SKUs under the same parent.</div>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -2550,6 +2576,28 @@
                 return selected;
             }
 
+            /** All non-parent child SKUs that share any of the given Parent values. */
+            function getChildSkusForParents(parentKeys) {
+                const parents = new Set(
+                    [...(parentKeys || [])]
+                        .filter(Boolean)
+                        .map(p => String(p).trim())
+                        .filter(Boolean)
+                );
+                if (parents.size === 0) return [];
+                const seen = new Set();
+                const result = [];
+                for (const item of (tableData || [])) {
+                    if (!item || !item.Parent || !parents.has(String(item.Parent).trim())) continue;
+                    if (isParentSkuString(item.SKU)) continue;
+                    const key = item.id != null ? ('id:' + item.id) : ('sku:' + String(item.SKU));
+                    if (seen.has(key)) continue;
+                    seen.add(key);
+                    result.push(item);
+                }
+                return result;
+            }
+
             // Calculate CTN (CBM) = CTN L (CM) × CTN W (CM) × CTN H (CM) / 1000000
             function calculateCtnCbm(ctnL, ctnW, ctnH) {
                 if (!ctnL || !ctnW || !ctnH) return 0;
@@ -2633,12 +2681,21 @@
 
                 document.getElementById('editCtnQty').value = product.ctn_qty || '';
 
+                const ctnPkgEl = document.getElementById('editCtnInstructions');
                 const pkgEl = document.getElementById('editInstructionsItemPkg');
                 const skuStr = product.SKU || '';
                 if (isParentSkuString(skuStr)) {
+                    if (ctnPkgEl) {
+                        ctnPkgEl.value = '';
+                        ctnPkgEl.disabled = true;
+                    }
                     pkgEl.value = '';
                     pkgEl.disabled = true;
                 } else {
+                    if (ctnPkgEl) {
+                        ctnPkgEl.disabled = false;
+                        ctnPkgEl.value = (product.ctn_instructions != null ? String(product.ctn_instructions) : '').slice(0, 100);
+                    }
                     pkgEl.disabled = false;
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
                 }
@@ -2650,6 +2707,12 @@
                         (product.Values && (product.Values.verified_data === 1 || product.Values.verified_data === true));
                     verifiedEl.value = isVerified ? '1' : '0';
                     verifiedEl.disabled = isParentSkuString(skuStr);
+                }
+
+                const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
+                if (siblingsCb) {
+                    siblingsCb.checked = false;
+                    siblingsCb.disabled = isParentSkuString(skuStr);
                 }
                 
                 // Setup save button handler
@@ -2664,11 +2727,12 @@
                 modal.show();
             }
 
-            // Save Dimensions & Weight Master (single or bulk)
+            // Save Dimensions & Weight Master (single, bulk, or + siblings when checkbox ticked)
             async function saveDimWt() {
                 const saveBtn = document.getElementById('saveDimWtBtn');
                 const originalText = saveBtn.innerHTML;
                 const bulkTargets = (bulkEditList && bulkEditList.length > 1) ? bulkEditList.slice() : null;
+                const applyToSiblings = !!(document.getElementById('editSaveAlsoToSiblings')?.checked);
                 
                 try {
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
@@ -2698,16 +2762,50 @@
                         ctn_cbm: ctnCbm > 0 ? ctnCbm : null,
                         ctn_qty: document.getElementById('editCtnQty').value.trim() || null,
                         ctn_cbm_each: ctnCbmEach > 0 ? ctnCbmEach : null,
+                        ctn_instructions: (document.getElementById('editCtnInstructions')?.value || '').trim().slice(0, 100) || null,
                     };
 
                     const instructionsRaw = document.getElementById('editInstructionsItemPkg').value;
                     const verifiedEl = document.getElementById('editVerified');
                     const verifiedValue = verifiedEl && verifiedEl.value === '1' ? 1 : 0;
 
+                    let targets;
                     if (bulkTargets && bulkTargets.length > 1) {
+                        targets = bulkTargets.filter(p => !isParentSkuString(p.SKU));
+                    } else {
+                        const singleSku = document.getElementById('editSku').value;
+                        const singleId = document.getElementById('editProductId').value;
+                        let product = (tableData || []).find(d => singleId && String(d.id) === String(singleId))
+                            || (tableData || []).find(d => d.SKU === singleSku);
+                        if (!product) {
+                            product = {
+                                id: singleId,
+                                SKU: singleSku,
+                                Parent: document.getElementById('editParent').value || ''
+                            };
+                        }
+                        targets = isParentSkuString(singleSku) ? [] : [product];
+                    }
+
+                    if (applyToSiblings) {
+                        const parentKeys = targets.map(t => t.Parent).filter(Boolean);
+                        const formParent = document.getElementById('editParent').value;
+                        if (formParent) parentKeys.push(formParent);
+                        const siblings = getChildSkusForParents(parentKeys);
+                        if (siblings.length > 0) {
+                            targets = siblings;
+                        }
+                    }
+
+                    if (!targets || targets.length === 0) {
+                        throw new Error('No child SKUs to update');
+                    }
+
+                    // Multi-target path: bulk selection and/or save-also-to-siblings
+                    if (targets.length > 1 || applyToSiblings || (bulkTargets && bulkTargets.length > 1)) {
                         let successCount = 0;
                         let failCount = 0;
-                        for (const product of bulkTargets) {
+                        for (const product of targets) {
                             if (isParentSkuString(product.SKU)) continue;
                             const formData = {
                                 ...baseFormData,
@@ -2724,7 +2822,6 @@
                                     },
                                     body: JSON.stringify(formData)
                                 });
-                                const data = await response.json().catch(() => ({}));
                                 if (!response.ok) {
                                     failCount++;
                                     continue;
@@ -2753,7 +2850,10 @@
                         bulkEditList = null;
                         document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
                         if (failCount === 0) {
-                            showToast('success', successCount + ' item(s) updated successfully!');
+                            const msg = applyToSiblings
+                                ? (successCount + ' sibling SKU(s) updated successfully!')
+                                : (successCount + ' item(s) updated successfully!');
+                            showToast('success', msg);
                         } else {
                             showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
                         }
@@ -2763,11 +2863,12 @@
                         return;
                     }
                     
+                    const product = targets[0];
                     const formData = {
                         ...baseFormData,
-                        product_id: document.getElementById('editProductId').value,
-                        sku: document.getElementById('editSku').value,
-                        parent: document.getElementById('editParent').value
+                        product_id: product.id,
+                        sku: product.SKU,
+                        parent: product.Parent || ''
                     };
                     
                     const response = await fetch('/dim-wt-master/update', {
@@ -2785,14 +2886,10 @@
                         throw new Error(data.message || 'Failed to save data');
                     }
 
-                    const singleSku = document.getElementById('editSku').value;
+                    const singleSku = product.SKU;
                     if (!isParentSkuString(singleSku)) {
                         try {
-                            await saveInstructionsItemPkg(
-                                document.getElementById('editProductId').value,
-                                singleSku,
-                                instructionsRaw
-                            );
+                            await saveInstructionsItemPkg(product.id, singleSku, instructionsRaw);
                         } catch (pkgErr) {
                             showToast('warning', 'Dimensions saved, but Instructions item PKG could not be saved: ' + (pkgErr.message || ''));
                             const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
@@ -2807,11 +2904,11 @@
                                 sku: singleSku,
                                 verified_data: verifiedValue
                             });
-                            const product = tableData.find(d => d.SKU === singleSku);
-                            if (product) {
-                                product.verified_data = verifiedValue;
-                                if (!product.Values) product.Values = {};
-                                product.Values.verified_data = verifiedValue;
+                            const row = tableData.find(d => d.SKU === singleSku);
+                            if (row) {
+                                row.verified_data = verifiedValue;
+                                if (!row.Values) row.Values = {};
+                                row.Values.verified_data = verifiedValue;
                             }
                         } catch (verErr) {
                             console.error('Verified save error:', verErr);
@@ -3052,6 +3149,8 @@
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+                const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
+                if (siblingsCb) siblingsCb.checked = false;
             });
         });
     </script>

@@ -300,21 +300,33 @@ tabs.forEach((tabName, index) => {
             { title: "Parent", field: "parent"},
             { title: "Sku", field: "our_sku" },
             {
-              title: "Supplier",
+              title: "Supp.",
               field: "supplier_name",
+              headerTooltip: "Supplier (same as Forecast)",
               width: 72,
               minWidth: 56,
               maxWidth: 96,
               widthGrow: 0,
               hozAlign: "center",
+              editor: false,
               formatter: function(cell) {
-                const value = String(cell.getValue() || '').trim();
-                if (!value) return '-';
-                const first = value.split(/\s+/).filter(Boolean)[0] || value;
+                const value = String(cell.getValue() == null ? '' : cell.getValue()).trim();
                 const esc = function(s) {
-                  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                  return String(s == null ? '' : s)
+                    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
                 };
-                return '<span title="' + esc(value) + '" style="font-weight:700;font-size:0.72rem;white-space:nowrap;">' + esc(first) + '</span>';
+                if (!value) return '-';
+                const display = esc(value.split(/\s+/).filter(Boolean)[0] || value);
+                let color = '#212529';
+                if (value.toUpperCase() === 'FIND') {
+                  color = '#eab308';
+                } else {
+                  let h = 0;
+                  for (let i = 0; i < value.length; i++) h = (h * 31 + value.charCodeAt(i)) % 360;
+                  color = 'hsl(' + h + ', 70%, 40%)';
+                }
+                return '<span title="' + esc(value) + '" style="color:' + color + ';font-weight:700;font-size:0.72rem;white-space:nowrap;">' + display + '</span>';
               }
             },
             {
@@ -392,59 +404,17 @@ tabs.forEach((tabName, index) => {
               title: "Unit",
               field: "unit",
               headerSort: false,
-                hozAlign: "center",
-                editor: function (cell, onRendered, success, cancel) {
-                const value = cell.getValue();
-                const select = document.createElement("select");
-                select.className = "form-select form-select-sm";
-                select.style.minWidth = "110px";
-                select.style.padding = "4px 10px";
-                select.style.height = "32px";
-                select.style.borderRadius = "6px";
-                select.style.border = "1px solid #cbd5e1";
-                select.style.background = "#f8fafc";
-                select.style.fontWeight = "500";
-                select.style.fontSize = "1rem";
-
-                const options = {
-                  pieces: "Pieces",
-                  pair: "Pair",
-                };
-
-                for (let key in options) {
-                  const option = document.createElement("option");
-                  option.value = key;
-                  option.textContent = options[key];
-                  select.appendChild(option);
-                }
-
-                select.value = value || "pieces";
-
-                select.addEventListener("change", function () {
-                  success(this.value);
-                });
-
-                select.addEventListener("blur", function () {
-                  success(select.value);
-                });
-
-                onRendered(() => {
-                  select.focus();
-                  const event = new MouseEvent('mousedown', { bubbles: true });
-                  select.dispatchEvent(event);
-                });
-
-                return select;
-                },
-                formatter: function (cell) {
-                const value = cell.getValue();
-                if (value === "pieces")
-                  return '<span class="badge bg-primary" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pcs</span>';
-                if (value === "pair")
-                  return '<span class="badge bg-info text-dark" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pair</span>';
-                return `<span class="badge bg-secondary" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">${value || "—"}</span>`;
-                },
+              headerTooltip: "Unit from CP Master",
+              hozAlign: "center",
+              editor: false,
+              formatter: function (cell) {
+                const value = String(cell.getValue() || '').trim();
+                if (!value) return '—';
+                // Same display as CP Master datatable
+                if (value.toLowerCase() === 'pieces') return 'PCs';
+                return value;
               },
+            },
             {
               title: "Amt($)", 
               field: "amount", 

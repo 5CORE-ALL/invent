@@ -28,10 +28,21 @@ class ArrivedContainer extends Model
         'product_size_link',
         'comparison_link',
         'order_link',
+        'po_number',
+        'inv_verify_cartons',
+        'inv_verify_discrepancy',
+        'cp_approved',
+        'cp_approved_reason',
+        'cp_approved_auto',
         'image_src',
         'photos',
         'specification',
         'created_by'
+    ];
+
+    protected $casts = [
+        'cp_approved_auto' => 'boolean',
+        'inv_verify_cartons' => 'array',
     ];
 
     public function user()

@@ -15,7 +15,7 @@
     text-align: center;
     background: transparent;
     border-right: 1px solid #e5e7eb;
-    padding: 16px 10px;
+    padding: 8px 4px;
     font-weight: 700;
     color: #1e293b;
     font-size: 1.08rem;
@@ -26,6 +26,69 @@
   .tabulator .tabulator-header .tabulator-col:hover {
     background: #e0eaff;
     color: #2563eb;
+  }
+
+  /* Vertical column titles (same pattern as Order / Forecast); SKU, History, checkbox, Actions stay horizontal */
+  .tabulator-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    min-height: 110px;
+    padding: 4px 2px;
+    box-sizing: border-box;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 0 0 auto;
+    min-height: 90px;
+    width: 100%;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col .tabulator-title {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 0.68rem;
+    line-height: 1.1;
+    letter-spacing: 0.02em;
+    text-align: center;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col .tabulator-col-title br {
+    display: none;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="our_sku"] .tabulator-col-content,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="last_saved_by"] .tabulator-col-content,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col:not([tabulator-field]) .tabulator-col-content {
+    min-height: auto !important;
+    justify-content: center;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="our_sku"] .tabulator-col-title-holder,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="last_saved_by"] .tabulator-col-title-holder,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col:not([tabulator-field]) .tabulator-col-title-holder {
+    min-height: auto !important;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="our_sku"] .tabulator-col-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="our_sku"] .tabulator-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="last_saved_by"] .tabulator-col-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="last_saved_by"] .tabulator-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col:not([tabulator-field]) .tabulator-col-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col:not([tabulator-field]) .tabulator-title {
+    writing-mode: horizontal-tb !important;
+    transform: none !important;
+    min-height: auto !important;
+    font-size: 0.85rem !important;
+  }
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="our_sku"] .tabulator-col-title,
+  .tabulator-table.tabulator .tabulator-header .tabulator-col[tabulator-field="our_sku"] .tabulator-title {
+    font-size: 1.1rem !important;
   }
 
   .tabulator-row {
@@ -152,7 +215,16 @@
     transform: scale(0.95);
   }
 
+  /* Keep Bootstrap modals usable with body zoom on this page */
+  .modal {
+    z-index: 2000 !important;
+  }
+  .modal-backdrop {
+    z-index: 1990 !important;
+  }
+
 </style>
+@endsection
 @section('content')
 @include('layouts.shared.page-title', ['page_title' => 'Transit Container INV', 'sub_title' => 'Transit Container INV'])
 
@@ -163,24 +235,18 @@
                 <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
                     <div class="d-flex gap-4 align-items-center">
                         @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'transit_container_inv'])
-                        <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            📦 Ctns: <span class="text-success" id="total-cartons-display">0</span>
+                        <div class="fw-semibold text-dark" style="font-size: 1rem;" title="Cartons">
+                            📦 <span class="text-success" id="total-cartons-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            🧮 Qty: <span class="text-primary" id="total-qty-display">0</span>
+                            Qty: <span class="text-primary" id="total-qty-display">0</span>
                         </div>
-                        <div class="fw-semibold text-dark" style="font-size: 1rem;">
-                            💲 Amt: <span class="text-primary" id="total-amount-display">0</span>
+                        <div class="fw-semibold text-dark" style="font-size: 1rem;" title="Amount">
+                            💲 <span class="text-primary" id="total-amount-display">0</span>
                         </div>
                         <div class="fw-semibold text-dark" style="font-size: 1rem;">
                             CBM: <span class="text-primary" id="total-cbm-display">0</span>
                         </div>
-                        <button type="button" id="syncToOnSeaBtn" class="btn btn-success btn-sm" onclick="syncToOnSea()" title="Sync this container to On Sea Transit Value">
-                            <i class="fas fa-sync-alt me-1"></i> Sync to On Sea
-                        </button>
-                        <button type="button" class="btn btn-primary btn-sm" onclick="syncAllContainers()" title="Sync all containers at once">
-                            <i class="fas fa-sync me-1"></i> Sync All
-                        </button>
                     </div>
 
                     <!-- 🔽 Filter Type Dropdown -->
@@ -193,36 +259,26 @@
                         </select>
                     </div>
 
-                    <!-- 🔽 Changes Column Filter Dropdown -->
-                    <div class="d-flex align-items-center gap-2">
-                        <label for="filter-changes" class="fw-semibold mb-0" style="font-size: 0.95rem;">Changes:</label>
-                        <select id="filter-changes" class="form-select form-select-sm" style="width: 80px;">
-                            <option value="">All</option>
-                            <option value="old">Old</option>
-                            <option value="new">New</option>
-                        </select>
-                    </div>
-
                     <!-- 🔍 Search Input -->
                     <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search by SKU, Supplier, Parent..." 
                         style="max-width: 150px; border: 2px solid #2185ff; font-size: 0.95rem;">
 
-                        <button id="export-tab-excel" class="btn btn-sm btn-success">
-                            <i class="fas fa-file-excel"></i> Export Excel
+                        <button id="export-tab-excel" class="btn btn-sm btn-success" title="Export Excel" aria-label="Export Excel">
+                            <i class="fas fa-download"></i>
                         </button>
 
                     {{-- push Inventory --}}
-                    <button id="push-inventory-btn" class="btn btn-primary btn-sm">
-                        <i class="fas fa-dolly"></i> Push Inventory
+                    <button id="push-inventory-btn" class="btn btn-primary btn-sm" title="Push Inventory">
+                        Push Inv.
                     </button>
 
-                    <button id="push-arrived-container-btn" class="btn btn-info btn-sm">
-                        Arrived Container
+                    <button id="push-arrived-container-btn" class="btn btn-info btn-sm" title="Push to Arrived">
+                        Push to Arrived
                     </button>
 
                     <!-- ➕ Add Container Button -->
                     <button id="add-tab-btn" class="btn btn-success btn-sm">
-                        <i class="fas fa-plus"></i> Add Container
+                        <i class="fas fa-plus"></i> Container
                     </button>
                     {{-- <button id="add-new-product-btn" class="btn btn-warning btn-sm" 
                         onclick="window.locationhref='product-master'">
@@ -233,18 +289,27 @@
 
 
                     <button id="add-items-btn" class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#addItemModal">
-                        <i class="fas fa-plus"></i> Add Notes
+                        <i class="fas fa-plus"></i> Notes
+                    </button>
+                    <button type="button" id="add-imp-name-btn" class="btn btn-outline-primary btn-sm" title="Add Imp name option">
+                        <i class="fas fa-plus"></i> IMP name
+                    </button>
+                    <button type="button" id="add-hsn-code-btn" class="btn btn-outline-primary btn-sm" title="Add HSN Code option">
+                        <i class="fas fa-plus"></i> HSN Code
+                    </button>
+                    <button type="button" id="transit-invoice-btn" class="btn btn-dark btn-sm" title="Generate Invoice from table data">
+                        <i class="fas fa-file-invoice me-1"></i> Invoice
                     </button>
                     <a href="{{ url('product-master') }}" class="btn btn-warning btn-sm">
-                        <i class="fas fa-plus-circle"></i> Add New Product
+                        <i class="fas fa-plus-circle"></i> Product
                     </a>
                     @if($canEditDelete ?? false)
                     <button class="btn btn-danger btn-sm d-none" id="delete-selected-btn">
                         <i class="fas fa-trash me-1"></i> Delete Selected
                     </button>
                     @endif
-                    <button type="button" class="btn btn-secondary btn-sm" id="transit-history-btn" data-bs-toggle="modal" data-bs-target="#transitHistoryModal">
-                        <i class="fas fa-history me-1"></i> History
+                    <button type="button" class="btn btn-secondary btn-sm" id="transit-history-btn" data-bs-toggle="modal" data-bs-target="#transitHistoryModal" title="History" aria-label="History">
+                        <i class="fas fa-history"></i>
                     </button>
                 </div>
 
@@ -390,6 +455,24 @@
                                     </select>
                                 </div> --}}
                                 <div class="col-md-3">
+                                    <label class="form-label fw-semibold">Imp name</label>
+                                    <select class="form-select transit-imp-select" name="company_name[]">
+                                        <option value="">Select</option>
+                                        @foreach(($impNameOptions ?? ['5 core', 'K cube']) as $impOpt)
+                                            <option value="{{ $impOpt }}" @selected(($lastImpName ?? '') === $impOpt)>{{ $impOpt }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-semibold">HSN Code</label>
+                                    <select class="form-select transit-hsn-select" name="hsn_code[]">
+                                        <option value="">Select</option>
+                                        @foreach(($hsnCodeOptions ?? []) as $hsnOpt)
+                                            <option value="{{ $hsnOpt }}" @selected(($lastHsnCode ?? '') === $hsnOpt)>{{ $hsnOpt }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
                                     <label class="form-label fw-semibold">Changes</label>
                                     <input type="text" class="form-control" name="changes[]">
                                 </div>
@@ -417,6 +500,228 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+{{-- Invoice Modal — autopopulated from active container table --}}
+<div class="modal fade" id="transitInvoiceModal" tabindex="-1" aria-labelledby="transitInvoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold" id="transitInvoiceModalLabel">
+                    <i class="fas fa-file-invoice me-2"></i> Invoice
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <div id="transit-invoice-print-area" class="bg-white border rounded p-4 shadow-sm">
+                    <div class="text-center mb-3">
+                        <h3 class="fw-bold mb-1" style="letter-spacing:1px;">INVOICE</h3>
+                        <div class="text-muted small">Transit Container</div>
+                    </div>
+                    <div class="d-flex justify-content-between flex-wrap gap-2 mb-3 pb-2 border-bottom">
+                        <div>
+                            <div class="fw-semibold">Container</div>
+                            <div id="invoice-container-name" class="fs-5">—</div>
+                        </div>
+                        <div>
+                            <div class="fw-semibold">Date</div>
+                            <div id="invoice-date">—</div>
+                        </div>
+                        <div>
+                            <div class="fw-semibold">Items</div>
+                            <div id="invoice-item-count">0</div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle mb-0" id="transit-invoice-table">
+                            <thead class="table-light">
+                                <tr class="text-center">
+                                    <th style="width:48px;">SL</th>
+                                    <th>SKU</th>
+                                    <th>Imp Name</th>
+                                    <th>HSN</th>
+                                    <th>Qty / Ctn</th>
+                                    <th>Ctn</th>
+                                    <th>Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transit-invoice-tbody">
+                                <tr><td colspan="7" class="text-center text-muted">No data</td></tr>
+                            </tbody>
+                            <tfoot class="table-light fw-semibold">
+                                <tr class="text-center">
+                                    <td colspan="4" class="text-end">Total</td>
+                                    <td id="invoice-total-units">0</td>
+                                    <td id="invoice-total-ctn">0</td>
+                                    <td id="invoice-total-qty">0</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-white">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="transit-invoice-print-btn">
+                    <i class="fas fa-print me-1"></i> Print
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    body * { visibility: hidden !important; }
+    #transit-invoice-print-area, #transit-invoice-print-area * { visibility: visible !important; }
+    #transit-invoice-print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        box-shadow: none !important;
+        border: none !important;
+    }
+}
+</style>
+
+{{-- Add Imp / HSN option modal --}}
+<div class="modal fade" id="transitOptionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title fw-bold mb-0" id="transitOptionModalLabel">Add option</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="transit-option-field">
+                <label class="form-label fw-semibold" for="transit-option-value" id="transit-option-value-label">Value</label>
+                <input type="text" id="transit-option-value" class="form-control" maxlength="191" autocomplete="off">
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="transit-option-save-btn">
+                    <i class="fas fa-plus me-1"></i> Add
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Edit Row Modal (replaces inline column editing) --}}
+<div class="modal fade" id="transitEditModal" tabindex="-1" aria-labelledby="transitEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="transitEditModalLabel">
+                    <i class="fas fa-pen me-2"></i> Edit
+                    <span class="ms-1 text-white-50 small" id="transit-edit-modal-sku"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="transit-edit-id">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold" for="transit-edit-tab">Container <span class="text-danger">*</span></label>
+                        <select id="transit-edit-tab" class="form-select" required>
+                            <option value="">select container</option>
+                            @foreach($tabs as $tab)
+                                <option value="{{ $tab }}">{{ $tab }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold" for="transit-edit-sku">SKU <span class="text-danger">*</span></label>
+                        <select id="transit-edit-sku" class="form-select" required>
+                            <option value="">Select SKU</option>
+                            @foreach($skus as $sku)
+                                <option value="{{ $sku }}">{{ $sku }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold" for="transit-edit-supplier">Supplier</label>
+                        <select id="transit-edit-supplier" class="form-select">
+                            <option value="">Select Supplier</option>
+                            @foreach($suppliers as $supplier)
+                                <option value="{{ $supplier->name }}">{{ $supplier->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-units">Qty/Ctns</label>
+                        <input type="number" step="any" id="transit-edit-units" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-ctn">Qty Ctns</label>
+                        <input type="number" step="any" id="transit-edit-ctn" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-qty">Qty</label>
+                        <input type="number" step="any" id="transit-edit-qty" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-rate">Rate ($)</label>
+                        <input type="number" step="any" id="transit-edit-rate" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-cbm">CBM</label>
+                        <input type="number" step="any" id="transit-edit-cbm" class="form-control">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-unit">Unit</label>
+                        <select id="transit-edit-unit" class="form-select">
+                            <option value="pieces">Pieces</option>
+                            <option value="pair">Pair</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold" for="transit-edit-clink">C link</label>
+                        <input type="url" id="transit-edit-clink" class="form-control" placeholder="https://...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-imp">Imp name</label>
+                        <select id="transit-edit-imp" class="form-select transit-imp-select">
+                            <option value="">Select</option>
+                            @foreach(($impNameOptions ?? ['5 core', 'K cube']) as $impOpt)
+                                <option value="{{ $impOpt }}">{{ $impOpt }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold" for="transit-edit-hsn">HSN Code</label>
+                        <select id="transit-edit-hsn" class="form-select transit-hsn-select">
+                            <option value="">Select</option>
+                            @foreach(($hsnCodeOptions ?? []) as $hsnOpt)
+                                <option value="{{ $hsnOpt }}">{{ $hsnOpt }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold" for="transit-edit-changes">Changes</label>
+                        <input type="text" id="transit-edit-changes" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold" for="transit-edit-photos">Image URL</label>
+                        <input type="text" id="transit-edit-photos" class="form-control" placeholder="Image URL">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-semibold" for="transit-edit-spec">Specifications</label>
+                        <textarea id="transit-edit-spec" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-white">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i> Close
+                </button>
+                <button type="button" class="btn btn-primary" id="transit-edit-save-btn" onclick="saveTransitEditModal()">
+                    <i class="fas fa-save me-1"></i> Save
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -520,7 +825,191 @@ const groupedData = @json($groupedData);
 const CAN_EDIT_DELETE = @json($canEditDelete ?? false);
 
 function transitCellEditor(editor) {
-    return CAN_EDIT_DELETE ? editor : false;
+    // Inline cell editors disabled — edit via Edit Modal Form only.
+    return false;
+}
+
+let transitEditContext = { table: null, row: null, index: null };
+
+function openTransitEditModal(row, table, index) {
+    if (!CAN_EDIT_DELETE || !row) return;
+    const data = row.getData ? row.getData() : row;
+    transitEditContext = { table: table || null, row: row || null, index: index };
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val == null ? '' : val;
+    };
+
+    let cbm = data.cbm;
+    if ((cbm === undefined || cbm === null || cbm === '') && data.Values) {
+        try {
+            const values = typeof data.Values === 'string' ? JSON.parse(data.Values) : data.Values;
+            cbm = values?.cbm ?? '';
+        } catch (e) { cbm = ''; }
+    }
+
+    function ensureSelectOption(selectId, value) {
+        const el = document.getElementById(selectId);
+        if (!el || value == null || value === '') return;
+        const v = String(value);
+        const exists = Array.from(el.options).some(function (o) { return o.value === v; });
+        if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            el.appendChild(opt);
+        }
+        el.value = v;
+    }
+
+    setVal('transit-edit-id', data.id || '');
+    ensureSelectOption('transit-edit-tab', data.tab_name || '');
+    ensureSelectOption('transit-edit-sku', data.our_sku || '');
+    ensureSelectOption('transit-edit-supplier', data.supplier_name || '');
+    setVal('transit-edit-units', data.no_of_units ?? '');
+    setVal('transit-edit-ctn', data.total_ctn ?? '');
+    setVal('transit-edit-qty', data.pcs_qty ?? '');
+    setVal('transit-edit-rate', data.rate ?? '');
+    setVal('transit-edit-cbm', cbm ?? '');
+    let unitVal = String(data.unit || 'pieces').toLowerCase().trim();
+    if (unitVal === 'pcs' || unitVal === 'piece') unitVal = 'pieces';
+    if (unitVal !== 'pair') unitVal = 'pieces';
+    setVal('transit-edit-unit', unitVal);
+    setVal('transit-edit-imp', '');
+    if (data.company_name) ensureSelectOption('transit-edit-imp', data.company_name);
+    setVal('transit-edit-hsn', '');
+    if (data.hsn_code) ensureSelectOption('transit-edit-hsn', data.hsn_code);
+    setVal('transit-edit-changes', data.changes || '');
+    setVal('transit-edit-spec', data.specification || '');
+    setVal('transit-edit-clink', data.Clink || '');
+    setVal('transit-edit-photos', data.photos || '');
+
+    const titleSku = document.getElementById('transit-edit-modal-sku');
+    if (titleSku) titleSku.textContent = data.our_sku || '';
+
+    const modalEl = document.getElementById('transitEditModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+function saveTransitEditModal() {
+    if (!CAN_EDIT_DELETE) return;
+    const id = document.getElementById('transit-edit-id')?.value || '';
+    const tabName = document.getElementById('transit-edit-tab')?.value || '';
+    const sku = (document.getElementById('transit-edit-sku')?.value || '').trim();
+    if (!tabName) {
+        alert('Container is required.');
+        return;
+    }
+    if (!sku) {
+        alert('SKU is required.');
+        return;
+    }
+
+    const units = parseFloat(document.getElementById('transit-edit-units')?.value) || 0;
+    const ctn = parseFloat(document.getElementById('transit-edit-ctn')?.value) || 0;
+    let qty = parseFloat(document.getElementById('transit-edit-qty')?.value);
+    if (!(qty > 0)) qty = units * ctn;
+    const rate = parseFloat(document.getElementById('transit-edit-rate')?.value) || 0;
+    const clink = (document.getElementById('transit-edit-clink')?.value || '').trim();
+
+    const payload = {
+        id: id || undefined,
+        tab_name: tabName,
+        our_sku: sku,
+        supplier_name: document.getElementById('transit-edit-supplier')?.value || '',
+        no_of_units: document.getElementById('transit-edit-units')?.value || '',
+        total_ctn: document.getElementById('transit-edit-ctn')?.value || '',
+        rate: document.getElementById('transit-edit-rate')?.value || '',
+        cbm: document.getElementById('transit-edit-cbm')?.value || '',
+        unit: document.getElementById('transit-edit-unit')?.value || '',
+        company_name: document.getElementById('transit-edit-imp')?.value || '',
+        hsn_code: document.getElementById('transit-edit-hsn')?.value || '',
+        changes: document.getElementById('transit-edit-changes')?.value || '',
+        specification: document.getElementById('transit-edit-spec')?.value || '',
+        photos: document.getElementById('transit-edit-photos')?.value || '',
+        pcs_qty: qty,
+        amount: rate * qty,
+    };
+
+    const saveBtn = document.getElementById('transit-edit-save-btn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...';
+    }
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+
+    Promise.resolve()
+        .then(function () {
+            return fetch('/update-link', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf
+                },
+                body: JSON.stringify({ sku: sku.toUpperCase().replace(/\s+/g, ' '), column: 'Clink', value: clink })
+            }).then(function (r) { return r.json(); }).catch(function () { return null; });
+        })
+        .then(function () {
+            return fetch('/transit-container/save-row', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf
+                },
+                body: JSON.stringify(payload)
+            }).then(function (r) { return r.json(); });
+        })
+        .then(function (response) {
+            if (!response || !(response.success || response.id)) {
+                alert((response && response.message) || 'Update failed');
+                return;
+            }
+            const rowUpdate = Object.assign({}, payload, {
+                id: response.id || payload.id,
+                Clink: clink,
+            });
+            if (transitEditContext.row && typeof transitEditContext.row.update === 'function') {
+                transitEditContext.row.update(rowUpdate);
+            } else if (transitEditContext.table && rowUpdate.id) {
+                try { transitEditContext.table.updateRow(rowUpdate.id, rowUpdate); } catch (e) {}
+            }
+            if (transitEditContext.table && typeof updateActiveTabSummary === 'function') {
+                updateActiveTabSummary(transitEditContext.index || 0, transitEditContext.table);
+            }
+            // Remember selected Imp / HSN for next SKU import + refresh all dropdowns
+            if (payload.company_name) {
+                if (window.TRANSIT_IMP_OPTIONS.indexOf(payload.company_name) === -1) {
+                    window.TRANSIT_IMP_OPTIONS.push(payload.company_name);
+                }
+                window.TRANSIT_LAST_IMP = payload.company_name;
+                rebuildTransitOptionSelects('imp_name', window.TRANSIT_IMP_OPTIONS, payload.company_name);
+            }
+            if (payload.hsn_code) {
+                if (window.TRANSIT_HSN_OPTIONS.indexOf(payload.hsn_code) === -1) {
+                    window.TRANSIT_HSN_OPTIONS.push(payload.hsn_code);
+                }
+                window.TRANSIT_LAST_HSN = payload.hsn_code;
+                rebuildTransitOptionSelects('hsn_code', window.TRANSIT_HSN_OPTIONS, payload.hsn_code);
+            }
+            const modalEl = document.getElementById('transitEditModal');
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            }
+        })
+        .catch(function (err) {
+            console.error(err);
+            alert('Something went wrong while saving');
+        })
+        .finally(function () {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save me-1"></i> Save';
+            }
+        });
 }
 
 function deleteTransitRows(table, ids) {
@@ -598,6 +1087,9 @@ TAB_NAMES.forEach((tabName, index) => {
         rowHeight: 55,
         index: "id",
         selectable: CAN_EDIT_DELETE,
+        columnDefaults: {
+            headerTooltip: true,
+        },
         // Default sort: surface "Not pushed" rows first so users can act on them.
         initialSort: [
             { column: "push_status", dir: "asc" }
@@ -620,15 +1112,19 @@ TAB_NAMES.forEach((tabName, index) => {
                 titleFormatter: "rowSelection",
                 hozAlign: "center",
                 headerSort: false,
-                width: 50
+                width: 50,
+                headerTooltip: "Select rows",
             }] : []),
             {
                 title: "Id",
                 field: "id",
                 visible: false,
+                headerTooltip: "Id",
             },
             {
             title: "SL",
+            field: "sl_no",
+            headerTooltip: "Serial Number",
             formatter: function(cell) {
                 return cell.getRow().getPosition(true) + 0;
             },
@@ -637,74 +1133,8 @@ TAB_NAMES.forEach((tabName, index) => {
             },
             {
               title: "Images",
+              headerTooltip: "Images",
               field: "photos",
-              editor: transitCellEditor(function(cell, onRendered, success, cancel) {
-                const container = document.createElement("div");
-                container.style.display = "flex";
-                container.style.flexDirection = "column";
-
-                const preview = document.createElement("div");
-                preview.style.marginBottom = "6px";
-
-                const input = document.createElement("input");
-                input.type = "file";
-                input.accept = "image/*";
-                input.multiple = false;
-                input.style.marginBottom = "6px";
-
-                input.addEventListener("change", function (e) {
-                  if (e.target.files.length > 0) {
-                    handleUpload(e.target.files[0]);
-                  }
-                });
-
-                container.appendChild(input);
-                container.appendChild(preview);
-
-                setTimeout(() => {
-                  container.focus();
-                }, 200);
-
-                container.setAttribute("contenteditable", true);
-                container.addEventListener("paste", function (e) {
-                  e.preventDefault();
-                  for (let item of e.clipboardData.items) {
-                    if (item.type.indexOf("image") !== -1) {
-                      const blob = item.getAsFile();
-                      handleUpload(blob);
-                    }
-                  }
-                });
-
-                function handleUpload(file) {
-                  const formData = new FormData();
-                  formData.append("image", file);
-                  formData.append("_token", document.querySelector('meta[name="csrf-token"]').content);
-
-                  fetch("/upload-image", {
-                    method: "POST",
-                    body: formData,
-                  })
-                  .then(res => res.json())
-                  .then(data => {
-                    if (data.url) {
-                      preview.innerHTML = `<img src="${data.url}" style="height: 50px;"/>`;
-                      success(data.url);
-                    } else {
-                      alert("Upload failed.");
-                      cancel();
-                    }
-                  })
-                  .catch(err => {
-                    console.error(err);
-                    alert("Upload error.");
-                    cancel();
-                  });
-                }
-
-                return container;
-              }),
-
               // ✅ Enhanced formatter with fallback to `TransitContainerDetail.photos` or default image
               formatter: function(cell) {
                 const row = cell.getRow().getData();
@@ -735,9 +1165,25 @@ TAB_NAMES.forEach((tabName, index) => {
                 style="height:40px;border-radius:4px;border:1px solid #ccc;cursor:zoom-in;">`;
               }
             },
-            // { title: "Parent", field: "parent"},
+            {
+              title: "Parent",
+              headerTooltip: "Parent",
+              field: "parent",
+              headerSort: true,
+              hozAlign: "center",
+              width: 72,
+              formatter: function (cell) {
+                  const v = String(cell.getValue() || "").trim();
+                  if (!v) return '<span class="text-muted">—</span>';
+                  return `<div title="${escapeHtmlTransit(v)}" style="font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;">${escapeHtmlTransit(v)}</div>`;
+              },
+              tooltip: function (cell) {
+                  return String(cell.getValue() || "").trim();
+              },
+            },
             { 
-              title: "Sku", 
+              title: "Sku",
+              headerTooltip: "SKU",
               field: "our_sku",
               formatter: function(cell) {
                 const sku = cell.getValue() || '';
@@ -763,7 +1209,8 @@ TAB_NAMES.forEach((tabName, index) => {
               }
             },
             {
-              title: "Status",
+              title: "Stat",
+              headerTooltip: "Status",
               field: "push_status",
               headerSort: true,
               hozAlign: "center",
@@ -791,12 +1238,12 @@ TAB_NAMES.forEach((tabName, index) => {
               }
             },
             // { title: "Rec Qty", field: "rec_qty"},
-            { title: "Qty /<br>Ctns", field: "no_of_units", editor: transitCellEditor("input") },
-            { title: "Qty<br>Ctns", field: "total_ctn", editor: transitCellEditor("input") },
+            { title: "Qty/Ctns", field: "no_of_units", headerTooltip: "Quantity per Carton" },
+            { title: "Qty Ctns", field: "total_ctn", headerTooltip: "Quantity of Cartons" },
             { 
-              title: "Qty", 
+              title: "Qty",
+              headerTooltip: "Total Quantity",
               field: "pcs_qty", 
-              editor: false,
               formatter: function(cell) {
                   const data = cell.getRow().getData();
                   const pcsQty = parseFloat(data.pcs_qty);
@@ -806,19 +1253,28 @@ TAB_NAMES.forEach((tabName, index) => {
                   return units * ctn;
               }
             },
-            { title: "Rate$", field: "rate", editor: transitCellEditor("input") },
+            { title: "Rate$", field: "rate", headerTooltip: "Rate ($)" },
             {
               title: "CBM",
+              headerTooltip: "Cubic Meter (CBM)",
               field: "cbm",
-              editor: transitCellEditor("input"),
               hozAlign: "center",
               width: 60,
+              mutator: function(value, data) {
+                  if (value !== undefined && value !== null && value !== '') return value;
+                  let values = data.Values;
+                  if (!values) return value;
+                  if (typeof values === "string") {
+                      try { values = JSON.parse(values); } catch(e) { return value; }
+                  }
+                  return values?.cbm ?? value;
+              },
               formatter: function(cell) {
                   const data = cell.getRow().getData();
                   let values = data.Values;
-                  let cbm = 0;
+                  let cbm = parseFloat(cell.getValue()) || 0;
 
-                  if (values) {
+                  if (!cbm && values) {
                       if (typeof values === "string") {
                           try { values = JSON.parse(values); } catch(e) { values = {}; }
                       }
@@ -837,87 +1293,38 @@ TAB_NAMES.forEach((tabName, index) => {
               tooltip: function(cell) {
                   const data = cell.getRow().getData();
                   let values = data.Values;
-                  if (!values) return 'No CBM data';
-                  if (typeof values === "string") { try { values = JSON.parse(values); } catch(e) { return 'No CBM data'; } }
-                  const cbm = parseFloat(values?.cbm) || 0;
+                  let cbm = parseFloat(cell.getValue()) || 0;
+                  if (!cbm && values) {
+                      if (typeof values === "string") { try { values = JSON.parse(values); } catch(e) { values = {}; } }
+                      cbm = parseFloat(values?.cbm) || 0;
+                  }
                   return cbm > 0 ? 'CBM: ' + cbm.toFixed(3) : 'No CBM data';
               },
             },
             {
               title: "Unit",
+              headerTooltip: "Unit",
               field: "unit",
               headerSort: false,
                 hozAlign: "center",
-                editor: transitCellEditor(function (cell, onRendered, success, cancel) {
-                const value = cell.getValue();
-                const select = document.createElement("select");
-                select.className = "form-select form-select-sm";
-                select.style.minWidth = "110px";
-                select.style.padding = "4px 10px";
-                select.style.height = "32px";
-                select.style.borderRadius = "6px";
-                select.style.border = "1px solid #cbd5e1";
-                select.style.background = "#f8fafc";
-                select.style.fontWeight = "500";
-                select.style.fontSize = "1rem";
-
-                const options = {
-                  pieces: "Pieces",
-                  pair: "Pair",
-                };
-
-                for (let key in options) {
-                  const option = document.createElement("option");
-                  option.value = key;
-                  option.textContent = options[key];
-                  select.appendChild(option);
-                }
-
-                select.value = value || "pieces";
-
-                select.addEventListener("change", function () {
-                  success(this.value);
-                });
-
-                select.addEventListener("blur", function () {
-                  success(select.value);
-                });
-
-                onRendered(() => {
-                  select.focus();
-                  const event = new MouseEvent('mousedown', { bubbles: true });
-                  select.dispatchEvent(event);
-                });
-
-                return select;
-                }),
                 formatter: function (cell) {
                 const value = cell.getValue();
-                if (value === "pieces")
-                  return '<span class="badge bg-info text-dark" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pcs</span>';
-                if (value === "pair")
-                  return '<span class="badge bg-info text-dark" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">Pair</span>';
-                return `<span class="badge bg-secondary" style="font-size:0.98rem;padding:6px 14px;border-radius:6px;">${value || "—"}</span>`;
-                },
-                cellClick: function (e, cell) {
-                if (!CAN_EDIT_DELETE) return;
-                cell.edit(true);
-                },
-                cellDblClick: function (e, cell) {
-                if (!CAN_EDIT_DELETE) return;
-                cell.edit(true);
+                if (value === "pieces") return 'Pcs';
+                if (value === "pair") return 'Pair';
+                return value || '—';
                 },
               },
             {
                 title: "C link",
+                headerTooltip: "Competitor Link",
                 field: "Clink",
                 headerSort: false,
                 hozAlign: "center",
                 formatter: transitClinkLinkFormatter,
-                editor: transitCellEditor("input"),
             },
             {
                 title: "Supplier",
+                headerTooltip: "Supplier",
                 field: "supplier_name",
                 headerSort: false,
                 hozAlign: "center",
@@ -935,39 +1342,67 @@ TAB_NAMES.forEach((tabName, index) => {
                                 ${escapeHtmlTransit(first)}
                             </div>`;
                 },
-                editor: transitCellEditor("input"),
                 tooltip: function (cell) {
                     return String(cell.getValue() || "").trim();
                 },
             },
             {
-                title: "Category",
+                title: "Cat",
+                headerTooltip: "Category",
                 field: "Category",
                 headerSort: false,
                 hozAlign: "center",
-                width: 110,
+                width: 72,
                 formatter: function (cell) {
                     const v = String(cell.getValue() || "").trim();
                     if (!v) return '<span class="text-muted">—</span>';
-                    return `<div style="font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100px;">${escapeHtmlTransit(v)}</div>`;
+                    const words = v.split(/\s+/).filter(Boolean);
+                    const w1 = (words[0] || '').slice(0, 3);
+                    const w2 = (words[1] || '').slice(0, 3);
+                    const short = w2 ? (w1 + ' ' + w2) : w1;
+                    const tip = escapeHtmlTransit(v).replace(/"/g, '&quot;');
+                    return `<div title="${tip}" style="font-weight:700;white-space:nowrap;">${escapeHtmlTransit(short)}</div>`;
+                },
+                tooltip: function (cell) {
+                    return String(cell.getValue() || "").trim();
                 },
             },
-            // {
-            //   title: "Amt($)", 
-            //   field: "amount", 
-            //   editor: false,
-            //   mutator: false,  // Don't store in data
-            //   formatter: function(cell) {
-            //     const data = cell.getRow().getData();
-            //     const rate = parseFloat(data.rate) || 0;
-            //     const pcs_qty = parseFloat(data.no_of_units || 0) * parseFloat(data.total_ctn || 0);
-            //     return Math.round(rate * pcs_qty);
-            //   }
-            // },
+            {
+                title: "Imp",
+                headerTooltip: "Imp name",
+                field: "company_name",
+                headerSort: false,
+                hozAlign: "center",
+                width: 56,
+                formatter: function (cell) {
+                    const v = String(cell.getValue() || "").trim();
+                    if (!v) return '<span class="text-muted">—</span>';
+                    return `<div title="${escapeHtmlTransit(v)}" style="font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;">${escapeHtmlTransit(v)}</div>`;
+                },
+                tooltip: function (cell) {
+                    return String(cell.getValue() || "").trim() || 'Imp name';
+                },
+            },
+            {
+                title: "HSN",
+                headerTooltip: "HSN Code",
+                field: "hsn_code",
+                headerSort: false,
+                hozAlign: "center",
+                width: 56,
+                formatter: function (cell) {
+                    const v = String(cell.getValue() || "").trim();
+                    if (!v) return '<span class="text-muted">—</span>';
+                    return `<div title="${escapeHtmlTransit(v)}" style="font-weight:700;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:100%;">${escapeHtmlTransit(v)}</div>`;
+                },
+                tooltip: function (cell) {
+                    return String(cell.getValue() || "").trim() || 'HSN Code';
+                },
+            },
             {
                 title: "CHG",
+                headerTooltip: "Changes",
                 field: "changes",
-                editor: transitCellEditor("input"),
                 hozAlign: "center",
                 width: 60,
                 formatter: function(cell) {
@@ -987,8 +1422,8 @@ TAB_NAMES.forEach((tabName, index) => {
             },
             {
               title: "SPEC",
+              headerTooltip: "Specifications",
               field: "specification",
-              editor: transitCellEditor("input"),
               hozAlign: "center",
               width: 65,
               formatter: function(cell) {
@@ -1007,23 +1442,44 @@ TAB_NAMES.forEach((tabName, index) => {
               },
             },
             {
-                title: "History",
+                title: '<i class="fas fa-history" title="History" aria-label="History"></i>',
+                headerTooltip: "History",
                 field: "last_saved_by",
                 headerSort: false,
                 hozAlign: "center",
-                width: 130,
+                headerHozAlign: "center",
+                width: 56,
                 formatter: function(cell) {
                     const row  = cell.getRow().getData();
-                    const name = row.last_saved_by || '—';
-                    const date = row.last_saved_at  || '—';
-                    return `<div style="line-height:1.3;">
-                                <div style="font-weight:600;font-size:0.85rem;">${name}</div>
-                                <div style="font-size:0.75rem;color:#64748b;">${date}</div>
-                            </div>`;
-                }
+                    const name = (row.last_saved_by || '').trim();
+                    const date = (row.last_saved_at || '').trim();
+                    if (!name && !date) {
+                        return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#cbd5e1;cursor:pointer;" title="No history"></span>';
+                    }
+                    const tip = ((name || '—') + (date ? ' — ' + date : ''))
+                        .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                    return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;cursor:pointer;" title="${tip}"></span>`;
+                },
+                tooltip: function(cell) {
+                    const row = cell.getRow().getData();
+                    const name = (row.last_saved_by || '').trim();
+                    const date = (row.last_saved_at || '').trim();
+                    if (!name && !date) return 'No history';
+                    return (name || '—') + (date ? ' — ' + date : '');
+                },
+                cellClick: function (e, cell) {
+                    const sku = cell.getRow().getData().our_sku || '';
+                    const input = document.getElementById('history-sku-filter');
+                    if (input) input.value = sku;
+                    const modalEl = document.getElementById('transitHistoryModal');
+                    if (modalEl && typeof bootstrap !== 'undefined') {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                },
             },
             ...(CAN_EDIT_DELETE ? [{
                 title: "Actions",
+                headerTooltip: "Actions",
                 headerSort: false,
                 hozAlign: "center",
                 width: 95,
@@ -1044,10 +1500,7 @@ TAB_NAMES.forEach((tabName, index) => {
                     const row = cell.getRow();
                     const rowId = row.getData().id;
                     if (target.classList.contains('transit-edit-btn')) {
-                        const editCell = row.getCell('no_of_units') || row.getCell('rate');
-                        if (editCell) {
-                            editCell.edit();
-                        }
+                        openTransitEditModal(row, cell.getTable(), index);
                     } else if (target.classList.contains('transit-delete-btn') && rowId) {
                         deleteTransitRows(cell.getTable(), [rowId]);
                     }
@@ -1068,94 +1521,6 @@ TAB_NAMES.forEach((tabName, index) => {
 
     if (data.length === 0 && CAN_EDIT_DELETE) {
         table.addRow({ tab_name: tabName });
-    }
-
-    if (CAN_EDIT_DELETE) {
-    table.on("cellEdited", function(cell) {
-        const row = cell.getRow();
-        const data = row.getData();
-        // Authoritative tab_name = the DOM attribute on this Tabulator container. Falls back to
-        // the closure variable. Prevents wrong-container saves if anything else in this loop
-        // ever changes the table-to-tab binding.
-        const tableEl = cell.getTable().element;
-        const domTabName = (tableEl && tableEl.getAttribute('data-tab-name')) || tabName;
-        data.tab_name = domTabName;
-        const field = cell.getField();
-
-        if (field === "Clink") {
-            const sku = String(data.our_sku || "").trim().toUpperCase().replace(/\s+/g, " ");
-            if (!sku) {
-                alert("SKU is required to save C link.");
-                updateActiveTabSummary(index, table);
-                return;
-            }
-            fetch("/update-link", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({
-                    sku: sku,
-                    column: "Clink",
-                    value: cell.getValue() || ""
-                })
-            })
-                .then((res) => res.json())
-                .then((res) => {
-                    if (!res.success) {
-                        alert("Error: " + (res.message || "Could not save C link"));
-                    }
-                })
-                .catch((err) => console.error(err));
-            updateActiveTabSummary(index, table);
-            return;
-        }
-
-        if (["no_of_units", "total_ctn"].includes(field)) {
-            const units = parseFloat(data.no_of_units) || 0;
-            const ctn = parseFloat(data.total_ctn) || 0;
-            const pcs_qty = units * ctn;
-            row.update({ pcs_qty: pcs_qty });
-
-            const rate = parseFloat(data.rate) || 0;
-            const amount = rate * pcs_qty;
-            row.update({ amount: amount });
-        }
-
-        if (["rate", "pcs_qty"].includes(field)) {
-            const rate = parseFloat(data.rate) || 0;
-            const qty = parseFloat(data.pcs_qty) || 0;
-            const amount = rate * qty;
-            row.update({ amount: amount });
-        }
-
-        fetch('/transit-container/save-row', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify(data)
-        })
-        .then(res => res.json())
-        .then(response => {
-            if (response.success || response.id) {
-                console.log("Row saved successfully:", response);
-                if (response.id) {
-                    row.update({ id: response.id }); 
-                }
-            } else {
-                alert(response.message || "Update failed");
-            }
-        })
-        .catch(err => {
-            console.error("Save error:", err);
-            alert("Something went wrong while saving");
-        });
-
-        updateActiveTabSummary(index, table);
-    });
     }
 
     window.tabTables = window.tabTables || {};
@@ -1694,7 +2059,23 @@ document.getElementById("push-arrived-container-btn").addEventListener("click", 
     .then(res => res.json())
     .then(response => {
         if (response.success) {
-            alert("Selected items saved in Arrived Container successfully!");
+            let msg = "Selected items saved in Arrived Container successfully!";
+            if (response.task && response.task.created) {
+                msg += "\n\nTask created: " + (response.task.title || "Verify pricing Container") + " → Ritu (inventory@5core.com).";
+            } else if (response.task && response.task.message) {
+                msg += "\n\n" + response.task.message;
+            }
+            if (response.inv_verify_task && response.inv_verify_task.created) {
+                msg += "\n\nTask created: " + (response.inv_verify_task.title || "inv Verify Container") + " → Ritu (inventory@5core.com).";
+            } else if (response.inv_verify_task && response.inv_verify_task.message) {
+                msg += "\n\n" + response.inv_verify_task.message;
+            }
+            if (response.qc_task && response.qc_task.created) {
+                msg += "\n\nTask created: " + (response.qc_task.title || "QC Container") + " → Ritu (inventory@5core.com).";
+            } else if (response.qc_task && response.qc_task.message) {
+                msg += "\n\n" + response.qc_task.message;
+            }
+            alert(msg);
             window.location.reload();
         } else {
             alert(response.message || "Push failed!");
@@ -1766,7 +2147,7 @@ function updateActiveTabSummary(index, table) {
   document.getElementById("total-cartons-display").textContent = Math.round(totalCtn);
   document.getElementById("total-qty-display").textContent = Math.round(totalQty);
   document.getElementById("total-amount-display").textContent = Math.round(totalAmount);
-  document.getElementById("total-cbm-display").textContent = totalCBM.toFixed(3);
+  document.getElementById("total-cbm-display").textContent = Math.round(totalCBM);
 
 }
 
@@ -1789,12 +2170,10 @@ document.getElementById('search-input').addEventListener('input', function () {
 
     if (activeTable) {
         const filterType = document.getElementById("filter-type").value;
-        const filterChanges = document.getElementById("filter-changes").value;
 
         // Apply combined filters including search
         activeTable.setFilter(function(data) {
             let passFilterType = true;
-            let passFilterChanges = true;
             let passSearch = true;
 
             // Search filter
@@ -1814,16 +2193,7 @@ document.getElementById('search-input').addEventListener('input', function () {
                 passFilterType = parent !== "SOURCING";
             }
 
-            // Changes column filter logic
-            if (filterChanges === "old") {
-                const changes = (data.changes || "").toLowerCase().trim();
-                passFilterChanges = changes.includes("old");
-            } else if (filterChanges === "new") {
-                const changes = (data.changes || "").toLowerCase().trim();
-                passFilterChanges = changes.includes("new");
-            }
-
-            return passFilterType && passFilterChanges && passSearch;
+            return passFilterType && passSearch;
         });
 
         activeTable.redraw();
@@ -1845,13 +2215,11 @@ document.getElementById('search-input').addEventListener('input', function () {
         }
 
         const filterType = document.getElementById("filter-type").value;
-        const filterChanges = document.getElementById("filter-changes").value;
         const searchValue = document.getElementById("search-input").value.toLowerCase();
 
         // Apply combined filters
         activeTable.setFilter(function(data) {
             let passFilterType = true;
-            let passFilterChanges = true;
             let passSearch = true;
 
             // Search filter
@@ -1871,16 +2239,7 @@ document.getElementById('search-input').addEventListener('input', function () {
                 passFilterType = parent !== "SOURCING";
             }
 
-            // Changes column filter logic
-            if (filterChanges === "old") {
-                const changes = (data.changes || "").toLowerCase().trim();
-                passFilterChanges = changes.includes("old");
-            } else if (filterChanges === "new") {
-                const changes = (data.changes || "").toLowerCase().trim();
-                passFilterChanges = changes.includes("new");
-            }
-
-            return passFilterType && passFilterChanges && passSearch;
+            return passFilterType && passSearch;
         });
 
         activeTable.redraw();
@@ -1889,9 +2248,6 @@ document.getElementById('search-input').addEventListener('input', function () {
 
     // Event listener for Filter Type
     document.getElementById("filter-type").addEventListener("change", applyFilters);
-
-    // Event listener for Changes filter
-    document.getElementById("filter-changes").addEventListener("change", applyFilters);
 
     document.addEventListener("mouseover", function(e) {
       if (e.target && e.target.dataset.preview) {
@@ -1963,7 +2319,8 @@ document.getElementById('search-input').addEventListener('input', function () {
           specification: "Spec",
           photos: "Photo",
           parent: "Parent",
-          company_name: "Company",
+          company_name: "Imp name",
+          hsn_code: "HSN Code",
         };
 
         const parts = [];
@@ -2029,104 +2386,215 @@ document.getElementById('search-input').addEventListener('input', function () {
 
 document.body.style.zoom = "90%"; 
 
-// Sync All Containers Function
-function syncAllContainers() {
-    if (!confirm('Sync all container values to On Sea Transit? This will update all containers.')) {
+// Imp name / HSN Code dropdown options (persisted server-side; last selection remembered for next SKU)
+window.TRANSIT_IMP_OPTIONS = @json($impNameOptions ?? ['5 core', 'K cube']);
+window.TRANSIT_HSN_OPTIONS = @json($hsnCodeOptions ?? []);
+window.TRANSIT_LAST_IMP = @json($lastImpName ?? '');
+window.TRANSIT_LAST_HSN = @json($lastHsnCode ?? '');
+
+function rebuildTransitOptionSelects(field, options, preferValue) {
+    const selector = field === 'imp_name' ? '.transit-imp-select' : '.transit-hsn-select';
+    const list = Array.isArray(options) ? options.slice() : [];
+    document.querySelectorAll(selector).forEach(function (sel) {
+        const current = preferValue != null && preferValue !== '' ? preferValue : sel.value;
+        const keep = sel.value;
+        sel.innerHTML = '<option value="">Select</option>';
+        list.forEach(function (opt) {
+            const o = document.createElement('option');
+            o.value = opt;
+            o.textContent = opt;
+            sel.appendChild(o);
+        });
+        if (current && list.indexOf(current) !== -1) {
+            sel.value = current;
+        } else if (keep && list.indexOf(keep) !== -1) {
+            sel.value = keep;
+        }
+    });
+    if (field === 'imp_name') {
+        window.TRANSIT_IMP_OPTIONS = list;
+        if (preferValue) window.TRANSIT_LAST_IMP = preferValue;
+    } else {
+        window.TRANSIT_HSN_OPTIONS = list;
+        if (preferValue) window.TRANSIT_LAST_HSN = preferValue;
+    }
+}
+
+function openTransitOptionModal(field) {
+    const isImp = field === 'imp_name';
+    document.getElementById('transit-option-field').value = field;
+    document.getElementById('transitOptionModalLabel').textContent = isImp ? 'Add IMP name' : 'Add HSN Code';
+    document.getElementById('transit-option-value-label').textContent = isImp ? 'IMP name' : 'HSN Code';
+    document.getElementById('transit-option-value').value = '';
+    const modalEl = document.getElementById('transitOptionModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        setTimeout(function () { document.getElementById('transit-option-value')?.focus(); }, 200);
+    }
+}
+
+function saveTransitOptionModal() {
+    const field = document.getElementById('transit-option-field')?.value || '';
+    const value = (document.getElementById('transit-option-value')?.value || '').trim();
+    if (!field || !value) {
+        alert('Please enter a value.');
         return;
     }
-    
-    const btn = event.target;
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Syncing All...';
-    
+    const btn = document.getElementById('transit-option-save-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving...'; }
+    fetch('/transit-container/dropdown-option', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
+        body: JSON.stringify({ field: field, value: value })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (res) {
+        if (!res || !res.success) {
+            alert((res && res.message) || 'Failed to add option');
+            return;
+        }
+        rebuildTransitOptionSelects(field, res.options || [], res.value || value);
+        const modalEl = document.getElementById('transitOptionModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    })
+    .catch(function (err) {
+        console.error(err);
+        alert('Failed to add option');
+    })
+    .finally(function () {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus me-1"></i> Add'; }
+    });
+}
+
+document.getElementById('add-imp-name-btn')?.addEventListener('click', function () {
+    openTransitOptionModal('imp_name');
+});
+document.getElementById('add-hsn-code-btn')?.addEventListener('click', function () {
+    openTransitOptionModal('hsn_code');
+});
+document.getElementById('transit-option-save-btn')?.addEventListener('click', saveTransitOptionModal);
+
+function getActiveTransitTableAndName() {
+    const activeTab = document.querySelector('.nav-link.active[data-bs-toggle="tab"]');
+    if (!activeTab) return { table: null, tabName: '' };
+    const tabs = Array.from(document.querySelectorAll('#tabList [data-bs-toggle="tab"]'));
+    const index = tabs.indexOf(activeTab);
+    const table = (window.tabTables && window.tabTables[index]) ? window.tabTables[index] : null;
+    const tabName = (activeTab.textContent || '').trim();
+    return { table: table, tabName: tabName, index: index };
+}
+
+function transitInvoiceRowQty(row) {
+    const pcsQty = parseFloat(row.pcs_qty);
+    if (!isNaN(pcsQty) && pcsQty > 0) return pcsQty;
+    const units = parseFloat(row.no_of_units) || 0;
+    const ctn = parseFloat(row.total_ctn) || 0;
+    return units * ctn;
+}
+
+function openTransitInvoiceModal() {
+    const ctx = getActiveTransitTableAndName();
+    if (!ctx.table) {
+        alert('No active container table found.');
+        return;
+    }
+
+    // Prefer currently visible/filtered rows; fall back to all data
+    let rows = [];
+    try {
+        rows = ctx.table.getData('active') || [];
+    } catch (e) {
+        rows = ctx.table.getData() || [];
+    }
+    rows = (rows || []).filter(function (r) {
+        return String(r.our_sku || '').trim() !== '' || String(r.company_name || '').trim() !== '';
+    });
+
+    const tbody = document.getElementById('transit-invoice-tbody');
+    const esc = (typeof escapeHtmlTransit === 'function')
+        ? escapeHtmlTransit
+        : function (s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+
+    let totalUnits = 0;
+    let totalCtn = 0;
+    let totalQty = 0;
+    let html = '';
+
+    if (!rows.length) {
+        html = '<tr><td colspan="7" class="text-center text-muted">No items in this container.</td></tr>';
+    } else {
+        rows.forEach(function (row, i) {
+            const units = parseFloat(row.no_of_units) || 0;
+            const ctn = parseFloat(row.total_ctn) || 0;
+            const qty = transitInvoiceRowQty(row);
+            totalUnits += units;
+            totalCtn += ctn;
+            totalQty += qty;
+            html += '<tr class="text-center">'
+                + '<td>' + (i + 1) + '</td>'
+                + '<td class="text-start">' + esc(row.our_sku || '—') + '</td>'
+                + '<td>' + esc(row.company_name || '—') + '</td>'
+                + '<td>' + esc(row.hsn_code || '—') + '</td>'
+                + '<td>' + (units || '—') + '</td>'
+                + '<td>' + (ctn || '—') + '</td>'
+                + '<td>' + (qty || '—') + '</td>'
+                + '</tr>';
+        });
+    }
+
+    tbody.innerHTML = html;
+    document.getElementById('invoice-container-name').textContent = ctx.tabName || '—';
+    document.getElementById('invoice-date').textContent = new Date().toLocaleDateString(undefined, {
+        year: 'numeric', month: 'short', day: '2-digit'
+    });
+    document.getElementById('invoice-item-count').textContent = String(rows.length);
+    document.getElementById('invoice-total-units').textContent = String(Math.round(totalUnits * 1000) / 1000);
+    document.getElementById('invoice-total-ctn').textContent = String(Math.round(totalCtn * 1000) / 1000);
+    document.getElementById('invoice-total-qty').textContent = String(Math.round(totalQty * 1000) / 1000);
+
+    const modalEl = document.getElementById('transitInvoiceModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+document.getElementById('transit-invoice-btn')?.addEventListener('click', openTransitInvoiceModal);
+document.getElementById('transit-invoice-print-btn')?.addEventListener('click', function () {
+    window.print();
+});
+document.getElementById('transit-option-value')?.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        saveTransitOptionModal();
+    }
+});
+
+// When Notes modal opens, default Imp/HSN to last remembered selection for next SKU import
+document.getElementById('addItemModal')?.addEventListener('show.bs.modal', function () {
+    rebuildTransitOptionSelects('imp_name', window.TRANSIT_IMP_OPTIONS, window.TRANSIT_LAST_IMP || '');
+    rebuildTransitOptionSelects('hsn_code', window.TRANSIT_HSN_OPTIONS, window.TRANSIT_LAST_HSN || '');
+});
+
+// Auto-sync all containers to On Sea Transit (silent; also runs on save via backend autoSyncToOnSea)
+function syncAllContainersSilent() {
     fetch('/transit-container/sync-all-to-on-sea', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': '{{ csrf_token() }}'
         }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(`✅ Successfully synced ${data.count} container(s) to On Sea Transit`);
-        } else {
-            alert('❌ Failed to sync: ' + (data.message || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('❌ Error syncing data');
-    })
-    .finally(() => {
-        btn.disabled = false;
-        btn.innerHTML = originalText;
+    }).catch(function (error) {
+        console.error('Auto sync to On Sea failed:', error);
     });
 }
-
-// Sync To On Sea Function
-function syncToOnSea() {
-    // Get active tab name
-    const activeTab = document.querySelector('.nav-link.active');
-    if (!activeTab) {
-        alert('Please select a container tab first');
-        return;
-    }
-    
-    const tabName = activeTab.textContent.trim();
-    const containerMatch = tabName.match(/Container\s+(\d+)/i);
-    
-    if (!containerMatch) {
-        alert('Invalid container name format. Expected format: "Container 82"');
-        return;
-    }
-    
-    const containerSlNo = containerMatch[1];
-    const totalAmount = parseFloat(document.getElementById('total-amount-display').textContent) || 0;
-    
-    if (totalAmount === 0) {
-        alert('Total amount is 0. Nothing to sync.');
-        return;
-    }
-    
-    if (!confirm(`Sync $${totalAmount} to Container ${containerSlNo} in On Sea Transit?`)) {
-        return;
-    }
-    
-    const btn = document.getElementById('syncToOnSeaBtn');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Syncing...';
-    
-    fetch('/on-sea-transit/sync-value', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({
-            container_sl_no: containerSlNo,
-            invoice_value: totalAmount
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(`✅ Successfully synced $${totalAmount} to Container ${containerSlNo}`);
-        } else {
-            alert('❌ Failed to sync: ' + (data.message || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('❌ Error syncing data');
-    })
-    .finally(() => {
-        btn.disabled = false;
-        btn.innerHTML = originalText;
-    });
-}
+document.addEventListener('DOMContentLoaded', function () {
+    syncAllContainersSilent();
+});
 
 </script>
 
@@ -2141,6 +2609,12 @@ function syncToOnSea() {
           newRow.querySelectorAll("input, select, textarea").forEach(el => {
               el.value = "";
           });
+
+          // Prefill last remembered Imp / HSN for next SKU import
+          const impSel = newRow.querySelector('.transit-imp-select');
+          const hsnSel = newRow.querySelector('.transit-hsn-select');
+          if (impSel && window.TRANSIT_LAST_IMP) impSel.value = window.TRANSIT_LAST_IMP;
+          if (hsnSel && window.TRANSIT_LAST_HSN) hsnSel.value = window.TRANSIT_LAST_HSN;
 
           wrapper.appendChild(newRow);
 

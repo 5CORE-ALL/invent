@@ -39,7 +39,8 @@ class ComparisonData extends Model
             'NW (LB) / GW per pcs (LB)',
         ];
 
-        return array_map(fn ($label) => ['', '', $label, '', '', ''], $labels);
+        // Amazon | 5 Core | Spec | Critical | QC | supplier cols...
+        return array_map(fn ($label) => ['', '', $label, '', '', '', '', ''], $labels);
     }
 
     public static function normalizeCells(array $cells): array
