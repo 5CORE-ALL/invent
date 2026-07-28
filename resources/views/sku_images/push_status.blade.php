@@ -7,13 +7,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'SKU image push status',
-        'sub_title' => 'Marketplace image pushes from SKU Image Manager',
+        'sub_title' => 'Marketplace image push records',
     ])
 
     <div class="row g-3 mb-3">
         <div class="col-12">
-            <a href="{{ route('sku-images.index') }}" class="btn btn-sm btn-outline-primary">
-                <i class="ri-arrow-left-line me-1"></i>SKU Image Manager
+            <a href="{{ route('image.master') }}" class="btn btn-sm btn-outline-primary">
+                <i class="ri-arrow-left-line me-1"></i>Image Master
             </a>
         </div>
     </div>

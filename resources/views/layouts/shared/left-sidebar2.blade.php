@@ -196,9 +196,6 @@
                                 <a href="{{ route('features') }}">Features</a>
                             </li>
                             <li>
-                                <a href="{{ route('images') }}">Images</a>
-                            </li>
-                            <li>
                                 <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
                             </li>
                             <li>

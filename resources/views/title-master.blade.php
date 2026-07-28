@@ -963,8 +963,9 @@
                                     <th rowspan="2" class="title-master-title-dot-th">
                                         <div style="display: flex; align-items: center; justify-content: center; gap: 3px; flex-wrap: wrap;">
                                             <span style="font-size: 9px;">170</span>
-                                            <span id="title150MissingCount" class="text-warning" style="font-weight: bold; font-size: 9px;">(0)</span>
-                                            <span class="info-icon" style="font-size: 10px;" title="Green dot = title present, red = missing. Hover dot for full text. Filters include Exceeds 170 chars.">ⓘ</span>
+                                            <span id="title150PresentCount" class="text-success" style="font-weight: bold; font-size: 9px;" title="Titles present (saved Title 170 or Amazon listing title)">(0)</span>
+                                            <span id="title150MissingCount" class="text-warning" style="font-weight: bold; font-size: 9px;" title="Missing Title 170">(0)</span>
+                                            <span class="info-icon" style="font-size: 10px;" title="Green count = present, yellow = missing. Green/red dots in rows. Filter: Exceeds 170 chars.">ⓘ</span>
                                         </div>
                                         <select id="filterTitle150" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
@@ -973,21 +974,21 @@
                                         </select>
                                     </th>
                                     <th rowspan="2" class="title-master-title-dot-th">
-                                        <div style="font-size: 9px;">100 <span id="title100MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <div style="font-size: 9px;">100 <span id="title100PresentCount" class="text-success" style="font-weight: bold;">(0)</span> <span id="title100MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle100" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th rowspan="2" class="title-master-title-dot-th">
-                                        <div style="font-size: 9px;">80 <span id="title80MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <div style="font-size: 9px;">80 <span id="title80PresentCount" class="text-success" style="font-weight: bold;">(0)</span> <span id="title80MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle80" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
                                     <th rowspan="2" class="title-master-title-dot-th">
-                                        <div style="font-size: 9px;">60 <span id="title60MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <div style="font-size: 9px;">60 <span id="title60PresentCount" class="text-success" style="font-weight: bold;">(0)</span> <span id="title60MissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
                                         <select id="filterTitle60" class="form-control form-control-sm mt-1">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
@@ -3276,10 +3277,18 @@
             if (!stats) return;
             document.getElementById('parentCount').textContent = '(' + (stats.distinct_parents != null ? stats.distinct_parents : 0) + ')';
             document.getElementById('skuCount').textContent = '(' + (stats.total_rows != null ? stats.total_rows : 0) + ')';
-            document.getElementById('title150MissingCount').textContent = '(' + (stats.title150_missing != null ? stats.title150_missing : 0) + ')';
-            document.getElementById('title100MissingCount').textContent = '(' + (stats.title100_missing != null ? stats.title100_missing : 0) + ')';
-            document.getElementById('title80MissingCount').textContent = '(' + (stats.title80_missing != null ? stats.title80_missing : 0) + ')';
-            document.getElementById('title60MissingCount').textContent = '(' + (stats.title60_missing != null ? stats.title60_missing : 0) + ')';
+
+            const setPresentMissing = function(presentId, missingId, present, missing) {
+                const pEl = document.getElementById(presentId);
+                const mEl = document.getElementById(missingId);
+                if (pEl) pEl.textContent = '(' + (present != null ? present : 0) + ')';
+                if (mEl) mEl.textContent = '/miss ' + (missing != null ? missing : 0);
+            };
+
+            setPresentMissing('title150PresentCount', 'title150MissingCount', stats.title150_present, stats.title150_missing);
+            setPresentMissing('title100PresentCount', 'title100MissingCount', stats.title100_present, stats.title100_missing);
+            setPresentMissing('title80PresentCount', 'title80MissingCount', stats.title80_present, stats.title80_missing);
+            setPresentMissing('title60PresentCount', 'title60MissingCount', stats.title60_present, stats.title60_missing);
         }
 
         function renderPagination() {
@@ -4800,7 +4809,7 @@
                 return;
             }
 
-            // Detect title columns - more flexible matching
+            // Detect title columns — match export headers (Title 170 / 100 / 80 / 60) and legacy names
             const titleColumns = {
                 title150: null,
                 title100: null,
@@ -4811,32 +4820,51 @@
             if (jsonData.length > 0) {
                 const columns = Object.keys(jsonData[0]);
                 for (const colName of columns) {
-                    const lower = colName.toLowerCase();
-                    
-                    // Match Amazon/150 column
-                    if (!titleColumns.title150 && (lower.includes('amazon') || lower.includes('150'))) {
+                    const lower = colName.toLowerCase().replace(/\s+/g, ' ').trim();
+
+                    // Title 170 (Amazon) — export uses "Title 170"; also accept 150 / amazon
+                    if (!titleColumns.title150 && (
+                        lower.includes('title 170') || lower.includes('title170') ||
+                        lower === '170' || lower.includes('amazon') ||
+                        (/\b170\b/.test(lower)) ||
+                        (lower.includes('150') && !lower.includes('1150'))
+                    )) {
                         titleColumns.title150 = colName;
                     }
-                    // Match Shopify/100 column
-                    else if (!titleColumns.title100 && (lower.includes('shopify') || (lower.includes('100') && !lower.includes('150')))) {
+                    // Title 100
+                    else if (!titleColumns.title100 && (
+                        lower.includes('title 100') || lower.includes('shopify') ||
+                        (lower.includes('100') && !lower.includes('150') && !lower.includes('170'))
+                    )) {
                         titleColumns.title100 = colName;
                     }
-                    // Match eBay/80 column
-                    else if (!titleColumns.title80 && (lower.includes('ebay') || (lower.includes('80') && !lower.includes('180')))) {
+                    // Title 80
+                    else if (!titleColumns.title80 && (
+                        lower.includes('title 80') || lower.includes('ebay') ||
+                        (lower.includes('80') && !lower.includes('180') && !lower.includes('800'))
+                    )) {
                         titleColumns.title80 = colName;
                     }
-                    // Match Faire/60 column
-                    else if (!titleColumns.title60 && (lower.includes('faire') || (lower.includes('60') && !lower.includes('160')))) {
+                    // Title 60
+                    else if (!titleColumns.title60 && (
+                        lower.includes('title 60') || lower.includes('faire') ||
+                        (lower.includes('60') && !lower.includes('160') && !lower.includes('170'))
+                    )) {
                         titleColumns.title60 = colName;
                     }
                 }
                 console.log('✓ Detected title columns:', titleColumns);
+                if (!titleColumns.title150 && !titleColumns.title100 && !titleColumns.title80 && !titleColumns.title60) {
+                    alert('Error: Could not detect any title columns (Title 170 / 100 / 80 / 60).\nColumns found: ' + columns.join(', '));
+                    return;
+                }
             }
 
             const saveJobs = [];
             jsonData.forEach((row, index) => {
                 const sku = row[skuColumnName];
-                const skuStr = sku ? sku.toString().trim() : '';
+                // Normalize like backend: nbsp → space, trim
+                const skuStr = sku ? sku.toString().replace(/\u00a0/g, ' ').trim() : '';
                 const isParentSKU = /\bPARENT\b/i.test(skuStr);
 
                 if (!sku || skuStr === '' || sku === '__EMPTY' || skuStr === '0' || isParentSKU) {
@@ -4848,29 +4876,50 @@
                     return;
                 }
 
-                const title150 = titleColumns.title150 ? (row[titleColumns.title150] || '').toString().substring(0, 170) : '';
-                const title100 = titleColumns.title100 ? (row[titleColumns.title100] || '').toString().substring(0, 100) : '';
-                const title80 = titleColumns.title80 ? (row[titleColumns.title80] || '').toString().substring(0, 80) : '';
-                const title60 = titleColumns.title60 ? (row[titleColumns.title60] || '').toString().substring(0, 60) : '';
+                const pickTitle = function(col, maxLen) {
+                    if (!col) return null;
+                    const raw = row[col];
+                    if (raw === null || raw === undefined) return null;
+                    const t = raw.toString().replace(/\u00a0/g, ' ').trim();
+                    if (t === '' || t === '__EMPTY') return null;
+                    return t.substring(0, maxLen);
+                };
+
+                const title150 = pickTitle(titleColumns.title150, 170);
+                const title100 = pickTitle(titleColumns.title100, 105);
+                const title80 = pickTitle(titleColumns.title80, 80);
+                const title60 = pickTitle(titleColumns.title60, 60);
+
+                // Skip rows with no title values (do not wipe existing DB titles with empties)
+                if (title150 === null && title100 === null && title80 === null && title60 === null) {
+                    skippedCount++;
+                    if (skippedCount <= 5) {
+                        console.log('⊘ Skipped row ' + (index + 2) + ': "' + skuStr + '" (no title values)');
+                    }
+                    return;
+                }
 
                 if (successCount + errorCount < 3) {
-                    console.log('→ Processing row ' + (index + 2) + ': SKU="' + skuStr + '"');
+                    console.log('→ Processing row ' + (index + 2) + ': SKU="' + skuStr + '"', {
+                        title150: title150 !== null, title100: title100 !== null,
+                        title80: title80 !== null, title60: title60 !== null
+                    });
                 }
 
                 saveJobs.push(function() {
+                    const body = { sku: skuStr };
+                    if (title150 !== null) body.title150 = title150;
+                    if (title100 !== null) body.title100 = title100;
+                    if (title80 !== null) body.title80 = title80;
+                    if (title60 !== null) body.title60 = title60;
+
                     return fetch('/title-master/save', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': csrfToken
                         },
-                        body: JSON.stringify({
-                            sku: skuStr,
-                            title150: title150,
-                            title100: title100,
-                            title80: title80,
-                            title60: title60
-                        })
+                        body: JSON.stringify(body)
                     })
                     .then(response => response.json())
                     .then(data => {

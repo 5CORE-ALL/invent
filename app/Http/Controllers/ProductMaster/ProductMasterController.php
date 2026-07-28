@@ -2070,13 +2070,33 @@ class ProductMasterController extends Controller
                 ], 422);
             }
 
-            $payload = [
-                'title150' => $validated['title150'] ?? null,
-                'title100' => $validated['title100'] ?? null,
-                'title80' => $validated['title80'] ?? null,
-                'title60' => $validated['title60'] ?? null,
-                'updated_at' => now(),
-            ];
+            // Only update title fields present in the request (import may send a subset).
+            $payload = ['updated_at' => now()];
+            foreach (['title150', 'title100', 'title80', 'title60'] as $field) {
+                if ($request->exists($field)) {
+                    $value = $validated[$field] ?? null;
+                    if (is_string($value)) {
+                        $value = str_replace("\u{00a0}", ' ', trim($value));
+                        if ($field === 'title150') {
+                            $value = mb_substr($value, 0, 170);
+                        } elseif ($field === 'title100') {
+                            $value = mb_substr($value, 0, 105);
+                        } elseif ($field === 'title80') {
+                            $value = mb_substr($value, 0, 80);
+                        } elseif ($field === 'title60') {
+                            $value = mb_substr($value, 0, 60);
+                        }
+                    }
+                    $payload[$field] = $value === '' ? null : $value;
+                }
+            }
+
+            if (count($payload) === 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No title fields provided to update.',
+                ], 422);
+            }
 
             // Single indexed UPDATE — no Eloquent hydration of large JSON/text columns, no external APIs.
             $updated = DB::table('product_master')
@@ -2085,9 +2105,13 @@ class ProductMasterController extends Controller
                 ->update($payload);
 
             if ($updated === 0) {
+                // Fallback: case-insensitive + NBSP-normalized match (Excel often has regular spaces).
                 $updated = DB::table('product_master')
                     ->whereNull('deleted_at')
-                    ->whereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower($sku)])
+                    ->whereRaw(
+                        "LOWER(TRIM(REPLACE(REPLACE(sku, UNHEX('C2A0'), ' '), CHAR(160), ' '))) = ?",
+                        [mb_strtolower($sku)]
+                    )
                     ->update($payload);
             }
 
@@ -6158,66 +6182,6 @@ GRAPHQL;
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to save features data: '.$e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function saveImagesData(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'sku' => 'required|string',
-                'main_image' => 'nullable|string',
-                'main_image_brand' => 'nullable|string',
-                'image1' => 'nullable|string',
-                'image2' => 'nullable|string',
-                'image3' => 'nullable|string',
-                'image4' => 'nullable|string',
-                'image5' => 'nullable|string',
-                'image6' => 'nullable|string',
-                'image7' => 'nullable|string',
-                'image8' => 'nullable|string',
-                'image9' => 'nullable|string',
-                'image10' => 'nullable|string',
-                'image11' => 'nullable|string',
-                'image12' => 'nullable|string',
-            ]);
-
-            $product = ProductMaster::where('sku', $validated['sku'])->first();
-
-            if (! $product) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Product not found.',
-                ], 404);
-            }
-
-            $product->main_image = $validated['main_image'];
-            $product->main_image_brand = $validated['main_image_brand'];
-            $product->image1 = $validated['image1'];
-            $product->image2 = $validated['image2'];
-            $product->image3 = $validated['image3'];
-            $product->image4 = $validated['image4'];
-            $product->image5 = $validated['image5'];
-            $product->image6 = $validated['image6'];
-            $product->image7 = $validated['image7'];
-            $product->image8 = $validated['image8'];
-            $product->image9 = $validated['image9'];
-            $product->image10 = $validated['image10'];
-            $product->image11 = $validated['image11'];
-            $product->image12 = $validated['image12'];
-            $product->save();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Images saved successfully.',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error saving images data: '.$e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to save images data: '.$e->getMessage(),
             ], 500);
         }
     }

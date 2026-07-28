@@ -1316,8 +1316,7 @@ class ReverbApiService
     /**
      * Reverb downloads each listing photo from the URL server-side. Rewrites local {@see Storage}
      * URLs using {@see config('services.reverb.sku_image_public_base_url')} / {@see config('app.url')}
-     * (same behaviour as {@see \App\Services\Marketplaces\ReverbService}) and rejects hosts
-     * Reverb cannot reach (localhost / private LAN).
+     * and rejects hosts Reverb cannot reach (localhost / private LAN).
      *
      * @param  list<string>  $urls
      * @return array{success: bool, urls: list<string>, message: string}
@@ -1424,7 +1423,7 @@ class ReverbApiService
     }
 
     /**
-     * Same URL rule as {@see \App\Services\Marketplaces\ReverbService::publicUrlForStoragePath}.
+     * Build a public absolute URL for a path on the public disk.
      */
     private function absoluteUrlForPublicStoragePath(string $relativePath): string
     {

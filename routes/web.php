@@ -529,13 +529,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-master/amz-data/debug/{sku}', [AmzListingController::class, 'debugSku'])->name('listing.master.amz.data.debug');
     Route::get('/listing-master/amz-data/check-raw/{sku}', [AmzListingController::class, 'checkRawData'])->name('listing.master.amz.data.check-raw');
 
-    // SKU Image Manager (product_master + skus/{sku} storage + marketplace push)
+    // SKU Image push status (marketplace push records)
     Route::prefix('sku-images')->name('sku-images.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\SkuImageController::class, 'index'])->name('index');
         Route::get('/push-status', [\App\Http\Controllers\SkuImageController::class, 'pushStatus'])->name('push-status');
-        Route::post('/upload', [\App\Http\Controllers\SkuImageController::class, 'upload'])->name('upload');
-        Route::post('/push', [\App\Http\Controllers\SkuImageController::class, 'pushImages'])->name('push');
-        Route::get('/{product}', [\App\Http\Controllers\SkuImageController::class, 'getImages'])->whereNumber('product')->name('images');
     });
 
     // Marketplace Manager (LitCommerce-style hub — AliExpress, Alibaba, more later)
@@ -3988,8 +3984,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/a-plus-content/upload-image', [APlusContentController::class, 'uploadImage'])->name('a.plus.content.upload');
     Route::get('/features', fn () => view('features'))->name('features');
     Route::post('/features/save', [ProductMasterController::class, 'saveFeaturesData'])->name('features.save');
-    Route::get('/product-images', fn () => view('images'))->name('images');
-    Route::post('/product-images/save', [ProductMasterController::class, 'saveImagesData'])->name('images.save');
     Route::get('/catalogue/{first?}/{second?}', [CatalougeManagerController::class, 'catalouge_manager_index'])
         ->name('catalogue.manager');
     // channel index
@@ -4625,24 +4619,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/a-plus-images-master/toggle-status', [CategoryController::class, 'toggleStatus'])->name('a.plus.images.master.toggle.status');
     Route::get('/a-plus-images-master/status-history/{sku}', [CategoryController::class, 'getStatusHistory'])->name('a.plus.images.master.status.history');
     Route::post('/a-plus-images-master/push', [CategoryController::class, 'pushData'])->name('a.plus.images.master.push');
-    Route::get('/hero-images-master', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'heroImagesMaster'])->name('hero.images.master');
-    Route::get('/hero-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'getHeroImagesMasterData'])->name('hero.images.master.data');
-    Route::post('/hero-images-master/update-db-link', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'updateDBLink'])->name('hero.images.master.update.db');
-    Route::post('/hero-images-master/upload-hero-image', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'uploadHeroImage'])->name('hero.images.master.upload.hero');
-    Route::post('/hero-images-master/analyze', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'analyzeHeroImage'])->name('hero.images.master.analyze');
-    Route::post('/hero-images-master/push', [\App\Http\Controllers\PurchaseMaster\HeroImageController::class, 'pushHeroImage'])->name('hero.images.master.push');
-    Route::get('/trust-images-master', [\App\Http\Controllers\PurchaseMaster\TrustImageController::class, 'trustImagesMaster'])->name('trust.images.master');
-    Route::get('/trust-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\TrustImageController::class, 'getTrustImagesMasterData'])->name('trust.images.master.data');
-    Route::get('/ugc-images-master', [\App\Http\Controllers\PurchaseMaster\UGCImageController::class, 'ugcImagesMaster'])->name('ugc.images.master');
-    Route::get('/ugc-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\UGCImageController::class, 'getUGCImagesMasterData'])->name('ugc.images.master.data');
-    Route::get('/infographics-images-master', [\App\Http\Controllers\PurchaseMaster\InfographicsImageController::class, 'infographicsImagesMaster'])->name('infographics.images.master');
-    Route::get('/infographics-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\InfographicsImageController::class, 'getInfographicsImagesMasterData'])->name('infographics.images.master.data');
-    Route::get('/benefits-images-master', [\App\Http\Controllers\PurchaseMaster\BenefitsImageController::class, 'benefitsImagesMaster'])->name('benefits.images.master');
-    Route::get('/benefits-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\BenefitsImageController::class, 'getBenefitsImagesMasterData'])->name('benefits.images.master.data');
-    Route::get('/additional-images-master', [\App\Http\Controllers\PurchaseMaster\AdditionalImageController::class, 'additionalImagesMaster'])->name('additional.images.master');
-    Route::get('/additional-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\AdditionalImageController::class, 'getAdditionalImagesMasterData'])->name('additional.images.master.data');
-    Route::get('/usage-images-master', [\App\Http\Controllers\PurchaseMaster\UsageImageController::class, 'usageImagesMaster'])->name('usage.images.master');
-    Route::get('/usage-images-master-data-view', [\App\Http\Controllers\PurchaseMaster\UsageImageController::class, 'getUsageImagesMasterData'])->name('usage.images.master.data');
     Route::get('/keywords-master', [CategoryController::class, 'keywordsMaster'])->name('keywords.master');
     Route::get('/keywords-master-data-view', [CategoryController::class, 'getKeywordsMasterData'])->name('keywords.master.data');
     Route::post('/keywords-master/store', [CategoryController::class, 'storeKeywordsMaster'])->name('keywords.master.store');

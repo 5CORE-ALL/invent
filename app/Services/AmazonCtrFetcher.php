@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Paid (Ads) CTR is **not** handled here — that data is already fetched
  * daily by `app:amazon-sp-campaign-reports` into `amazon_sp_campaign_reports`,
- * and HeroImageController derives per-SKU paid CTR directly from that table
+ * for per-SKU paid CTR from that table
  * via campaign-name matching. Use that command for paid CTR; this one is
  * dedicated to organic search funnel data.
  *

@@ -587,13 +587,22 @@ class TitleMasterDataService
             }
         }
 
+        $present150 = max(0, $total - $m150);
+        $present100 = max(0, $total - $m100);
+        $present80 = max(0, $total - $m80);
+        $present60 = max(0, $total - $m60);
+
         return [
             'total_rows' => $total,
             'distinct_parents' => count($parents),
+            'title150_present' => $present150,
             'title150_missing' => $m150,
             'title150_exceeds' => $exceeds,
+            'title100_present' => $present100,
             'title100_missing' => $m100,
+            'title80_present' => $present80,
             'title80_missing' => $m80,
+            'title60_present' => $present60,
             'title60_missing' => $m60,
         ];
     }
@@ -615,14 +624,24 @@ class TitleMasterDataService
             ->selectRaw('SUM(CASE WHEN (pm.title60 IS NULL OR TRIM(IFNULL(pm.title60, "")) = "") THEN 1 ELSE 0 END) as m60')
             ->first();
 
+        $total = (int) ($row->total ?? 0);
+        $m150 = (int) ($row->m150 ?? 0);
+        $m100 = (int) ($row->m100 ?? 0);
+        $m80 = (int) ($row->m80 ?? 0);
+        $m60 = (int) ($row->m60 ?? 0);
+
         return [
-            'total_rows' => (int) ($row->total ?? 0),
+            'total_rows' => $total,
             'distinct_parents' => (int) ($row->parents ?? 0),
-            'title150_missing' => (int) ($row->m150 ?? 0),
+            'title150_present' => max(0, $total - $m150),
+            'title150_missing' => $m150,
             'title150_exceeds' => (int) ($row->exceeds_150 ?? 0),
-            'title100_missing' => (int) ($row->m100 ?? 0),
-            'title80_missing' => (int) ($row->m80 ?? 0),
-            'title60_missing' => (int) ($row->m60 ?? 0),
+            'title100_present' => max(0, $total - $m100),
+            'title100_missing' => $m100,
+            'title80_present' => max(0, $total - $m80),
+            'title80_missing' => $m80,
+            'title60_present' => max(0, $total - $m60),
+            'title60_missing' => $m60,
         ];
     }
 

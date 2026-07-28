@@ -2348,27 +2348,6 @@
                             <a href="{{ route('a.plus.images.master') }}">Listing Audit</a>
                         </li>
                         <li>
-                            <a href="{{ route('hero.images.master') }}">Hero Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('trust.images.master') }}">Trust Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('ugc.images.master') }}">UGC Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('infographics.images.master') }}">Infographics Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('benefits.images.master') }}">Benefits Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('additional.images.master') }}">Additional Images Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('usage.images.master') }}">Usage Images Masters</a>
-                        </li>
-                        <li>
                             <a href="{{ route('keywords.master') }}">Keywords Master</a>
                         </li>
                         
@@ -2399,9 +2378,6 @@
                         </li>
                         <li>
                             <a href="{{ route('title.master') }}">Title Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('sku-images.index') }}">SKU Image Manager</a>
                         </li>
                         <li>
                             <a href="{{ route('sku-images.push-status') }}">SKU Image Push Status</a>
@@ -2444,9 +2420,6 @@
                         </li>
                         <li>
                             <a href="{{ route('features') }}">Features</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('images') }}">Images</a>
                         </li>
 
                         <li>
