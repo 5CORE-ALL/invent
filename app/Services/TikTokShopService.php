@@ -1213,21 +1213,54 @@ class TikTokShopService
      */
     public function exchangeAuthCode(string $code): array
     {
-        $code = trim($code);
+        // Callback codes are URL-encoded; decode once. Already-decoded values stay unchanged.
+        $code = trim(rawurldecode($code));
         if ($code === '') {
             return ['success' => false, 'message' => 'Authorization code is empty.'];
         }
 
         try {
-            $auth = $this->client->auth();
-            $token = $auth->getToken($code);
+            // Prefer direct HTTP (same as TikTok Shop docs) so we can surface full API errors.
+            $response = Http::timeout(30)->get('https://auth.tiktok-shops.com/api/v2/token/get', [
+                'app_key' => $this->clientKey,
+                'app_secret' => $this->clientSecret,
+                'auth_code' => $code,
+                'grant_type' => 'authorized_code',
+            ]);
 
+            $json = $response->json();
+            if (! is_array($json)) {
+                return [
+                    'success' => false,
+                    'message' => 'TikTok token endpoint returned non-JSON (HTTP '.$response->status().').',
+                ];
+            }
+
+            $apiCode = (int) ($json['code'] ?? -1);
+            if ($apiCode !== 0) {
+                Log::warning('TikTok token exchange API error', [
+                    'api_code' => $apiCode,
+                    'message' => $json['message'] ?? null,
+                    'request_id' => $json['request_id'] ?? null,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => ($json['message'] ?? 'token exchange failed')
+                        .' (api_code='.$apiCode
+                        .(isset($json['request_id']) ? ' request_id='.$json['request_id'] : '')
+                        .'). Auth codes are single-use — start again from /tiktok/connect for a NEW code.',
+                    'raw' => $json,
+                ];
+            }
+
+            $token = $json['data'] ?? [];
             $accessToken = $token['access_token'] ?? null;
-            if (!$accessToken) {
+            if (! $accessToken) {
                 return [
                     'success' => false,
                     'message' => 'TikTok token response missing access_token.',
-                    'raw' => $token,
+                    'raw' => $json,
                 ];
             }
 

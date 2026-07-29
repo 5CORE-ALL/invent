@@ -419,6 +419,7 @@ Route::post('/sku-match/update', [SkuMatchController::class, 'update'])->name('s
 Route::get('/callback', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'callback'])->name('tiktok.oauth.callback');
 Route::get('/tiktok/connect', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'connect'])->name('tiktok.oauth.connect');
 Route::get('/tiktok/test-connection', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'testConnection'])->name('tiktok.oauth.test');
+Route::match(['get', 'post'], '/tiktok/exchange', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'exchangeForm'])->name('tiktok.oauth.exchange');
 
 Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/broadcasting/auth', function (Request $request) {

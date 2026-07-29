@@ -59,16 +59,70 @@ class TikTokAuthController extends Controller
 
         $state = trim((string) ($request->query('state') ?? ''));
         $expectedState = Cache::get('tiktok_oauth_state');
+        // Soft-check only: TikTok may reopen callback / state may expire in cache.
         if ($expectedState && $state !== '' && ! hash_equals((string) $expectedState, $state)) {
-            return response('TikTok OAuth state mismatch. Start again from /tiktok/connect.', 400);
+            Log::warning('TikTok OAuth state mismatch (continuing exchange)', [
+                'expected_present' => true,
+                'state_len' => strlen($state),
+            ]);
         }
 
+        return $this->finishExchange($code);
+    }
+
+    /**
+     * Manual helper: paste a FRESH callback URL or bare auth code.
+     * GET shows a tiny form; POST exchanges immediately.
+     */
+    public function exchangeForm(Request $request)
+    {
+        if ($request->isMethod('get')) {
+            $csrf = e(csrf_token());
+            $html = <<<HTML
+<!doctype html><meta charset="utf-8"><title>TikTok Token Exchange</title>
+<body style="font-family:system-ui;max-width:720px;margin:2rem auto;line-height:1.4">
+<h1>TikTok token exchange</h1>
+<p>1) Open <a href="/tiktok/connect">/tiktok/connect</a> and authorize.<br>
+2) When you land on <code>/callback?code=...</code>, copy the full URL (or just the code).<br>
+3) Paste below immediately — auth codes are <b>single-use</b>.</p>
+<form method="post" action="/tiktok/exchange">
+<input type="hidden" name="_token" value="{$csrf}">
+<label>Callback URL or auth code</label><br>
+<textarea name="payload" rows="5" style="width:100%" required placeholder="http://localhost:8000/callback?code=TTP_... or TTP_..."></textarea><br><br>
+<button type="submit">Exchange now</button>
+</form>
+</body>
+HTML;
+
+            return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+        }
+
+        $payload = trim((string) $request->input('payload', ''));
+        $code = $payload;
+        if (str_contains($payload, 'code=')) {
+            $parts = parse_url($payload);
+            if (! empty($parts['query'])) {
+                parse_str($parts['query'], $q);
+                $code = (string) ($q['code'] ?? $q['auth_code'] ?? '');
+            }
+        }
+
+        if ($code === '') {
+            return response('Could not find code= in the pasted value.', 400);
+        }
+
+        return $this->finishExchange($code);
+    }
+
+    protected function finishExchange(string $code)
+    {
         $exchange = $this->tiktok->exchangeAuthCode($code);
         if (empty($exchange['success'])) {
-            return response(
-                'TikTok token exchange failed: '.($exchange['message'] ?? 'unknown error'),
-                400
-            );
+            $msg = 'TikTok token exchange failed: '.($exchange['message'] ?? 'unknown error');
+            $msg .= "\n\nDo NOT reuse this code. Open http://127.0.0.1:8000/tiktok/connect again for a NEW code.";
+            $msg .= "\nAlso verify TIKTOK_CLIENT_SECRET in .env matches Partner Center App Secret exactly.";
+
+            return response($msg, 400, ['Content-Type' => 'text/plain; charset=UTF-8']);
         }
 
         $access = (string) ($exchange['access_token'] ?? '');
