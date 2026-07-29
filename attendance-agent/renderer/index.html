@@ -123,6 +123,33 @@
         Runs in background · all monitors captured · tray <strong>—</strong> · v1.3.0
     </footer>
 </div>
+
+<div id="updateOverlay" class="update-overlay hidden no-drag" aria-hidden="true">
+    <div class="update-card" role="dialog" aria-labelledby="updateTitle">
+        <div class="update-badge">Update available</div>
+        <h2 id="updateTitle">New version ready</h2>
+        <p class="update-msg" id="updateMessage">
+            A new version of 5Core Attendance is available. Install the update — no uninstall needed.
+        </p>
+        <div class="update-versions">
+            <div>
+                <span class="upd-lbl">Installed</span>
+                <span class="upd-val" id="updateCurrent">v—</span>
+            </div>
+            <div class="upd-arrow">→</div>
+            <div>
+                <span class="upd-lbl">Latest</span>
+                <span class="upd-val upd-latest" id="updateLatest">v—</span>
+            </div>
+        </div>
+        <div class="update-actions">
+            <button type="button" class="btn btn-primary" id="btnUpdateNow">Download &amp; update</button>
+            <button type="button" class="btn btn-ghost" id="btnUpdateLater">Later</button>
+        </div>
+        <p class="update-hint">Run the installer over your existing app. Login and settings stay saved.</p>
+    </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

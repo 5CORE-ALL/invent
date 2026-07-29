@@ -221,6 +221,21 @@ async function refresh(opts = {}) {
     showError($('loginError'), '');
 }
 
+function showUpdateOverlay(payload) {
+    const overlay = $('updateOverlay');
+    if (!overlay) return;
+    if (!payload) {
+        overlay.classList.add('hidden');
+        overlay.setAttribute('aria-hidden', 'true');
+        return;
+    }
+    if ($('updateCurrent')) $('updateCurrent').textContent = `v${payload.current_version || '—'}`;
+    if ($('updateLatest')) $('updateLatest').textContent = `v${payload.latest_version || '—'}`;
+    if ($('updateMessage') && payload.message) $('updateMessage').textContent = payload.message;
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+}
+
 async function init() {
     if (typeof window.agent.onToday === 'function') {
         window.agent.onToday((today) => applyDailyFromToday(today));
@@ -240,6 +255,27 @@ async function init() {
 
     if (typeof window.agent.onShow === 'function') {
         window.agent.onShow(() => refresh().catch(() => {}));
+    }
+
+    if (typeof window.agent.onUpdateAvailable === 'function') {
+        window.agent.onUpdateAvailable((payload) => showUpdateOverlay(payload));
+    }
+
+    if ($('btnUpdateNow')) {
+        $('btnUpdateNow').onclick = async () => {
+            $('btnUpdateNow').disabled = true;
+            try {
+                await window.agent.openUpdateDownload();
+            } finally {
+                $('btnUpdateNow').disabled = false;
+            }
+        };
+    }
+    if ($('btnUpdateLater')) {
+        $('btnUpdateLater').onclick = async () => {
+            await window.agent.snoozeUpdate();
+            showUpdateOverlay(null);
+        };
     }
 
     $('btnSaveSetup').onclick = async () => {

@@ -277,3 +277,92 @@ h2 { font-size: 1.25rem; margin-bottom: 4px; }
     color: var(--muted);
     text-align: center;
 }
+
+.update-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(5, 10, 20, 0.72);
+    -webkit-app-region: no-drag;
+}
+.update-overlay.hidden { display: none; }
+.update-card {
+    width: 100%;
+    max-width: 340px;
+    background: linear-gradient(160deg, #1a2f55 0%, var(--surface) 55%);
+    border: 1px solid rgba(59, 130, 246, 0.45);
+    border-radius: 16px;
+    padding: 18px 18px 14px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    text-align: center;
+}
+.update-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.18);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    border-radius: 999px;
+    padding: 3px 10px;
+    margin-bottom: 10px;
+}
+.update-card h2 {
+    font-size: 1.15rem;
+    margin-bottom: 8px;
+}
+.update-msg {
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.45;
+    margin-bottom: 14px;
+}
+.update-versions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.45);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+.upd-lbl {
+    display: block;
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 2px;
+}
+.upd-val {
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.upd-latest { color: #60a5fa; }
+.upd-arrow { color: var(--muted); font-size: 1.1rem; }
+.update-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.update-actions .btn-ghost {
+    width: 100%;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+.update-hint {
+    margin-top: 10px;
+    font-size: 0.65rem;
+    color: var(--muted);
+    line-height: 1.4;
+}

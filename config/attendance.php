@@ -33,17 +33,19 @@ return [
     'heartbeat_interval_seconds' => (int) env('ATTENDANCE_HEARTBEAT_INTERVAL', 15),
 
     /*
-    | Show "still working?" popup after this many seconds without input.
+    | Legacy desktop popup threshold (v1.2.x and older).
+    | Keep very high so installed old builds never show the idle popup.
+    | Newer agents (v1.3+) use idle_threshold_seconds instead and show IDLE in-app.
     */
-    'idle_prompt_seconds' => (int) env('ATTENDANCE_IDLE_PROMPT_SECONDS', 30),
+    'idle_prompt_seconds' => (int) env('ATTENDANCE_IDLE_PROMPT_SECONDS', 31536000),
 
     /*
-    | If user does not answer the popup within this many seconds, count as idle.
+    | Legacy: unused by v1.3+ (no idle confirm popup).
     */
     'idle_prompt_timeout_seconds' => (int) env('ATTENDANCE_IDLE_PROMPT_TIMEOUT', 60),
 
     /*
-    | Legacy idle threshold for system idle detection.
+    | System idle threshold (seconds) for marking IDLE in the desktop agent UI.
     */
     'idle_threshold_seconds' => (int) env('ATTENDANCE_IDLE_THRESHOLD', 30),
 

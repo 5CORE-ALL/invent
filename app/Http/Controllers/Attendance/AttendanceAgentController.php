@@ -503,14 +503,20 @@ class AttendanceAgentController extends Controller
      */
     private function agentConfig(): array
     {
+        $base = rtrim((string) config('app.url'), '/');
+
         return [
             'heartbeat_interval_seconds' => (int) config('attendance.heartbeat_interval_seconds', 15),
             'screenshot_interval_seconds' => (int) config('attendance.screenshot_interval_seconds', 30),
             'idle_threshold_seconds' => (int) config('attendance.idle_threshold_seconds', 30),
-            'idle_prompt_seconds' => (int) config('attendance.idle_prompt_seconds', 30),
+            // Legacy v1.2.x popup threshold — keep high so old installs stop prompting.
+            'idle_prompt_seconds' => (int) config('attendance.idle_prompt_seconds', 31536000),
             'idle_prompt_timeout_seconds' => (int) config('attendance.idle_prompt_timeout_seconds', 60),
             'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
             'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
+            'download_page_url' => $base.'/attendance/agent',
+            'download_url' => $base.'/attendance/agent/download',
+            'update_message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed. Your login stays saved.',
         ];
     }
 }

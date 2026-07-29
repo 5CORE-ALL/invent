@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('agent', {
     resume: () => ipcRenderer.invoke('resume'),
     minimizeToTray: () => ipcRenderer.invoke('minimizeToTray'),
     openPortal: () => ipcRenderer.invoke('openPortal'),
+    openUpdateDownload: () => ipcRenderer.invoke('openUpdateDownload'),
+    snoozeUpdate: () => ipcRenderer.invoke('snoozeUpdate'),
+    getAgentVersion: () => ipcRenderer.invoke('getAgentVersion'),
     onStats: (cb) => {
         ipcRenderer.on('stats-update', (_e, data) => cb(data));
     },
@@ -24,5 +27,8 @@ contextBridge.exposeInMainWorld('agent', {
     },
     onToday: (cb) => {
         ipcRenderer.on('today-update', (_e, today) => cb(today));
+    },
+    onUpdateAvailable: (cb) => {
+        ipcRenderer.on('update-available', (_e, data) => cb(data));
     },
 });

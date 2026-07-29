@@ -29,6 +29,25 @@
      data-csrf="{{ csrf_token() }}"
      data-base-url="{{ url('/attendance') }}">
 
+    @if(!empty($agent_update_available))
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-warning border-0 shadow-sm mb-0 d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
+                <div>
+                    <strong><i class="ri-download-cloud-2-line me-1"></i> Desktop app update available</strong>
+                    <div class="small mb-0 mt-1">
+                        Installed v{{ $agent_installed_version }} → Latest v{{ $agent_latest_version }}.
+                        Run the new installer over your existing app — no uninstall needed.
+                    </div>
+                </div>
+                <a href="{{ route('attendance.agent') }}" class="btn btn-sm btn-warning text-dark fw-semibold">
+                    Update now
+                </a>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="row mb-3">
         <div class="col-12">
             <div class="att-card p-3">

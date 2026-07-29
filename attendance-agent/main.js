@@ -15,6 +15,8 @@ const Store = require('electron-store');
 const execFileAsync = promisify(execFile);
 const store = new Store();
 const AGENT_VERSION = '1.3.0';
+const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
+let updateCheckTimer = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -116,9 +118,13 @@ let config = {
     heartbeat_interval_seconds: 15,
     screenshot_interval_seconds: 30,
     idle_threshold_seconds: 30,
-    idle_prompt_seconds: 30,
+    idle_prompt_seconds: 31536000,
     idle_prompt_timeout_seconds: 60,
     screenshots_enabled: true,
+    agent_version: AGENT_VERSION,
+    download_page_url: '',
+    download_url: '',
+    update_message: '',
 };
 
 function getApiBase() {
@@ -388,7 +394,8 @@ function checkIdleState() {
     if (activityState === 'break') return;
 
     const systemIdle = powerMonitor.getSystemIdleTime();
-    const idleAt = config.idle_prompt_seconds || config.idle_threshold_seconds || 30;
+    // v1.3+: use idle_threshold only. (idle_prompt_seconds is legacy for old installs.)
+    const idleAt = config.idle_threshold_seconds || 30;
 
     if (systemIdle >= idleAt) {
         if (activityState === 'working') {
@@ -400,6 +407,96 @@ function checkIdleState() {
     if (activityState === 'idle') {
         setActivityState('working');
     }
+}
+
+function parseVersionParts(version) {
+    return String(version || '0')
+        .replace(/^v/i, '')
+        .split(/[.+-]/)
+        .map((part) => parseInt(part, 10) || 0);
+}
+
+/** @returns {number} positive if a > b, negative if a < b, 0 if equal */
+function compareVersions(a, b) {
+    const left = parseVersionParts(a);
+    const right = parseVersionParts(b);
+    const len = Math.max(left.length, right.length);
+    for (let i = 0; i < len; i += 1) {
+        const x = left[i] || 0;
+        const y = right[i] || 0;
+        if (x > y) return 1;
+        if (x < y) return -1;
+    }
+    return 0;
+}
+
+function pushUpdateToUi(payload) {
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send('update-available', payload);
+}
+
+async function checkForUpdate({ forceShow = false } = {}) {
+    try {
+        let remoteVersion = '';
+        let downloadPageUrl = '';
+        let downloadUrl = '';
+        let updateMessage = '';
+
+        if (store.get('token')) {
+            await refreshConfig();
+            remoteVersion = config.agent_version || '';
+            downloadPageUrl = config.download_page_url || '';
+            downloadUrl = config.download_url || '';
+            updateMessage = config.update_message || '';
+        } else if (getApiBase()) {
+            const { data } = await axios.get(`${getAgentApiPath()}/ping`, { timeout: 8000 });
+            remoteVersion = data?.version || '';
+            downloadPageUrl = data?.download_page_url || '';
+            downloadUrl = data?.download_url || '';
+            updateMessage = data?.update_message || '';
+            if (data?.version) {
+                config.agent_version = data.version;
+                config.download_page_url = downloadPageUrl;
+                config.download_url = downloadUrl;
+                config.update_message = updateMessage;
+            }
+        } else {
+            return null;
+        }
+
+        if (!remoteVersion || compareVersions(remoteVersion, AGENT_VERSION) <= 0) {
+            pushUpdateToUi(null);
+            return null;
+        }
+
+        const snoozeUntil = Number(store.get('updateSnoozeUntil') || 0);
+        if (!forceShow && Date.now() < snoozeUntil) {
+            return null;
+        }
+
+        const payload = {
+            current_version: AGENT_VERSION,
+            latest_version: remoteVersion,
+            download_page_url: downloadPageUrl || `${getApiBase()}/attendance/agent`,
+            download_url: downloadUrl || `${getApiBase()}/attendance/agent/download`,
+            message: updateMessage
+                || 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
+        };
+
+        showWindow();
+        pushUpdateToUi(payload);
+        updateTrayTooltip(`Update available (v${remoteVersion})`);
+        return payload;
+    } catch (_) {
+        return null;
+    }
+}
+
+function scheduleUpdateChecks() {
+    if (updateCheckTimer) clearInterval(updateCheckTimer);
+    updateCheckTimer = setInterval(() => {
+        checkForUpdate().catch(() => {});
+    }, 6 * 60 * 60 * 1000);
 }
 
 function stopMonitoring() {
@@ -428,7 +525,8 @@ async function sendHeartbeat(force = false) {
         try {
             await pollActiveWindow();
             const systemIdle = powerMonitor.getSystemIdleTime();
-            const isWorking = activityState === 'working' && systemIdle < (config.idle_prompt_seconds || 30);
+            const idleAt = config.idle_threshold_seconds || 30;
+            const isWorking = activityState === 'working' && systemIdle < idleAt;
 
             const { data } = await jsonApi(20000).post('/heartbeat', {
                 is_active: isWorking,
@@ -476,7 +574,10 @@ async function refreshConfig() {
     try {
         const { data } = await enqueueApi(() => jsonApi(10000).get('/config'));
         if (data.config) config = { ...config, ...data.config };
-    } catch (_) {}
+        return data?.config || null;
+    } catch (_) {
+        return null;
+    }
 }
 
 function resetLocalStats(session, today) {
@@ -544,15 +645,16 @@ async function fetchSessionState() {
         } else {
             resetLocalStats(session, null);
         }
+        if (data.config) config = { ...config, ...data.config };
         if (session?.status === 'active') {
             startTracking();
         } else {
             stopTracking();
         }
-        if (data.config) config = { ...config, ...data.config };
         const today = todayPayload();
         pushTodayToRenderer();
         pushStatsToUi();
+        checkForUpdate().catch(() => {});
         return {
             loggedIn: true,
             user: store.get('user'),
@@ -560,6 +662,7 @@ async function fetchSessionState() {
             today,
             live: { ...lastLive, today },
             config: data.config || config,
+            agent_version: AGENT_VERSION,
         };
     } catch (err) {
         const status = err.response?.status;
@@ -620,6 +723,13 @@ function buildTrayMenu() {
         { label: 'Resume Work', click: async () => { await api().post('/resume'); activityState = 'working'; startTracking(); updateTray(); } },
         { type: 'separator' },
         { label: 'Open Web Portal', click: () => shell.openExternal(`${getApiBase()}/attendance`) },
+        {
+            label: 'Check for Updates',
+            click: () => {
+                showWindow();
+                checkForUpdate({ forceShow: true }).catch(() => {});
+            },
+        },
         { type: 'separator' },
         {
             label: 'Sign Out',
@@ -791,6 +901,7 @@ ipcMain.handle('saveSetup', async (_e, { apiUrl }) => {
     }
     store.set('apiUrl', url);
     enableAutoLaunch();
+    setTimeout(() => { checkForUpdate({ forceShow: true }).catch(() => {}); }, 300);
     return { ok: true };
 });
 
@@ -804,6 +915,7 @@ function applyLoginSuccess(data) {
     updateTrayTooltip('Signed in — clock in to start');
     showWindow();
     fetchSessionState().catch(() => {});
+    checkForUpdate({ forceShow: true }).catch(() => {});
 }
 
 ipcMain.handle('login', async (_e, { email, password }) => {
@@ -1021,12 +1133,34 @@ ipcMain.handle('openPortal', () => {
     shell.openExternal(`${getApiBase()}/attendance`);
 });
 
-app.on('second-instance', () => showWindow());
+ipcMain.handle('openUpdateDownload', async () => {
+    const page = config.download_page_url || `${getApiBase()}/attendance/agent`;
+    await shell.openExternal(page);
+    return { ok: true };
+});
+
+ipcMain.handle('snoozeUpdate', () => {
+    store.set('updateSnoozeUntil', Date.now() + UPDATE_SNOOZE_MS);
+    pushUpdateToUi(null);
+    updateTrayTooltip(lastSessionMeta?.status === 'active' ? 'Tracking active' : 'Running');
+    return { ok: true };
+});
+
+ipcMain.handle('getAgentVersion', () => ({
+    current: AGENT_VERSION,
+    latest: config.agent_version || AGENT_VERSION,
+}));
+
+app.on('second-instance', () => {
+    showWindow();
+    checkForUpdate({ forceShow: true }).catch(() => {});
+});
 
 app.whenReady().then(async () => {
     enableAutoLaunch();
     createTray();
     createWindow();
+    scheduleUpdateChecks();
 
     await new Promise((resolve) => {
         if (!win || win.isDestroyed()) {
@@ -1045,7 +1179,12 @@ app.whenReady().then(async () => {
         pushTodayToRenderer();
         pushStatsToUi();
     }
-    if (win) win.hide();
+
+    const update = await checkForUpdate({ forceShow: true }).catch(() => null);
+    // Keep window visible when an update is available so the popup is seen.
+    if (!update && win && !win.isDestroyed()) {
+        win.hide();
+    }
 });
 
 app.on('before-quit', () => { app.isQuitting = true; stopTracking(); });

@@ -12,14 +12,21 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(function () {
-    Route::get('/ping', fn () => response()->json([
-        'ok' => true,
-        'service' => '5core-attendance-agent',
-        'version' => config('attendance.agent_version', '1.0.0'),
-        // Portal web Google OAuth is preferred; desktop client id is optional/legacy.
-        'google_sign_in' => (bool) config('services.google.client_id'),
-        'google_client_id' => config('services.google_desktop.client_id'),
-    ]))->name('ping');
+    Route::get('/ping', function () {
+        $base = rtrim((string) config('app.url'), '/');
+
+        return response()->json([
+            'ok' => true,
+            'service' => '5core-attendance-agent',
+            'version' => config('attendance.agent_version', '1.0.0'),
+            'download_page_url' => $base.'/attendance/agent',
+            'download_url' => $base.'/attendance/agent/download',
+            'update_message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
+            // Portal web Google OAuth is preferred; desktop client id is optional/legacy.
+            'google_sign_in' => (bool) config('services.google.client_id'),
+            'google_client_id' => config('services.google_desktop.client_id'),
+        ]);
+    })->name('ping');
 
     Route::post('/login', [AttendanceAgentController::class, 'login'])->name('login');
     Route::post('/google-login', [AttendanceAgentController::class, 'googleLogin'])->name('google-login');
