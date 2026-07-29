@@ -152,15 +152,36 @@ h2 { font-size: 1.25rem; margin-bottom: 4px; }
 .status-active { background: rgba(34,197,94,0.15); color: var(--success); }
 .status-active .dot { animation: pulse 2s infinite; }
 .status-paused { background: rgba(245,158,11,0.15); color: var(--warning); }
-.status-idle { background: rgba(249,115,22,0.18); color: var(--idle); }
+.status-idle {
+    background: rgba(239,68,68,0.2);
+    color: #f87171;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+}
 .status-idle .dot { animation: pulse 1.2s infinite; }
 
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
 
+.hero-card.is-idle {
+    border-color: rgba(239, 68, 68, 0.75);
+    background: linear-gradient(135deg, #3f1518 0%, #1a1520 55%, var(--surface) 100%);
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.2);
+}
 .session-row {
     display: flex; justify-content: space-between; align-items: baseline;
 }
 .session-row.frozen .session-timer { color: var(--muted); }
+.session-row.is-idle .session-label {
+    color: #f87171;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.session-row.is-idle .session-timer {
+    color: #ef4444;
+    text-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+}
 .session-label { font-size: 0.72rem; color: var(--muted); }
 .session-timer {
     font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums;

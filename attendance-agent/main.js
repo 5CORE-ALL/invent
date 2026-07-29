@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.2.1';
+const AGENT_VERSION = '1.3.0';
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -56,7 +56,6 @@ Write-Output ($sb.ToString() + '|||' + $proc)
 
 let tray = null;
 let win = null;
-let idlePromptWin = null;
 let heartbeatTimer = null;
 let screenshotTimer = null;
 let windowPollTimer = null;
@@ -67,11 +66,6 @@ let lastKnownWindow = { title: '', process: '' };
 let lastSessionStats = { active_seconds: 0, idle_seconds: 0, break_seconds: 0 };
 let lastSessionMeta = null;
 let lastHeartbeatSentAt = Date.now();
-let idlePromptOpen = false;
-let idleAtPromptOpen = 0;
-let idlePromptPhase = null;
-let idlePromptStatsTimer = null;
-let idlePromptAutoTimeout = null;
 let activityState = 'working';
 let localStats = { active: 0, idle: 0, break: 0 };
 let dailyStats = { active: 0, idle: 0, break: 0, date: '', date_label: '' };
@@ -367,220 +361,44 @@ function tickLocalStats() {
     pushStatsToUi();
 }
 
-function closeIdlePrompt() {
-    idlePromptOpen = false;
-    idlePromptPhase = null;
-    if (idlePromptAutoTimeout) {
-        clearTimeout(idlePromptAutoTimeout);
-        idlePromptAutoTimeout = null;
-    }
-    if (idlePromptStatsTimer) {
-        clearInterval(idlePromptStatsTimer);
-        idlePromptStatsTimer = null;
-    }
-    if (idlePromptWin && !idlePromptWin.isDestroyed()) {
-        idlePromptWin.close();
-    }
-    idlePromptWin = null;
-}
-
-function idlePromptStatsPayload() {
-    const promptIdle = Math.max(0, localStats.idle - idleAtPromptOpen);
-    return {
-        session_idle_seconds: localStats.idle,
-        prompt_idle_seconds: promptIdle,
-        system_idle_seconds: powerMonitor.getSystemIdleTime(),
-    };
-}
-
-function pushIdlePromptStats() {
-    if (!idlePromptWin || idlePromptWin.isDestroyed()) return;
-    if (idlePromptPhase === 'confirm') {
-        const systemIdle = powerMonitor.getSystemIdleTime();
-        const promptAt = config.idle_prompt_seconds || 30;
-        if (systemIdle < promptAt) {
-            handleIdleResponse('yes');
-            return;
-        }
-    }
-    idlePromptWin.webContents.send('idle-prompt-stats', idlePromptStatsPayload());
-}
-
-function startIdlePromptStatsPush() {
-    if (idlePromptStatsTimer) clearInterval(idlePromptStatsTimer);
-    pushIdlePromptStats();
-    idlePromptStatsTimer = setInterval(pushIdlePromptStats, 1000);
-}
-
-function revertIdleSincePrompt() {
-    const over = Math.max(0, localStats.idle - idleAtPromptOpen);
-    if (over > 0) {
-        localStats.idle -= over;
-        dailyStats.idle = Math.max(0, dailyStats.idle - over);
-    }
-}
-
-async function handleIdleResponse(choice) {
-    if (choice === 'timeout') {
-        handleIdleTimeout();
-        return;
-    }
-
-    closeIdlePrompt();
-
-    if (choice === 'yes') {
-        revertIdleSincePrompt();
-        activityState = 'working';
-        if (lastSessionMeta) {
-            lastSessionMeta.activity_state = 'working';
-        }
-        sendHeartbeat(true).catch(() => {});
-        pushStatsToUi();
-        return;
-    }
-
-    if (choice === 'no') {
-        activityState = 'break';
-        try {
-            await enqueueApi(() => jsonApi(15000).post('/pause'));
-            if (lastSessionMeta) {
-                lastSessionMeta = { ...lastSessionMeta, status: 'paused', activity_state: 'break' };
-            }
-            stopMonitoring();
-            if (!uiTickTimer) uiTickTimer = setInterval(tickLocalStats, 1000);
-            updateTray();
-            pushStatsToUi();
-            if (win && !win.isDestroyed()) {
-                win.webContents.send('session-paused');
-            }
-        } catch (e) {
-            console.error('pause failed', e.message);
-        }
-        return;
-    }
-
-    if (choice === 'ok') {
-        activityState = 'idle';
-        if (lastSessionMeta) {
-            lastSessionMeta.activity_state = 'idle';
-        }
-        const systemIdle = powerMonitor.getSystemIdleTime();
-        const promptAt = config.idle_prompt_seconds || 30;
-        if (systemIdle < promptAt) {
-            activityState = 'working';
-            if (lastSessionMeta) lastSessionMeta.activity_state = 'working';
-        }
-        sendHeartbeat(true).catch(() => {});
-        pushStatsToUi();
-        return;
-    }
-}
-
-function handleIdleTimeout() {
-    if (idlePromptAutoTimeout) {
-        clearTimeout(idlePromptAutoTimeout);
-        idlePromptAutoTimeout = null;
-    }
-    idlePromptPhase = 'idle';
-    activityState = 'idle';
+function setActivityState(next) {
+    if (activityState === next) return;
+    activityState = next;
     if (lastSessionMeta) {
-        lastSessionMeta.activity_state = 'idle';
+        lastSessionMeta.activity_state = next;
+    }
+    if (next === 'idle') {
+        updateTrayTooltip('IDLE');
+    } else if (next === 'working') {
+        updateTrayTooltip('Tracking active');
+    } else if (next === 'break') {
+        updateTrayTooltip('On break');
     }
     sendHeartbeat(true).catch(() => {});
     pushStatsToUi();
-    if (idlePromptWin && !idlePromptWin.isDestroyed()) {
-        idlePromptWin.setTitle('Idle time');
-        idlePromptWin.setContentSize(332, 228, false);
-        idlePromptWin.webContents.send('idle-prompt-phase', { phase: 'idle' });
-    }
+    updateTray();
 }
 
-function showIdlePrompt() {
-    if (idlePromptOpen || !lastSessionMeta || lastSessionMeta.status !== 'active') return;
-    if (activityState !== 'working') return;
-
-    idlePromptOpen = true;
-    idlePromptPhase = 'confirm';
-    idleAtPromptOpen = localStats.idle;
-    activityState = 'idle';
-    if (lastSessionMeta) {
-        lastSessionMeta.activity_state = 'idle';
-    }
-    pushStatsToUi();
-
-    const timeoutSec = config.idle_prompt_timeout_seconds || 60;
-
-    idlePromptWin = new BrowserWindow({
-        width: 332,
-        height: 288,
-        useContentSize: true,
-        resizable: false,
-        minimizable: false,
-        maximizable: false,
-        alwaysOnTop: true,
-        skipTaskbar: false,
-        frame: true,
-        title: '5Core Attendance',
-        autoHideMenuBar: true,
-        focusable: true,
-        webPreferences: {
-            preload: path.join(__dirname, 'idle-prompt-preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: false,
-        },
-    });
-
-    idlePromptWin.loadFile(path.join(__dirname, 'renderer', 'idle-prompt.html'), {
-        query: { timeout: String(timeoutSec) },
-    });
-
-    idlePromptWin.once('ready-to-show', () => {
-        if (!idlePromptWin || idlePromptWin.isDestroyed()) return;
-        idlePromptWin.show();
-        idlePromptWin.focus();
-        if (process.platform === 'win32') {
-            idlePromptWin.setAlwaysOnTop(true, 'screen-saver');
-            idlePromptWin.moveTop();
-        }
-        startIdlePromptStatsPush();
-    });
-    idlePromptWin.on('closed', () => {
-        idlePromptWin = null;
-        idlePromptOpen = false;
-        if (idlePromptStatsTimer) {
-            clearInterval(idlePromptStatsTimer);
-            idlePromptStatsTimer = null;
-        }
-        if (idlePromptAutoTimeout) {
-            clearTimeout(idlePromptAutoTimeout);
-            idlePromptAutoTimeout = null;
-        }
-    });
-
-    idlePromptAutoTimeout = setTimeout(() => {
-        if (idlePromptOpen) handleIdleTimeout();
-    }, timeoutSec * 1000);
-}
-
-function checkIdlePrompt() {
-    if (!lastSessionMeta || lastSessionMeta.status !== 'active' || idlePromptOpen) return;
+/**
+ * Idle is shown in the main timer UI only — no separate popup window.
+ * When system idle exceeds the threshold, mark idle; when activity returns, resume working.
+ */
+function checkIdleState() {
+    if (!lastSessionMeta || lastSessionMeta.status !== 'active') return;
+    if (activityState === 'break') return;
 
     const systemIdle = powerMonitor.getSystemIdleTime();
-    const promptAt = config.idle_prompt_seconds || 30;
+    const idleAt = config.idle_prompt_seconds || config.idle_threshold_seconds || 30;
 
-    // Do not pop the prompt until the user has actually been idle long enough.
-    if (systemIdle < promptAt) {
-        if (activityState === 'idle' && !idlePromptOpen) {
-            activityState = 'working';
-            if (lastSessionMeta) lastSessionMeta.activity_state = 'working';
-            pushStatsToUi();
+    if (systemIdle >= idleAt) {
+        if (activityState === 'working') {
+            setActivityState('idle');
         }
         return;
     }
 
-    if (activityState === 'working') {
-        showIdlePrompt();
+    if (activityState === 'idle') {
+        setActivityState('working');
     }
 }
 
@@ -589,7 +407,6 @@ function stopMonitoring() {
     if (screenshotTimer) { clearInterval(screenshotTimer); screenshotTimer = null; }
     if (windowPollTimer) { clearInterval(windowPollTimer); windowPollTimer = null; }
     if (idleCheckTimer) { clearInterval(idleCheckTimer); idleCheckTimer = null; }
-    closeIdlePrompt();
 }
 
 function stopTracking() {
@@ -703,7 +520,7 @@ function startTracking() {
     windowPollTimer = setInterval(() => { pollActiveWindow().catch(() => {}); }, 3000);
     heartbeatTimer = setInterval(() => { sendHeartbeat().catch(() => {}); }, hb);
     screenshotTimer = setInterval(() => { sendScreenshot().catch(() => {}); }, ss);
-    idleCheckTimer = setInterval(checkIdlePrompt, 2000);
+    idleCheckTimer = setInterval(checkIdleState, 2000);
     uiTickTimer = setInterval(tickLocalStats, 1000);
 
     setTimeout(() => { sendHeartbeat(true).catch(() => {}); }, 1500);
@@ -938,26 +755,6 @@ function createTray() {
     tray.on('click', () => showWindow());
     updateTray();
 }
-
-ipcMain.on('idle-prompt-response', (_e, choice) => {
-    if (choice === 'ok') {
-        handleIdleResponse('ok');
-        return;
-    }
-    handleIdleResponse(choice === 'yes' ? 'yes' : 'no');
-});
-
-ipcMain.on('idle-prompt-resize', (_e, { width, height }) => {
-    if (!idlePromptWin || idlePromptWin.isDestroyed()) return;
-    if (width > 0 && height > 0) {
-        idlePromptWin.setContentSize(Math.round(width), Math.round(height), false);
-    }
-});
-
-ipcMain.handle('idle-prompt-config', () => ({
-    timeout_seconds: config.idle_prompt_timeout_seconds || 60,
-    ...idlePromptStatsPayload(),
-}));
 
 // --- IPC ---
 

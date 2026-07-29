@@ -313,7 +313,11 @@
                 </div>
                 <div class="da-faq-item">
                     <div class="da-faq-q">What if I step away from my desk?</div>
-                    <p class="da-faq-a">After a short idle period, a popup asks if you are still working. Answer honestly — idle time is tracked separately from active work.</p>
+                    <p class="da-faq-a">After a short idle period, the session timer turns red and shows <strong>IDLE</strong> in the app — no popup. Idle time is tracked separately from active work, and the timer returns to normal when you use the computer again.</p>
+                </div>
+                <div class="da-faq-item">
+                    <div class="da-faq-q">Do I need to uninstall before updating?</div>
+                    <p class="da-faq-a">No. Download the latest installer and run it — it upgrades the existing app in place. Your login and settings stay saved.</p>
                 </div>
                 <div class="da-faq-item">
                     <div class="da-faq-q">Do I need to keep the browser open?</div>

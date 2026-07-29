@@ -50,7 +50,7 @@ function currentStatusLabel() {
         return { cls: 'status-paused', text: 'On break' };
     }
     if (state.activityState === 'idle') {
-        return { cls: 'status-idle', text: 'Idle — no activity' };
+        return { cls: 'status-idle', text: 'IDLE' };
     }
     return { cls: 'status-active', text: 'Active — working' };
 }
@@ -116,22 +116,27 @@ function applyUi(live) {
     if (onBreak && sessionFrozenSeconds === null && state.session) {
         sessionFrozenSeconds = state.sessionActive + state.sessionIdle;
     }
+    const isIdle = !!state.session && state.session.status === 'active' && state.activityState === 'idle';
     const { cls, text } = currentStatusLabel();
     const badge = $('statusBadge');
     badge.className = `status-badge ${cls}`;
     $('statusText').textContent = text;
 
     $('sessionTimer').textContent = state.session ? formatHms(sessionElapsed()) : '00:00:00';
+    $('heroCard')?.classList.toggle('is-idle', isIdle);
+    $('sessionRow')?.classList.toggle('is-idle', isIdle);
     $('sessionRow')?.classList.toggle('frozen', onBreak);
     if (onBreak) {
-        $('sessionLabel') && ($('sessionLabel').textContent = 'Session paused');
+        if ($('sessionLabel')) $('sessionLabel').textContent = 'Session paused';
+    } else if (isIdle) {
+        if ($('sessionLabel')) $('sessionLabel').textContent = 'IDLE';
     } else if ($('sessionLabel')) {
         $('sessionLabel').textContent = 'Current session';
     }
     renderDailyDom();
 
     $('activeStatBox')?.classList.toggle('stat-live', state.session?.status === 'active' && state.activityState === 'working');
-    $('idleStatBox')?.classList.toggle('stat-live', state.activityState === 'idle');
+    $('idleStatBox')?.classList.toggle('stat-live', isIdle);
     $('breakStatBox')?.classList.toggle('stat-live', state.session?.status === 'paused' || state.activityState === 'break');
 
     const clockedIn = state.session && (state.session.status === 'active' || state.session.status === 'paused');
