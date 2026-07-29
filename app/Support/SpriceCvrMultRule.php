@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\DB;
  * After multiply:
  *   - floor so Sroi (gross) ≥ roi_floor_pct:
  *       floor = (LP × (1 + roi_floor_pct/100) + Ship) / 0.80
- *   - if cap_at_lmp: ceiling at SP column when shown, else LMP when > 0, else no limit
+ *   - if cap_at_lmp: ceiling at manual SP (Standard Price), else LMP when > 0
+ *   - blank LMP: no increase unless CVR > high_cvr (default 13%)
  *   - no decrease when Dil% (L30/INV×100) > 100
  *
  * Sub-rule when CVR L30 = 0%:

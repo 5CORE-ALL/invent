@@ -488,7 +488,8 @@ class ShippingSlabRateService
         $distinctValues = array_values($distinct);
         sort($distinctValues);
 
-        $uniformValue = ($filled > 0 && count($distinctValues) === 1 && $missing === 0)
+        // Consensus among filled SKUs (missing OK) — used as slab ship rate.
+        $uniformValue = ($filled > 0 && count($distinctValues) === 1)
             ? $distinctValues[0]
             : null;
 

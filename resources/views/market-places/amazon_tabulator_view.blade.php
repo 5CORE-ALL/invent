@@ -718,7 +718,7 @@
                                     <label class="form-label mb-0 small fw-bold" for="lmpModalSpInput">SP</label>
                                     <input type="number" class="form-control form-control-sm text-end fw-bold"
                                         id="lmpModalSpInput" step="0.01" min="0.01" placeholder="0.00"
-                                        style="width: 7rem;" title="Editable SPRICE — GROI% / NROI% use the same formulas as Sroi / SNROI">
+                                        style="width: 7rem;" title="Manual Standard Price — use when LMP cannot be determined. Saves to SP column only.">
                                 </div>
                                 <div class="col-auto">
                                     <div class="small text-muted mb-0">GROI %</div>
@@ -729,7 +729,8 @@
                                     <div id="lmpModalNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
                                 </div>
                                 <div class="col-auto small text-muted pb-1">
-                                    Uses this SKU’s LP &amp; Ship. SP syncs to the SP column.
+                                    Standard Price (manual). Saves to <strong>SP</strong> only when you enter it here.
+                                    Use when LMP cannot be determined.
                                 </div>
                             </div>
                         </div>
@@ -1049,9 +1050,9 @@
                                     Highest SPRICE cap (SP → LMP)
                                 </label>
                                 <div class="small text-muted mb-0">
-                                    Cap at <strong>SP</strong> column when shown.
+                                    Cap at manual <strong>SP</strong> (Standard Price) when set in LMP modal.
                                     If SP is blank, fall back to <strong>LMP</strong>.
-                                    If LMP is blank, <strong>no limit</strong>.
+                                    If LMP is blank: <strong>no increase</strong> unless CVR &gt; high slab (default 13%).
                                 </div>
                             </div>
                             <div class="form-text">
@@ -2358,12 +2359,11 @@
         function initLmpModalSpFromSku(sku) {
             const row = getAmazonTabulatorRowDataBySku(sku);
             currentLmpData.rowData = row;
+            // SP = Standard Price only when previously filled manually (not Amazon price / SPRICE)
             let sp = null;
             if (row) {
-                const sprice = parseFloat(row.SPRICE);
-                const price = parseFloat(row.price);
-                if (isFinite(sprice) && sprice > 0) sp = sprice;
-                else if (isFinite(price) && price > 0) sp = price;
+                const std = parseFloat(row.STANDARD_PRICE);
+                if (isFinite(std) && std > 0) sp = std;
             }
             $('#lmpModalSpInput').val(sp != null ? sp.toFixed(2) : '');
             refreshLmpModalSpMetrics();
@@ -2388,18 +2388,15 @@
                 },
                 data: {
                     sku: sku,
-                    sprice: sp
+                    sprice: sp,
+                    is_standard_price: 1
                 },
                 success: function(response) {
-                    const updates = { SPRICE: response.data || sp, has_custom_sprice: true };
-                    if (response.sgpft_percent !== undefined) updates['SGPFT'] = response.sgpft_percent;
-                    if (response.spft_percent !== undefined) updates['Spft%'] = response.spft_percent;
-                    if (response.sroi_percent !== undefined) updates['SROI'] = response.sroi_percent;
-                    if (response.sgroi_percent !== undefined) updates['SGROI'] = response.sgroi_percent;
+                    const updates = { STANDARD_PRICE: response.data || sp };
                     row.update(updates);
                     currentLmpData.rowData = row.getData();
                     if (typeof showToast === 'function') {
-                        showToast('success', 'SP saved');
+                        showToast('success', 'Standard Price (SP) saved');
                     }
                 },
                 error: function() {
@@ -3879,20 +3876,40 @@
                 return z.roi_high;
             }
 
+            /** Manual Standard Price (SP column) — only when set in LMP modal / SP editor */
+            function amazonStandardPrice(rd) {
+                if (!rd) return null;
+                const sp = parseFloat(rd.STANDARD_PRICE) || 0;
+                if (!isFinite(sp) || sp <= 0) return null;
+                return +Number(sp).toFixed(2);
+            }
+
+            /** True when competitor LMP base exists (blank LMP = no scrape / no manual competitor) */
+            function amazonRowHasLmp(rd) {
+                if (!rd) return false;
+                const lmp = parseFloat(rd.lmp_price) || 0;
+                return isFinite(lmp) && lmp > 0;
+            }
+
+            /**
+             * Blank LMP → do not increase unless CVR > high slab (default 13%).
+             * Decreases / holds are unaffected.
+             */
+            function amazonAllowSpriceIncrease(rd, cvr, highCvr) {
+                if (amazonRowHasLmp(rd)) return true;
+                const high = (highCvr != null && isFinite(highCvr)) ? highCvr : 13;
+                const v = parseFloat(cvr) || 0;
+                return v > high;
+            }
+
             /**
              * Highest SPRICE ceiling:
-             *   1) SP column value when shown (SPRICE set and ≠ Amazon price)
+             *   1) Manual SP (Standard Price) when set
              *   2) else LMP (incl. shipping when available)
-             *   3) else null = no limit
+             *   3) else null = no numeric ceiling (increases still gated when LMP blank)
              */
             function amazonSpriceColumnCap(rd) {
-                if (!rd) return null;
-                const sprice = parseFloat(rd.SPRICE) || 0;
-                const currentPrice = parseFloat(rd.price) || 0;
-                if (sprice <= 0) return null;
-                // Same blank rule as SP / S PRC columns
-                if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return null;
-                return +Number(sprice).toFixed(2);
+                return amazonStandardPrice(rd);
             }
 
             function amazonSpriceHighCeiling(rd) {
@@ -4135,8 +4152,10 @@
                             counts.hold++;
                             return;
                         }
-                        if (suggested > base + 0.005) counts.increase++;
-                        else if (suggested < base - 0.005) counts.decrease++;
+                        if (suggested > base + 0.005) {
+                            if (!amazonAllowSpriceIncrease(rd, cvr, slabsLive.high)) counts.hold++;
+                            else counts.increase++;
+                        } else if (suggested < base - 0.005) counts.decrease++;
                         else counts.hold++;
                         return;
                     }
@@ -4147,8 +4166,10 @@
                         counts.hold++;
                         return;
                     }
-                    if (mult > 1) counts.increase++;
-                    else if (mult < 1) counts.decrease++;
+                    if (mult > 1) {
+                        if (!amazonAllowSpriceIncrease(rd, cvr, slabsLive.high)) counts.hold++;
+                        else counts.increase++;
+                    } else if (mult < 1) counts.decrease++;
                     else counts.hold++;
                 });
                 return counts;
@@ -4367,6 +4388,7 @@
                     '/' + formatCvrMult(r.up_mult) +
                     ' · ROI floor ' + r.roi_floor_pct + '%' +
                     (r.cap_at_lmp !== false ? ' · SP→LMP ceiling' : '') +
+                    ' · blank LMP: no ↑ unless CVR > ' + r.high_cvr + '%' +
                     (r.zero_cvr_dil && r.zero_cvr_dil.enabled !== false ? ' · CVR0 Dil→GROI' : ''));
             }
 
@@ -4518,11 +4540,22 @@
 
                     const cvr = amazonRowCvrL30(rd);
 
+                    const slabsForGate = resolveSpriceCvrSlabs(rule);
+
                     // Sub-rule: CVR = 0% → set SPRICE to Dil-band GROI target
                     if (amazonCvrIsZero(cvr) && zeroDil.enabled) {
                         const targetRoi = amazonZeroCvrTargetGroi(rd, zeroDil);
                         let sprice = targetRoi != null ? amazonSpriceRoiFloor(rd, targetRoi) : null;
                         if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
+
+                        const existing0 = parseFloat(rd.SPRICE) || 0;
+                        const amazonPrice0 = parseFloat(rd.price) || 0;
+                        const base0 = existing0 > 0 ? existing0 : amazonPrice0;
+                        // Blank LMP: no increase unless CVR > high (0% never qualifies)
+                        if (base0 > 0 && sprice > base0 + 0.005
+                            && !amazonAllowSpriceIncrease(rd, cvr, slabsForGate.high)) {
+                            return;
+                        }
 
                         if (rule.cap_at_lmp) {
                             const highCap = amazonSpriceHighCeiling(rd);
@@ -4550,6 +4583,11 @@
                     const base = existing > 0 ? existing : amazonPrice;
                     if (base <= 0) return;
 
+                    // Blank LMP → block increases unless CVR > high slab (default 13%)
+                    if (mult > 1 && !amazonAllowSpriceIncrease(rd, cvr, slabsForGate.high)) {
+                        return;
+                    }
+
                     let sprice = +Number(base * mult).toFixed(2);
                     if (!isFinite(sprice) || sprice <= 0) return;
 
@@ -4557,6 +4595,12 @@
                     if (floor != null && sprice < floor) {
                         sprice = floor;
                         flooredCount++;
+                    }
+
+                    // Floor must not create an increase when blank-LMP gate blocks it
+                    if (sprice > base + 0.005
+                        && !amazonAllowSpriceIncrease(rd, cvr, slabsForGate.high)) {
+                        return;
                     }
 
                     if (rule.cap_at_lmp) {
@@ -4619,7 +4663,8 @@
                             '% · >' + formatSlabBound(zeroDil.dil_high) + '→' + formatSlabBound(zeroDil.roi_high) + '%\n')
                         : '') +
                     'Floor: Sroi ≥ ' + rule.roi_floor_pct + '%' +
-                    (rule.cap_at_lmp ? '\nCeiling: SP column → LMP → no limit' : '') +
+                    (rule.cap_at_lmp ? '\nCeiling: manual SP → LMP' : '') +
+                    '\nBlank LMP: no increase unless CVR > ' + formatSlabBound(slabs.high) + '%' +
                     '\nNo decrease when Dil% > 100' +
                     floorNote + highCapNote + zeroNote
                 )) {
@@ -6363,32 +6408,27 @@
                     },
                     {
                         title: "SP",
-                        field: "SPRICE",
+                        field: "STANDARD_PRICE",
                         hozAlign: "center",
-                        headerTooltip: "S PRC (SPRICE) — red=reduced, yellow=hold, green=increase vs Amazon price",
+                        headerTooltip: "Standard Price — manual only (LMP modal / SP editor). Blank unless filled when LMP cannot be determined. Dot vs Amazon price.",
                         editor: "input",
                         width: 70,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             const value = cell.getValue();
-                            const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
-                            const sprice = parseFloat(value) || 0;
-                            if (!value || sprice <= 0) return '';
+                            const std = parseFloat(value) || 0;
+                            // SP stays blank unless Standard Price was filled manually
+                            if (!value || std <= 0) return '';
                             const sku = rowData['(Child) sku'] || '';
-                            const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
-                            // Blank price text when SP matches live Amazon price (same as S PRC) — still show hold dot
-                            if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                            const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
+                            if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
                                 return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                                     dot + '</span>';
                             }
-                            let formattedValue = '$' + sprice.toFixed(2);
-                            if (hasCustomSprice === false) {
-                                formattedValue = '<span style="color: #0d6efd; font-weight: 500;">' + formattedValue + '</span>';
-                            }
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + '</span>';
+                                dot + ('$' + std.toFixed(2)) + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -7253,7 +7293,33 @@
                 var field = cell.getColumn().getField();
                 var value = cell.getValue();
 
-                if (field === 'SPRICE') {
+                if (field === 'STANDARD_PRICE') {
+                    const sku = data['(Child) sku'];
+                    const std = parseFloat(value);
+                    if (!sku || !isFinite(std) || std <= 0) {
+                        row.update({ STANDARD_PRICE: null });
+                        return;
+                    }
+                    $.ajax({
+                        url: '/save-amazon-sprice',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            sku: sku,
+                            sprice: std,
+                            is_standard_price: 1
+                        },
+                        success: function(response) {
+                            showToast('success', 'Standard Price (SP) saved');
+                            row.update({ STANDARD_PRICE: response.data || std });
+                        },
+                        error: function() {
+                            showToast('error', 'Failed to save Standard Price');
+                        }
+                    });
+                } else if (field === 'SPRICE') {
                     const sku = data['(Child) sku'];
                     $.ajax({
                         url: '/save-amazon-sprice',

@@ -620,6 +620,7 @@ class OverallAmazonController extends Controller
             $row['NRA'] = '';
             $row['FBA'] = null;
             $row['SPRICE'] = null;
+            $row['STANDARD_PRICE'] = null;
             $row['Spft'] = null;
             $row['SROI'] = null;
             $row['SGROI'] = null;
@@ -734,6 +735,11 @@ class OverallAmazonController extends Controller
                     $row['FBA'] = $raw['FBA'] ?? null;
                     $row['shopify_id'] = $shopify->id ?? null;
                     $row['SPRICE'] = $raw['SPRICE'] ?? null;
+                    // Manual Standard Price (SP column) — only when set in LMP modal / SP editor
+                    $stdPrice = $raw['STANDARD_PRICE'] ?? null;
+                    $row['STANDARD_PRICE'] = (is_numeric($stdPrice) && (float) $stdPrice > 0)
+                        ? round((float) $stdPrice, 2)
+                        : null;
                     $row['Spft%'] = $raw['SPFT'] ?? null;
                     $row['SROI'] = $raw['SROI'] ?? null;
                     $row['SGPFT'] = $raw['SGPFT'] ?? null;
@@ -966,6 +972,7 @@ class OverallAmazonController extends Controller
                 'FBA' => null,
                 'shopify_id' => null,
                 'SPRICE' => '',
+                'STANDARD_PRICE' => '',
                 'Spft%' => '',
                 'SROI' => '',
                 'SGROI' => '',
@@ -1303,6 +1310,30 @@ class OverallAmazonController extends Controller
 
         if (!$sku || !$sprice) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
+        }
+
+        // Manual Standard Price (SP) — filled from LMP modal when LMP cannot be determined.
+        // Stored separately from SPRICE / S PRC so SP column stays blank unless set manually.
+        if ($request->boolean('is_standard_price')) {
+            $std = round((float) $sprice, 2);
+            if ($std <= 0) {
+                return response()->json(['error' => 'Standard price must be > 0.'], 400);
+            }
+
+            $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            $existing = is_array($amazonDataView->value)
+                ? $amazonDataView->value
+                : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+            $existing['STANDARD_PRICE'] = $std;
+            $amazonDataView->value = $existing;
+            $amazonDataView->save();
+
+            return response()->json([
+                'message' => 'Standard price saved successfully.',
+                'data' => $std,
+                'STANDARD_PRICE' => $std,
+                'is_standard_price' => true,
+            ]);
         }
 
         // Get current marketplace percentage
