@@ -754,6 +754,18 @@ class OverallAmazonController extends Controller
                 $row['variation_display'] = 'red';
             }
 
+            // SP inherits from Sku Link LMP siblings (same shared group as LMP)
+            if (empty($row['STANDARD_PRICE'])) {
+                $inheritedSp = $this->resolveStandardPriceFromLinkedGroup(
+                    $linkedLmpSkus,
+                    $nrValues,
+                    $normalizeSku
+                );
+                if ($inheritedSp !== null) {
+                    $row['STANDARD_PRICE'] = $inheritedSp;
+                }
+            }
+
             // Load Bid Cap from dedicated table
             if (isset($bidCaps[$pm->sku])) {
                 $bidCapRecord = $bidCaps[$pm->sku];
@@ -1314,25 +1326,39 @@ class OverallAmazonController extends Controller
 
         // Manual Standard Price (SP) — filled from LMP modal when LMP cannot be determined.
         // Stored separately from SPRICE / S PRC so SP column stays blank unless set manually.
+        // Propagates to Sku Link LMP siblings (same group as shared LMP).
         if ($request->boolean('is_standard_price')) {
             $std = round((float) $sprice, 2);
             if ($std <= 0) {
                 return response()->json(['error' => 'Standard price must be > 0.'], 400);
             }
 
-            $amazonDataView = AmazonDataView::firstOrNew(['sku' => $sku]);
-            $existing = is_array($amazonDataView->value)
-                ? $amazonDataView->value
-                : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
-            $existing['STANDARD_PRICE'] = $std;
-            $amazonDataView->value = $existing;
-            $amazonDataView->save();
+            $groupSkus = $this->expandLinkedLmpSkuGroup($sku);
+            $appliedSkus = [];
+            foreach ($groupSkus as $memberSku) {
+                $display = trim((string) $memberSku);
+                if ($display === '') {
+                    continue;
+                }
+                $amazonDataView = AmazonDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($display)])->first();
+                if (! $amazonDataView) {
+                    $amazonDataView = new AmazonDataView(['sku' => $display]);
+                }
+                $existing = is_array($amazonDataView->value)
+                    ? $amazonDataView->value
+                    : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+                $existing['STANDARD_PRICE'] = $std;
+                $amazonDataView->value = $existing;
+                $amazonDataView->save();
+                $appliedSkus[] = (string) $amazonDataView->sku;
+            }
 
             return response()->json([
                 'message' => 'Standard price saved successfully.',
                 'data' => $std,
                 'STANDARD_PRICE' => $std,
                 'is_standard_price' => true,
+                'applied_skus' => $appliedSkus,
             ]);
         }
 
@@ -3348,6 +3374,71 @@ class OverallAmazonController extends Controller
         $group = $this->lmpSkuGroupService->groupContaining($sku);
 
         return $this->normalizeLinkedSkuGroup($group !== [] ? $group : [$sku]);
+    }
+
+    /**
+     * Expand Sku Link LMP group for writes (BFS via prepareForSkus so transitive links are included).
+     *
+     * @return list<string>
+     */
+    private function expandLinkedLmpSkuGroup(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $group = [$sku];
+        for ($i = 0; $i < 10; $i++) {
+            $this->lmpSkuGroupService->prepareForSkus($group);
+            $next = $this->linkedLmpSkusForProduct($sku);
+            if ($next === []) {
+                $next = [$sku];
+            }
+            $prevNorm = array_map('strtoupper', $group);
+            $nextNorm = array_map('strtoupper', $next);
+            sort($prevNorm);
+            sort($nextNorm);
+            if ($prevNorm === $nextNorm) {
+                return $this->normalizeLinkedSkuGroup($next);
+            }
+            $group = $next;
+        }
+
+        return $this->normalizeLinkedSkuGroup($group);
+    }
+
+    /**
+     * Resolve STANDARD_PRICE from any member of the Sku Link LMP group.
+     *
+     * @param  list<string>  $linkedSkus
+     * @param  array<string, mixed>  $nrValues
+     */
+    private function resolveStandardPriceFromLinkedGroup(array $linkedSkus, array $nrValues, callable $normalizeSku): ?float
+    {
+        foreach ($linkedSkus as $memberSku) {
+            $candidates = [
+                $memberSku,
+                strtoupper(trim((string) $memberSku)),
+                $normalizeSku($memberSku),
+            ];
+            foreach ($candidates as $key) {
+                if ($key === '' || ! isset($nrValues[$key])) {
+                    continue;
+                }
+                $raw = $nrValues[$key];
+                $val = is_array($raw) ? $raw : (is_string($raw) ? json_decode($raw, true) : null);
+                if (! is_array($val)) {
+                    continue;
+                }
+                $std = $val['STANDARD_PRICE'] ?? null;
+                if (is_numeric($std) && (float) $std > 0) {
+                    return round((float) $std, 2);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

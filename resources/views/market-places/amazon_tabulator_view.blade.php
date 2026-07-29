@@ -729,8 +729,8 @@
                                     <div id="lmpModalNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
                                 </div>
                                 <div class="col-auto small text-muted pb-1">
-                                    Standard Price (manual). Saves to <strong>SP</strong> only when you enter it here.
-                                    Use when LMP cannot be determined.
+                                    Standard Price (manual). Saves to <strong>SP</strong> for this SKU and all
+                                    <strong>Sku Link LMP</strong> siblings. Use when LMP cannot be determined.
                                 </div>
                             </div>
                         </div>
@@ -2369,17 +2369,40 @@
             refreshLmpModalSpMetrics();
         }
 
+        /** Apply STANDARD_PRICE to a SKU row + all Sku Link LMP siblings in the grid */
+        function applyStandardPriceToLinkedRows(sku, std, appliedSkus) {
+            if (typeof table === 'undefined' || !table) return null;
+            const target = String(sku || '').trim().toUpperCase();
+            const appliedSet = new Set(
+                (Array.isArray(appliedSkus) ? appliedSkus : [])
+                    .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                    .filter(Boolean)
+            );
+            if (target) appliedSet.add(target);
+
+            let primaryRow = null;
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || d.is_parent_summary) return;
+                const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+                if (!rowSku) return;
+                const rowKey = rowSku.toUpperCase();
+                const linked = Array.isArray(d.linked_lmp_skus) ? d.linked_lmp_skus : [];
+                const inGroup = appliedSet.has(rowKey)
+                    || linked.some(function(s) { return String(s || '').trim().toUpperCase() === target; })
+                    || (target && rowKey === target);
+                if (!inGroup) return;
+                r.update({ STANDARD_PRICE: std });
+                if (rowKey === target) primaryRow = r;
+            });
+            return primaryRow;
+        }
+
         function saveLmpModalSpToGrid() {
             const sku = currentLmpData.sku;
             const sp = parseFloat($('#lmpModalSpInput').val());
             if (!sku || !isFinite(sp) || sp <= 0) return;
             if (typeof table === 'undefined' || !table) return;
-            const row = (table.getRows() || []).find(function(r) {
-                const d = r.getData();
-                const rowSku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
-                return rowSku === String(sku).trim();
-            });
-            if (!row) return;
             $.ajax({
                 url: '/save-amazon-sprice',
                 method: 'POST',
@@ -2392,11 +2415,14 @@
                     is_standard_price: 1
                 },
                 success: function(response) {
-                    const updates = { STANDARD_PRICE: response.data || sp };
-                    row.update(updates);
-                    currentLmpData.rowData = row.getData();
+                    const std = response.data || sp;
+                    const primary = applyStandardPriceToLinkedRows(sku, std, response.applied_skus);
+                    if (primary) currentLmpData.rowData = primary.getData();
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                     if (typeof showToast === 'function') {
-                        showToast('success', 'Standard Price (SP) saved');
+                        showToast('success', n > 1
+                            ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
+                            : 'Standard Price (SP) saved');
                     }
                 },
                 error: function() {
@@ -7312,8 +7338,12 @@
                             is_standard_price: 1
                         },
                         success: function(response) {
-                            showToast('success', 'Standard Price (SP) saved');
-                            row.update({ STANDARD_PRICE: response.data || std });
+                            const saved = response.data || std;
+                            applyStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                            const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                            showToast('success', n > 1
+                                ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
+                                : 'Standard Price (SP) saved');
                         },
                         error: function() {
                             showToast('error', 'Failed to save Standard Price');
@@ -7518,7 +7548,10 @@
                 const dilFilter = $('#dil-filter').val();
                 const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
-                const parentRowsBypassDataFilters = (parentFilter === 'parents');
+                // Parents mode: only parent rows (bypass data filters).
+                // All Rows: show parents + SKUs — parents must bypass data filters or they get dropped.
+                // SKUs mode: parent rows are removed by the dedicated filter below.
+                const parentRowsBypassDataFilters = (parentFilter === 'parents' || parentFilter === 'all');
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
                 const spriceFilter = $('#sprice-filter').val();
