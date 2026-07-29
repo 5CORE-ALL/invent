@@ -6,9 +6,9 @@ use App\Models\ArrivedContainer;
 use App\Models\ComparisonData;
 use App\Models\CpHistory;
 use App\Models\ProductMaster;
-use App\Models\PurchaseOrder;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
+use App\Services\ArrivedContainerPoLookup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -190,7 +190,7 @@ class PricingContainerController extends Controller
                 ->get(['sku', 'sheet_data'])
                 ->keyBy(fn ($row) => strtoupper(trim((string) $row->sku)));
 
-        [$poBySku, $allPoOptions, $poPriceLookup] = $this->buildPoLookups();
+        [$poBySku, $allPoOptions, $poPriceLookup] = ArrivedContainerPoLookup::build();
         $rmbToUsd = $this->fetchRmbToUsdRate();
 
         $allRecords->transform(function ($record) use (
@@ -308,7 +308,7 @@ class PricingContainerController extends Controller
 
         return response()->json(array_merge([
             'success' => true,
-            'message' => 'PO Number / Link saved.',
+            'message' => 'PO Number / O link saved.',
             'po_number' => $row->po_number,
             'order_link' => $row->order_link,
         ], $pricing));
@@ -350,7 +350,7 @@ class PricingContainerController extends Controller
         }
         $cpRaw = is_array($pmValues) ? ($pmValues['cp'] ?? null) : null;
         $row->cp = ($cpRaw === null || $cpRaw === '') ? null : (is_numeric($cpRaw) ? round((float) $cpRaw, 2) : $cpRaw);
-        [, , $poPriceLookup] = $this->buildPoLookups();
+        [, , $poPriceLookup] = ArrivedContainerPoLookup::build();
         $rmbToUsd = $this->fetchRmbToUsdRate();
         $pricing = $this->resolvePricingFields($row, $skuKey, $poPriceLookup, $rmbToUsd);
         unset($pricing['_should_auto_save']);
@@ -406,82 +406,6 @@ class PricingContainerController extends Controller
             'cp_new' => $cpNew,
             'cp_master_updated' => (bool) ($cpMasterSync['updated'] ?? false),
         ]);
-    }
-
-    /**
-     * @return array{0: array, 1: array, 2: array}
-     */
-    private function buildPoLookups(): array
-    {
-        $poBySku = [];
-        $allPoOptions = [];
-        $poPriceLookup = [];
-
-        $poRows = PurchaseOrder::query()
-            ->where(function ($q) {
-                $q->where('is_archived', false)->orWhereNull('is_archived');
-            })
-            ->orderByDesc('id')
-            ->get(['id', 'po_number', 'items']);
-
-        foreach ($poRows as $po) {
-            $poNumber = trim((string) ($po->po_number ?? ''));
-            if ($poNumber === '') {
-                continue;
-            }
-            $pdfUrl = route('generate-pdf', ['id' => $po->id]);
-            $baseOption = [
-                'id' => (int) $po->id,
-                'po_number' => $poNumber,
-                'link' => $pdfUrl,
-                'page_url' => route('list-all-purchase-orders').'?po='.urlencode($poNumber),
-            ];
-            $allPoOptions[] = $baseOption;
-
-            $items = $po->items;
-            if (is_string($items)) {
-                $items = json_decode($items, true);
-            }
-            if (! is_array($items)) {
-                continue;
-            }
-
-            foreach ($items as $item) {
-                $itemSku = strtoupper(trim(preg_replace('/\s+/', ' ', (string) ($item['sku'] ?? ''))));
-                if ($itemSku === '') {
-                    continue;
-                }
-                $price = is_numeric($item['price'] ?? null) ? (float) $item['price'] : null;
-                $currency = strtoupper(trim((string) ($item['currency'] ?? 'USD')));
-                if ($currency === '') {
-                    $currency = 'USD';
-                }
-
-                $poPriceLookup[$poNumber][$itemSku] = [
-                    'price' => $price,
-                    'currency' => $currency,
-                ];
-
-                $option = array_merge($baseOption, [
-                    'price' => $price,
-                    'currency' => $currency,
-                ]);
-
-                $poBySku[$itemSku] ??= [];
-                $seen = false;
-                foreach ($poBySku[$itemSku] as $existing) {
-                    if (($existing['po_number'] ?? '') === $poNumber) {
-                        $seen = true;
-                        break;
-                    }
-                }
-                if (! $seen) {
-                    $poBySku[$itemSku][] = $option;
-                }
-            }
-        }
-
-        return [$poBySku, $allPoOptions, $poPriceLookup];
     }
 
     /**
@@ -636,7 +560,7 @@ class PricingContainerController extends Controller
         $cpRaw = is_array($values) ? ($values['cp'] ?? null) : null;
         $row->cp = ($cpRaw === null || $cpRaw === '') ? null : (is_numeric($cpRaw) ? round((float) $cpRaw, 2) : $cpRaw);
 
-        [, , $poPriceLookup] = $this->buildPoLookups();
+        [, , $poPriceLookup] = ArrivedContainerPoLookup::build();
         $rmbToUsd = $this->fetchRmbToUsdRate();
         $pricing = $this->resolvePricingFields($row, $skuKey, $poPriceLookup, $rmbToUsd);
 

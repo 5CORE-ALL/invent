@@ -324,6 +324,8 @@
         </div>
     </div>
 </div>
+
+@include('purchase-master.partials.arrived-po-olink-edit')
 @endsection
 
 @section('script')
@@ -464,6 +466,19 @@ function invVerifyColumns() {
                 openInvVerifyDiscModal(cell.getRow());
             }
         },
+        {
+            title: "O link",
+            headerTooltip: "Order link",
+            field: "order_link",
+            headerSort: false,
+            hozAlign: "center",
+            width: 70,
+            formatter: function(cell) {
+                const url = String(cell.getValue() || '').trim();
+                if (!url) return '—';
+                return `<a href="${escHtml(url)}" target="_blank" rel="noopener" title="${escHtml(url)}"><i class="fas fa-external-link-alt" style="color:#2563eb;"></i></a>`;
+            }
+        },
         { title: "Qty / Ctns", field: "no_of_units" },
         { title: "Qty Ctns", field: "total_ctn" },
         {
@@ -493,7 +508,16 @@ function invVerifyColumns() {
                 const d = cell.getRow().getData() || {};
                 openInvAddActionModal(d.id, d.our_sku || '', d.supplier_name || '', cell.getRow());
             }
-        }
+        },
+        (typeof window.arrivedPoOlinkActionsColumn === 'function'
+            ? window.arrivedPoOlinkActionsColumn({ width: 70 })
+            : {
+                title: "Actions",
+                headerSort: false,
+                hozAlign: "center",
+                width: 70,
+                formatter: function() { return '—'; }
+            })
     ];
 }
 
@@ -727,6 +751,7 @@ document.getElementById('export-tab-excel')?.addEventListener('click', function(
         "Parent": row.parent,
         "SKU": row.our_sku,
         "Supplier": row.supplier_name,
+        "O link": row.order_link || "",
         "Qty / Ctns": row.no_of_units,
         "Qty Ctns": row.total_ctn,
         "Qty": (parseFloat(row.no_of_units) || 0) * (parseFloat(row.total_ctn) || 0)

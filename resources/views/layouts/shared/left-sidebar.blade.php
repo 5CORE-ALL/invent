@@ -1159,6 +1159,15 @@
                                         <a href="{{ route('amz.variation.verify') }}">Amazon Ads Variation Verification</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('amz.buybox') }}">Amz Buybox</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('amz.reviews') }}">Amz Reviews</a>
+                                    </li>
+                                    <li>
+                                        <a href="{{ route('amz.titles') }}">Amz Titles</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('amz.listing.variation.verify') }}">Amz Listing Variation Verify</a>
                                     </li>
                                     <li>

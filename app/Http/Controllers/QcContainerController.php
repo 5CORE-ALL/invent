@@ -9,6 +9,7 @@ use App\Models\ProductMaster;
 use App\Models\QcContainerAudit;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
+use App\Services\ArrivedContainerPoLookup;
 use App\Services\ComparisonSheetService;
 use App\Services\ComparisonSheetStorage;
 use Illuminate\Http\Request;
@@ -225,6 +226,9 @@ class QcContainerController extends Controller
             return $record;
         });
 
+        [$poBySku, $allPoOptions] = ArrivedContainerPoLookup::build();
+        ArrivedContainerPoLookup::attachPoOptions($allRecords, $poBySku);
+
         $groupedData = $allRecords->groupBy('tab_name');
         foreach ($tabs as $tab) {
             if (! isset($groupedData[$tab])) {
@@ -237,6 +241,7 @@ class QcContainerController extends Controller
         return view('purchase-master.transit_container.qc-container', [
             'tabs' => $tabs,
             'groupedData' => $groupedData,
+            'allPoOptions' => $allPoOptions,
         ]);
     }
 

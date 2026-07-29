@@ -2109,37 +2109,54 @@
                         width: 80
                     },
                     {
-                        title: "Links",
-                        field: "links_column",
+                        title: "Buyer Link",
+                        field: "asin",
                         frozen: true,
-                        width: 100,
+                        width: 90,
                         hozAlign: "center",
                         visible: false,
+                        headerTooltip: "Dynamic buyer link (same as /listing-amazon): https://www.amazon.com/dp/{asin}",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const buyerLink = rowData['buyer_link'] || '';
-                            const sellerLink = rowData['seller_link'] || '';
-                            
-                            let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-                            
-                            if (sellerLink) {
-                                html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> S Link
-                                </a>`;
+                            const row = cell.getRow().getData();
+                            if (row.is_parent_summary) return '';
+                            const itemId = String(row.asin || '').trim();
+                            if (!itemId) {
+                                return '<span class="text-muted" title="No amazon ASIN">—</span>';
                             }
-                            
-                            if (buyerLink) {
-                                html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
-                                    <i class="fa fa-link"></i> B Link
-                                </a>`;
+                            const href = 'https://www.amazon.com/dp/' + encodeURIComponent(itemId);
+                            const safeAsin = String(itemId).replace(/"/g, '&quot;');
+                            return `<a href="${href}" target="_blank" rel="noopener noreferrer"
+                                title="Buyer link — Amazon ASIN ${safeAsin}"
+                                style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
+                                onclick="event.stopPropagation();">
+                                <i class="fas fa-external-link-alt me-1"></i>Buyer
+                            </a>`;
+                        },
+                        headerSort: false
+                    },
+                    {
+                        title: "Seller Link",
+                        field: "seller_asin_link",
+                        frozen: true,
+                        width: 90,
+                        hozAlign: "center",
+                        visible: false,
+                        headerTooltip: "Dynamic seller link (same as /listing-amazon): Seller Central inventory by ASIN",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent_summary) return '';
+                            const itemId = String(row.asin || '').trim();
+                            if (!itemId) {
+                                return '<span class="text-muted" title="No amazon ASIN">—</span>';
                             }
-                            
-                            if (!sellerLink && !buyerLink) {
-                                html += '<span class="text-muted" style="font-size: 12px;">-</span>';
-                            }
-                            
-                            html += '</div>';
-                            return html;
+                            const href = 'https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' + encodeURIComponent(itemId);
+                            const safeAsin = String(itemId).replace(/"/g, '&quot;');
+                            return `<a href="${href}" target="_blank" rel="noopener noreferrer"
+                                title="Seller Central inventory — Amazon ASIN ${safeAsin}"
+                                style="font-weight:600;color:#0d6efd;text-decoration:none;font-size:12px;"
+                                onclick="event.stopPropagation();">
+                                <i class="fas fa-external-link-alt me-1"></i>Seller
+                            </a>`;
                         },
                         headerSort: false
                     },

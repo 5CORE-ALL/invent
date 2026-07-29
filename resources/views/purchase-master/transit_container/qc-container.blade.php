@@ -614,6 +614,8 @@
     </div>
 </div>
 
+@include('purchase-master.partials.arrived-po-olink-edit')
+
 @endsection
 
 @section('script')
@@ -626,6 +628,13 @@ document.body.style.zoom = "80%";
 let tabCounter = {{ count($tabs) }};
 const tabs = @json($tabs);
 const groupedData = @json($groupedData);
+const purchaseOrdersPageUrl = @json(route('list-all-purchase-orders'));
+
+function escHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 tabs.forEach((tabName, index) => {
     const data = groupedData[tabName] || [];
@@ -817,6 +826,33 @@ tabs.forEach((tabName, index) => {
               }
             },
             {
+              title: "PO",
+              field: "po_number",
+              headerSort: true,
+              headerTooltip: "PO Number (from list-all-purchase-orders)",
+              hozAlign: "center",
+              minWidth: 110,
+              formatter: function(cell) {
+                const po = String(cell.getValue() || '').trim();
+                if (!po) return '—';
+                const href = purchaseOrdersPageUrl + '?po=' + encodeURIComponent(po);
+                return `<a href="${escHtml(href)}" target="_blank" rel="noopener" title="Open in Purchase Orders">${escHtml(po)}</a>`;
+              }
+            },
+            {
+              title: "O link",
+              headerTooltip: "Order link",
+              field: "order_link",
+              headerSort: false,
+              hozAlign: "center",
+              width: 70,
+              formatter: function(cell) {
+                const url = String(cell.getValue() || '').trim();
+                if (!url) return '—';
+                return `<a href="${escHtml(url)}" target="_blank" rel="noopener" title="${escHtml(url)}"><i class="fas fa-external-link-alt" style="color:#2563eb;"></i></a>`;
+              }
+            },
+            {
               title: "QC",
               field: "qc_audit",
               hozAlign: "center",
@@ -929,6 +965,15 @@ tabs.forEach((tabName, index) => {
                             </span>`;
                 }
             },
+            (typeof window.arrivedPoOlinkActionsColumn === 'function'
+                ? window.arrivedPoOlinkActionsColumn({ width: 70 })
+                : {
+                    title: "Actions",
+                    headerSort: false,
+                    hozAlign: "center",
+                    width: 70,
+                    formatter: function() { return '—'; }
+                }),
 
         ],
     });

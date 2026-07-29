@@ -4,6 +4,7 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\InventoryWarehouse;
+use App\Models\PurchaseOrder;
 use App\Models\TransitContainerDetail;
 use App\Models\TransitContainerHistory;
 use App\Models\TransitDropdownOption;
@@ -226,6 +227,35 @@ class TransitContainerDetailsController extends Controller
             $allRecords->map(fn ($r) => strtoupper(trim(preg_replace('/\s+/', ' ', $r->our_sku ?? ''))))->filter()->unique()->values()->all()
         );
 
+        // Latest PO number per SKU from list-all-purchase-orders (same source as /pricing/container).
+        $poNumberBySku = [];
+        $poRows = PurchaseOrder::query()
+            ->where(function ($q) {
+                $q->where('is_archived', false)->orWhereNull('is_archived');
+            })
+            ->orderByDesc('id')
+            ->get(['po_number', 'items']);
+        foreach ($poRows as $po) {
+            $poNumber = trim((string) ($po->po_number ?? ''));
+            if ($poNumber === '') {
+                continue;
+            }
+            $items = $po->items;
+            if (is_string($items)) {
+                $items = json_decode($items, true);
+            }
+            if (! is_array($items)) {
+                continue;
+            }
+            foreach ($items as $item) {
+                $itemSku = $normalizeSku($item['sku'] ?? '');
+                if ($itemSku === '' || isset($poNumberBySku[$itemSku])) {
+                    continue;
+                }
+                $poNumberBySku[$itemSku] = $poNumber;
+            }
+        }
+
         // Transform TransitContainerDetail Records
         $allRecords->transform(function ($record) use (
             $skuParentMap,
@@ -238,6 +268,7 @@ class TransitContainerDetailsController extends Controller
             $categoryBySku,
             $toOrderSupplierBySku,
             $mfrgSupplierBySku,
+            $poNumberBySku,
             $normalizeSku
         ) {
             $sku = $normalizeSku($record->our_sku ?? '');
@@ -281,6 +312,7 @@ class TransitContainerDetailsController extends Controller
             $record->last_saved_at = $lastSaved['saved_at']  ?? ($record->created_at ? $record->created_at->format('d M H:i') : '—');
             $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
             $record->Category = $categoryBySku[$sku] ?? '';
+            $record->po_number = $poNumberBySku[$sku] ?? null;
 
             return $record;
         });

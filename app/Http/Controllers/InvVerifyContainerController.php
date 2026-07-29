@@ -7,6 +7,7 @@ use App\Models\InvVerifyContainerAudit;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
+use App\Services\ArrivedContainerPoLookup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -173,6 +174,9 @@ class InvVerifyContainerController extends Controller
             return $record;
         });
 
+        [$poBySku, $allPoOptions] = ArrivedContainerPoLookup::build();
+        ArrivedContainerPoLookup::attachPoOptions($allRecords, $poBySku);
+
         $groupedData = $allRecords->groupBy('tab_name');
         foreach ($tabs as $tab) {
             if (! isset($groupedData[$tab])) {
@@ -185,6 +189,7 @@ class InvVerifyContainerController extends Controller
         return view('purchase-master.transit_container.inv-verify-container', [
             'tabs' => $tabs,
             'groupedData' => $groupedData,
+            'allPoOptions' => $allPoOptions,
         ]);
     }
 

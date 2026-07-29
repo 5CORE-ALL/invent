@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\AmazonSkuDailyData;
+use App\Models\AmazonDataView;
 use App\Models\ProductMaster;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonSpCampaignReport;
@@ -108,6 +109,29 @@ class CollectAmazonMetrics extends Command
                 $chunkCollected = 0;
                 $chunkSkipped = 0;
 
+                $chunkSkus = [];
+                foreach ($chunk as $amazonSheet) {
+                    $sku = strtoupper(trim($amazonSheet->sku ?? ''));
+                    if ($sku !== '' && stripos($sku, 'PARENT') === false) {
+                        $chunkSkus[] = $sku;
+                    }
+                }
+                $spriceBySku = [];
+                if (! empty($chunkSkus)) {
+                    AmazonDataView::whereIn('sku', $chunkSkus)
+                        ->select('sku', 'value')
+                        ->get()
+                        ->each(function ($row) use (&$spriceBySku) {
+                            $val = is_array($row->value)
+                                ? $row->value
+                                : (json_decode($row->value ?? '{}', true) ?: []);
+                            $sp = isset($val['SPRICE']) ? floatval($val['SPRICE']) : 0;
+                            if ($sp > 0) {
+                                $spriceBySku[strtoupper(trim($row->sku))] = round($sp, 2);
+                            }
+                        });
+                }
+
                 foreach ($chunk as $amazonSheet) {
                     $sku = strtoupper(trim($amazonSheet->sku));
 
@@ -121,10 +145,8 @@ class CollectAmazonMetrics extends Command
                         $aL30 = intval($amazonSheet->units_ordered_l30 ?? 0);
                         $organicViews = intval($amazonSheet->organic_views ?? 0);
 
-                        $cvr = 0;
-                        if ($views > 0 && $aL30 > 0) {
-                            $cvr = ($aL30 / $views) * 100;
-                        }
+                        // Same formula as amazon-tabulator-view CVR L30: (A_L30 / Sess30) × 100
+                        $cvr = $views > 0 ? (($aL30 / $views) * 100) : 0;
 
                         $matchedCampaignKwL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
                             $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
@@ -143,9 +165,11 @@ class CollectAmazonMetrics extends Command
 
                         $totalRevenue = $price * $aL30;
                         $adPercent = $totalRevenue > 0 ? ($adSpendL30 / $totalRevenue) * 100 : 0;
+                        $sprice = $spriceBySku[$sku] ?? ($price > 0 ? round($price, 2) : 0);
 
                         $dailyData = [
                             'price' => round($price, 2),
+                            'sprice' => $sprice,
                             'views' => $views,
                             'cvr_percent' => round($cvr, 2),
                             'ad_percent' => round($adPercent, 2),

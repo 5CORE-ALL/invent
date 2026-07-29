@@ -682,6 +682,10 @@
                         <label class="form-label fw-semibold" for="transit-edit-clink">C link</label>
                         <input type="url" id="transit-edit-clink" class="form-control" placeholder="https://...">
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold" for="transit-edit-olink">O link</label>
+                        <input type="url" id="transit-edit-olink" class="form-control" placeholder="https://...">
+                    </div>
                     <div class="col-md-3">
                         <label class="form-label fw-semibold" for="transit-edit-imp">Imp name</label>
                         <select id="transit-edit-imp" class="form-select transit-imp-select">
@@ -823,6 +827,7 @@
 let tabCounter = {{ count($tabs) }};
 const groupedData = @json($groupedData);
 const CAN_EDIT_DELETE = @json($canEditDelete ?? false);
+const purchaseOrdersPageUrl = @json(route('list-all-purchase-orders'));
 
 function transitCellEditor(editor) {
     // Inline cell editors disabled — edit via Edit Modal Form only.
@@ -883,6 +888,7 @@ function openTransitEditModal(row, table, index) {
     setVal('transit-edit-changes', data.changes || '');
     setVal('transit-edit-spec', data.specification || '');
     setVal('transit-edit-clink', data.Clink || '');
+    setVal('transit-edit-olink', data.order_link || '');
     setVal('transit-edit-photos', data.photos || '');
 
     const titleSku = document.getElementById('transit-edit-modal-sku');
@@ -914,6 +920,7 @@ function saveTransitEditModal() {
     if (!(qty > 0)) qty = units * ctn;
     const rate = parseFloat(document.getElementById('transit-edit-rate')?.value) || 0;
     const clink = (document.getElementById('transit-edit-clink')?.value || '').trim();
+    const olink = (document.getElementById('transit-edit-olink')?.value || '').trim();
 
     const payload = {
         id: id || undefined,
@@ -930,6 +937,7 @@ function saveTransitEditModal() {
         changes: document.getElementById('transit-edit-changes')?.value || '',
         specification: document.getElementById('transit-edit-spec')?.value || '',
         photos: document.getElementById('transit-edit-photos')?.value || '',
+        order_link: olink,
         pcs_qty: qty,
         amount: rate * qty,
     };
@@ -971,6 +979,7 @@ function saveTransitEditModal() {
             const rowUpdate = Object.assign({}, payload, {
                 id: response.id || payload.id,
                 Clink: clink,
+                order_link: olink,
             });
             if (transitEditContext.row && typeof transitEditContext.row.update === 'function') {
                 transitEditContext.row.update(rowUpdate);
@@ -1060,6 +1069,19 @@ function transitClinkLinkFormatter(cell) {
             </div>
         `;
     }
+    return '<span class="text-muted">—</span>';
+}
+
+function transitOlinkFormatter(cell) {
+    const url = String(cell.getValue() || '').trim();
+    if (!url) return '<span class="text-muted">—</span>';
+    return `<div style="display:flex;align-items:center;justify-content:center;">
+        <a href="${escapeHtmlTransit(url)}" target="_blank" rel="noopener noreferrer"
+            class="btn btn-sm btn-outline-primary"
+            title="${escapeHtmlTransit(url)}" aria-label="Open order link">
+            <i class="fas fa-external-link-alt"></i>
+        </a>
+    </div>`;
 }
 
 function escapeHtmlTransit(s) {
@@ -1347,6 +1369,29 @@ TAB_NAMES.forEach((tabName, index) => {
                 },
             },
             {
+                title: "PO",
+                field: "po_number",
+                headerSort: true,
+                headerTooltip: "PO Number (from list-all-purchase-orders)",
+                hozAlign: "center",
+                minWidth: 110,
+                formatter: function(cell) {
+                    const po = String(cell.getValue() || '').trim();
+                    if (!po) return '—';
+                    const href = purchaseOrdersPageUrl + '?po=' + encodeURIComponent(po);
+                    return `<a href="${escapeHtmlTransit(href)}" target="_blank" rel="noopener" title="Open in Purchase Orders">${escapeHtmlTransit(po)}</a>`;
+                }
+            },
+            {
+                title: "O link",
+                headerTooltip: "Order link",
+                field: "order_link",
+                headerSort: false,
+                hozAlign: "center",
+                width: 70,
+                formatter: transitOlinkFormatter,
+            },
+            {
                 title: "Cat",
                 headerTooltip: "Category",
                 field: "Category",
@@ -1592,6 +1637,8 @@ TAB_NAMES.forEach((tabName, index) => {
               return {
                   "SKU": row.our_sku,
                   "Supplier": supplierCol,
+                  "PO": row.po_number || "",
+                  "O link": row.order_link || "",
                   "Qty / Ctns": row.no_of_units,
                   "Qty Ctns": row.total_ctn,
                   "Qty": qty,

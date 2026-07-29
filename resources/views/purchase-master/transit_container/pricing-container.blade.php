@@ -137,48 +137,7 @@
   <img src="" style="max-height:250px; max-width:350px;">
 </div>
 
-{{-- Edit PO Number / Link --}}
-<div class="modal fade" id="pricingPoEditModal" tabindex="-1" aria-labelledby="pricingPoEditModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title" id="pricingPoEditModalLabel">Edit PO Number / Link</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="pricing-po-row-id" value="">
-                <div class="mb-2">
-                    <label class="form-label fw-semibold mb-1">SKU</label>
-                    <input type="text" id="pricing-po-sku" class="form-control form-control-sm" readonly>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label fw-semibold mb-1">PO Number <span class="text-muted fw-normal">(from Purchase Orders)</span></label>
-                    <select id="pricing-po-select" class="form-select form-select-sm">
-                        <option value="">— Select PO —</option>
-                    </select>
-                    <div class="form-text">
-                        Source: <a href="{{ route('list-all-purchase-orders') }}" target="_blank" rel="noopener">list-all-purchase-orders</a>
-                    </div>
-                </div>
-                <div class="mb-2">
-                    <label class="form-label fw-semibold mb-1">Or type PO Number</label>
-                    <input type="text" id="pricing-po-number" class="form-control form-control-sm" placeholder="PO number" autocomplete="off">
-                </div>
-                <div class="mb-0">
-                    <label class="form-label fw-semibold mb-1">Link</label>
-                    <input type="text" id="pricing-po-link" class="form-control form-control-sm" placeholder="https://... or /path" autocomplete="off">
-                </div>
-                <div id="pricing-po-save-msg" class="small mt-2" style="display:none;"></div>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-sm btn-primary" id="pricing-po-save-btn">
-                    <i class="fas fa-save me-1"></i>Save
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+@include('purchase-master.partials.arrived-po-olink-edit')
 
 {{-- Approved Yes/No + Reason --}}
 <div class="modal fade" id="pricingApproveModal" tabindex="-1" aria-labelledby="pricingApproveModalLabel" aria-hidden="true">
@@ -239,15 +198,12 @@
 document.body.style.zoom = "90%";
 const tabs = @json($tabs);
 const groupedData = @json($groupedData);
-const allPoOptions = @json($allPoOptions ?? []);
 const approveYesReasons = @json($approveYesReasons ?? []);
 const approveNoReasons = @json($approveNoReasons ?? []);
 const comparisonSheetPageUrl = @json(route('comparison.sheet.page'));
 const purchaseOrdersPageUrl = @json(route('list-all-purchase-orders'));
-const pricingSavePoUrl = @json(route('pricing.container.save-po'));
 const pricingSaveApprovalUrl = @json(route('pricing.container.save-approval'));
 window.tabTables = window.tabTables || {};
-let pricingEditRowRef = null;
 let pricingApproveRowRef = null;
 
 function escHtml(s) {
@@ -384,10 +340,10 @@ function pricingColumns() {
             }
         },
         {
-            title: "Link",
+            title: "O link",
             field: "order_link",
             headerSort: false,
-            headerTooltip: "Order / PO link",
+            headerTooltip: "Order link",
             hozAlign: "center",
             width: 70,
             formatter: function(cell) {
@@ -469,27 +425,15 @@ function pricingColumns() {
                 openPricingApproveModal(cell.getRow());
             }
         },
-        {
-            title: "Edit",
-            field: "edit_po",
-            headerSort: false,
-            hozAlign: "center",
-            width: 64,
-            formatter: function(cell) {
-                const d = cell.getRow().getData() || {};
-                const id = d.id || '';
-                return `<button type="button" class="btn btn-sm btn-outline-primary pricing-po-edit-btn" data-id="${escHtml(id)}" title="Edit PO Number / Link">
-                    <i class="fas fa-pen"></i>
-                </button>`;
-            },
-            cellClick: function(e, cell) {
-                const btn = e.target.closest('.pricing-po-edit-btn');
-                if (!btn) return;
-                e.preventDefault();
-                e.stopPropagation();
-                openPricingPoEditModal(cell.getRow());
-            }
-        }
+        (typeof window.arrivedPoOlinkActionsColumn === 'function'
+            ? window.arrivedPoOlinkActionsColumn({ width: 70 })
+            : {
+                title: "Actions",
+                headerSort: false,
+                hozAlign: "center",
+                width: 70,
+                formatter: function() { return '—'; }
+            })
     ];
 }
 
@@ -520,37 +464,6 @@ function openPricingApproveModal(row) {
     msg.style.display = 'none';
     msg.textContent = '';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('pricingApproveModal')).show();
-}
-
-function fillPoSelect(options, selectedPo) {
-    const sel = document.getElementById('pricing-po-select');
-    if (!sel) return;
-    const selected = String(selectedPo || '').trim();
-    let html = '<option value="">— Select PO —</option>';
-    (options || []).forEach(function(opt) {
-        const po = String(opt.po_number || '').trim();
-        if (!po) return;
-        const isSel = po === selected ? ' selected' : '';
-        html += `<option value="${escHtml(po)}" data-link="${escHtml(opt.link || '')}"${isSel}>${escHtml(po)}</option>`;
-    });
-    sel.innerHTML = html;
-}
-
-function openPricingPoEditModal(row) {
-    pricingEditRowRef = row;
-    const d = row.getData() || {};
-    document.getElementById('pricing-po-row-id').value = d.id || '';
-    document.getElementById('pricing-po-sku').value = d.our_sku || '';
-    document.getElementById('pricing-po-number').value = d.po_number || '';
-    document.getElementById('pricing-po-link').value = d.order_link || '';
-    const msg = document.getElementById('pricing-po-save-msg');
-    msg.style.display = 'none';
-    msg.textContent = '';
-
-    const skuOptions = Array.isArray(d.po_options) && d.po_options.length ? d.po_options : allPoOptions;
-    fillPoSelect(skuOptions, d.po_number || '');
-
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('pricingPoEditModal')).show();
 }
 
 tabs.forEach(function(tabName, index) {
@@ -637,7 +550,7 @@ document.getElementById('export-tab-excel')?.addEventListener('click', function(
         "CP": row.cp,
         "Rate ($)": row.rate,
         "PO Number": row.po_number,
-        "Link": row.order_link,
+        "O link": row.order_link,
         "CP New": row.cp_new,
         "% Diff": row.cp_diff_pct,
         "Approved": row.cp_approved,
@@ -656,80 +569,6 @@ document.addEventListener('click', function(e) {
     const sku = String(btn.getAttribute('data-sku') || '').trim();
     if (!sku) return;
     window.open(comparisonSheetPageUrl + '?sku=' + encodeURIComponent(sku), '_blank', 'noopener');
-});
-
-document.getElementById('pricing-po-select')?.addEventListener('change', function() {
-    const opt = this.options[this.selectedIndex];
-    const po = String(this.value || '').trim();
-    const link = opt ? String(opt.getAttribute('data-link') || '').trim() : '';
-    if (po) {
-        document.getElementById('pricing-po-number').value = po;
-    }
-    if (link) {
-        document.getElementById('pricing-po-link').value = link;
-    }
-});
-
-document.getElementById('pricing-po-save-btn')?.addEventListener('click', async function() {
-    const id = parseInt(document.getElementById('pricing-po-row-id').value || '0', 10);
-    const poNumber = String(document.getElementById('pricing-po-number').value || '').trim();
-    const orderLink = String(document.getElementById('pricing-po-link').value || '').trim();
-    const msg = document.getElementById('pricing-po-save-msg');
-    const btn = this;
-    if (!id) {
-        msg.style.display = 'block';
-        msg.className = 'small mt-2 text-danger';
-        msg.textContent = 'Missing row id.';
-        return;
-    }
-    btn.disabled = true;
-    msg.style.display = 'none';
-    try {
-        const res = await fetch(pricingSavePoUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-            },
-            body: JSON.stringify({
-                id: id,
-                po_number: poNumber,
-                order_link: orderLink
-            })
-        });
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-            throw new Error(json.message || 'Save failed.');
-        }
-        if (pricingEditRowRef) {
-            pricingEditRowRef.update({
-                po_number: json.po_number || '',
-                order_link: json.order_link || '',
-                cp: json.cp,
-                cp_new: json.cp_new,
-                cp_diff_pct: json.cp_diff_pct,
-                po_price: json.po_price,
-                po_currency: json.po_currency,
-                rmb_to_usd: json.rmb_to_usd,
-                cp_approved: json.cp_approved,
-                cp_approved_reason: json.cp_approved_reason,
-                cp_approved_auto: json.cp_approved_auto
-            });
-        }
-        msg.style.display = 'block';
-        msg.className = 'small mt-2 text-success';
-        msg.textContent = json.message || 'Saved.';
-        setTimeout(function() {
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('pricingPoEditModal')).hide();
-        }, 400);
-    } catch (err) {
-        msg.style.display = 'block';
-        msg.className = 'small mt-2 text-danger';
-        msg.textContent = err.message || 'Save failed.';
-    } finally {
-        btn.disabled = false;
-    }
 });
 
 document.getElementById('pricing-approve-value')?.addEventListener('change', function() {

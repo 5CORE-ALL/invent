@@ -1753,7 +1753,7 @@ class AmazonSpApiService
      * Uses Catalog Items API v2022-04-01.
      * @param array{catalog_raw?: array} $context Optional - stores raw response for debug
      */
-    public function getCatalogItemByAsin(string $asin, array &$context = []): ?array
+    public function getCatalogItemByAsin(string $asin, array &$context = [], ?string $includedData = null): ?array
     {
         try {
             $accessToken = $this->getAccessToken();
@@ -1766,10 +1766,12 @@ class AmazonSpApiService
                 Log::warning('Catalog API: No marketplace_id configured');
                 return null;
             }
+            $includedData = $includedData
+                ?: 'attributes,dimensions,identifiers,productTypes,summaries';
             $asinEncoded = rawurlencode($asin);
             $url = 'https://sellingpartnerapi-na.amazon.com/catalog/2022-04-01/items/' . $asinEncoded
                 . '?marketplaceIds=' . $marketplaceId
-                . '&includedData=attributes,dimensions,identifiers,productTypes,summaries';
+                . '&includedData=' . rawurlencode($includedData);
 
             Log::info('Catalog API: Calling getCatalogItem', ['asin' => $asin, 'url' => $url]);
 
@@ -1797,6 +1799,7 @@ class AmazonSpApiService
                 'has_attributes' => ! empty($body['attributes']),
                 'has_dimensions' => ! empty($body['dimensions']),
                 'has_identifiers' => ! empty($body['identifiers']),
+                'has_customer_reviews' => ! empty($body['customerReviews']),
             ]);
 
             return $body;
@@ -1804,6 +1807,51 @@ class AmazonSpApiService
             Log::warning('Catalog API: Exception', ['asin' => $asin, 'error' => $e->getMessage()]);
             return null;
         }
+    }
+
+    /**
+     * Avg star rating + review count from Catalog Items customerReviews (when role allows).
+     *
+     * @return array{rating: float|null, review_count: int|null}
+     */
+    public function getCatalogReviewSummaryByAsin(string $asin): array
+    {
+        $ctx = [];
+        $body = $this->getCatalogItemByAsin($asin, $ctx, 'summaries,customerReviews');
+        if (! is_array($body)) {
+            return ['rating' => null, 'review_count' => null];
+        }
+
+        $reviews = $body['customerReviews'] ?? [];
+        if (! is_array($reviews)) {
+            $reviews = [];
+        }
+
+        $rating = $reviews['starRating']
+            ?? $reviews['star_rating']
+            ?? $reviews['averageRating']
+            ?? $reviews['rating']
+            ?? null;
+        $count = $reviews['count']
+            ?? $reviews['reviewCount']
+            ?? $reviews['totalReviewCount']
+            ?? null;
+
+        // Some marketplaces nest under summaries
+        if (($rating === null || $count === null) && ! empty($body['summaries'][0])) {
+            $summary = $body['summaries'][0];
+            $rating = $rating ?? ($summary['starRating'] ?? $summary['websiteDisplayGroup'] ?? null);
+            if (isset($summary['customerReviews']) && is_array($summary['customerReviews'])) {
+                $cr = $summary['customerReviews'];
+                $rating = $rating ?? ($cr['starRating'] ?? $cr['averageRating'] ?? null);
+                $count = $count ?? ($cr['count'] ?? $cr['reviewCount'] ?? null);
+            }
+        }
+
+        return [
+            'rating' => is_numeric($rating) ? round((float) $rating, 2) : null,
+            'review_count' => is_numeric($count) ? (int) $count : null,
+        ];
     }
 
     /**
@@ -5065,5 +5113,334 @@ class AmazonSpApiService
                 ]]
             ];
         }
+    }
+
+    /**
+     * Product Pricing API — getListingOffers for a Seller SKU.
+     * GET /products/pricing/v0/listings/{SellerSKU}/offers
+     *
+     * @return array{success: bool, payload?: array, status?: int, error?: string, raw?: mixed}
+     */
+    public function getListingOffers(string $sku, string $itemCondition = 'New'): array
+    {
+        $sku = $this->normalizeListingsSellerSku(trim($sku));
+        if ($sku === '') {
+            return ['success' => false, 'error' => 'SKU is required'];
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                return ['success' => false, 'error' => 'Unable to obtain SP-API access token'];
+            }
+
+            $marketplaceId = config('services.amazon_sp.marketplace_id') ?: ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+            $encodedSku = rawurlencode($sku);
+            $url = $this->endpoint.'/products/pricing/v0/listings/'.$encodedSku.'/offers'
+                .'?MarketplaceId='.rawurlencode($marketplaceId)
+                .'&ItemCondition='.rawurlencode($itemCondition);
+
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->connectTimeout(20)
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Accept' => 'application/json',
+                ])
+                ->get($url);
+
+            $body = $response->json();
+            $status = $response->status();
+
+            if ($response->failed()) {
+                $msg = is_array($body) && ! empty($body['errors'][0]['message'])
+                    ? (string) $body['errors'][0]['message']
+                    : ('HTTP '.$status);
+
+                Log::warning('Amazon getListingOffers failed', [
+                    'sku' => $sku,
+                    'status' => $status,
+                    'body' => $body,
+                ]);
+
+                return [
+                    'success' => false,
+                    'status' => $status,
+                    'error' => $msg,
+                    'raw' => $body,
+                ];
+            }
+
+            $payload = is_array($body) ? ($body['payload'] ?? $body) : null;
+            if (! is_array($payload)) {
+                return [
+                    'success' => false,
+                    'status' => $status,
+                    'error' => 'Empty listing offers payload',
+                    'raw' => $body,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'status' => $status,
+                'payload' => $payload,
+                'raw' => $body,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Amazon getListingOffers exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Product Pricing API — getItemOffers by ASIN.
+     * GET /products/pricing/v0/items/{Asin}/offers
+     *
+     * @return array{success: bool, payload?: array, status?: int, error?: string, raw?: mixed}
+     */
+    public function getItemOffers(string $asin, string $itemCondition = 'New'): array
+    {
+        $asin = strtoupper(trim($asin));
+        if ($asin === '') {
+            return ['success' => false, 'error' => 'ASIN is required'];
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                return ['success' => false, 'error' => 'Unable to obtain SP-API access token'];
+            }
+
+            $marketplaceId = config('services.amazon_sp.marketplace_id') ?: ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+            $url = $this->endpoint.'/products/pricing/v0/items/'.rawurlencode($asin).'/offers'
+                .'?MarketplaceId='.rawurlencode($marketplaceId)
+                .'&ItemCondition='.rawurlencode($itemCondition);
+
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->connectTimeout(20)
+                ->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Accept' => 'application/json',
+                ])
+                ->get($url);
+
+            $body = $response->json();
+            $status = $response->status();
+
+            if ($response->failed()) {
+                $msg = is_array($body) && ! empty($body['errors'][0]['message'])
+                    ? (string) $body['errors'][0]['message']
+                    : ('HTTP '.$status);
+
+                return [
+                    'success' => false,
+                    'status' => $status,
+                    'error' => $msg,
+                    'raw' => $body,
+                ];
+            }
+
+            $payload = is_array($body) ? ($body['payload'] ?? $body) : null;
+            if (! is_array($payload)) {
+                return [
+                    'success' => false,
+                    'status' => $status,
+                    'error' => 'Empty item offers payload',
+                    'raw' => $body,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'status' => $status,
+                'payload' => $payload,
+                'raw' => $body,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Flatten SP-API Listing/Item Offers payload into amazon_buybox_data columns.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function flattenBuyboxOffersPayload(array $payload, string $sku): array
+    {
+        $summary = is_array($payload['Summary'] ?? null) ? $payload['Summary'] : [];
+        $offers = is_array($payload['Offers'] ?? null) ? $payload['Offers'] : [];
+
+        $statusArr = $payload['status'] ?? ($payload['Status'] ?? null);
+        $status = is_array($statusArr) ? implode(',', $statusArr) : (string) ($statusArr ?? '');
+
+        $money = static function ($node): ?float {
+            if (! is_array($node)) {
+                return null;
+            }
+            if (isset($node['Amount']) && is_numeric($node['Amount'])) {
+                return round((float) $node['Amount'], 2);
+            }
+
+            return null;
+        };
+
+        $pickPriceRow = static function (array $rows, ?string $preferChannel = null) use ($money): array {
+            if ($rows === []) {
+                return [];
+            }
+            $chosen = $rows[0];
+            if ($preferChannel) {
+                foreach ($rows as $row) {
+                    if (strcasecmp((string) ($row['fulfillmentChannel'] ?? ''), $preferChannel) === 0) {
+                        $chosen = $row;
+                        break;
+                    }
+                }
+            }
+
+            return [
+                'listing' => $money($chosen['ListingPrice'] ?? null),
+                'landed' => $money($chosen['LandedPrice'] ?? null),
+                'shipping' => $money($chosen['Shipping'] ?? null),
+                'currency' => $chosen['ListingPrice']['CurrencyCode']
+                    ?? $chosen['LandedPrice']['CurrencyCode']
+                    ?? null,
+                'channel' => $chosen['fulfillmentChannel'] ?? null,
+            ];
+        };
+
+        $bbPrices = is_array($summary['BuyBoxPrices'] ?? null) ? $summary['BuyBoxPrices'] : [];
+        $lowestPrices = is_array($summary['LowestPrices'] ?? null) ? $summary['LowestPrices'] : [];
+        $bb = $pickPriceRow($bbPrices);
+        $lowest = $pickPriceRow($lowestPrices, 'Amazon');
+        if (($lowest['listing'] ?? null) === null && ($lowest['landed'] ?? null) === null) {
+            $lowest = $pickPriceRow($lowestPrices);
+        }
+
+        $offerCountAmazon = null;
+        $offerCountMerchant = null;
+        foreach (is_array($summary['NumberOfOffers'] ?? null) ? $summary['NumberOfOffers'] : [] as $noc) {
+            if (! is_array($noc)) {
+                continue;
+            }
+            $ch = strtolower((string) ($noc['fulfillmentChannel'] ?? ''));
+            $cnt = isset($noc['OfferCount']) ? (int) $noc['OfferCount'] : null;
+            if ($ch === 'amazon') {
+                $offerCountAmazon = $cnt;
+            } elseif ($ch === 'merchant') {
+                $offerCountMerchant = $cnt;
+            }
+        }
+
+        $myOffer = null;
+        foreach ($offers as $offer) {
+            if (is_array($offer) && ! empty($offer['MyOffer'])) {
+                $myOffer = $offer;
+                break;
+            }
+        }
+
+        $bbWinner = null;
+        foreach ($offers as $offer) {
+            if (is_array($offer) && ! empty($offer['IsBuyBoxWinner'])) {
+                $bbWinner = $offer;
+                break;
+            }
+        }
+
+        $salesRank = null;
+        $salesRankCategory = null;
+        foreach (is_array($summary['SalesRankings'] ?? null) ? $summary['SalesRankings'] : [] as $rank) {
+            if (! is_array($rank)) {
+                continue;
+            }
+            $salesRank = isset($rank['Rank']) ? (int) $rank['Rank'] : null;
+            $salesRankCategory = $rank['ProductCategoryId'] ?? null;
+            break;
+        }
+
+        $ourListing = $myOffer ? $money($myOffer['ListingPrice'] ?? null) : null;
+        $ourShip = $myOffer ? $money($myOffer['Shipping'] ?? null) : null;
+
+        $bbListing = $bbWinner ? $money($bbWinner['ListingPrice'] ?? null) : ($bb['listing'] ?? null);
+        $bbShip = $bbWinner ? $money($bbWinner['Shipping'] ?? null) : ($bb['shipping'] ?? null);
+        $bbLanded = $bbWinner
+            ? (($bbListing !== null || $bbShip !== null) ? round(($bbListing ?? 0) + ($bbShip ?? 0), 2) : null)
+            : ($bb['landed'] ?? null);
+
+        return [
+            'sku' => strtoupper(trim($sku)),
+            'asin' => $payload['ASIN'] ?? ($payload['Identifier']['ASIN'] ?? null),
+            'item_condition' => $payload['ItemCondition']
+                ?? ($payload['Identifier']['ItemCondition'] ?? null),
+            'status' => $status !== '' ? $status : null,
+            'total_offer_count' => isset($summary['TotalOfferCount']) ? (int) $summary['TotalOfferCount'] : null,
+            'offer_count_amazon' => $offerCountAmazon,
+            'offer_count_merchant' => $offerCountMerchant,
+            'list_price' => $money($summary['ListPrice'] ?? null),
+            'competitive_price_threshold' => $money($summary['CompetitivePriceThreshold'] ?? null),
+            'suggested_lower_price_plus_shipping' => $money($summary['SuggestedLowerPricePlusShipping'] ?? null),
+            'buybox_listing_price' => $bb['listing'] ?? null,
+            'buybox_landed_price' => $bb['landed'] ?? null,
+            'buybox_shipping' => $bb['shipping'] ?? null,
+            'buybox_currency' => $bb['currency'] ?? null,
+            'lowest_listing_price' => $lowest['listing'] ?? null,
+            'lowest_landed_price' => $lowest['landed'] ?? null,
+            'lowest_shipping' => $lowest['shipping'] ?? null,
+            'lowest_fulfillment_channel' => $lowest['channel'] ?? null,
+            'is_buy_box_winner' => $myOffer ? (bool) ($myOffer['IsBuyBoxWinner'] ?? false) : null,
+            'my_offer' => $myOffer ? true : null,
+            'is_fulfilled_by_amazon' => $myOffer ? (bool) ($myOffer['IsFulfilledByAmazon'] ?? false) : null,
+            'is_featured_merchant' => $myOffer ? (bool) ($myOffer['IsFeaturedMerchant'] ?? false) : null,
+            'is_prime' => $myOffer ? (bool) (($myOffer['PrimeInformation']['IsPrime'] ?? false)) : null,
+            'is_national_prime' => $myOffer ? (bool) (($myOffer['PrimeInformation']['IsNationalPrime'] ?? false)) : null,
+            'our_listing_price' => $ourListing,
+            'our_shipping' => $ourShip,
+            'our_landed_price' => ($ourListing !== null || $ourShip !== null)
+                ? round(($ourListing ?? 0) + ($ourShip ?? 0), 2)
+                : null,
+            'our_subcondition' => $myOffer['SubCondition'] ?? null,
+            'our_feedback_rating' => isset($myOffer['SellerFeedbackRating']['SellerPositiveFeedbackRating'])
+                ? (float) $myOffer['SellerFeedbackRating']['SellerPositiveFeedbackRating']
+                : null,
+            'our_feedback_count' => isset($myOffer['SellerFeedbackRating']['FeedbackCount'])
+                ? (int) $myOffer['SellerFeedbackRating']['FeedbackCount']
+                : null,
+            'our_ship_min_hours' => isset($myOffer['ShippingTime']['minimumHours'])
+                ? (int) $myOffer['ShippingTime']['minimumHours']
+                : null,
+            'our_ship_max_hours' => isset($myOffer['ShippingTime']['maximumHours'])
+                ? (int) $myOffer['ShippingTime']['maximumHours']
+                : null,
+            'our_ships_from_country' => $myOffer['ShipsFrom']['Country'] ?? null,
+            'bb_seller_id' => $bbWinner['SellerId'] ?? null,
+            'bb_is_fulfilled_by_amazon' => $bbWinner ? (bool) ($bbWinner['IsFulfilledByAmazon'] ?? false) : null,
+            'bb_is_featured_merchant' => $bbWinner ? (bool) ($bbWinner['IsFeaturedMerchant'] ?? false) : null,
+            'bb_is_prime' => $bbWinner ? (bool) (($bbWinner['PrimeInformation']['IsPrime'] ?? false)) : null,
+            'bb_listing_price' => $bbListing,
+            'bb_shipping' => $bbShip,
+            'bb_landed_price' => $bbLanded,
+            'bb_feedback_rating' => isset($bbWinner['SellerFeedbackRating']['SellerPositiveFeedbackRating'])
+                ? (float) $bbWinner['SellerFeedbackRating']['SellerPositiveFeedbackRating']
+                : null,
+            'bb_feedback_count' => isset($bbWinner['SellerFeedbackRating']['FeedbackCount'])
+                ? (int) $bbWinner['SellerFeedbackRating']['FeedbackCount']
+                : null,
+            'bb_subcondition' => $bbWinner['SubCondition'] ?? null,
+            'bb_ships_from_country' => $bbWinner['ShipsFrom']['Country'] ?? null,
+            'sales_rank' => $salesRank,
+            'sales_rank_category' => $salesRankCategory,
+            'raw_payload' => $payload,
+            'error_message' => null,
+            'fetched_at' => now(),
+        ];
     }
 }

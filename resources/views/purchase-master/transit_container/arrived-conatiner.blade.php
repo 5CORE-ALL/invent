@@ -219,6 +219,8 @@
   <img src="" style="max-height:250px; max-width:350px;">
 </div>
 
+@include('purchase-master.partials.arrived-po-olink-edit')
+
 <div class="modal fade" id="arrivedHistoryModal" tabindex="-1" aria-labelledby="arrivedHistoryModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
@@ -276,6 +278,38 @@ document.body.style.zoom = "80%";
 let tabCounter = {{ count($tabs) }};
 const tabs = @json($tabs);
 const groupedData = @json($groupedData);
+const purchaseOrdersPageUrl = @json(route('list-all-purchase-orders'));
+const comparisonSheetPageUrl = @json(route('comparison.sheet.page'));
+
+function escHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function arrivedClinkFormatter(cell) {
+    const url = String(cell.getValue() || '').trim();
+    if (!url) return '<span class="text-muted">—</span>';
+    return `<div style="display:flex;align-items:center;justify-content:center;">
+        <a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer"
+            class="btn btn-sm btn-outline-primary"
+            title="Open link" aria-label="Open link">
+            <i class="fas fa-link"></i>
+        </a>
+    </div>`;
+}
+
+function arrivedOlinkFormatter(cell) {
+    const url = String(cell.getValue() || '').trim();
+    if (!url) return '<span class="text-muted">—</span>';
+    return `<div style="display:flex;align-items:center;justify-content:center;">
+        <a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer"
+            class="btn btn-sm btn-outline-primary"
+            title="${escHtml(url)}" aria-label="Open order link">
+            <i class="fas fa-external-link-alt"></i>
+        </a>
+    </div>`;
+}
 
 tabs.forEach((tabName, index) => {
     const data = groupedData[tabName] || [];
@@ -440,6 +474,62 @@ tabs.forEach((tabName, index) => {
               }
             },
             {
+              title: "CD",
+              field: "cd_link",
+              hozAlign: "center",
+              headerSort: false,
+              width: 56,
+              headerTooltip: "Comparison Data — open comparison page for this SKU",
+              formatter: function(cell) {
+                const d = cell.getRow().getData() || {};
+                const sku = String(d.our_sku || '').trim();
+                if (!sku) {
+                  return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                }
+                const hasSheet = !!d.has_sheet_data;
+                const color = hasSheet ? '#16a34a' : '#dc2626';
+                const title = hasSheet ? 'View/edit comparison sheet' : 'No comparison data — open to add';
+                const safeSku = sku.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                return `<div style="display:flex;align-items:center;justify-content:center;">
+                  <button type="button" class="arrived-cd-open border-0 bg-transparent p-0" data-sku="${safeSku}" title="${title}" aria-label="${title}" style="line-height:1;cursor:pointer;">
+                    <i class="mdi mdi-magnify" style="color:${color};font-size:18px;"></i>
+                  </button>
+                </div>`;
+              }
+            },
+            {
+              title: "C link",
+              headerTooltip: "Competitor Link (from Forecast)",
+              field: "Clink",
+              headerSort: false,
+              hozAlign: "center",
+              width: 64,
+              formatter: arrivedClinkFormatter,
+            },
+            {
+              title: "PO",
+              field: "po_number",
+              headerSort: true,
+              headerTooltip: "PO Number (from list-all-purchase-orders)",
+              hozAlign: "center",
+              minWidth: 110,
+              formatter: function(cell) {
+                const po = String(cell.getValue() || '').trim();
+                if (!po) return '—';
+                const href = purchaseOrdersPageUrl + '?po=' + encodeURIComponent(po);
+                return `<a href="${escHtml(href)}" target="_blank" rel="noopener" title="Open in Purchase Orders">${escHtml(po)}</a>`;
+              }
+            },
+            {
+              title: "O link",
+              headerTooltip: "Order link",
+              field: "order_link",
+              headerSort: false,
+              hozAlign: "center",
+              width: 70,
+              formatter: arrivedOlinkFormatter,
+            },
+            {
                 title: "Created By",
                 field: "created_by_name",
                 headerSort: false,
@@ -451,6 +541,15 @@ tabs.forEach((tabName, index) => {
                             </span>`;
                 }
             },
+            (typeof window.arrivedPoOlinkActionsColumn === 'function'
+                ? window.arrivedPoOlinkActionsColumn({ width: 70 })
+                : {
+                    title: "Actions",
+                    headerSort: false,
+                    hozAlign: "center",
+                    width: 70,
+                    formatter: function() { return '—'; }
+                }),
 
         ],
     });
@@ -555,6 +654,7 @@ tabs.forEach((tabName, index) => {
           .map(row => {
               return {
                   "SKU": row.our_sku,
+                  "C link": row.Clink || "",
                   "Supplier": row.supplier_name,
                   "Qty / Ctns": row.no_of_units,
                   "Qty Ctns": row.total_ctn,
@@ -565,6 +665,8 @@ tabs.forEach((tabName, index) => {
                   "Unit": row.unit,
                   "Changes": row.changes,
                   "Specification": row.specification,
+                  "PO": row.po_number || "",
+                  "O link": row.order_link || "",
               };
           });
 
@@ -691,6 +793,17 @@ document.getElementById('search-input').addEventListener('input', function () {
         ]);
     }
 });
+
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.arrived-cd-open');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const sku = String(btn.getAttribute('data-sku') || '').trim();
+    if (!sku) return;
+    window.open(comparisonSheetPageUrl + '?sku=' + encodeURIComponent(sku), '_blank', 'noopener');
+});
+
 
   document.addEventListener("DOMContentLoaded", function () {
     document.addEventListener("mouseover", function(e) {

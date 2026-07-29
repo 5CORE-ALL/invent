@@ -114,6 +114,111 @@ class AmazonAdsService
     }
 
     /**
+     * Product Selector metadata (SKU/ASIN inventory for advertising).
+     *
+     * @param  list<string>  $skus
+     * @param  list<string>  $asins
+     * @return array<string, mixed>
+     */
+    public function getProductMetadata(array $skus = [], array $asins = [], int $pageIndex = 0, int $pageSize = 100): array
+    {
+        $body = [
+            'pageIndex' => max(0, $pageIndex),
+            'pageSize' => max(1, min(100, $pageSize)),
+            'checkItemDetails' => true,
+            'adType' => 'SP',
+        ];
+
+        $skus = array_values(array_unique(array_filter(array_map('strval', $skus))));
+        $asins = array_values(array_unique(array_filter(array_map('strval', $asins))));
+
+        if ($skus !== []) {
+            $body['skus'] = $skus;
+        } elseif ($asins !== []) {
+            $body['asins'] = $asins;
+        } else {
+            return ['ProductMetadataList' => []];
+        }
+
+        return $this->post('/product/metadata', $body, [
+            'Content-Type' => 'application/vnd.productmetadatarequest.v1+json',
+            'Accept' => 'application/vnd.productmetadataresponse.v1+json',
+        ]);
+    }
+
+    /**
+     * Brand Posts product list — includes customerReviewSummary (avg rating + review count).
+     * Query must use repeated asins= (not asins[]=).
+     *
+     * @param  list<string>  $asins
+     * @return array<string, mixed>
+     */
+    public function getBrandPostProductsByAsins(array $asins): array
+    {
+        $asins = array_values(array_unique(array_filter(array_map(static function ($a) {
+            return strtoupper(trim((string) $a));
+        }, $asins))));
+
+        if ($asins === []) {
+            return ['eligibleProducts' => [], 'ineligibleProducts' => []];
+        }
+
+        // Max practical batch for this GET endpoint
+        $asins = array_slice($asins, 0, 20);
+        $query = implode('&', array_map(
+            static fn (string $a) => 'asins='.rawurlencode($a),
+            $asins
+        ));
+
+        return $this->get('/bp/v2/products/list?'.$query, [], [
+            'Accept' => 'application/vnd.bpProduct.v2+json',
+        ]);
+    }
+
+    /**
+     * Parse avg rating + review count from a Brand Posts product / review-summary payload.
+     *
+     * @param  array<string, mixed>  $product
+     * @return array{rating: float|null, review_count: int|null}
+     */
+    public static function extractReviewSummary(array $product): array
+    {
+        $summary = $product['customerReviewSummary']
+            ?? $product['customer_review_summary']
+            ?? $product['reviewSummary']
+            ?? [];
+
+        if (! is_array($summary)) {
+            $summary = [];
+        }
+
+        $rating = $summary['averageRating']
+            ?? $summary['average_rating']
+            ?? $summary['starRating']
+            ?? $summary['star_rating']
+            ?? $summary['rating']
+            ?? $product['averageRating']
+            ?? $product['starRating']
+            ?? $product['rating']
+            ?? null;
+
+        $count = $summary['totalReviewCount']
+            ?? $summary['total_review_count']
+            ?? $summary['reviewCount']
+            ?? $summary['review_count']
+            ?? $summary['count']
+            ?? $product['totalReviewCount']
+            ?? $product['reviewCount']
+            ?? $product['reviews']
+            ?? null;
+
+        return [
+            'rating' => is_numeric($rating) ? round((float) $rating, 2) : null,
+            'review_count' => is_numeric($count) ? (int) $count : null,
+        ];
+    }
+
+    /**
      * Sponsored Products campaigns (list).
      *
      */

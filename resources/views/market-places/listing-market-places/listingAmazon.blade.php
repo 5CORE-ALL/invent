@@ -658,8 +658,6 @@
                     nr_req: nrReq,
                     listed: listed,
                     asin: itemId || null,
-                    buyer_link: item.buyer_link || '',
-                    seller_link: item.seller_link || '',
                     is_parent: isParentSku(item.sku)
                 };
             });

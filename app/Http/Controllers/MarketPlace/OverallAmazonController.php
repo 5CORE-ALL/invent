@@ -19,8 +19,11 @@ use App\Http\Controllers\ApiController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Jobs\UpdateAmazonSPriceJob;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonProductReview;
+use App\Models\AmazonSkuDailyData;
 use App\Models\ADVMastersData;
 use App\Models\ChannelMaster;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Services\AmazonDataService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -171,6 +174,74 @@ class OverallAmazonController extends Controller
         $amazonDatasheetsBySku = AmazonDatasheet::groupedByNormalizedSku();
 
         $shopifyData = ShopifySku::mapByProductSkus($skus);
+
+        // Amazon Ads/SP cron ratings → amazon_product_reviews (Reviews column on tabulator)
+        $amzReviewsBySku = [];
+        try {
+            $reviewRows = AmazonProductReview::query()
+                ->where(function ($q) {
+                    $q->where('channel', 'Amazon')->orWhereNull('channel')->orWhere('channel', '');
+                })
+                ->whereNotNull('sku')
+                ->get(['sku', 'product_rating', 'review_count', 'asin', 'source', 'fetched_at']);
+            foreach ($reviewRows as $rr) {
+                $k = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $rr->sku)));
+                if ($k === '') {
+                    continue;
+                }
+                $amzReviewsBySku[$k] = $rr;
+                $compact = AmazonDatasheet::normalizeSkuForLookup($k);
+                if ($compact !== '' && $compact !== $k) {
+                    $amzReviewsBySku[$compact] = $rr;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator: failed loading amazon_product_reviews', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Previous recorded CVR day (amazon_sku_daily_data) — arrow trend vs last snapshot before today PT.
+        $cvrPrevBySku = [];
+        $cvrPrevDate = null;
+        try {
+            $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
+            $prevRaw = AmazonSkuDailyData::where('record_date', '<', $todayPt)->max('record_date');
+            if ($prevRaw) {
+                $cvrPrevDate = Carbon::parse($prevRaw)->toDateString();
+                AmazonSkuDailyData::where('record_date', $cvrPrevDate)
+                    ->orderBy('id')
+                    ->chunkById(2000, function ($chunk) use (&$cvrPrevBySku) {
+                        foreach ($chunk as $hist) {
+                            $daily = is_array($hist->daily_data)
+                                ? $hist->daily_data
+                                : (json_decode($hist->daily_data ?? '{}', true) ?: []);
+                            $views = (int) ($daily['views'] ?? 0);
+                            $aL30 = (int) ($daily['a_l30'] ?? 0);
+                            $cvr = $views > 0
+                                ? round(($aL30 / $views) * 100, 2)
+                                : round((float) ($daily['cvr_percent'] ?? 0), 2);
+                            $skuKey = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) ($hist->sku ?? ''))));
+                            if ($skuKey === '') {
+                                continue;
+                            }
+                            $cvrPrevBySku[$skuKey] = [
+                                'cvr' => $cvr,
+                                'views' => $views,
+                                'a_l30' => $aL30,
+                            ];
+                            $compact = AmazonDatasheet::normalizeSkuForLookup($skuKey);
+                            if ($compact !== '' && $compact !== $skuKey) {
+                                $cvrPrevBySku[$compact] = $cvrPrevBySku[$skuKey];
+                            }
+                        }
+                    });
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator: failed loading previous-day CVR snapshots', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Forecast Analysis NRP (forecast_analysis.nr) — same source as /forecast.analysis NRP column.
         $normalizeSkuFa = static fn ($value) => strtoupper(str_replace("\u{00a0}", ' ', trim((string) $value)));
@@ -423,30 +494,19 @@ class OverallAmazonController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];
-            // Get rating and reviews from Jungle Scout - Try SKU first, fallback to ASIN
-            $jsData = $jungleScoutBySku->get($sku);
-            
-            // If no match by SKU, try ASIN fallback
-            if (!$jsData && $amazonSheet && $amazonSheet->asin) {
-                $asinKey = strtoupper(trim($amazonSheet->asin));
-                $jsData = $jungleScoutByAsin->get($asinKey);
-            }
-            
-            $jsAllData = $jsData['all_data'] ?? [];
-            
-            // Extract rating and reviews from jungle scout data (first entry with valid data)
-            $rating = null;
-            $reviews = null;
-            foreach ($jsAllData as $jsEntry) {
-                if (isset($jsEntry['rating']) && $jsEntry['rating'] > 0) {
-                    $rating = $jsEntry['rating'];
-                    $reviews = $jsEntry['reviews'] ?? null;
-                    break;
-                }
-            }
-            
-            $row['rating'] = $rating;
-            $row['reviews'] = $reviews;
+
+            // Reviews column: amazon:collect-reviews → amazon_product_reviews (avg rating + count)
+            $amzRev = $amzReviewsBySku[$sku]
+                ?? $amzReviewsBySku[$skuClean]
+                ?? $amzReviewsBySku[$amazonSheetKey]
+                ?? $amzReviewsBySku[$skuLookupKey]
+                ?? null;
+            $row['amz_avg_rating'] = $amzRev && $amzRev->product_rating !== null
+                ? (float) $amzRev->product_rating
+                : null;
+            $row['amz_review_count'] = $amzRev ? (int) ($amzRev->review_count ?? 0) : null;
+            $row['amz_reviews_source'] = $amzRev->source ?? null;
+
             $row['Parent'] = $parent;
             $row['parent'] = $parent; // lowercase for any consumers expecting it
             $row['(Child) sku'] = $pm->sku;
@@ -474,6 +534,17 @@ class OverallAmazonController extends Controller
                 $row['sessions_l60'] = 0;
                 $row['units_ordered_l60'] = 0;
             }
+
+            // Previous recorded-day CVR for arrow trend (vs last amazon_sku_daily_data snapshot).
+            $prevHit = $cvrPrevBySku[$sku]
+                ?? $cvrPrevBySku[$skuClean]
+                ?? $cvrPrevBySku[$amazonSheetKey]
+                ?? $cvrPrevBySku[$skuLookupKey]
+                ?? null;
+            $row['cvr_prev'] = $prevHit !== null ? (float) $prevHit['cvr'] : null;
+            $row['cvr_prev_views'] = $prevHit !== null ? (int) $prevHit['views'] : null;
+            $row['cvr_prev_a_l30'] = $prevHit !== null ? (int) $prevHit['a_l30'] : null;
+            $row['cvr_prev_date'] = $cvrPrevDate;
 
             // FBA price for same SKU (from FbaPrice table)
             $fbaPriceRecord = $fbaPriceBySku->get($skuLookupKey) ?? $fbaPriceBySku->get(str_replace(' ', '', $skuClean)) ?? $fbaPriceBySku->get($sku);
@@ -879,6 +950,17 @@ class OverallAmazonController extends Controller
                 'CVR_L30' => '',
                 'CVR_L7' => '',
                 'CVR_L60' => '',
+                // Parent prev CVR = weighted from children previous-day views / A_L30
+                'cvr_prev' => (function () use ($rows) {
+                    $v = 0;
+                    $a = 0;
+                    foreach ($rows as $r) {
+                        $v += (int) (data_get($r, 'cvr_prev_views') ?? 0);
+                        $a += (int) (data_get($r, 'cvr_prev_a_l30') ?? 0);
+                    }
+                    return $v > 0 ? round(($a / $v) * 100, 2) : null;
+                })(),
+                'cvr_prev_date' => $cvrPrevDate,
                 'NRL' => '', // Set below from children
                 'NRA' => '', // Set below from children
                 'FBA' => null,
@@ -1302,6 +1384,26 @@ class OverallAmazonController extends Controller
         $amazonDataView->value = $merged;
         $amazonDataView->save();
         Log::info('Data saved successfully', ['sku' => $sku]);
+
+        // Keep today's SKU daily snapshot in sync so S PRC history dots stay current
+        try {
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $daily = AmazonSkuDailyData::firstOrNew([
+                'sku' => $sku,
+                'record_date' => $today,
+            ]);
+            $dailyPayload = is_array($daily->daily_data)
+                ? $daily->daily_data
+                : (json_decode($daily->daily_data ?? '{}', true) ?: []);
+            $dailyPayload['sprice'] = $spriceFloat;
+            $daily->daily_data = $dailyPayload;
+            $daily->save();
+        } catch (\Throwable $e) {
+            Log::warning('Could not sync SPRICE to amazon_sku_daily_data', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Data saved successfully.',
@@ -2591,135 +2693,276 @@ class OverallAmazonController extends Controller
 
     public function getMetricsHistory(Request $request)
     {
-        $days = $request->input('days', 7); // Default to last 7 days
+        $days = (int) $request->input('days', 30); // Default L30; 0 = lifetime
         $sku = $request->input('sku'); // Optional SKU filter
-        $skus = $request->input('skus'); // Optional array of SKUs to filter (for INV > 0)
-        
-        // Ensure minimum 7 days if pulling from today
-        $minDays = 7;
-        if ($days < $minDays) {
-            $days = $minDays;
+        $skus = $request->input('skus'); // Optional array of SKUs (INV > 0 aggregate)
+        $skuNorm = $sku ? strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $sku))) : null;
+
+        // Pacific window — include today PT so live CVR L30 matches the tabulator.
+        $endDate = Carbon::now('America/Los_Angeles')->startOfDay();
+        if ($days === 0) {
+            $startDate = null; // lifetime — no lower bound
+        } else {
+            if ($days < 7) {
+                $days = 7;
+            }
+            $startDate = $endDate->copy()->subDays($days - 1);
         }
-        
-        $startDate = \Carbon\Carbon::today()->subDays($days - 1); // -1 to include today
-        $endDate = \Carbon\Carbon::today();
-        
-        $chartData = [];
-        $dataByDate = []; // Store data by date for filling gaps
-        
+
+        $dataByDate = [];
+
         try {
-            // Try to use the new table for JSON format data
-            $query = \App\Models\AmazonSkuDailyData::where('record_date', '>=', $startDate)
-                ->where('record_date', '<=', $endDate)
+            $query = AmazonSkuDailyData::where('record_date', '<=', $endDate->toDateString())
                 ->orderBy('record_date', 'asc');
-            
-            // If SKU is provided, return data for specific SKU
-            if ($sku) {
-                $metricsData = $query->where('sku', strtoupper(trim($sku)))->get();
-                
+            if ($startDate) {
+                $query->where('record_date', '>=', $startDate->toDateString());
+            }
+
+            if ($skuNorm) {
+                $sellerMsku = AmazonDatasheet::resolveSellerMskuByProductKey($skuNorm);
+                $skuCandidates = array_values(array_unique(array_filter([
+                    $skuNorm,
+                    $sellerMsku ? strtoupper(trim($sellerMsku)) : null,
+                ])));
+                $compact = AmazonDatasheet::normalizeSkuForLookup($skuNorm);
+
+                $metricsData = (clone $query)->where(function ($q) use ($skuCandidates, $compact) {
+                    if (! empty($skuCandidates)) {
+                        $q->whereIn('sku', $skuCandidates);
+                    }
+                    if ($compact !== '') {
+                        $q->orWhereRaw(
+                            "UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', '')) = ?",
+                            [$compact]
+                        );
+                    }
+                })->get();
+
                 foreach ($metricsData as $record) {
-                    $data = $record->daily_data;
-                    $dateKey = \Carbon\Carbon::parse($record->record_date)->format('Y-m-d');
+                    $data = is_array($record->daily_data)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $views = (int) ($data['views'] ?? 0);
+                    $aL30 = (int) ($data['a_l30'] ?? 0);
+                    // Same formula as CVR L30 column: (A_L30 / Sess30) × 100
+                    $cvr = $views > 0
+                        ? round(($aL30 / $views) * 100, 2)
+                        : round((float) ($data['cvr_percent'] ?? 0), 2);
+                    $spriceHist = isset($data['sprice']) ? round((float) $data['sprice'], 2) : null;
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
-                        'date_formatted' => \Carbon\Carbon::parse($record->record_date)->format('M d'),
-                        'price' => round($data['price'] ?? 0, 2),
-                        'views' => $data['views'] ?? 0,
-                        'cvr_percent' => round($data['cvr_percent'] ?? 0, 2),
-                        'ad_percent' => round($data['ad_percent'] ?? 0, 2),
-                        'a_l30' => round($data['a_l30'] ?? 0, 0), // Amazon L30 sold units
+                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round((float) ($data['price'] ?? 0), 2),
+                        'sprice' => ($spriceHist !== null && $spriceHist > 0)
+                            ? $spriceHist
+                            : round((float) ($data['price'] ?? 0), 2),
+                        'views' => $views,
+                        'cvr_percent' => $cvr,
+                        'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
+                        'a_l30' => $aL30,
                         'inv' => isset($data['inv']) ? (int) $data['inv'] : null,
                         'inv_amz' => isset($data['inv_amz']) ? (int) $data['inv_amz'] : null,
-                        'l30' => isset($data['l30']) ? (int) $data['l30'] : null, // OV L30 overall sold
+                        'l30' => isset($data['l30']) ? (int) $data['l30'] : null,
                     ];
                 }
             } else {
-                // If SKUs array is provided, filter by those SKUs (for INV > 0 filtering)
                 if ($skus) {
                     $skuArray = is_string($skus) ? json_decode($skus, true) : $skus;
                     if (is_array($skuArray) && count($skuArray) > 0) {
-                        $query->whereIn('sku', array_map(function($sku) {
-                            return strtoupper(trim($sku));
+                        $query->whereIn('sku', array_map(function ($s) {
+                            return strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $s)));
                         }, $skuArray));
                     }
                 }
-                
-                // Aggregate data for filtered SKUs
+
                 $metricsData = $query->get()->groupBy('record_date');
-                
+
                 foreach ($metricsData as $date => $records) {
-                    $dateKey = \Carbon\Carbon::parse($date)->format('Y-m-d');
-                    
-                    // Calculate weighted average price (same as summary badge: price * a_l30 / sum a_l30)
+                    $dateKey = Carbon::parse($date)->format('Y-m-d');
+
                     $totalWeightedPrice = 0;
                     $totalL30 = 0;
+                    $totalViews = 0;
+                    $totalAd = 0;
+                    $adCount = 0;
                     foreach ($records as $record) {
-                        $price = floatval($record->daily_data['price'] ?? 0);
-                        $aL30 = floatval($record->daily_data['a_l30'] ?? 0);
+                        $daily = is_array($record->daily_data)
+                            ? $record->daily_data
+                            : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                        $price = (float) ($daily['price'] ?? 0);
+                        $aL30 = (float) ($daily['a_l30'] ?? 0);
+                        $views = (float) ($daily['views'] ?? 0);
                         $totalWeightedPrice += $price * $aL30;
                         $totalL30 += $aL30;
+                        $totalViews += $views;
+                        $totalAd += (float) ($daily['ad_percent'] ?? 0);
+                        $adCount++;
                     }
                     $avgPrice = $totalL30 > 0 ? ($totalWeightedPrice / $totalL30) : 0;
-                    
+                    // Weighted CVR = Σ A_L30 / Σ views (matches summary badge / tabulator)
+                    $avgCvr = $totalViews > 0 ? (($totalL30 / $totalViews) * 100) : 0;
+
                     $dataByDate[$dateKey] = [
                         'date' => $dateKey,
-                        'date_formatted' => \Carbon\Carbon::parse($date)->format('M d'),
+                        'date_formatted' => Carbon::parse($date)->format('M d'),
                         'avg_price' => round($avgPrice, 2),
-                        'total_views' => $records->sum(function($r) { return $r->daily_data['views'] ?? 0; }),
-                        'avg_cvr_percent' => round($records->avg(function($r) { return $r->daily_data['cvr_percent'] ?? 0; }), 2),
-                        'avg_ad_percent' => round($records->avg(function($r) { return $r->daily_data['ad_percent'] ?? 0; }), 2),
+                        'total_views' => (int) $totalViews,
+                        'avg_cvr_percent' => round($avgCvr, 2),
+                        'avg_ad_percent' => round($adCount > 0 ? ($totalAd / $adCount) : 0, 2),
                     ];
                 }
             }
-            
-            // If no data found in new table, try fallback
-            if (empty($dataByDate)) {
+
+            // Only fall back when aggregate has nothing; SKU charts may still get a live overlay.
+            if (empty($dataByDate) && ! $skuNorm) {
                 throw new \Exception('No data in new table, trying fallback');
             }
-            
         } catch (\Exception $e) {
-            // Fallback: Return empty data and let the frontend handle it
             Log::info('No Amazon daily metrics data available. Historical data will be populated by metrics collection command.');
         }
 
-        // Fill in missing dates with zero values to ensure at least 7 days
-        $currentDate = \Carbon\Carbon::parse($startDate);
-        $today = \Carbon\Carbon::today();
-        
-        while ($currentDate->lte($today)) {
-            $dateKey = $currentDate->format('Y-m-d');
-            
-            if (!isset($dataByDate[$dateKey])) {
-                // Fill missing date with zero values
-                if ($sku) {
-                    $dataByDate[$dateKey] = [
-                        'date' => $dateKey,
-                        'date_formatted' => $currentDate->format('M d'),
-                        'price' => 0,
-                        'views' => 0,
-                        'cvr_percent' => 0,
-                        'ad_percent' => 0,
-                    ];
-                } else {
-                    $dataByDate[$dateKey] = [
-                        'date' => $dateKey,
-                        'date_formatted' => $currentDate->format('M d'),
-                        'avg_price' => 0,
-                        'total_views' => 0,
-                        'avg_cvr_percent' => 0,
-                        'avg_ad_percent' => 0,
-                    ];
-                }
-            }
-            
-            $currentDate->addDay();
-        }
-        
-        // Sort by date and convert to array
-        ksort($dataByDate);
-        $chartData = array_values($dataByDate);
+        // Overlay live amazon_datsheets for Pacific today so the chart matches CVR L30 on the tabulator.
+        // Drop dominant stuck snapshots that disagree with live (same pattern as eBay metrics history).
+        if ($skuNorm) {
+            $live = $this->resolveAmazonDatasheetForMetrics($skuNorm);
+            if ($live) {
+                $todayKey = $endDate->toDateString();
+                $views = (int) ($live->sessions_l30 ?? 0);
+                $aL30 = (int) ($live->units_ordered_l30 ?? 0);
+                $price = round((float) ($live->price ?? 0), 2);
+                $cvr = $views > 0 ? round(($aL30 / $views) * 100, 2) : 0;
+                $liveSig = $views . '|' . $aL30 . '|' . $price;
 
-        return response()->json($chartData);
+                $histSigCounts = [];
+                foreach ($dataByDate as $k => $row) {
+                    if ($k === $todayKey) {
+                        continue;
+                    }
+                    $sig = ((int) ($row['views'] ?? 0)) . '|' . ((int) ($row['a_l30'] ?? 0)) . '|' . round((float) ($row['price'] ?? 0), 2);
+                    $histSigCounts[$sig] = ($histSigCounts[$sig] ?? 0) + 1;
+                }
+                if (! empty($histSigCounts)) {
+                    arsort($histSigCounts);
+                    $topSig = (string) array_key_first($histSigCounts);
+                    $topCount = (int) $histSigCounts[$topSig];
+                    $histTotal = (int) array_sum($histSigCounts);
+                    if ($topSig !== $liveSig && $topCount >= max(7, (int) floor($histTotal * 0.5))) {
+                        foreach ($dataByDate as $k => $row) {
+                            if ($k === $todayKey) {
+                                continue;
+                            }
+                            $sig = ((int) ($row['views'] ?? 0)) . '|' . ((int) ($row['a_l30'] ?? 0)) . '|' . round((float) ($row['price'] ?? 0), 2);
+                            if ($sig === $topSig) {
+                                unset($dataByDate[$k]);
+                            }
+                        }
+                    }
+                }
+
+                $liveSprice = $price;
+                $dataView = AmazonDataView::where('sku', $skuNorm)->first();
+                if ($dataView) {
+                    $dvVal = is_array($dataView->value)
+                        ? $dataView->value
+                        : (json_decode($dataView->value ?? '{}', true) ?: []);
+                    $spLive = isset($dvVal['SPRICE']) ? round((float) $dvVal['SPRICE'], 2) : 0;
+                    if ($spLive > 0) {
+                        $liveSprice = $spLive;
+                    }
+                }
+
+                $dataByDate[$todayKey] = [
+                    'date' => $todayKey,
+                    'date_formatted' => $endDate->format('M d'),
+                    'price' => $price,
+                    'sprice' => $liveSprice,
+                    'views' => $views,
+                    'cvr_percent' => $cvr,
+                    'ad_percent' => round((float) ($dataByDate[$todayKey]['ad_percent'] ?? 0), 2),
+                    'a_l30' => $aL30,
+                    'inv' => $dataByDate[$todayKey]['inv'] ?? null,
+                    'inv_amz' => $dataByDate[$todayKey]['inv_amz'] ?? null,
+                    'l30' => $dataByDate[$todayKey]['l30'] ?? null,
+                ];
+            }
+        }
+
+        // Fill only interior gaps between first and last real data points (Pacific dates).
+        // Do NOT invent trailing zeros after the last collected day — that caused the cliff to 0%.
+        if (! empty($dataByDate) && $startDate) {
+            $realKeys = array_keys($dataByDate);
+            sort($realKeys);
+            $fillStart = Carbon::parse($realKeys[0], 'America/Los_Angeles')->startOfDay();
+            $fillEnd = Carbon::parse($realKeys[count($realKeys) - 1], 'America/Los_Angeles')->startOfDay();
+            if ($fillStart->lt($startDate)) {
+                $fillStart = $startDate->copy();
+            }
+            if ($fillEnd->gt($endDate)) {
+                $fillEnd = $endDate->copy();
+            }
+
+            $currentDate = $fillStart->copy();
+            while ($currentDate->lte($fillEnd)) {
+                $dateKey = $currentDate->format('Y-m-d');
+                if (! isset($dataByDate[$dateKey])) {
+                    if ($skuNorm) {
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => $currentDate->format('M d'),
+                            'price' => 0,
+                            'sprice' => 0,
+                            'views' => 0,
+                            'cvr_percent' => 0,
+                            'ad_percent' => 0,
+                            'a_l30' => 0,
+                        ];
+                    } else {
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'date_formatted' => $currentDate->format('M d'),
+                            'avg_price' => 0,
+                            'total_views' => 0,
+                            'avg_cvr_percent' => 0,
+                            'avg_ad_percent' => 0,
+                        ];
+                    }
+                }
+                $currentDate->addDay();
+            }
+        }
+
+        ksort($dataByDate);
+
+        return response()->json(array_values($dataByDate));
+    }
+
+    /**
+     * Resolve amazon_datsheets row for SKU metrics chart live overlay
+     * (same compact/space matching as amazon-tabulator-view).
+     */
+    private function resolveAmazonDatasheetForMetrics(string $skuNorm): ?AmazonDatasheet
+    {
+        $sellerMsku = AmazonDatasheet::resolveSellerMskuByProductKey($skuNorm);
+        $candidates = AmazonDatasheet::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where(function ($q) use ($skuNorm, $sellerMsku) {
+                $q->whereRaw('UPPER(TRIM(REPLACE(sku, UNHEX(\'C2A0\'), \' \'))) = ?', [$skuNorm]);
+                if ($sellerMsku) {
+                    $q->orWhereRaw('UPPER(TRIM(REPLACE(sku, UNHEX(\'C2A0\'), \' \'))) = ?', [strtoupper(trim($sellerMsku))]);
+                }
+                $compact = AmazonDatasheet::normalizeSkuForLookup($skuNorm);
+                if ($compact !== '') {
+                    $q->orWhereRaw(
+                        "UPPER(REPLACE(REPLACE(TRIM(COALESCE(sku,'')), UNHEX('C2A0'), ' '), ' ', '')) = ?",
+                        [$compact]
+                    );
+                }
+            })
+            ->get();
+
+        return AmazonDatasheet::pickBestForProductSku($skuNorm, $candidates);
     }
 
     public function saveAmazonColumnVisibility(Request $request)
@@ -4365,6 +4608,130 @@ class OverallAmazonController extends Controller
         } catch (\Exception $e) {
             Log::error('getAmazonBadgeChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
+     * Save today's Amazon Sprice×CVR pie snapshot (INV>0 slab + action counts).
+     */
+    public function saveAmazonSpriceCvrDailyStats(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $red = max(0, (int) $request->input('red_count', 0));
+            $green = max(0, (int) $request->input('green_count', 0));
+            $pink = max(0, (int) $request->input('pink_count', 0));
+            $increased = max(0, (int) $request->input('increased_count', 0));
+            $decreased = max(0, (int) $request->input('decreased_count', 0));
+            $hold = max(0, (int) $request->input('hold_count', 0));
+            $total = $red + $green + $pink;
+            if ($total <= 0) {
+                $total = $increased + $decreased + $hold;
+            }
+
+            $row = \App\Models\AmazonSpriceCvrDailyStat::updateOrCreate(
+                ['snapshot_date' => $today],
+                [
+                    'red_count' => $red,
+                    'green_count' => $green,
+                    'pink_count' => $pink,
+                    'increased_count' => $increased,
+                    'decreased_count' => $decreased,
+                    'hold_count' => $hold,
+                    'total_count' => $total,
+                    'low_cvr' => is_numeric($request->input('low_cvr')) ? (float) $request->input('low_cvr') : null,
+                    'high_cvr' => is_numeric($request->input('high_cvr')) ? (float) $request->input('high_cvr') : null,
+                ]
+            );
+
+            return response()->json(['success' => true, 'date' => $today, 'id' => $row->id]);
+        } catch (\Throwable $e) {
+            Log::error('saveAmazonSpriceCvrDailyStats error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Failed to save snapshot'], 500);
+        }
+    }
+
+    /**
+     * Rolling history for Amazon Sprice×CVR pie charts (slab or action series).
+     * type=slab → red/green/pink · type=action → increased/decreased/hold
+     */
+    public function getAmazonSpriceCvrHistory(Request $request)
+    {
+        try {
+            $type = strtolower((string) $request->input('type', 'slab'));
+            if (! in_array($type, ['slab', 'action'], true)) {
+                $type = 'slab';
+            }
+            $days = intval($request->input('days', 30));
+
+            $query = \App\Models\AmazonSpriceCvrDailyStat::query()->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+
+            $rows = $query->get();
+            if ($rows->isEmpty()) {
+                return response()->json(['success' => true, 'type' => $type, 'labels' => [], 'series' => []]);
+            }
+
+            $labels = $rows->map(fn ($r) => \Carbon\Carbon::parse($r->snapshot_date)->format('M d'))->values()->all();
+
+            if ($type === 'action') {
+                $series = [
+                    [
+                        'key' => 'increased',
+                        'label' => 'Increased',
+                        'color' => '#28a745',
+                        'data' => $rows->pluck('increased_count')->map(fn ($v) => (int) $v)->values()->all(),
+                    ],
+                    [
+                        'key' => 'decreased',
+                        'label' => 'Decreased',
+                        'color' => '#a00211',
+                        'data' => $rows->pluck('decreased_count')->map(fn ($v) => (int) $v)->values()->all(),
+                    ],
+                    [
+                        'key' => 'hold',
+                        'label' => 'Hold',
+                        'color' => '#6c757d',
+                        'data' => $rows->pluck('hold_count')->map(fn ($v) => (int) $v)->values()->all(),
+                    ],
+                ];
+            } else {
+                $series = [
+                    [
+                        'key' => 'red',
+                        'label' => 'Red',
+                        'color' => '#a00211',
+                        'data' => $rows->pluck('red_count')->map(fn ($v) => (int) $v)->values()->all(),
+                    ],
+                    [
+                        'key' => 'green',
+                        'label' => 'Green',
+                        'color' => '#28a745',
+                        'data' => $rows->pluck('green_count')->map(fn ($v) => (int) $v)->values()->all(),
+                    ],
+                    [
+                        'key' => 'pink',
+                        'label' => 'Pink',
+                        'color' => '#e83e8c',
+                        'data' => $rows->pluck('pink_count')->map(fn ($v) => (int) $v)->values()->all(),
+                    ],
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'type' => $type,
+                'labels' => $labels,
+                'series' => $series,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getAmazonSpriceCvrHistory error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching history'], 500);
         }
     }
 

@@ -83,6 +83,9 @@ return [
     // Marketplace
     ['value' => 'amazon_analytics', 'text' => 'Amazon Analytics', 'group' => 'Marketplace'],
     ['value' => 'amz_variation_verify', 'text' => 'Amazon Ads Variation Verification', 'group' => 'Marketplace'],
+    ['value' => 'amz_buybox', 'text' => 'Amz Buybox', 'group' => 'Marketplace'],
+    ['value' => 'amz_reviews', 'text' => 'Amz Reviews', 'group' => 'Marketplace'],
+    ['value' => 'amz_titles', 'text' => 'Amz Titles', 'group' => 'Marketplace'],
     ['value' => 'amz_listing_variation_verify', 'text' => 'Amz Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'ebay_listing_variation_verify', 'text' => 'Ebay Listing Variation Verify', 'group' => 'Marketplace'],
 

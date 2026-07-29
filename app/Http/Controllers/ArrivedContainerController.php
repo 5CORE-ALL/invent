@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ArrivedContainer;
 use App\Models\ArrivedContainerHistory;
+use App\Models\ComparisonData;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Supplier;
@@ -11,6 +12,7 @@ use App\Models\MfrgProgress;
 use App\Models\ReadyToShip;
 use App\Models\Task;
 use App\Models\TransitContainerDetail;
+use App\Services\ArrivedContainerPoLookup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -123,6 +125,15 @@ class ArrivedContainerController extends Controller
             return [$normalizeSku($key) => $value];
         })->toArray();
 
+        // Clink from forecast_analysis — same source as /transit-container-details.
+        $clinkBySku = [];
+        foreach (DB::table('forecast_analysis')->orderBy('id')->get(['sku', 'clink']) as $fr) {
+            $k = $normalizeSku($fr->sku ?? '');
+            if ($k !== '') {
+                $clinkBySku[$k] = (string) ($fr->clink ?? '');
+            }
+        }
+
         $allRecords->transform(function ($record) use (
             $skuParentMap,
             $parentSupplierMap,
@@ -130,6 +141,7 @@ class ArrivedContainerController extends Controller
             $productValuesMap,
             $toOrderSupplierBySku,
             $mfrgSupplierBySku,
+            $clinkBySku,
             $normalizeSku
         ) {
             $sku = $normalizeSku($record->our_sku ?? '');
@@ -163,9 +175,50 @@ class ArrivedContainerController extends Controller
             $pmUnit = is_array($values) ? trim((string) ($values['unit'] ?? '')) : '';
             $record->unit = $pmUnit !== '' ? $pmUnit : null;
             $record->created_by_name = $record->user->name ?? '—';
+            $record->setAttribute('Clink', $clinkBySku[$sku] ?? '');
 
             return $record;
         });
+
+        // CD column: comparison_data sheet presence (same source as QC / Pricing / Forecast).
+        $skuList = $allRecords
+            ->pluck('our_sku')
+            ->map(fn ($sku) => trim((string) $sku))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $sheetBySku = $skuList === []
+            ? collect()
+            : ComparisonData::query()
+                ->whereIn('sku', $skuList)
+                ->get(['sku', 'sheet_data'])
+                ->keyBy(fn ($row) => strtoupper(trim((string) $row->sku)));
+
+        $allRecords->transform(function ($record) use ($sheetBySku, $normalizeSku) {
+            $skuKey = $normalizeSku($record->our_sku ?? '');
+            $sheetRow = $skuKey !== '' ? $sheetBySku->get($skuKey) : null;
+            $cells = is_array($sheetRow?->sheet_data['cells'] ?? null) ? $sheetRow->sheet_data['cells'] : [];
+            $hasSheet = false;
+            foreach ($cells as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                foreach ($row as $value) {
+                    if (trim((string) $value) !== '') {
+                        $hasSheet = true;
+                        break 2;
+                    }
+                }
+            }
+            $record->has_sheet_data = $hasSheet;
+
+            return $record;
+        });
+
+        [$poBySku, $allPoOptions] = ArrivedContainerPoLookup::build();
+        ArrivedContainerPoLookup::attachPoOptions($allRecords, $poBySku);
 
         $groupedData = $allRecords->groupBy('tab_name');
         foreach ($tabs as $tab) {
@@ -178,7 +231,8 @@ class ArrivedContainerController extends Controller
 
         return view('purchase-master.transit_container.arrived-conatiner', [
             'tabs' => $tabs,
-            'groupedData' => $groupedData
+            'groupedData' => $groupedData,
+            'allPoOptions' => $allPoOptions,
         ]);
     }
 

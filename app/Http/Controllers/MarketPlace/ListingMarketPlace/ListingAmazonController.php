@@ -58,9 +58,6 @@ class ListingAmazonController extends Controller
             $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
 
             $raw = $statusData->has($skuUpper) ? $statusData->get($skuUpper) : null;
-            $status = is_array($raw) ? $raw : (is_string($raw) ? (json_decode($raw, true) ?: []) : []);
-            $item->buyer_link = $status['buyer_link'] ?? null;
-            $item->seller_link = $status['seller_link'] ?? null;
 
             // NRL/REQ from AmazonDataView (same as amazon-tabulator / AmazonListingCounts)
             $item->nr_req = AmazonListingCounts::nrReqFromDataView($raw);
@@ -91,8 +88,6 @@ class ListingAmazonController extends Controller
             'sku' => 'required|string',
             'nr_req' => 'nullable|string',
             'listed' => 'nullable|string',
-            'buyer_link' => 'nullable|url',
-            'seller_link' => 'nullable|url',
             'status' => 'nullable|string|in:Active,DC,2BDC,Sourcing,In Transit,To Order,MFRG,',
         ]);
 
@@ -100,6 +95,9 @@ class ListingAmazonController extends Controller
         $status = AmazonDataView::where('sku', $sku)->first();
 
         $existing = $status ? $status->value : [];
+        if (! is_array($existing)) {
+            $existing = is_string($existing) ? (json_decode($existing, true) ?: []) : [];
+        }
 
         // Handle nr_req - save as NRL field in amazon_data_view
         // Map to match format used by other Amazon pages: 'RL' for RL, 'NRL' for NRL
@@ -115,13 +113,7 @@ class ListingAmazonController extends Controller
             $existing['listed'] = $validated['listed'];
         }
 
-        // Only update other fields that are present in the request
-        $fields = ['buyer_link', 'seller_link'];
-        foreach ($fields as $field) {
-            if ($request->has($field)) {
-                $existing[$field] = $validated[$field];
-            }
-        }
+        // Buyer/Seller links are dynamic from ASIN (same as listing-amazon UI) — not manually saved.
 
         AmazonDataView::updateOrCreate(
             ['sku' => $validated['sku']],
@@ -199,7 +191,8 @@ class ListingAmazonController extends Controller
             }, $rows[0] ?? []);
             unset($rows[0]);
 
-            $allowedHeaders = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link'];
+            // Buyer/Seller links are ASIN-dynamic on the page — not imported manually.
+            $allowedHeaders = ['sku', 'nr_req', 'listed'];
             foreach ($header as $h) {
                 if (! in_array($h, $allowedHeaders, true)) {
                     return response()->json([
@@ -236,16 +229,16 @@ class ListingAmazonController extends Controller
                 $status = AmazonDataView::where('sku', $sku)->first();
                 $existing = $status ? (is_array($status->value) ? $status->value : (json_decode($status->value, true) ?: [])) : [];
 
-                foreach (['buyer_link', 'seller_link'] as $field) {
-                    if (array_key_exists($field, $rowData) && $rowData[$field] !== '') {
-                        $existing[$field] = trim($rowData[$field]);
-                    }
-                }
-
                 // Optional: import NRL into AmazonDataView (REQ/NR → RL/NRL)
                 if (array_key_exists('nr_req', $rowData) && trim((string) $rowData['nr_req']) !== '') {
                     $nr = strtoupper(trim((string) $rowData['nr_req']));
                     $existing['NRL'] = in_array($nr, ['NR', 'NRL'], true) ? 'NRL' : 'RL';
+                }
+
+                if (array_key_exists('listed', $rowData) && trim((string) $rowData['listed']) !== '') {
+                    $listed = trim((string) $rowData['listed']);
+                    $existing['Listed'] = (strcasecmp($listed, 'Listed') === 0);
+                    $existing['listed'] = $listed;
                 }
 
                 AmazonDataView::updateOrCreate(['sku' => $sku], ['value' => $existing]);
@@ -269,7 +262,8 @@ class ListingAmazonController extends Controller
             'Content-Disposition' => 'attachment; filename="listing_amazon_' . date('Y-m-d') . '.csv"',
         ];
 
-        $columns = ['sku', 'nr_req', 'listed', 'buyer_link', 'seller_link', 'asin'];
+        // Export ASIN-derived links (same formula as the listing-amazon UI) — not stored manual URLs.
+        $columns = ['sku', 'nr_req', 'listed', 'asin', 'buyer_link', 'seller_link'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
@@ -288,20 +282,24 @@ class ListingAmazonController extends Controller
                 $sku = (string) $product->sku;
                 $skuUpper = strtoupper(trim($sku));
                 $raw = $statusData->has($skuUpper) ? $statusData->get($skuUpper) : null;
-                $value = is_array($raw) ? $raw : (is_string($raw) ? (json_decode($raw, true) ?: []) : []);
 
                 $sheet = AmazonDatasheet::pickBestForProductSku(
                     $sku,
                     $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($sku))
                 );
+                $asin = AmazonListingCounts::asinFromDatasheet($sheet);
+                $buyerLink = $asin !== '' ? ('https://www.amazon.com/dp/' . $asin) : '';
+                $sellerLink = $asin !== ''
+                    ? ('https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' . $asin)
+                    : '';
 
                 fputcsv($file, [
                     'sku' => $sku,
                     'nr_req' => AmazonListingCounts::nrReqFromDataView($raw),
                     'listed' => AmazonListingCounts::isListedFromDatasheet($sheet) ? 'Listed' : 'Pending',
-                    'buyer_link' => $value['buyer_link'] ?? '',
-                    'seller_link' => $value['seller_link'] ?? '',
-                    'asin' => AmazonListingCounts::asinFromDatasheet($sheet),
+                    'asin' => $asin,
+                    'buyer_link' => $buyerLink,
+                    'seller_link' => $sellerLink,
                 ]);
             }
 

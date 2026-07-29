@@ -438,9 +438,9 @@ class EbayController extends Controller
     }
 
     /**
-     * CVR-based SPRICE multipliers — shared for ebay 1/2/3 tabulator views.
+     * CVR-trend SPRICE multipliers — shared (Amazon + ebay 1/2/3 + others).
      * Stored under key `ebay_sprice_cvr` in ebay_sbid_rules.
-     * CVR ≤ low → ×down_mult; CVR > high → ×up_mult.
+     * See App\Support\SpriceCvrMultRule for trend + ROI floor rules.
      */
     public function getSpriceCvrMultRule()
     {

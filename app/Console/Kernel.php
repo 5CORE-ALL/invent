@@ -533,6 +533,25 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Amz Buybox — SP-API getListingOffers in lots of 40 (INV ≥ 1 only)
+        $ist($schedule->command('amazon:pull-buybox --lot=40')
+            ->dailyAt('19:10')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-pull-buybox')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // Avg rating + review count for amazon-tabulator Reviews column
+        // (Amazon Ads Brand Posts customerReviewSummary; SP-API Catalog fallback).
+        $ist($schedule->command('amazon:collect-reviews')
+            ->dailyAt('18:40')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-collect-reviews')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | EBAY JOBS

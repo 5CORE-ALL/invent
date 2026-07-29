@@ -12,9 +12,12 @@ class AmazonProductReview extends Model
     protected $table = 'amazon_product_reviews';
 
     protected $fillable = [
+        'channel',
         'sku',
+        'asin',
         'product_rating',
         'review_count',
+        'source',
         'link',
         'remarks',
         'comp_link',
@@ -24,7 +27,14 @@ class AmazonProductReview extends Model
         'negation_l90',
         'action',
         'corrective_action',
+        'fetched_at',
     ];
 
-    public $timestamps = true; 
+    protected $casts = [
+        'product_rating' => 'float',
+        'review_count' => 'integer',
+        'fetched_at' => 'datetime',
+    ];
+
+    public $timestamps = true;
 }

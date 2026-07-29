@@ -182,6 +182,9 @@ use App\Http\Controllers\MarketPlace\Neweggb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Neweggb2cZeroController;
 use App\Http\Controllers\MarketPlace\AmzListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\AmzVariationVerifyController;
+use App\Http\Controllers\MarketPlace\AmzBuyboxController;
+use App\Http\Controllers\MarketPlace\AmzReviewsController;
+use App\Http\Controllers\MarketPlace\AmzTitlesController;
 use App\Http\Controllers\MarketPlace\EbayListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay2ListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay3ListingVariationVerifyController;
@@ -4007,6 +4010,22 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amz-variation-verify/data', [AmzVariationVerifyController::class, 'data'])->name('amz.variation.verify.data');
     Route::post('/amz-variation-verify/pull-listings', [AmzVariationVerifyController::class, 'pullListings'])->name('amz.variation.verify.pull');
 
+    Route::get('/amz-buybox', [AmzBuyboxController::class, 'index'])->name('amz.buybox');
+    Route::get('/amz-buybox/data', [AmzBuyboxController::class, 'data'])->name('amz.buybox.data');
+    Route::post('/amz-buybox/pull', [AmzBuyboxController::class, 'startPull'])->name('amz.buybox.pull');
+    Route::get('/amz-buybox/pull-status', [AmzBuyboxController::class, 'pullStatus'])->name('amz.buybox.pull.status');
+
+    Route::get('/amz-reviews', [AmzReviewsController::class, 'index'])->name('amz.reviews');
+    Route::get('/amz-reviews/data', [AmzReviewsController::class, 'data'])->name('amz.reviews.data');
+
+    Route::get('/amz-titles', [AmzTitlesController::class, 'index'])->name('amz.titles');
+    Route::get('/amz-titles/data', [AmzTitlesController::class, 'data'])->name('amz.titles.data');
+    Route::post('/amz-titles/pull', [AmzTitlesController::class, 'startPull'])->name('amz.titles.pull');
+    Route::get('/amz-titles/pull-status', [AmzTitlesController::class, 'pullStatus'])->name('amz.titles.pull.status');
+    Route::post('/amz-titles/ai-analyze', [AmzTitlesController::class, 'aiAnalyze'])->name('amz.titles.ai.analyze');
+    Route::post('/amz-titles/negatives/suggest', [AmzTitlesController::class, 'suggestNegatives'])->name('amz.titles.negatives.suggest');
+    Route::post('/amz-titles/negatives/approve', [AmzTitlesController::class, 'approveNegatives'])->name('amz.titles.negatives.approve');
+
     // Amz Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
     Route::get('/amz-listing-variation-verify', [AmzListingVariationVerifyController::class, 'index'])->name('amz.listing.variation.verify');
     Route::get('/amz-listing-variation-verify/data', [AmzListingVariationVerifyController::class, 'data'])->name('amz.listing.variation.verify.data');
@@ -4034,6 +4053,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
+    Route::post('/amazon-sprice-cvr-stats-save', [OverallAmazonController::class, 'saveAmazonSpriceCvrDailyStats']);
+    Route::get('/amazon-sprice-cvr-history', [OverallAmazonController::class, 'getAmazonSpriceCvrHistory']);
     Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
