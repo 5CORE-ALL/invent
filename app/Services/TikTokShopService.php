@@ -1205,6 +1205,56 @@ class TikTokShopService
         Cache::put('tiktok_oauth_state', $state, 600);
         return $auth->createAuthRequest($state, true);
     }
+
+    /**
+     * Exchange a one-time OAuth auth_code for access/refresh tokens.
+     *
+     * @return array{success: bool, message: string, access_token?: string, refresh_token?: string, raw?: array}
+     */
+    public function exchangeAuthCode(string $code): array
+    {
+        $code = trim($code);
+        if ($code === '') {
+            return ['success' => false, 'message' => 'Authorization code is empty.'];
+        }
+
+        try {
+            $auth = $this->client->auth();
+            $token = $auth->getToken($code);
+
+            $accessToken = $token['access_token'] ?? null;
+            if (!$accessToken) {
+                return [
+                    'success' => false,
+                    'message' => 'TikTok token response missing access_token.',
+                    'raw' => $token,
+                ];
+            }
+
+            $refreshToken = $token['refresh_token'] ?? null;
+            $this->setTokens($accessToken, $refreshToken);
+
+            config([
+                'services.tiktok.access_token' => $accessToken,
+                'services.tiktok.refresh_token' => $refreshToken,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'TikTok tokens obtained.',
+                'access_token' => $accessToken,
+                'refresh_token' => $refreshToken,
+                'raw' => $token,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('TikTok exchangeAuthCode failed', ['error' => $e->getMessage()]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
     
     public function refreshAccessToken(): ?array
     {

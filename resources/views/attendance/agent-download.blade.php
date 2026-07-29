@@ -201,6 +201,9 @@
     $upToDate = !empty($agent_up_to_date);
 @endphp
 <div class="container-fluid">
+    @if(session('success'))
+        <div class="alert alert-success border-0 shadow-sm">{{ session('success') }}</div>
+    @endif
     <div class="da-hero mb-4 {{ $needsUpdate ? 'update' : '' }}">
         @if($needsUpdate)
             <span class="da-badge warn"><i class="ri-error-warning-line"></i> Update required · Latest v{{ $agent_latest_version }}</span>
@@ -242,8 +245,15 @@
                     <div class="da-update-box">
                         <strong>Before you run the installer:</strong>
                         Quit 5Core Attendance from the system tray (right‑click → Quit).
-                        Then run the downloaded file and keep the default folder so Windows updates the same app.
+                        Then run the downloaded file — the installer replaces the existing app (same Start Menu entry), it does not add a second copy.
                     </div>
+                    <form method="POST" action="{{ route('attendance.agent.mark-uninstalled') }}" class="mt-3 position-relative" style="z-index:1">
+                        @csrf
+                        <button type="submit" class="btn btn-link btn-sm text-muted p-0"
+                                onclick="return confirm('Hide update prompts? Only confirm if you uninstalled the app or do not have it on this PC.');">
+                            I uninstalled / app is not installed — hide Update
+                        </button>
+                    </form>
                 @elseif($upToDate)
                     <a href="{{ $download_url }}" class="btn btn-outline-primary da-download-btn">
                         <i class="ri-download-cloud-2-line" style="font-size:1.2rem"></i>

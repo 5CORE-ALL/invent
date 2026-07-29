@@ -107,6 +107,13 @@
                 <a href="{{ route('attendance.agent') }}" class="btn btn-primary">Go to download page</a>
             @endif
         </div>
+        <form method="POST" action="{{ route('attendance.agent.mark-uninstalled') }}" class="mt-3 mb-0 text-center">
+            @csrf
+            <button type="submit" class="btn btn-link btn-sm text-muted p-0"
+                    onclick="return confirm('Hide update prompts? Only confirm if you uninstalled the app or do not have it on this PC.');">
+                I uninstalled / app is not installed on this PC
+            </button>
+        </form>
     </div>
 </div>
 

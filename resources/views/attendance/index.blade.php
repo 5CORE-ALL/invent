@@ -40,9 +40,18 @@
                         Updates your existing app — does not install a second copy.
                     </div>
                 </div>
-                <button type="button" class="btn btn-sm btn-warning text-dark fw-semibold" onclick="window.showAttendanceAgentUpdateModal && window.showAttendanceAgentUpdateModal()">
-                    Update now
-                </button>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-semibold" onclick="window.showAttendanceAgentUpdateModal && window.showAttendanceAgentUpdateModal()">
+                        Update now
+                    </button>
+                    <form method="POST" action="{{ route('attendance.agent.mark-uninstalled') }}" class="d-inline">
+                        @csrf
+                        <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                onclick="return confirm('Hide update prompts? Only confirm if you uninstalled the app or do not have it on this PC.');">
+                            Not installed
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>

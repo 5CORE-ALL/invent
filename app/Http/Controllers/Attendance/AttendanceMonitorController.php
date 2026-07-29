@@ -250,6 +250,18 @@ class AttendanceMonitorController extends Controller
         );
     }
 
+    public function markAgentUninstalled(Request $request)
+    {
+        abort_unless(AttendanceAccess::canSeeMenu(), 403);
+
+        $this->attendanceService->markDesktopAgentUninstalled($request->user());
+
+        // Clear snooze keys are client-side; flash is enough for portal UX.
+        return redirect()
+            ->route('attendance.agent')
+            ->with('success', 'Marked as not installed. Update prompts are hidden until you install and open the app again.');
+    }
+
     private function resolveAgentInstaller(): ?string
     {
         $configured = config('attendance.agent_installer_path');

@@ -415,6 +415,11 @@ Route::get('/sku-match', [SkuMatchController::class, 'index']);
 Route::post('/sku-match', [SkuMatchController::class, 'match'])->name('sku.match.process');
 Route::post('/sku-match/update', [SkuMatchController::class, 'update'])->name('sku-match.update');
 
+// TikTok Shop OAuth — /callback must match TIKTOK_REDIRECT_URI (public; TikTok redirects here)
+Route::get('/callback', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'callback'])->name('tiktok.oauth.callback');
+Route::get('/tiktok/connect', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'connect'])->name('tiktok.oauth.connect');
+Route::get('/tiktok/test-connection', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'testConnection'])->name('tiktok.oauth.test');
+
 Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/broadcasting/auth', function (Request $request) {
         $user = $request->user();
@@ -6639,6 +6644,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/policies', [AttendanceMonitorController::class, 'storePolicy'])->name('policies.store');
         Route::get('/agent', [AttendanceMonitorController::class, 'agentDownload'])->name('agent');
         Route::get('/agent/download', [AttendanceMonitorController::class, 'agentInstallerDownload'])->name('agent.download');
+        Route::post('/agent/mark-uninstalled', [AttendanceMonitorController::class, 'markAgentUninstalled'])->name('agent.mark-uninstalled');
         Route::get('/screenshots/{screenshot}', [AttendanceAgentController::class, 'showScreenshot'])->name('screenshots.show');
     });
 

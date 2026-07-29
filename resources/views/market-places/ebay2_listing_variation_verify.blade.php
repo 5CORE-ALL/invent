@@ -154,9 +154,9 @@
                             </div>
                             <div class="ms-auto d-flex flex-wrap align-items-center gap-2 small">
                                 <span class="ebay2-lvv-sku-chip ebay2-lvv-sku-chip--missing">Missing</span>
-                                <span class="text-muted">in CP Master, not on parent listing</span>
+                                <span class="text-muted">in CP Master, not listed on eBay 2</span>
                                 <span class="ebay2-lvv-sku-chip ebay2-lvv-sku-chip--extra">Excess</span>
-                                <span class="text-muted">on parent listing, not in CP Master</span>
+                                <span class="text-muted">listed on eBay 2, not in CP Master</span>
                             </div>
                         </div>
                     </div>

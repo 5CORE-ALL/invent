@@ -234,8 +234,14 @@ class AttendanceService
     public function desktopAgentStatusForUser(User $user): array
     {
         $latest = (string) config('attendance.agent_version', '1.0.0');
+
+        // Only treat as installed if the desktop agent was seen recently and not
+        // marked uninstalled. Stale DB rows after uninstall must not keep showing Update.
         $device = AttendanceDevice::query()
             ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->whereNotNull('last_seen_at')
+            ->where('last_seen_at', '>=', now()->subDays(2))
             ->orderByDesc('last_seen_at')
             ->orderByDesc('id')
             ->first();
@@ -243,7 +249,6 @@ class AttendanceService
         $hasInstalled = $device !== null;
         $installed = $device?->agent_version ? (string) $device->agent_version : null;
 
-        // Any registered desktop device with a missing/old version needs an update.
         $updateAvailable = $hasInstalled && (
             $installed === null || version_compare($latest, $installed, '>')
         );
@@ -257,6 +262,18 @@ class AttendanceService
             'up_to_date' => $upToDate,
             'device_name' => $device?->device_name,
         ];
+    }
+
+    /**
+     * User confirmed the desktop app is not installed (uninstalled / different PC).
+     * Stops Update prompts until the agent connects again.
+     */
+    public function markDesktopAgentUninstalled(User $user): int
+    {
+        return AttendanceDevice::query()
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
     }
 
     public function autoCloseStaleSessions(): int
