@@ -1496,10 +1496,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('sync:tiktok-sheet-data')
-            ->everyMinute()
-            ->name('sync-tiktok-sheet')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
+        $ist($schedule->command('tiktok:fetch-orders --days=60 --prune')
+            ->dailyAt('02:10')
+            ->name('tiktok-fetch-orders')
+            ->withoutOverlapping(170)
             ->runInBackground()
             ->appendOutputTo($log));
 

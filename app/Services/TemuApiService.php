@@ -173,15 +173,68 @@ class TemuApiService
 
         Log::info("======================= Ended Inventory Sync =======================");
         Log::info("Total Temu inventory items collected: " . count($this->allItems));
-        foreach ($this->allItems as $titem) {
-            $sku = $titem['outGoodsSn'] ?? null;
-            $quantity = $titem['quantity'] ?? 0;
-            if ($sku) {
-                ProductStockMapping::where('sku', $sku)->update(['inventory_temu' => (int) $quantity]);
+        $this->persistGoodsListInventory($this->allItems);
+        return $this->allItems;
+    }
+
+    /**
+     * Persist Temu goods-list inventory onto temu_metrics.quantity (API stock for
+     * temu-decrease / map-issues) and product_stock_mappings.inventory_temu.
+     *
+     * @param  array<int, array<string, mixed>>  $goodsList
+     */
+    public function persistGoodsListInventory(array $goodsList): int
+    {
+        $updated = 0;
+
+        foreach ($goodsList as $titem) {
+            $quantity = (int) ($titem['quantity'] ?? 0);
+            $skuTargets = [];
+
+            foreach ($titem['outSkuSnList'] ?? [] as $outSku) {
+                $outSku = trim((string) $outSku);
+                if ($outSku !== '') {
+                    $skuTargets[$outSku] = true;
+                }
+            }
+
+            foreach ($titem['skuInfoList'] ?? [] as $skuInfo) {
+                foreach (['outSkuSn', 'skuSn', 'extCode'] as $key) {
+                    $candidate = trim((string) ($skuInfo[$key] ?? ''));
+                    if ($candidate !== '') {
+                        $skuTargets[$candidate] = true;
+                    }
+                }
+
+                $skuId = isset($skuInfo['skuId']) ? (string) $skuInfo['skuId'] : '';
+                if ($skuId !== '' && Schema::hasColumn('temu_metrics', 'quantity')) {
+                    $n = TemuMetric::where('sku_id', $skuId)->update(['quantity' => $quantity]);
+                    $updated += $n;
+                }
+            }
+
+            $outGoodsSn = trim((string) ($titem['outGoodsSn'] ?? ''));
+            if ($outGoodsSn !== '' && $skuTargets === []) {
+                $skuTargets[$outGoodsSn] = true;
+            }
+
+            foreach (array_keys($skuTargets) as $sku) {
+                if (Schema::hasColumn('temu_metrics', 'quantity')) {
+                    $updated += TemuMetric::where('sku', $sku)->update(['quantity' => $quantity]);
+                }
+
+                ProductStockMapping::where('sku', $sku)->update([
+                    'inventory_temu' => (string) $quantity,
+                ]);
             }
         }
-        Log::info($this->allItems);
-        return $this->allItems;
+
+        Log::info('Temu inventory persisted to temu_metrics / product_stock_mappings', [
+            'goods' => count($goodsList),
+            'metric_updates' => $updated,
+        ]);
+
+        return $updated;
     }
 
 public function getInventory__()

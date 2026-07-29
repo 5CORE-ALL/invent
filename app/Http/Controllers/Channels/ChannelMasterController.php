@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Channels;
 
-use App\Console\Commands\TiktokSheetData;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAliexpressController;
@@ -116,7 +115,7 @@ use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
 use App\Models\TiendamiaListingStatus;
 use App\Models\TiktokCampaignReport;
-use App\Models\TiktokSheet;
+use App\Models\TiktokOrder;
 use App\Models\TiktokSalesTwo;
 use App\Models\TiktokShopListingStatus;
 use App\Models\DepopSheetData;
@@ -2262,7 +2261,9 @@ class ChannelMasterController extends Controller
                 }
 
                 $inv = (float) ($row['INV'] ?? 0);
-                if ($inv <= 0) {
+                $ttStock = (float) ($row['TT Stock'] ?? 0);
+                // Zero INV skipped; negative INV + marketplace 0 = Map (handled below)
+                if ($inv == 0.0) {
                     continue;
                 }
 
@@ -2273,12 +2274,15 @@ class ChannelMasterController extends Controller
                     continue;
                 }
 
-                $ttStock = (float) ($row['TT Stock'] ?? 0);
-                $diff = abs($inv - $ttStock);
-                if ($diff <= 3) {
+                if ($inv < 0 && $ttStock == 0.0) {
                     $map++;
                 } else {
-                    $nmap++;
+                    $diff = abs($inv - $ttStock);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
                 }
 
                 $views += (int) ($row['video_views'] ?? 0) + (int) ($row['ads_views'] ?? 0) + (int) ($row['affl_views'] ?? 0);
@@ -2329,7 +2333,8 @@ class ChannelMasterController extends Controller
                 }
 
                 $inv = (float) ($row['INV'] ?? 0);
-                if ($inv <= 0) {
+                $ttStock = (float) ($row['TT Stock'] ?? 0);
+                if ($inv == 0.0) {
                     continue;
                 }
 
@@ -2340,12 +2345,15 @@ class ChannelMasterController extends Controller
                     continue;
                 }
 
-                $ttStock = (float) ($row['TT Stock'] ?? 0);
-                $diff = abs($inv - $ttStock);
-                if ($diff <= 3) {
+                if ($inv < 0 && $ttStock == 0.0) {
                     $map++;
                 } else {
-                    $nmap++;
+                    $diff = abs($inv - $ttStock);
+                    if ($diff <= 3) {
+                        $map++;
+                    } else {
+                        $nmap++;
+                    }
                 }
 
                 $views += (int) ($row['video_views'] ?? 0) + (int) ($row['ads_views'] ?? 0) + (int) ($row['affl_views'] ?? 0);
@@ -4802,13 +4810,13 @@ class ChannelMasterController extends Controller
             }
         }
 
-        // Shopify B2C / B2B, Wayfair, Faire, TikTok Shop (ShipHub), TikTok 2, Reverb, Mercari, TopDawg
+        // Shopify B2C / B2B, Wayfair, Faire, TikTok Shop (tiktok_orders), TikTok 2, Reverb, Mercari, TopDawg
         $extendedYs = [
             [fn () => $this->computeShopifyB2xYSalesLikeAmazon(false), 'shopifyb2c', 'Shopify B2C Y Sales'],
             [fn () => $this->computeShopifyB2xYSalesLikeAmazon(true), 'shopifyb2b', 'Shopify B2B Y Sales'],
             [fn () => $this->computeWayfairYSalesLikeAmazon(), 'wayfair', 'Wayfair Y Sales'],
             [fn () => $this->computeFaireYSalesLikeAmazon(), 'faire', 'Faire Y Sales'],
-            [fn () => $this->computeTiktokShopYSalesFromShiphub(), 'tiktokshop', 'TikTok Shop Y Sales'],
+            [fn () => $this->computeTiktokShopYSalesFromOrders(), 'tiktokshop', 'TikTok Shop Y Sales'],
             [fn () => $this->computeReverbYSalesLikeAmazon(), 'reverb', 'Reverb Y Sales'],
             [fn () => $this->computeMercariYSalesLikeAmazon(true), 'mercariwship', 'Mercari w ship Y Sales'],
             [fn () => $this->computeMercariYSalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship Y Sales'],
@@ -4969,7 +4977,7 @@ class ChannelMasterController extends Controller
             [fn () => $this->computeShopifyB2xL7SalesLikeAmazon(true), 'shopifyb2b', 'Shopify B2B L7 Sales'],
             [fn () => $this->computeWayfairL7SalesLikeAmazon(), 'wayfair', 'Wayfair L7 Sales'],
             [fn () => $this->computeFaireL7SalesLikeAmazon(), 'faire', 'Faire L7 Sales'],
-            [fn () => $this->computeTiktokShopL7SalesFromShiphub(), 'tiktokshop', 'TikTok Shop L7 Sales'],
+            [fn () => $this->computeTiktokShopL7SalesFromOrders(), 'tiktokshop', 'TikTok Shop L7 Sales'],
             [fn () => $this->computeReverbL7SalesLikeAmazon(), 'reverb', 'Reverb L7 Sales'],
             [fn () => $this->computeMercariL7SalesLikeAmazon(true), 'mercariwship', 'Mercari w ship L7 Sales'],
             [fn () => $this->computeMercariL7SalesLikeAmazon(false), 'mercariwoship', 'Mercari wo ship L7 Sales'],
@@ -5722,37 +5730,19 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * TikTok Shop: ShipHub — sum order_total once per order on Y day (same cancel filter as calculateTikTokMetrics).
+     * TikTok Shop: tiktok_orders — line sales (sale_price × qty) for Y day.
      */
-    private function computeTiktokShopYSalesFromShiphub(): ?float
+    private function computeTiktokShopYSalesFromOrders(): ?float
     {
-        $latestDate = DB::connection('shiphub')->table('orders')
-            ->where('marketplace', '=', 'tiktok')
-            ->max('order_date');
-
-        if (!$latestDate) {
+        $latestPacific = TiktokOrder::latestCreatedAt();
+        if (! $latestPacific) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestDate)->timezone('America/Los_Angeles');
         $yStartPacific = $latestPacific->copy()->subDay()->startOfDay();
         $yEndPacific = $latestPacific->copy()->subDay()->endOfDay();
 
-        $rows = DB::connection('shiphub')
-            ->table('orders as o')
-            ->where('o.order_date', '>=', $yStartPacific)
-            ->where('o.order_date', '<=', $yEndPacific)
-            ->where('o.marketplace', '=', 'tiktok')
-            ->where(function ($query) {
-                $query->where(function ($q) {
-                    $q->where('o.order_status', '!=', 'Canceled')
-                        ->where('o.order_status', '!=', 'Cancelled');
-                })->orWhereNull('o.order_status');
-            })
-            ->selectRaw('COALESCE(SUM(o.order_total), 0) as revenue')
-            ->value('revenue');
-
-        return round((float) $rows, 2);
+        return round(TiktokOrder::salesAmountBetween($yStartPacific, $yEndPacific), 2);
     }
 
     /**
@@ -6334,34 +6324,16 @@ class ChannelMasterController extends Controller
         return round($sum, 2);
     }
 
-    private function computeTiktokShopL7SalesFromShiphub(): ?float
+    private function computeTiktokShopL7SalesFromOrders(): ?float
     {
-        $latestDate = DB::connection('shiphub')->table('orders')
-            ->where('marketplace', '=', 'tiktok')
-            ->max('order_date');
-
-        if (!$latestDate) {
+        $latestPacific = TiktokOrder::latestCreatedAt();
+        if (! $latestPacific) {
             return null;
         }
 
-        $latestPacific = Carbon::parse($latestDate)->timezone('America/Los_Angeles');
         [$l7StartPacific, $l7EndPacific] = $this->pacificL7WindowEndingYesterday($latestPacific);
 
-        $rows = DB::connection('shiphub')
-            ->table('orders as o')
-            ->where('o.order_date', '>=', $l7StartPacific)
-            ->where('o.order_date', '<=', $l7EndPacific)
-            ->where('o.marketplace', '=', 'tiktok')
-            ->where(function ($query) {
-                $query->where(function ($q) {
-                    $q->where('o.order_status', '!=', 'Canceled')
-                        ->where('o.order_status', '!=', 'Cancelled');
-                })->orWhereNull('o.order_status');
-            })
-            ->selectRaw('COALESCE(SUM(o.order_total), 0) as revenue')
-            ->value('revenue');
-
-        return round((float) $rows, 2);
+        return round(TiktokOrder::salesAmountBetween($l7StartPacific, $l7EndPacific), 2);
     }
 
     private function computeTiktokTwoL7SalesLikeAmazon(): ?float
@@ -10948,225 +10920,101 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated from ShipHub)
-        // Try both 'TikTok' and 'Tiktok Shop' channel names
-        $metrics = MarketplaceDailyMetric::where('channel', 'TikTok')
-            ->orWhere('channel', 'Tiktok Shop')
-            ->latest('date')
-            ->first();
-        
-        // Get L60 data from ShipHub (33-66 days ago range)
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'tiktok')
-            ->max('order_date');
+        $l60Orders = 0;
+        $l60Sales = 0.0;
+        $l30Orders = 0;
+        $l30Sales = 0.0;
+        $totalQuantity = 0;
+        $totalProfit = 0.0;
+        $totalCogs = 0.0;
+        $gProfitPct = 0.0;
+        $gRoi = 0.0;
 
-        if ($latestDate) {
-            // Use California timezone for consistent date calculations
-            $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-            // L60 widened to 62 calendar days, anchored to day boundaries.
-            // It is the prior period that sits directly before the 32-day L30 window:
-            //   L30 = [latestDate-31 .. latestDate]   (32 days)
-            //   L60 = [latestDate-93 .. latestDate-32] (62 days, contiguous and non-overlapping)
-            $l60StartDate = $latestDateCarbon->copy()->subDays(93)->startOfDay(); // 62 days total
-            $l60EndDate   = $latestDateCarbon->copy()->subDays(32)->endOfDay();
-            
-            // L60 sales & order count for TikTok come from `orders.order_total`. The previous
-            // query summed `order_items.unit_price`, but ShipHub stores TikTok revenue only on
-            // `orders.order_total` — `order_items.unit_price` is 0 for every TikTok item, which
-            // made L60 sales always $0. We also need DISTINCT orders (not items) for the count.
-            $l60Stats = DB::connection('shiphub')
-                ->table('orders')
-                ->whereBetween('order_date', [$l60StartDate, $l60EndDate])
-                ->where('marketplace', '=', 'tiktok')
-                ->where(function($query) {
-                    $query->where('order_status', '!=', 'Canceled')
-                          ->where('order_status', '!=', 'Cancelled')
-                          ->orWhereNull('order_status');
-                })
-                ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(order_total), 0) as total_sales')
-                ->first();
+        // L30 = last 30 California calendar days; L60 = prior contiguous 30 days
+        [$l30StartDate, $l30EndDate] = TiktokOrder::californiaDaysWindow(30);
+        $l60EndDate = $l30StartDate->copy()->subSecond();
+        $l60StartDate = $l60EndDate->copy()->subDays(29)->startOfDay();
 
-            $l60Orders = (int) ($l60Stats->order_count ?? 0);
-            $l60Sales  = (float) ($l60Stats->total_sales ?? 0);
-            
-            // Get L30 data from ShipHub (last 32 calendar days, California time).
-            // startOfDay() avoids dropping orders whose timestamp is earlier than latestDate's
-            // time-of-day on the start boundary day.
-            $l30StartDate = $latestDateCarbon->copy()->subDays(31)->startOfDay(); // 32 days total (31 previous days + today)
-            $l30EndDate = $latestDateCarbon->endOfDay();
-            
-            $l30OrderItems = DB::connection('shiphub')
-                ->table('orders as o')
-                ->join('order_items as i', 'o.id', '=', 'i.order_id')
-                ->whereBetween('o.order_date', [$l30StartDate, $l30EndDate])
-                ->where('o.marketplace', '=', 'tiktok')
-                ->where(function($query) {
-                    $query->where('o.order_status', '!=', 'Canceled')
-                          ->where('o.order_status', '!=', 'Cancelled')
-                          ->orWhereNull('o.order_status');
-                })
-                ->select([
-                    'o.marketplace_order_id as order_id',
-                    'o.order_total as total_amount',
-                    'i.sku',
-                    'i.quantity_ordered as quantity',
-                ])
-                ->get();
-            
-            // Calculate L30 metrics from ShipHub
-            $l30Orders = 0;
-            $l30Sales = 0;
-            $totalQuantity = 0;
-            $totalProfit = 0;
-            $totalCogs = 0;
-            
-            // Load ProductMasters with UPPERCASE keys (EXACT SAME as TikTokSalesController)
-            $skus = $l30OrderItems->pluck('sku')->filter()->unique()->values()->toArray();
+        if (TiktokOrder::tableReady()) {
+            $l60Sales = TiktokOrder::salesAmountBetween($l60StartDate, $l60EndDate);
+            $l60Orders = TiktokOrder::orderCountBetween($l60StartDate, $l60EndDate);
+
+            $l30OrderItems = TiktokOrder::linesInWindow($l30StartDate, $l30EndDate);
+
+            $skus = $l30OrderItems->pluck('seller_sku')->filter()->unique()->values()->toArray();
             $productMasters = \App\Models\ProductMaster::whereIn('sku', $skus)
                 ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper($item->sku);
-                });
+                ->keyBy(fn ($item) => strtoupper($item->sku));
+
             $orderIds = [];
-            
-            // Group items by order
-            $orderGroups = [];
             foreach ($l30OrderItems as $item) {
-                $orderId = $item->order_id ?? 'unknown';
-                if (!isset($orderGroups[$orderId])) {
-                    $orderGroups[$orderId] = [
-                        'order_total' => (float) ($item->total_amount ?? 0),
-                        'items' => []
-                    ];
+                $orderIds[$item->order_id] = true;
+                $sku = strtoupper(trim((string) ($item->seller_sku ?? '')));
+                $quantity = (float) ($item->quantity ?? 1);
+                if ($quantity <= 0) {
+                    continue;
                 }
-                $orderGroups[$orderId]['items'][] = $item;
-            }
-            
-            // Process each order
-            foreach ($orderGroups as $orderId => $orderData) {
-                $orderTotal = $orderData['order_total'];
-                $items = $orderData['items'];
-                $itemCount = count($items);
-                $pricePerItem = $itemCount > 0 ? $orderTotal / $itemCount : $orderTotal;
-                
-                $orderIds[$orderId] = true;
-                
-                // Process items - use same rounding methodology as TikTokSalesController to match sales page
-                foreach ($items as $item) {
-                    $sku = trim($item->sku ?? '');
-                    $quantity = (float) ($item->quantity ?? 1);
-                    
-                    // Sum rounded distributed prices per item (same as sales page)
-                    $totalPrice = $pricePerItem; // Distributed price per item
-                    $saleAmount = round($totalPrice, 2); // Round each item's price
-                    $l30Sales += $saleAmount;
-                    
-                    // Use UPPERCASE for lookup (EXACT SAME as TikTokSalesController)
-                    $pm = $productMasters->get(strtoupper($sku));
-                    
-                    // EXACT SAME LOGIC as TikTokSalesController for LP, Ship, Weight Act
-                    $lp = 0;
-                    $ship = 0;
-                    $weightAct = 0;
-                    
-                    if ($sku && $pm) {
-                        $values = is_array($pm->Values) ? $pm->Values : 
-                                (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                        
-                        // Get LP
-                        if (is_array($values)) {
-                            foreach ($values as $k => $v) {
-                                if (strtolower($k) === "lp") {
-                                    $lp = floatval($v);
-                                    break;
-                                }
+
+                $unitPrice = (float) ($item->sale_price ?? 0);
+                $saleAmount = round($unitPrice * $quantity, 2);
+                $l30Sales += $saleAmount;
+                $totalQuantity += $quantity;
+
+                $pm = $productMasters->get($sku);
+                $lp = 0.0;
+                $ship = 0.0;
+                $weightAct = 0.0;
+                if ($pm) {
+                    $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $lp = floatval($v);
+                                break;
                             }
                         }
-                        if ($lp === 0 && isset($pm->lp)) {
-                            $lp = floatval($pm->lp);
-                        }
-                        
-                        // Get Ship
-                        if (is_array($values) && isset($values['ship'])) {
+                        if (isset($values['ship'])) {
                             $ship = floatval($values['ship']);
-                        } elseif (isset($pm->ship)) {
-                            $ship = floatval($pm->ship);
                         }
-                        
-                        // Get Weight Act
-                        if (is_array($values) && isset($values['wt_act'])) {
+                        if (isset($values['wt_act'])) {
                             $weightAct = floatval($values['wt_act']);
                         }
                     }
-                    
-                    // Ship Cost calculation (EXACT SAME as TikTokSalesController)
-                    $tWeight = $weightAct * $quantity;
-                    if ($quantity == 1) {
-                        $shipCost = $ship;
-                    } elseif ($quantity > 1 && $tWeight < 20) {
-                        $shipCost = $ship / $quantity;
-                    } else {
-                        $shipCost = $ship;
+                    if ($lp === 0.0 && isset($pm->lp)) {
+                        $lp = floatval($pm->lp);
                     }
-                    
-                    $unitPrice = $quantity > 0 ? $pricePerItem / $quantity : 0;
-                    $cogs = $lp * $quantity;
-                    $pftEach = ($unitPrice * 0.80) - $lp - $shipCost; // 80% margin for TikTok
-                    $profit = $pftEach * $quantity;
-                    
-                    $totalQuantity += $quantity;
-                    $totalCogs += $cogs;
-                    $totalProfit += $profit;
+                    if ($ship === 0.0 && isset($pm->ship)) {
+                        $ship = floatval($pm->ship);
+                    }
                 }
+
+                $tWeight = $weightAct * $quantity;
+                if ($quantity == 1) {
+                    $shipCost = $ship;
+                } elseif ($quantity > 1 && $tWeight < 20) {
+                    $shipCost = $ship / $quantity;
+                } else {
+                    $shipCost = $ship;
+                }
+
+                $cogs = $lp * $quantity;
+                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
+                $totalCogs += $cogs;
+                $totalProfit += $pftEach * $quantity;
             }
-            
+
             $l30Orders = count($orderIds);
-            
-            // Calculate percentages
             $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
             $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-            $nPft = $gProfitPct; // TikTok has no ads
-            $nRoi = $gRoi;
-            
-            // Debug log
-            Log::info('TikTok Channel Data Calculation', [
-                'l30_sales' => $l30Sales,
-                'total_profit' => $totalProfit,
-                'total_cogs' => $totalCogs,
-                'g_profit_pct' => $gProfitPct,
-                'g_roi' => $gRoi,
-                'l30_orders' => $l30Orders,
-                'order_count' => count($orderGroups)
-            ]);
-        } else {
-            $l60Orders = 0;
-            $l60Sales = 0;
-            $l30Orders = 0;
-            $l30Sales = 0;
-            $totalQuantity = 0;
-            $totalProfit = 0;
-            $totalCogs = 0;
-            $gProfitPct = 0;
-            $gRoi = 0;
-            $nPft = 0;
-            $nRoi = 0;
         }
-        
-        // Calculate growth
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // L60 profit percentage (calculated if needed)
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiktok Shop')->first();
-
-        // Live Map / Miss / NMap from tiktok-pricing (same tolerance as Reverb)
         $mapMissCounts = $this->getTiktokLiveMapMissNMapFromPricingData($request);
-
-        // Total Ad Spend: fetch directly from tiktok_campaign_reports table
         $tiktokAdSpend = $this->fetchTotalAdSpendFromTables('tiktokshop');
         $adsPct = $l30Sales > 0 ? ($tiktokAdSpend / $l30Sales) * 100 : 0;
         $netProfit = $totalProfit - $tiktokAdSpend;
@@ -11190,7 +11038,7 @@ class ChannelMasterController extends Controller
             'N ROI'      => round($nRoiWithAds, 2),
             'Ads%'       => round($adsPct, 2),
             'TikTok Ad Spend' => round($tiktokAdSpend, 2),
-            'KW Spent'   => round($tiktokAdSpend, 2), // TikTok KW ad spend
+            'KW Spent'   => round($tiktokAdSpend, 2),
             'PT Spent'   => 0,
             'HL Spent'   => 0,
             'PMT Spent'  => 0,
@@ -11207,7 +11055,7 @@ class ChannelMasterController extends Controller
             'NMap' => $mapMissCounts['nmap'],
             'Total Views' => $mapMissCounts['total_views'] ?? 0,
             'base'       => $channelData->base ?? 0,
-            'sheet_link' => $channelData->sheet_link ?? '',
+            'sheet_link' => '',
             'ra'         => $channelData->ra ?? 0,
         ];
 

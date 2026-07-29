@@ -12,6 +12,7 @@ use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
 use App\Models\TikTokDailyData;
 use App\Models\TikTokProduct;
+use App\Models\TiktokOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -65,41 +66,15 @@ class TiktokAdsController extends Controller
 
             $shopifyData = ShopifySku::mapByProductSkus($skus);
             
-            // Fetch TikTok L30 sales from ShipHub (like daily sales page)
-            $latestDate = DB::connection('shiphub')
-                ->table('orders')
-                ->where('marketplace', '=', 'tiktok')
-                ->max('order_date');
-
+            // Fetch TikTok L30 sold from tiktok_orders (last 30 CA calendar days)
             $tiktokSalesData = collect();
             try {
-                if ($latestDate) {
-                    $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-                    $startDate = $latestDateCarbon->copy()->subDays(29); // 30 days total
-                    
-                    $tiktokSalesData = DB::connection('shiphub')
-                        ->table('orders as o')
-                        ->join('order_items as i', 'o.id', '=', 'i.order_id')
-                        ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
-                        ->where('o.marketplace', '=', 'tiktok')
-                        ->where(function($query) {
-                            $query->where('o.order_status', '!=', 'Canceled')
-                                  ->where('o.order_status', '!=', 'Cancelled')
-                                  ->where('o.order_status', '!=', 'canceled')
-                                  ->where('o.order_status', '!=', 'cancelled')
-                                  ->orWhereNull('o.order_status');
-                        })
-                        ->whereIn('i.sku', $skus)
-                        ->selectRaw('UPPER(i.sku) as sku, SUM(i.quantity_ordered) as l30')
-                        ->groupBy(DB::raw('UPPER(i.sku)'))
-                        ->get()
-                        ->keyBy(function($item) {
-                            return strtoupper($item->sku);
-                        });
-                }
+                $soldMap = TiktokOrder::soldQtyL30($skus, 30);
+                $tiktokSalesData = collect($soldMap)->mapWithKeys(
+                    fn ($l30, $sku) => [strtoupper((string) $sku) => (object) ['sku' => $sku, 'l30' => $l30]]
+                );
             } catch (\Exception $e) {
-                // If ShipHub connection fails, continue with empty sales data
-                \Log::warning('TikTok ShipHub connection error: ' . $e->getMessage());
+                \Log::warning('TikTok orders sold error: ' . $e->getMessage());
             }
 
             // Get campaigns by matching campaign_name with SKU (simplified - only SKU matching)
@@ -276,7 +251,7 @@ class TiktokAdsController extends Controller
                 // Get OV L30 from Shopify quantity column (similar to Temu)
                 $ovL30 = ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0;
                 
-                // Get TikTok L30 sales from ShipHub (normalize SKU to uppercase for matching)
+                // Get TikTok L30 sold from tiktok_orders (normalize SKU to uppercase for matching)
                 $skuUpper = strtoupper($sku);
                 $tiktokL30 = ($tiktokSalesData->has($skuUpper)) ? (int)$tiktokSalesData->get($skuUpper)->l30 : 0;
                 

@@ -192,7 +192,9 @@ class MappingChannelCounts
                 'image' => $logos[$slug] ?? null,
                 'missing_mapping' => $nmap,
                 'detail_url' => route('map.issues.channel', ['channel' => $slug]),
-                'has_sku_detail' => isset(self::$sources[$slug]['mi_key']),
+                // mi_key MapIssues channels + pricing loaders that expose SKU detail (TikTok)
+                'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
+                    || in_array($slug, ['tiktok', 'tiktok2'], true),
             ];
         }
 
@@ -327,60 +329,19 @@ class MappingChannelCounts
             : $temu->getTemuDecreaseData(Request::create('/temu-decrease-data', 'GET'));
         $rows = self::rowsFromPayload(self::jsonPayload($raw));
 
-        $nmap = 0;
-        foreach ($rows as $row) {
-            if (! is_array($row) || empty($row['sku'] ?? null)) {
-                continue;
-            }
-            $inventory = (float) ($row['inventory'] ?? 0);
-            $temuStock = (float) ($row['temu_stock'] ?? 0);
-            $missing = (string) ($row['missing'] ?? '');
-            $temuPrice = (float) ($row['temu_price'] ?? 0);
-            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-
-            if ($inventory > 0 && $nrReq === 'REQ' && $missing !== 'M' && $temuPrice > 0 && $temuStock > 0) {
-                $diff = abs($inventory - $temuStock);
-                $isNotMap = ($inventory * 0.03 < 3)
-                    ? ($diff > 3)
-                    : (round(($diff / $inventory) * 100) > 3);
-                if ($isNotMap) {
-                    $nmap++;
-                }
-            }
-        }
-
-        return $nmap;
+        return count(TemuController::nmapSkuRowsFromDecrease($rows));
     }
 
     private static function fromTikTokPage(string $variant): int
     {
         $raw = app(TikTokPricingController::class)->getViewTikTokTabularData(
-            Request::create('/tiktok-data-json', 'GET'),
+            Request::create($variant === 'v2' ? '/tiktok-2-data-json' : '/tiktok-data-json', 'GET'),
             $variant
         );
         $rows = self::rowsFromPayload(self::jsonPayload($raw));
 
-        $nmap = 0;
-        foreach ($rows as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $mapValue = (string) ($row['MAP'] ?? $row['map'] ?? '');
-            if (str_contains($mapValue, 'N Map')) {
-                $nmap++;
-                continue;
-            }
-            // Fallback: INV vs TT stock absolute > 3
-            $inv = (float) ($row['INV'] ?? $row['inv'] ?? 0);
-            $ttStock = (float) ($row['TT Stock'] ?? $row['tt_stock'] ?? $row['INV TT'] ?? 0);
-            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
-            $missing = (string) ($row['Missing'] ?? $row['missing'] ?? '');
-            if ($nrReq === 'REQ' && $inv > 0 && $missing !== 'M' && $ttStock > 0 && abs($inv - $ttStock) > 3) {
-                $nmap++;
-            }
-        }
-
-        return $nmap;
+        // Same N Map rules as /tiktok-pricing badge (skip Missing L / parents; |INV−TT Stock| > 3)
+        return TikTokPricingController::countNmapFromTabular($rows);
     }
 
     /**

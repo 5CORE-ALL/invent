@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Channels;
 
-use App\Console\Commands\TiktokSheetData;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Models\AliExpressSheetData;
@@ -35,7 +34,8 @@ use App\Models\ShopifySku;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
-use App\Models\TiktokSheet;
+use App\Models\TikTokProduct;
+use App\Models\TiktokOrder;
 use App\Models\TopDawgSheetdata;
 use App\Models\WaifairProductSheet;
 use App\Models\WalmartMetrics;
@@ -2040,91 +2040,89 @@ class AdsMasterController extends Controller
     {
         $result = [];
 
-        $query = TiktokSheet::where('sku', 'not like', '%Parent%');
+        $percentage = ChannelMaster::where('channel', 'Tiktok Shop')->value('channel_percentage') ?? 100;
+        $percentage = $percentage / 100;
 
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
+        $productMasters = ProductMaster::all()->keyBy(fn ($item) => strtoupper($item->sku));
+        $prices = TikTokProduct::query()
+            ->whereNotNull('sku')
+            ->pluck('price', 'sku')
+            ->mapWithKeys(fn ($price, $sku) => [strtoupper(trim((string) $sku)) => (float) $price]);
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        $l30Sales = 0;
+        $l60Sales = 0;
+        $l30Orders = 0;
+        $l60Orders = 0;
+        $totalProfit = 0;
+        $totalProfitL60 = 0;
+        $totalCogs = 0;
+        $totalCogsL60 = 0;
+
+        if (TiktokOrder::tableReady()) {
+            [$l30Start, $l30End] = TiktokOrder::californiaDaysWindow(30);
+            $l60End = $l30Start->copy()->subSecond();
+            $l60Start = $l60End->copy()->subDays(29)->startOfDay();
+
+            $agg = function ($start, $end) use ($productMasters, $prices, $percentage) {
+                [$startUtc, $endUtc] = TiktokOrder::toUtcRange($start, $end);
+                $rows = TiktokOrder::activeQuery()
+                    ->whereBetween('order_created_at', [$startUtc, $endUtc])
+                    ->whereNotNull('seller_sku')
+                    ->where('seller_sku', '!=', '')
+                    ->selectRaw('UPPER(TRIM(seller_sku)) as u_sku, SUM(quantity) as units, SUM(COALESCE(sale_price,0) * quantity) as sales')
+                    ->groupByRaw('UPPER(TRIM(seller_sku))')
+                    ->get();
+
+                $units = 0;
+                $sales = 0.0;
+                $profit = 0.0;
+                $cogs = 0.0;
+
+                foreach ($rows as $row) {
+                    $sku = (string) $row->u_sku;
+                    $u = (int) $row->units;
+                    $lineSales = (float) $row->sales;
+                    if ($lineSales <= 0 && isset($prices[$sku])) {
+                        $lineSales = $u * (float) $prices[$sku];
+                    }
+                    $units += $u;
+                    $sales += $lineSales;
+
+                    $lp = 0.0;
+                    $ship = 0.0;
+                    if (isset($productMasters[$sku])) {
+                        $pm = $productMasters[$sku];
+                        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                        $lp = isset($values['lp']) ? (float) $values['lp'] : (float) ($pm->lp ?? 0);
+                        $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
+                    }
+                    $unitPrice = $u > 0 ? ($lineSales / $u) : 0;
+                    $profit += (($unitPrice * $percentage) - $lp - $ship) * $u;
+                    $cogs += $u * $lp;
+                }
+
+                return compact('units', 'sales', 'profit', 'cogs');
+            };
+
+            $l30 = $agg($l30Start, $l30End);
+            $l60 = $agg($l60Start, $l60End);
+
+            $l30Orders = $l30['units'];
+            $l60Orders = $l60['units'];
+            $l30Sales = $l30['sales'];
+            $l60Sales = $l60['sales'];
+            $totalProfit = $l30['profit'];
+            $totalProfitL60 = $l60['profit'];
+            $totalCogs = $l30['cogs'];
+            $totalCogsL60 = $l60['cogs'];
+        }
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Tiktok Shop')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30', 'l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
-        // Channel data
         $channelData = ChannelMaster::where('channel', 'Tiktok Shop')->first();
 
         $result[] = [
@@ -2147,7 +2145,7 @@ class AdsMasterController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => 'wayfair channel data fetched successfully',
+            'message' => 'tiktok channel data fetched successfully',
             'data' => $result,
         ]);
     }

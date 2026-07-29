@@ -3559,7 +3559,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Per-SKU Price chart history (same role as /ebay-metrics-history)
     Route::get('/tiktok-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokMetricsHistory'])->name('tiktok.metrics.history');
     Route::get('/tiktok-2-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2MetricsHistory'])->name('tiktok2.metrics.history');
-    Route::post('/tiktok-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTokCsv'])->name('tiktok.upload.csv');
+    // TikTok 1 products come from API (sync:tiktok-api-data) — no CSV/sheet upload.
     Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
     Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
     Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');

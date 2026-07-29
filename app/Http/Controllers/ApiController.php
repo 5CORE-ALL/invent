@@ -20,7 +20,7 @@ use App\Models\PLSProduct;
 use App\Models\WaifairProductSheet;
 use App\Models\FaireProductSheet;
 use App\Models\SheinSheetData;
-use App\Models\TiktokSheet;
+use App\Models\TiktokOrder;
 use App\Models\InstagramShopSheetdata;
 use App\Models\AliExpressSheetData;
 use App\Models\MercariWShipSheetdata;
@@ -1608,8 +1608,8 @@ class ApiController extends Controller
         $shein_sheet_query = SheinSheetData::where('sku', 'not like', '%Parent%');
         $shein_sheet_l30Sales  = (clone $shein_sheet_query)->selectRaw('SUM(shopify_sheinl30 * shopify_price) as total')->value('total') ?? 0;
 
-        $tiktok_sheet_query = TiktokSheet::where('sku', 'not like', '%Parent%');
-        $tiktok_sheet_l30Sales  = (clone $tiktok_sheet_query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
+        [$tiktokStart, $tiktokEnd] = TiktokOrder::californiaDaysWindow(30);
+        $tiktok_l30Sales = TiktokOrder::salesAmountBetween($tiktokStart, $tiktokEnd);
 
         $instagram_shop_query = InstagramShopSheetdata::where('sku', 'not like', '%Parent%');
         $instagram_shop_l30Sales  = (clone $instagram_shop_query)->selectRaw('SUM(i_l30 * price) as total')->value('total') ?? 0;
@@ -1639,7 +1639,7 @@ class ApiController extends Controller
         $total_l30_sales = intval($amz_l30Sales) + intval($ebay_l30Sales) + intval($ebay_two_channel_l30Sales) + intval($ebay_3channel_l30Sales) + intval($macy_l30sales) +
                          intval($tiend_l30Sales) + intval($best_buy_usa_l30Sales) + intval($reverb_product_l30Sales) + intval($doba_sheetdata_l30Sales) + intval($temu_metric_l30Sales) +
                          intval($walmart_l30Sales) + intval($pls_product_l30Sales) + intval($waifair_product_l30Sales) + intval($faire_product_sheet_l30Sales) + intval($shein_sheet_l30Sales) +
-                         intval($tiktok_sheet_l30Sales) + intval($instagram_shop_l30Sales) + intval($aliexpress_sheet_l30Sales) + intval($mercari_l30Sales) + intval($mercariwoship_sheet_l30Sales) +
+                         intval($tiktok_l30Sales) + intval($instagram_shop_l30Sales) + intval($aliexpress_sheet_l30Sales) + intval($mercari_l30Sales) + intval($mercariwoship_sheet_l30Sales) +
                          intval($fb_marketplace_sheet_l30Sales) + intval($fb_shop_sheet_l30Sales) + intval($business_five_coresheet_l30Sales) + intval($topdawg_sheetdata_l30Sales);
                         //  dd($fb_marketplace_sheet_l30Sales);
                           return response()->json([

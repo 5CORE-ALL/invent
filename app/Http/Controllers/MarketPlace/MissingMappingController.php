@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\MapIssuesController;
+use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Models\ChannelMaster;
 use App\Support\Badges\AllMarketplaceMasterBadgeCalculator;
 use App\Support\Marketplace\MappingChannelCounts;
@@ -38,7 +39,6 @@ class MissingMappingController extends Controller
         'bestbuy' => ['flag' => 'bestbuy_not_map', 'inv' => 'Bestbuy Inv', 'msku' => 'bestbuy_sku', 'label' => 'BestBuy USA'],
         'bestbuyusa' => ['flag' => 'bestbuy_not_map', 'inv' => 'Bestbuy Inv', 'msku' => 'bestbuy_sku', 'label' => 'BestBuy USA'],
         'tiendamia' => ['flag' => 'tiendamia_not_map', 'inv' => 'Tiendamia Inv', 'msku' => 'tiendamia_sku', 'label' => 'Tiendamia'],
-        'temu' => ['flag' => 'temu_not_map', 'inv' => 'Temu Inv', 'msku' => 'temu_sku', 'label' => 'Temu'],
         'shein' => ['flag' => 'shein_not_map', 'inv' => 'Shein Inv', 'msku' => 'shein_sku', 'label' => 'Shein'],
         'newegg' => ['flag' => 'newegg_not_map', 'inv' => 'Newegg Inv', 'msku' => 'newegg_sku', 'label' => 'Newegg'],
         'neweggb2c' => ['flag' => 'newegg_not_map', 'inv' => 'Newegg Inv', 'msku' => 'newegg_sku', 'label' => 'Newegg'],
@@ -85,11 +85,24 @@ class MissingMappingController extends Controller
             abort(404, 'Channel not found');
         }
 
+        $slug = $resolved['slug'];
+        $hasSkuDetail = isset(self::MAP_ISSUE_CHANNELS[$slug])
+            || in_array($slug, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2', 'temu', 'temu2'], true);
+
+        $channelInvLabel = match (true) {
+            in_array($slug, ['tiktok', 'tiktokshop'], true) => 'TikTok 1 inv',
+            in_array($slug, ['tiktok2', 'tiktokshop2'], true) => 'TikTok 2 inv',
+            $slug === 'temu' => 'Temu Inv',
+            $slug === 'temu2' => 'Temu 2 Inv',
+            default => 'Channel Inv',
+        };
+
         return view('market-places.Missing_mapping_channel', [
-            'channelSlug' => $resolved['slug'],
+            'channelSlug' => $slug,
             'channelName' => $resolved['name'],
-            'hasSkuDetail' => isset(self::MAP_ISSUE_CHANNELS[$resolved['slug']]),
-            'mapIssueKey' => self::MAP_ISSUE_CHANNELS[$resolved['slug']]['flag'] ?? null,
+            'hasSkuDetail' => $hasSkuDetail,
+            'mapIssueKey' => self::MAP_ISSUE_CHANNELS[$slug]['flag'] ?? null,
+            'channelInvLabel' => $channelInvLabel,
         ]);
     }
 
@@ -105,6 +118,52 @@ class MissingMappingController extends Controller
             }
 
             $slug = $resolved['slug'];
+
+            // TikTok 1 / 2 — SKU list from pricing tabular (same N Map rules as /tiktok-pricing)
+            if (in_array($slug, ['tiktok', 'tiktokshop', 'tiktok2', 'tiktokshop2'], true)) {
+                $variant = in_array($slug, ['tiktok2', 'tiktokshop2'], true) ? 'v2' : 'v1';
+                $raw = app(TikTokPricingController::class)->getViewTikTokTabularData(
+                    Request::create($variant === 'v2' ? '/tiktok-2-data-json' : '/tiktok-data-json', 'GET'),
+                    $variant
+                );
+                $payload = $raw instanceof \Illuminate\Http\JsonResponse
+                    ? json_decode($raw->getContent(), true)
+                    : [];
+                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
+                $data = collect(TikTokPricingController::nmapSkuRowsFromTabular($rows))
+                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
+                    ->values();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $data,
+                    'count' => $data->count(),
+                    'channel' => $resolved['name'],
+                ]);
+            }
+
+            // Temu 1 / 2 — SKU list from temu-decrease (API metrics for Temu 1; same N Map rules)
+            if (in_array($slug, ['temu', 'temu2'], true)) {
+                $temu = app(TemuController::class);
+                $raw = $slug === 'temu2'
+                    ? $temu->getTemu2DecreaseData(Request::create('/temu2-decrease-data', 'GET'))
+                    : $temu->getTemuDecreaseData(Request::create('/temu-decrease-data', 'GET'));
+                $payload = $raw instanceof \Illuminate\Http\JsonResponse
+                    ? json_decode($raw->getContent(), true)
+                    : [];
+                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
+                $data = collect(TemuController::nmapSkuRowsFromDecrease($rows))
+                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
+                    ->values();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $data,
+                    'count' => $data->count(),
+                    'channel' => $resolved['name'],
+                ]);
+            }
+
             $meta = self::MAP_ISSUE_CHANNELS[$slug] ?? null;
             if ($meta === null) {
                 return response()->json([

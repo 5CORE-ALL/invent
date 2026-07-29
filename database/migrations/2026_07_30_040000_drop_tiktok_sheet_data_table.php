@@ -1,19 +1,17 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * TikTok Google Sheet sync removed — no columns to add.
-     */
     public function up(): void
     {
-        // no-op
+        Schema::dropIfExists('tiktok_sheet_data');
     }
 
     public function down(): void
     {
-        // no-op
+        // Sheet sync removed — table is not recreated.
     }
 };

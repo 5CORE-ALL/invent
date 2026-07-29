@@ -96,7 +96,7 @@
                     },
                 },
                 {
-                    title: "Channel Inv",
+                    title: @json($channelInvLabel ?? 'Channel Inv'),
                     field: "channel_inv",
                     width: 130,
                     hozAlign: "center",

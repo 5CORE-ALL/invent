@@ -28,7 +28,7 @@ use App\Models\ReverbProduct;
 use App\Models\SheinPricingPrice;
 use App\Models\ShopifySku;
 use App\Models\TemuListingStatus;
-use App\Models\TemuPricing;
+use App\Models\TemuMetric;
 use App\Models\TiendamiaDataView;
 use App\Models\TiendamiaPriceUpload;
 use App\Models\TiendamiaProduct;
@@ -517,8 +517,7 @@ class MapIssuesController extends Controller
             // ---- Temu ----
             $temuStock = floatval($temu->quantity ?? 0);
             $temuBasePrice = floatval($temu->base_price ?? 0);
-            // Listed = a live pricing row with a base price (same as the temu-decrease page's
-            // Missing rule: missing when not in pricing, or in pricing with INV > 0 and no price).
+            // Listed = temu_metrics API row with base price (same as temu-decrease Temu 1).
             $temuListed = $temu !== null && $temuBasePrice > 0;
             $temuSku = $temu->sku ?? null;
             $temuReason = $temuSku !== null ? $this->skuDifferenceReason($pm->sku, $temuSku, [$this, 'normalizeTemuSku']) : '';
@@ -967,8 +966,8 @@ class MapIssuesController extends Controller
                 return true;
             });
 
-        // Temu: a SKU is "listed" when it has a live pricing row (base price > 0) in temu_pricing.
-        TemuPricing::query()
+        // Temu: listed when temu_metrics has base_price > 0 (API — same as temu-decrease Temu 1).
+        TemuMetric::query()
             ->select('sku', 'base_price', 'quantity', 'id')
             ->where('base_price', '>', 0)
             ->orderBy('id')
@@ -1812,9 +1811,8 @@ class MapIssuesController extends Controller
     }
 
     /**
-     * Build a normalized-SKU => temu_pricing row (sku + base_price + quantity) lookup.
-     * Loads every pricing row and keys by the temu-decrease normalization (first row wins),
-     * exactly like the temu-decrease page builds its Missing/Map state.
+     * Build a normalized-SKU => temu_metrics row (sku + base_price + quantity) lookup.
+     * API-backed (same source as temu-decrease Temu 1) — not the temu_pricing sheet.
      *
      * @param  array<int, string>  $productSkus
      * @return array<string, \Illuminate\Database\Eloquent\Model>
@@ -1822,7 +1820,7 @@ class MapIssuesController extends Controller
     private function buildTemuLookupByNormalizedSku(array $productSkus): array
     {
         $byNorm = [];
-        foreach (TemuPricing::select('sku', 'base_price', 'quantity')->get() as $row) {
+        foreach (TemuMetric::select('sku', 'base_price', 'quantity')->get() as $row) {
             $k = $this->normalizeTemuSku((string) $row->sku);
             if ($k !== '' && ! isset($byNorm[$k])) {
                 $byNorm[$k] = $row;

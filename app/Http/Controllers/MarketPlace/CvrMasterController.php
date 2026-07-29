@@ -1232,7 +1232,7 @@ class CvrMasterController extends Controller
                 $ebay2L30 = $ebay2Metric ? intval($ebay2Metric->ebay_l30 ?? 0) : 0;
                 $ebay3L30 = $ebay3Metric ? intval($ebay3Metric->ebay_l30 ?? 0) : 0;
                 $walmartL30 = $walmartOrderTotals->get($sku) ? intval($walmartOrderTotals->get($sku)->total_qty ?? 0) : 0;
-                $tiktokL30 = 0; // TikTok L30 would need ShipHub query (skip for performance)
+                $tiktokL30 = 0; // skipped here for performance; detail path uses tiktok_orders
                 $bbL30 = $bestbuyProduct ? intval($bestbuyProduct->m_l30 ?? 0) : 0;
                 $sb2cL30 = 0; // Shopify B2C L30 is in overall_l30 (already counted)
                 $macyL30 = $macyProduct ? intval($macyProduct->m_l30 ?? 0) : 0;
@@ -2683,32 +2683,9 @@ class CvrMasterController extends Controller
                 ->first();
             $tiktokPercentage = $tiktokMarketplace ? ($tiktokMarketplace->percentage / 100) : 0.80;
 
-            // L30 from ShipHub (same window/filters as TikTokPricingController::getTiktokShiphubL30SoldDataBySku)
-            $latestDate = DB::connection('shiphub')
-                ->table('orders')
-                ->where('marketplace', 'tiktok')
-                ->max('order_date');
-
-            $tiktokL30 = 0;
-            if ($latestDate) {
-                $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-                $startDate = $latestDateCarbon->copy()->subDays(29);
-
-                $tiktokL30 = (int) DB::connection('shiphub')
-                    ->table('orders as o')
-                    ->join('order_items as i', 'o.id', '=', 'i.order_id')
-                    ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
-                    ->where('o.marketplace', 'tiktok')
-                    ->where('i.sku', strtoupper($fullSku))
-                    ->where(function ($query) {
-                        $query->where('o.order_status', '!=', 'Canceled')
-                              ->where('o.order_status', '!=', 'Cancelled')
-                              ->where('o.order_status', '!=', 'canceled')
-                              ->where('o.order_status', '!=', 'cancelled')
-                              ->orWhereNull('o.order_status');
-                    })
-                    ->sum('i.quantity_ordered');
-            }
+            // L30 from tiktok_orders — last 30 California calendar days
+            $soldMap = \App\Models\TiktokOrder::soldQtyL30([strtoupper($fullSku)], 30);
+            $tiktokL30 = (int) ($soldMap[strtoupper($fullSku)] ?? 0);
 
             $ttPrice = $tiktokData ? floatval($tiktokData->price ?? 0) : 0;
 

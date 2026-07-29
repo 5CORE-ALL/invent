@@ -4,10 +4,8 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TikTokProduct;
-use App\Models\TiktokSheet;
 use App\Services\TikTokShopService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SyncTikTokApiData extends Command
@@ -185,11 +183,8 @@ class SyncTikTokApiData extends Command
             // Process and store inventory
             $this->processInventory($data['inventory'] ?? []);
             
-            // Process and store analytics/views
+            // Process and store analytics/views (API only → tiktok_products)
             $this->processAnalytics($data['analytics'] ?? []);
-            
-            // Pull views from tiktok_sheet_data table (populated by sync:tiktok-sheet-data command)
-            $this->syncViewsFromSheetData();
             
             // Process and store reviews/ratings
             $this->processReviews($data['reviews'] ?? []);
@@ -375,14 +370,6 @@ class SyncTikTokApiData extends Command
                     $tiktokProduct->views = $views;
                     $tiktokProduct->save();
                     $updated++;
-                } else {
-                    // Also update tiktok_sheet_data if product not found in tiktok_products
-                    if ($sku) {
-                        TiktokSheet::updateOrCreate(
-                            ['sku' => strtoupper(trim($sku))],
-                            ['views' => $views]
-                        );
-                    }
                 }
 
             } catch (\Exception $e) {
@@ -457,85 +444,6 @@ class SyncTikTokApiData extends Command
     }
 
     /**
-     * Sync views from tiktok_sheet_data table (populated by sync:tiktok-sheet-data command)
-     * This is needed because views are not available via API with current version
-     */
-    protected function syncViewsFromSheetData()
-    {
-        $this->info('Syncing views from tiktok_sheet_data table...');
-        
-        try {
-            $chunkSize = $this->monitoredChunkSize();
-            $updated = 0;
-            $hasAny = false;
-
-            TikTokProduct::whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->orderBy('id')
-                ->chunkById($chunkSize, function ($tiktokProducts) use (&$updated, &$hasAny) {
-                    $hasAny = true;
-                    $skus = $tiktokProducts->pluck('sku')->map(function ($sku) {
-                        return strtoupper(trim($sku));
-                    })->toArray();
-
-                    $sheetData = TiktokSheet::whereIn('sku', $skus)
-                        ->whereNotNull('views')
-                        ->get()
-                        ->keyBy(function ($item) {
-                            return strtoupper(trim($item->sku));
-                        });
-
-                    if ($sheetData->isEmpty()) {
-                        return;
-                    }
-
-                    $pending = [];
-                    foreach ($tiktokProducts as $tiktokProduct) {
-                        $normalizedSku = strtoupper(trim($tiktokProduct->sku));
-                        $sheetItem = $sheetData->get($normalizedSku);
-
-                        if ($sheetItem && $sheetItem->views !== null) {
-                            $views = (float) $sheetItem->views;
-                            if ($tiktokProduct->views != $views) {
-                                $pending[] = ['product' => $tiktokProduct, 'views' => $views];
-                            }
-                        }
-                    }
-
-                    if ($pending !== []) {
-                        DB::transaction(function () use ($pending, &$updated) {
-                            foreach ($pending as $entry) {
-                                $entry['product']->views = $entry['views'];
-                                $entry['product']->save();
-                                $updated++;
-                            }
-                        });
-                    }
-                });
-
-            if (! $hasAny) {
-                $this->warn('No TikTok products with SKUs found');
-
-                return;
-            }
-
-            if ($updated === 0) {
-                $this->warn('No view data found in tiktok_sheet_data table (or already in sync)');
-                $this->info('Note: Run "php artisan sync:tiktok-sheet-data" to import views from Google Sheet');
-            }
-
-            $this->info("Views: {$updated} records updated from sheet data");
-
-        } catch (\Exception $e) {
-            $this->error('Error syncing views from sheet data: ' . $e->getMessage());
-            Log::error('TikTok views sync from sheet error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-        }
-    }
-
-    /**
      * Extract SKU from product data
      */
     protected function extractSku(array $product): ?string
@@ -562,31 +470,64 @@ class SyncTikTokApiData extends Command
     }
 
     /**
-     * Extract price from product data
+     * Extract price from product data.
+     * TikTok searchProducts returns: skus[].price.tax_exclusive_price / sale_price.
      */
     protected function extractPrice(array $product): float
     {
-        // Try different possible fields for price
-        if (isset($product['price'])) {
-            return (float) $product['price'];
-        }
+        $candidates = [];
 
-        if (isset($product['sale_price'])) {
-            return (float) $product['sale_price'];
-        }
-
-        if (isset($product['price_info']['price'])) {
-            return (float) $product['price_info']['price'];
-        }
-
-        // Try to get from variants
-        if (isset($product['variants']) && is_array($product['variants']) && !empty($product['variants'])) {
-            $variant = $product['variants'][0];
-            if (isset($variant['price'])) {
-                return (float) $variant['price'];
+        if (isset($product['skus']) && is_array($product['skus'])) {
+            foreach ($product['skus'] as $sku) {
+                $priceNode = $sku['price'] ?? null;
+                if (is_array($priceNode)) {
+                    $candidates[] = $priceNode['sale_price']
+                        ?? $priceNode['tax_exclusive_price']
+                        ?? $priceNode['amount']
+                        ?? $priceNode['price']
+                        ?? null;
+                } elseif (is_numeric($priceNode)) {
+                    $candidates[] = $priceNode;
+                }
+                $candidates[] = $sku['sale_price'] ?? $sku['price_amount'] ?? null;
             }
-            if (isset($variant['sale_price'])) {
-                return (float) $variant['sale_price'];
+        }
+
+        if (isset($product['variants']) && is_array($product['variants'])) {
+            foreach ($product['variants'] as $variant) {
+                $priceNode = $variant['price'] ?? null;
+                if (is_array($priceNode)) {
+                    $candidates[] = $priceNode['sale_price']
+                        ?? $priceNode['tax_exclusive_price']
+                        ?? $priceNode['amount']
+                        ?? $priceNode['price']
+                        ?? null;
+                } elseif (is_numeric($priceNode)) {
+                    $candidates[] = $priceNode;
+                }
+                $candidates[] = $variant['sale_price'] ?? null;
+            }
+        }
+
+        if (is_array($product['price'] ?? null)) {
+            $candidates[] = $product['price']['sale_price']
+                ?? $product['price']['tax_exclusive_price']
+                ?? $product['price']['amount']
+                ?? null;
+        } elseif (isset($product['price']) && is_numeric($product['price'])) {
+            $candidates[] = $product['price'];
+        }
+
+        $candidates[] = $product['sale_price'] ?? null;
+        $candidates[] = $product['price_info']['price'] ?? null;
+
+        foreach ($candidates as $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $price = (float) $value;
+            if ($price > 0) {
+                return $price;
             }
         }
 

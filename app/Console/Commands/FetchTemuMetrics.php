@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\TemuMetric;
+use App\Services\TemuApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -16,14 +17,14 @@ class FetchTemuMetrics extends Command
      * @var string
      */
     protected $signature = 'app:fetch-temu-metrics
-                            {--only= : Run only one step: skus|goods|qty|price|ads}';
+                            {--only= : Run only one step: skus|goods|qty|price|ads|stock}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fetch Temu SKUs, goods IDs, quantities, base prices, and ads analytics';
+    protected $description = 'Fetch Temu SKUs, goods IDs, order qty, stock, base prices, and ads analytics';
 
     /**
      * Execute the console command.
@@ -40,8 +41,8 @@ class FetchTemuMetrics extends Command
         }
 
         $only = strtolower(trim((string) $this->option('only')));
-        if ($only !== '' && ! in_array($only, ['skus', 'goods', 'qty', 'price', 'ads'], true)) {
-            $this->error('Invalid --only value. Use: skus|goods|qty|price|ads');
+        if ($only !== '' && ! in_array($only, ['skus', 'goods', 'qty', 'price', 'ads', 'stock'], true)) {
+            $this->error('Invalid --only value. Use: skus|goods|qty|price|ads|stock');
             return 1;
         }
 
@@ -49,27 +50,32 @@ class FetchTemuMetrics extends Command
             $runAll = $only === '';
 
             if ($runAll || $only === 'skus') {
-                $this->info('Step 1/5: Fetching SKUs...');
+                $this->info('Step 1/6: Fetching SKUs...');
                 $this->fetchSkus();
             }
 
             if ($runAll || $only === 'goods') {
-                $this->info('Step 2/5: Fetching Goods IDs...');
+                $this->info('Step 2/6: Fetching Goods IDs...');
                 $this->fetchGoodsId();
             }
 
             if ($runAll || $only === 'qty') {
-                $this->info('Step 3/5: Fetching Order Quantities (L30 & L60)...');
+                $this->info('Step 3/6: Fetching Order Quantities (L30 & L60)...');
                 $this->fetchQuantity();
             }
 
+            if ($runAll || $only === 'stock') {
+                $this->info('Step 4/6: Fetching Stock (goods list inventory)...');
+                $this->fetchStock();
+            }
+
             if ($runAll || $only === 'price') {
-                $this->info('Step 4/5: Fetching Prices...');
+                $this->info('Step 5/6: Fetching Prices...');
                 $this->fetchBasePrice();
             }
 
             if ($runAll || $only === 'ads') {
-                $this->info('Step 5/5: Fetching Product Analytics Data...');
+                $this->info('Step 6/6: Fetching Product Analytics Data...');
                 $this->fetchProductAnalyticsData();
             }
 
@@ -229,6 +235,28 @@ class FetchTemuMetrics extends Command
         } catch (\Exception $e) {
             Log::error('Error in fetchProductAnalyticsData: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Error in fetchProductAnalyticsData: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Sync warehouse stock from bg.local.goods.list.query into temu_metrics.quantity
+     * (used by temu-decrease Temu Stock / Map / N Map — not the sheet).
+     */
+    private function fetchStock(): void
+    {
+        Log::info('Starting fetchStock');
+        $this->info('Fetching Temu stock from goods list API...');
+
+        try {
+            $service = new TemuApiService();
+            $items = $service->getinventory();
+            $count = is_array($items) ? count($items) : 0;
+            $withQty = TemuMetric::where('quantity', '>', 0)->count();
+            $this->info("Goods list items: {$count}; temu_metrics with stock > 0: {$withQty}");
+            Log::info('Completed fetchStock', ['goods' => $count, 'with_qty' => $withQty]);
+        } catch (\Exception $e) {
+            Log::error('Error in fetchStock: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            $this->error('Error in fetchStock: '.$e->getMessage());
         }
     }
 

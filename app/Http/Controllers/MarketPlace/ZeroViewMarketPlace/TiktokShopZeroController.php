@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use App\Models\TiktokSheet;
+use App\Models\TikTokProduct;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokShopListingStatus;
 use Illuminate\Http\Request;
@@ -93,8 +93,6 @@ class TiktokShopZeroController extends Controller
 
     //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $ebayDataViews = TiktokShopListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-    //     $ebayMetrics = TiktokSheet::whereIn('sku', $skus)->get()->keyBy('sku');
-
 
     //     $listedCount = 0;
     //     $zeroInvOfListed = 0;
@@ -165,7 +163,7 @@ class TiktokShopZeroController extends Controller
         $tiktokDataViews = TiktokShopDataView::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
-        $tiktokMetrics = TiktokSheet::whereIn('sku', $skus)->get()
+        $tiktokMetrics = TikTokProduct::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
         $listedCount = 0;

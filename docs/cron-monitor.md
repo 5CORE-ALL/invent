@@ -209,7 +209,7 @@ Prioritize upgrading these to `MonitoredCommand` + checkpoints for resume / per-
 - `amazon:auto-update-over-kw-bids` / under / pt / hl (+ FBA variants)
 - `amazon:auto-update-amz-bgt-kw` / pt / hl
 - `ebay:auto-update-over-bids` / under / ebay2 / ebay3 utilized
-- `sync:amazon-prices`, `sync:tiktok-sheet-data`, `sync:walmart-metrics-data`
+- `sync:amazon-prices`, `sync:tiktok-api-data`, `tiktok:fetch-orders`, `sync:walmart-metrics-data`
 - `app:fetch-amazon-orders`, `amazon:sync-products`
 - `channel:calculate-data`
 - `stock:update-mapping-daily`

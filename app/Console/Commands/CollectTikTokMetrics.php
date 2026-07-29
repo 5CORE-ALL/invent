@@ -6,6 +6,7 @@ use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
+use App\Models\TiktokOrder;
 use App\Models\TiktokSkuDailyData;
 use App\Services\CronMonitor\CronExecutionContext;
 use Carbon\Carbon;
@@ -47,6 +48,9 @@ class CollectTikTokMetrics extends Command
         $collected = 0;
         $skipped = 0;
 
+        // TikTok 1 sold = L30 from tiktok_orders (last 30 California calendar days)
+        $ordersSoldBySku = TiktokOrder::soldQtyL30(null, 30);
+
         foreach ($channels as $channel) {
             $this->info("Collecting TikTok metrics for channel={$channel} date={$today}...");
             $model = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
@@ -60,7 +64,7 @@ class CollectTikTokMetrics extends Command
                     ->select('id', 'sku', 'price', 'stock', 'sold')
                     ->whereNotNull('sku')
                     ->orderBy('id'),
-                function ($rows) use ($today, $channel, &$collected, &$skipped) {
+                function ($rows) use ($today, $channel, &$collected, &$skipped, $ordersSoldBySku) {
                     $chunkCollected = 0;
                     $chunkSkipped = 0;
 
@@ -72,10 +76,13 @@ class CollectTikTokMetrics extends Command
                         }
 
                         try {
+                            $sold = $channel === 'tiktok'
+                                ? (int) ($ordersSoldBySku[$sku] ?? 0)
+                                : (int) ($row->sold ?? 0);
                             $dailyData = [
                                 'price' => round((float) ($row->price ?? 0), 2),
                                 'stock' => (int) ($row->stock ?? 0),
-                                'sold' => (int) ($row->sold ?? 0),
+                                'sold' => $sold,
                             ];
 
                             TiktokSkuDailyData::updateOrCreate(

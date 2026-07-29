@@ -406,7 +406,7 @@
                         </ul>
                     </div>
 
-                    {{-- Export / Upload / Sample merged into one dropdown --}}
+                    {{-- Export always; Upload/Sample only when upload path is set (TikTok 2). TikTok 1 is API-only. --}}
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm btn-info dropdown-toggle" data-bs-toggle="dropdown"
                             aria-expanded="false" title="CSV actions">
@@ -418,6 +418,7 @@
                                     <i class="fas fa-file-excel text-success"></i> Export CSV
                                 </a>
                             </li>
+                            @if (!empty($tiktokUploadPath))
                             <li>
                                 <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#ttCsvUploadModal">
                                     <i class="fas fa-upload text-primary"></i> Upload CSV
@@ -428,6 +429,7 @@
                                     <i class="fas fa-download text-info"></i> Download Sample
                                 </a>
                             </li>
+                            @endif
                         </ul>
                     </div>
 
@@ -873,11 +875,12 @@
         </div>
     </div>
 
-    {{-- CSV Upload Modal (opened from CSV dropdown) --}}
+    @if (!empty($tiktokUploadPath))
+    {{-- CSV Upload Modal — TikTok 2 only (TikTok 1 uses API sync) --}}
     <div class="modal fade" id="ttCsvUploadModal" tabindex="-1" aria-labelledby="ttCsvUploadModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
-                <form action="{{ url($tiktokUploadPath ?? '/tiktok-upload-csv') }}" method="POST" enctype="multipart/form-data">
+                <form action="{{ url($tiktokUploadPath) }}" method="POST" enctype="multipart/form-data">
                     @csrf
                     <div class="modal-header">
                         <h5 class="modal-title" id="ttCsvUploadModalLabel">
@@ -902,6 +905,7 @@
             </div>
         </div>
     </div>
+    @endif
 @endsection
 
 @php
@@ -1203,9 +1207,16 @@
             return String(d.Missing || '').trim().toUpperCase() === 'M';
         }
 
+        function ttNegInvZeroMarketplaceIsMap(d) {
+            const inv = parseFloat(d.INV);
+            const ttStock = parseFloat(d['TT Stock']);
+            return Number.isFinite(inv) && inv < 0 && Number.isFinite(ttStock) && ttStock === 0;
+        }
+
         function ttRowIsMap(d) {
             if (ttIsParentRow(d)) return false;
             if (ttRowIsMissing(d)) return false;
+            if (ttNegInvZeroMarketplaceIsMap(d)) return true;
             const mapValue = d.MAP;
             if (mapValue === 'Map') return true;
             const diff = ttAbsDiffFromMapValue(mapValue);
@@ -1214,6 +1225,7 @@
 
         function ttRowIsNMap(d) {
             if (ttIsParentRow(d)) return false;
+            if (ttNegInvZeroMarketplaceIsMap(d)) return false;
             return ttIsStrictNMapMapValue(d.MAP, ttRowIsMissing(d));
         }
 

@@ -335,48 +335,11 @@ class TikTokPricingController extends Controller
     }
 
     /**
-     * L30 sold quantities from ShipHub (TikTok Shop channel).
+     * L30 sold from tiktok_orders — last 30 California calendar days (America/Los_Angeles).
      */
-    private function getTiktokShiphubL30SoldDataBySku(): array
+    private function getTiktokL30SoldDataBySku(): array
     {
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'tiktok')
-            ->max('order_date');
-
-        $soldData = [];
-        if (! $latestDate) {
-            return $soldData;
-        }
-
-        $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
-        $startDate = $latestDateCarbon->copy()->subDays(29);
-
-        $orderItems = DB::connection('shiphub')
-            ->table('orders as o')
-            ->join('order_items as i', 'o.id', '=', 'i.order_id')
-            ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
-            ->where('o.marketplace', '=', 'tiktok')
-            ->where(function ($query) {
-                $query->where('o.order_status', '!=', 'Canceled')
-                    ->where('o.order_status', '!=', 'Cancelled')
-                    ->where('o.order_status', '!=', 'canceled')
-                    ->where('o.order_status', '!=', 'cancelled')
-                    ->orWhereNull('o.order_status');
-            })
-            ->select([
-                'i.sku',
-                DB::raw('SUM(i.quantity_ordered) as total_sold'),
-            ])
-            ->groupBy('i.sku')
-            ->get()
-            ->keyBy('sku');
-
-        foreach ($orderItems as $item) {
-            $soldData[strtoupper($item->sku)] = (int) $item->total_sold;
-        }
-
-        return $soldData;
+        return \App\Models\TiktokOrder::soldQtyL30(null, 30);
     }
 
     /**
@@ -499,10 +462,10 @@ class TikTokPricingController extends Controller
             }
         }
 
-        // L30: ShipHub (TikTok) or uploaded orders in tiktok_sales_two (TikTok 2)
+        // L30: tiktok_orders API (TikTok 1) or uploaded orders in tiktok_sales_two (TikTok 2)
         $soldData = $isTiktokTwo
             ? $this->getTiktokTwoL30SoldDataBySku()
-            : $this->getTiktokShiphubL30SoldDataBySku();
+            : $this->getTiktokL30SoldDataBySku();
 
         // Campaign map and metrics for utilized/ads columns (same as tiktok/utilized)
         $campaignMapBySku = [];
@@ -702,14 +665,19 @@ class TikTokPricingController extends Controller
                 $processedItem["Missing"] = 'M'; // SKU NOT in TikTok - mark as Missing
             }
 
-            // Get L30 sold from ShipHub
+            // Get L30 sold from tiktok_orders (API)
             $processedItem["TT L30"] = isset($soldData[$skuUpper]) ? $soldData[$skuUpper] : 0;
 
-            // MAP: same tolerance as Reverb — |INV − TT Stock| ≤ 3 → Map; else signed N Map (INV − TT Stock)
+            // MAP: |INV − TT Stock| ≤ 3 → Map; else signed N Map. Missing L rows have no MAP.
+            // Negative Shopify INV + marketplace stock 0 = perfect Map.
             $inv = (float) $processedItem["INV"];
             $ttStock = (float) $processedItem["TT Stock"];
             $delta = $inv - $ttStock;
-            if (abs($delta) <= 3) {
+            if ($processedItem["Missing"] === 'M') {
+                $processedItem["MAP"] = '';
+            } elseif ($inv < 0 && $ttStock == 0.0) {
+                $processedItem["MAP"] = 'Map';
+            } elseif (abs($delta) <= 3) {
                 $processedItem["MAP"] = 'Map';
             } else {
                 $processedItem["MAP"] = 'N Map|'.sprintf('%+g', $delta);
@@ -1161,152 +1129,7 @@ class TikTokPricingController extends Controller
     }
 
     /**
-     * Upload TikTok CSV file (truncate and upload)
-     */
-    public function uploadTikTokCsv(Request $request)
-    {
-        $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt'
-        ]);
-
-        try {
-            // NOTE: Not truncating table - will update existing records or insert new ones
-            // TikTokProduct::truncate();
-
-            $file = $request->file('csv_file');
-            $handle = fopen($file->getPathname(), 'r');
-            
-            $header = fgetcsv($handle);
-            $headerMap = [];
-            if (is_array($header)) {
-                foreach ($header as $idx => $col) {
-                    $key = strtolower(trim((string)$col));
-                    $key = str_replace([' ', '-'], '_', $key);
-                    $headerMap[$key] = $idx;
-                }
-            }
-            $skuIndex = $headerMap['sku'] ?? 0;
-            $priceIndex = $headerMap['price'] ?? 1;
-            $stockIndex = $headerMap['inv'] ?? ($headerMap['stock'] ?? 2);
-            $videoViewsIndex = $headerMap['video_views'] ?? ($headerMap['views'] ?? null);
-            $adsViewsIndex = $headerMap['ads_views'] ?? null;
-            $afflViewsIndex = $headerMap['affl_views'] ?? ($headerMap['affiliate_views'] ?? null);
-            
-            $imported = 0;
-            $updated = 0;
-            $skipped = 0;
-            $processedSkus = []; // Track SKUs we've already processed
-            
-            while (($row = fgetcsv($handle)) !== false) {
-                $rawSku = $row[$skuIndex] ?? null;
-                if ($rawSku !== null && trim((string)$rawSku) !== '') {
-                    // Clean the SKU: remove non-breaking spaces, control characters, and other problematic characters
-                    $sku = $rawSku;
-                    
-                    // Replace non-breaking spaces (0xA0) with regular spaces
-                    $sku = str_replace("\xA0", ' ', $sku);
-                    $sku = str_replace("\xC2\xA0", ' ', $sku); // UTF-8 non-breaking space
-                    
-                    // Remove other invisible/control characters
-                    $sku = preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $sku);
-                    
-                    // Replace multiple spaces with single space and trim
-                    $sku = preg_replace('/\s+/', ' ', trim($sku));
-                    
-                    // Normalize to uppercase
-                    $sku = strtoupper($sku);
-                    
-                    $price = isset($row[$priceIndex]) ? floatval($row[$priceIndex]) : 0;
-                    $stock = isset($row[$stockIndex]) ? intval($row[$stockIndex]) : 0; // Inv/Stock
-                    $videoViews = ($videoViewsIndex !== null && isset($row[$videoViewsIndex])) ? intval($row[$videoViewsIndex]) : null;
-                    $adsViews = ($adsViewsIndex !== null && isset($row[$adsViewsIndex])) ? intval($row[$adsViewsIndex]) : null;
-                    $afflViews = ($afflViewsIndex !== null && isset($row[$afflViewsIndex])) ? intval($row[$afflViewsIndex]) : null;
-                    
-                    // Skip if SKU already processed (handle duplicates in CSV)
-                    if (isset($processedSkus[$sku])) {
-                        $skipped++;
-                        continue;
-                    }
-                    
-                    // Check if record exists to track updates vs new inserts
-                    $existingRecord = TikTokProduct::where('sku', $sku)->first();
-                    
-                    // Update existing or create new record
-                    $productUpdateData = [
-                        'price' => $price,
-                        'stock' => $stock, // Stock from CSV column 3 (Inv)
-                        'sold' => 0,  // Always 0, calculated from ShipHub in real-time
-                    ];
-                    if ($videoViews !== null) {
-                        $productUpdateData['views'] = $videoViews;
-                        $productUpdateData['video_views'] = $videoViews;
-                    }
-                    if ($adsViews !== null) {
-                        $productUpdateData['ads_views'] = $adsViews;
-                    }
-                    if ($afflViews !== null) {
-                        $productUpdateData['affl_views'] = $afflViews;
-                    }
-                    TikTokProduct::updateOrCreate(
-                        ['sku' => $sku],
-                        $productUpdateData
-                    );
-
-                    // Save ads/affiliate views in tiktok_shop_data_views JSON value
-                    $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
-                    $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
-                    if ($videoViews !== null) {
-                        $values['video_views'] = $videoViews;
-                    }
-                    if ($adsViews !== null) {
-                        $values['ads_views'] = $adsViews;
-                    }
-                    if ($afflViews !== null) {
-                        $values['affl_views'] = $afflViews;
-                    }
-                    $view->value = $values;
-                    $view->save();
-                    
-                    $processedSkus[$sku] = true;
-                    
-                    if ($existingRecord) {
-                        $updated++;
-                    } else {
-                        $imported++;
-                    }
-                }
-            }
-            
-            fclose($handle);
-
-            $total = $imported + $updated;
-            $message = "Successfully processed $total TikTok products!";
-            
-            $details = [];
-            if ($imported > 0) {
-                $details[] = "$imported new";
-            }
-            if ($updated > 0) {
-                $details[] = "$updated updated";
-            }
-            if ($skipped > 0) {
-                $details[] = "$skipped duplicates skipped";
-            }
-            
-            if (!empty($details)) {
-                $message .= " (" . implode(', ', $details) . ")";
-            }
-
-            return back()->with('success', $message);
-
-        } catch (\Exception $e) {
-            Log::error('TikTok CSV Upload Error: ' . $e->getMessage());
-            return back()->with('error', 'Error uploading CSV: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Upload CSV for TikTok 2 — stores rows in tiktok_products_two (same format as TikTok).
+     * Upload CSV for TikTok 2 — stores rows in tiktok_products_two.
      */
     public function uploadTikTok2Csv(Request $request)
     {
@@ -2323,6 +2146,88 @@ class TikTokPricingController extends Controller
                 'error' => 'Failed to delete competitor: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * N Map SKUs matching /tiktok-pricing badge:
+     * non-parent, not Missing L, |INV − TT Stock| > 3.
+     * Negative Shopify INV + marketplace stock 0 is Map (not N Map).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     */
+    public static function nmapSkuRowsFromTabular(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+            if (! empty($row['is_parent'])) {
+                continue;
+            }
+            $parent = trim((string) ($row['Parent'] ?? ''));
+            if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
+                continue;
+            }
+            if (strtoupper(trim((string) ($row['Missing'] ?? ''))) === 'M') {
+                continue;
+            }
+
+            $sku = trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            $inv = (float) ($row['INV'] ?? 0);
+            $ttStock = (float) ($row['TT Stock'] ?? 0);
+
+            // Negative Shopify INV + marketplace 0 = perfect Map
+            if ($inv < 0 && $ttStock == 0.0) {
+                continue;
+            }
+
+            $diff = abs($inv - $ttStock);
+
+            $mapValue = (string) ($row['MAP'] ?? '');
+            if ($mapValue === 'Map') {
+                continue;
+            }
+            if (str_starts_with($mapValue, 'N Map|') || str_starts_with($mapValue, 'Diff|')) {
+                $rest = str_starts_with($mapValue, 'N Map|')
+                    ? substr($mapValue, strlen('N Map|'))
+                    : substr($mapValue, strlen('Diff|'));
+                $parsed = 0.0;
+                if (sscanf((string) $rest, '%f', $parsed) === 1) {
+                    $diff = abs($parsed);
+                }
+            }
+
+            if ($diff <= 3) {
+                continue;
+            }
+
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $ttStock,
+                'diff' => $diff,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    public static function countNmapFromTabular(array $rows): int
+    {
+        return count(self::nmapSkuRowsFromTabular($rows));
     }
 }
 

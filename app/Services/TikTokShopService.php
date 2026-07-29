@@ -154,181 +154,317 @@ class TikTokShopService
     }
 
     /**
-     * Get products list using the library
+     * Get products list using the library.
+     * Pagination uses query page_token (not body cursor). Status filter: ACTIVATE / ALL / etc.
+     *
+     * @param  int|string  $status  0/"ALL" = no filter; 1/"ACTIVATE" = live listings
      */
-    public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
+    public function getProducts(int $pageSize = 20, string $pageToken = '', int|string $status = 0, $outputCallback = null): ?array
     {
         $callback = $outputCallback ?? $this->outputCallback;
-        
+
         try {
-            if (!$this->accessToken) {
+            if (! $this->accessToken) {
                 if ($callback && is_callable($callback)) {
                     call_user_func($callback, 'error', 'No access token available');
                 }
+
                 return null;
             }
-            
+
             $this->client->setAccessToken($this->accessToken);
-            
-            // Build request body with required page_size
-            $body = [
-                'page_size' => min($pageSize, 50),
+            $this->ensureShopCipher();
+
+            $statusFilter = $this->normalizeProductStatusFilter($status);
+
+            // page_size + page_token must be query params (SDK extractParams), status goes in JSON body
+            $query = [
+                'page_size' => min(max($pageSize, 1), 100),
             ];
-
-            if ($cursor) {
-                $body['cursor'] = $cursor;
+            if ($pageToken !== '') {
+                $query['page_token'] = $pageToken;
             }
 
-            if ($status > 0) {
-                $body['product_status'] = $status;
+            $body = [];
+            if ($statusFilter !== null) {
+                $body['status'] = $statusFilter;
             }
 
-            // Ensure shop cipher is set on client (required for all product API calls)
-            if (!$this->shopCipher) {
-                // Try to get shop info to extract cipher
-                $shopInfo = $this->getShopInfo();
-                if ($shopInfo && isset($shopInfo['shops'][0]['cipher'])) {
-                    $this->shopCipher = $shopInfo['shops'][0]['cipher'];
-                    $this->client->setShopCipher($this->shopCipher);
-                }
+            if ($body === []) {
+                $response = $this->client->Product->searchProducts($query);
             } else {
-                // Make sure it's set on client even if we already have it
-                $this->client->setShopCipher($this->shopCipher);
+                $response = $this->client->Product->searchProducts($query, $body);
             }
 
-            // Shop cipher is already set on the client, so we don't pass it in query params
-            $queryParams = [];
-
-
-            // Use searchProducts - shop_cipher is already set on the client
-            $response = $this->client->Product->searchProducts([], $body);
-            
             $this->lastResponse = $response;
-            
+
             if ($callback && is_callable($callback)) {
-                call_user_func($callback, 'info', 'Response received. Keys: ' . implode(', ', array_keys($response)));
-                if (isset($response['code'])) {
-                    call_user_func($callback, 'info', 'Response code: ' . $response['code']);
-                }
+                $count = count($response['products'] ?? []);
+                $total = $response['total_count'] ?? '?';
+                call_user_func($callback, 'info', "Products page: {$count} rows (total_count={$total})");
             }
-            
-            // Check for error in response
+
             if (isset($response['code']) && $response['code'] != 0) {
-                $errorMsg = 'API Error Code: ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message');
+                $errorMsg = 'API Error Code: '.$response['code'].', Message: '.($response['message'] ?? 'No message');
                 if ($callback && is_callable($callback)) {
                     call_user_func($callback, 'error', $errorMsg);
-                    call_user_func($callback, 'error', 'Full response: ' . json_encode($response, JSON_PRETTY_PRINT));
                 }
             }
-            
+
             return $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
             if ($callback && is_callable($callback)) {
                 call_user_func($callback, 'info', 'Token expired, attempting to refresh...');
             }
-            // Token expired - refresh and retry
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
-                // Rebuild query params and body for retry
-                $retryQueryParams = [];
-                if ($this->shopCipher) {
-                    $retryQueryParams['shop_cipher'] = $this->shopCipher;
-                }
-                $retryBody = $body;
-                
-                // Retry with same parameters
-                try {
-                    $response = $this->client->Product->searchProducts($retryQueryParams, $retryBody);
-                } catch (\Exception $e2) {
-                    if ($this->shopCipher) {
-                        $retryBody['shop_cipher'] = $this->shopCipher;
-                        $response = $this->client->Product->searchProducts($retryBody);
-                    } else {
-                        throw $e2;
-                    }
-                }
-                $this->lastResponse = $response;
                 if ($callback && is_callable($callback)) {
-                    call_user_func($callback, 'info', 'Token refreshed, retry successful');
+                    call_user_func($callback, 'info', 'Token refreshed, retrying products page...');
                 }
-                return $response;
+
+                return $this->getProducts($pageSize, $pageToken, $status, $callback);
             }
             if ($callback && is_callable($callback)) {
-                call_user_func($callback, 'error', 'Failed to refresh token: ' . $e->getMessage());
+                call_user_func($callback, 'error', 'Failed to refresh token: '.$e->getMessage());
             }
+
             return null;
         } catch (\Exception $e) {
             if ($callback && is_callable($callback)) {
-                call_user_func($callback, 'error', 'Exception getting products: ' . $e->getMessage());
-                call_user_func($callback, 'error', 'Exception class: ' . get_class($e));
+                call_user_func($callback, 'error', 'Exception getting products: '.$e->getMessage());
             }
+
             return null;
         }
     }
 
     /**
-     * Get all products with pagination
+     * Map legacy/int status args to TikTok searchProducts status filter.
      */
-    public function getAllProducts(int $status = 0): array
+    protected function normalizeProductStatusFilter(int|string $status): ?string
+    {
+        if ($status === 0 || $status === '0' || $status === '' || strtoupper((string) $status) === 'ALL') {
+            return null;
+        }
+        if ($status === 1 || $status === '1') {
+            return 'ACTIVATE';
+        }
+
+        return strtoupper((string) $status);
+    }
+
+    /**
+     * Get all products with page_token pagination.
+     *
+     * @param  int|string  $status  0/ALL = all; 1/ACTIVATE = live (~900)
+     */
+    public function getAllProducts(int|string $status = 0): array
     {
         $allProducts = [];
-        $cursor = '';
-        $hasMore = true;
+        $pageToken = '';
         $page = 1;
+        $seenTokens = [];
 
-            while ($hasMore) {
-
-            $response = $this->getProducts(50, $cursor, $status, $this->outputCallback);
-
-            if (!$response) {
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'error', "Page {$page}: No response received");
+        while (true) {
+            if ($pageToken !== '') {
+                if (isset($seenTokens[$pageToken])) {
+                    $this->output('warn', 'Pagination token repeated — stopping to avoid loop');
+                    break;
                 }
+                $seenTokens[$pageToken] = true;
+            }
+
+            $response = $this->getProducts(100, $pageToken, $status, $this->outputCallback);
+
+            if (! $response) {
+                $this->output('error', "Page {$page}: No response received");
                 break;
             }
 
-
-            // Check for error in response
-            if (isset($response['code']) && $response['code'] != 0) {
+            if (isset($response['code']) && (int) $response['code'] !== 0) {
+                $this->output('error', "Page {$page}: API code ".$response['code']);
                 break;
             }
 
-            // Library returns data in different format
-            $products = $response['data']['products'] ?? $response['products'] ?? $response['data'] ?? [];
-            
-            // Handle case where products might be directly in response
-            if (empty($products) && isset($response['data']) && is_array($response['data'])) {
-                // Try to find products array in nested structure
-                foreach ($response['data'] as $key => $value) {
-                    if (is_array($value) && isset($value[0]) && (isset($value[0]['id']) || isset($value[0]['product_id']))) {
-                        $products = $value;
-                        break;
-                    }
-                }
+            $products = $response['products'] ?? $response['data']['products'] ?? [];
+            if (! is_array($products)) {
+                $products = [];
             }
 
-            if (!empty($products)) {
+            if ($products !== []) {
                 $allProducts = array_merge($allProducts, $products);
             }
 
-            $hasMore = isset($response['data']['more']) && $response['data']['more'];
-            $cursor = $response['data']['next_cursor'] ?? $response['data']['cursor'] ?? $response['next_cursor'] ?? '';
+            $totalCount = $response['total_count'] ?? null;
+            $this->output(
+                'info',
+                "Fetched page {$page}: +".count($products).' (running total '.count($allProducts)
+                .($totalCount !== null ? " / {$totalCount}" : '').')'
+            );
 
-            // If no cursor and no more flag, assume no more pages
-            if (empty($cursor) && !$hasMore) {
+            $next = (string) ($response['next_page_token'] ?? $response['data']['next_page_token'] ?? '');
+            if ($next === '' || $products === []) {
                 break;
             }
 
-            if (count($allProducts) > 10000) {
-                break;
-            }
-
+            $pageToken = $next;
             $page++;
-            usleep(200000);
+
+            if (count($allProducts) > 20000) {
+                $this->output('warn', 'Safety stop at 20000 products');
+                break;
+            }
+
+            usleep(150000);
         }
 
-
         return $allProducts;
+    }
+
+    /**
+     * Search orders page (TikTok Order API).
+     * Query: page_size, page_token. Body: create_time_ge/lt, update_time_ge/lt, order_status.
+     */
+    public function getOrders(array $query = [], array $body = []): ?array
+    {
+        try {
+            if (! $this->accessToken) {
+                $this->output('error', 'getOrders: No access token available');
+
+                return null;
+            }
+
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $query = array_merge([
+                'page_size' => 50,
+            ], $query);
+
+            if ($body === []) {
+                $response = $this->client->Order->getOrderList($query);
+            } else {
+                $response = $this->client->Order->getOrderList($query, $body);
+            }
+
+            $this->lastResponse = $response;
+
+            return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            $this->output('info', 'getOrders: Token expired, refreshing...');
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+
+                return $this->getOrders($query, $body);
+            }
+            $this->output('error', 'getOrders: Failed to refresh token - '.$e->getMessage());
+
+            return null;
+        } catch (\Exception $e) {
+            $this->output('error', 'getOrders Exception: '.$e->getMessage());
+            Log::error('TikTok getOrders failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Fetch all orders in a create-time window with page_token pagination.
+     *
+     * @return list<array>
+     */
+    public function getAllOrders(int $createTimeGe, int $createTimeLt, ?string $orderStatus = null, int $pageSize = 50): array
+    {
+        $all = [];
+        $pageToken = '';
+        $page = 1;
+        $seen = [];
+
+        while (true) {
+            if ($pageToken !== '' && isset($seen[$pageToken])) {
+                $this->output('warn', 'Order pagination token repeated — stopping');
+                break;
+            }
+            if ($pageToken !== '') {
+                $seen[$pageToken] = true;
+            }
+
+            $query = ['page_size' => min(max($pageSize, 1), 100)];
+            if ($pageToken !== '') {
+                $query['page_token'] = $pageToken;
+            }
+
+            $body = [
+                'create_time_ge' => $createTimeGe,
+                'create_time_lt' => $createTimeLt,
+            ];
+            if ($orderStatus) {
+                $body['order_status'] = $orderStatus;
+            }
+
+            $response = $this->getOrders($query, $body);
+            if (! $response) {
+                break;
+            }
+
+            $orders = $response['orders'] ?? $response['data']['orders'] ?? [];
+            if (! is_array($orders)) {
+                $orders = [];
+            }
+
+            if ($orders !== []) {
+                $all = array_merge($all, $orders);
+            }
+
+            $total = $response['total_count'] ?? null;
+            $this->output(
+                'info',
+                "Orders page {$page}: +".count($orders).' (running '.count($all)
+                .($total !== null ? " / {$total}" : '').')'
+            );
+
+            $next = (string) ($response['next_page_token'] ?? '');
+            if ($next === '' || $orders === []) {
+                break;
+            }
+
+            $pageToken = $next;
+            $page++;
+            usleep(150000);
+
+            if (count($all) > 50000) {
+                $this->output('warn', 'Safety stop at 50000 orders');
+                break;
+            }
+        }
+
+        return $all;
+    }
+
+    /**
+     * Optional: enrich with GET orders detail (batch of up to 50 ids).
+     */
+    public function getOrderDetails(array $orderIds): ?array
+    {
+        try {
+            if (! $this->accessToken || $orderIds === []) {
+                return null;
+            }
+
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $ids = array_values(array_unique(array_map('strval', array_slice($orderIds, 0, 50))));
+            $response = $this->client->Order->getOrderDetail($ids);
+            $this->lastResponse = $response;
+
+            return $response;
+        } catch (\Exception $e) {
+            $this->output('error', 'getOrderDetails Exception: '.$e->getMessage());
+            Log::error('TikTok getOrderDetails failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 
     /**
@@ -408,27 +544,42 @@ class TikTokShopService
             $skus = $product['skus'] ?? [];
             
             if (!empty($skus) && is_array($skus)) {
-                // Sum up inventory from all SKUs for this product
+                // Sum inventory across SKUs. TikTok shape: skus[].inventory[].quantity
                 $totalStock = 0;
                 foreach ($skus as $sku) {
-                    // Try different fields for stock quantity
-                    $stock = $sku['available_stock'] 
-                        ?? $sku['stock'] 
-                        ?? $sku['inventory_quantity'] 
-                        ?? $sku['quantity'] 
-                        ?? $sku['inventory']['available_stock'] 
-                        ?? 0;
-                    $totalStock += (int)$stock;
+                    $stock = 0;
+                    if (isset($sku['inventory']) && is_array($sku['inventory'])) {
+                        if (array_is_list($sku['inventory'])) {
+                            foreach ($sku['inventory'] as $invRow) {
+                                if (is_array($invRow)) {
+                                    $stock += (int) ($invRow['quantity']
+                                        ?? $invRow['available_stock']
+                                        ?? $invRow['stock']
+                                        ?? 0);
+                                }
+                            }
+                        } else {
+                            $stock = (int) ($sku['inventory']['quantity']
+                                ?? $sku['inventory']['available_stock']
+                                ?? $sku['inventory']['stock']
+                                ?? 0);
+                        }
+                    }
+                    if ($stock <= 0) {
+                        $stock = (int) ($sku['available_stock']
+                            ?? $sku['stock']
+                            ?? $sku['inventory_quantity']
+                            ?? $sku['quantity']
+                            ?? 0);
+                    }
+                    $totalStock += $stock;
                 }
-                
-                // Create inventory record for this product
-                if ($totalStock > 0 || isset($skus[0])) {
-                    $allInventory[] = [
-                        'product_id' => (string)$productId,
-                        'available_stock' => $totalStock,
-                        'stock' => $totalStock,
-                    ];
-                }
+
+                $allInventory[] = [
+                    'product_id' => (string) $productId,
+                    'available_stock' => $totalStock,
+                    'stock' => $totalStock,
+                ];
             } else {
                 // Try to get inventory from product-level fields
                 $stock = $product['available_stock'] 
@@ -454,199 +605,91 @@ class TikTokShopService
     /**
      * Get product analytics using the library with API version 202405
      */
-    public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
+    /**
+     * Run a callback against Analytics APIs (requires client API version 202405).
+     * Restores the default product API version afterwards.
+     *
+     * @template T
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    protected function withAnalyticsApi(callable $callback)
+    {
+        $this->client->useVersion('202405');
+        try {
+            return $callback();
+        } finally {
+            $this->client->useVersion(Client::DEFAULT_VERSION);
+        }
+    }
+
+    /**
+     * Product performance list (GMV/orders). Date params must be Y-m-d.
+     */
+    public function getProductAnalytics(?string $startDate = null, ?string $endDate = null, array $productIds = []): ?array
     {
         try {
-            if (!$this->accessToken) {
+            if (! $this->accessToken) {
                 $this->output('error', 'getProductAnalytics: No access token available');
+
                 return null;
             }
-            
+
             $this->client->setAccessToken($this->accessToken);
-            
-            if (!$startTime) {
-                $startTime = Carbon::now()->subDays(30)->timestamp;
-            }
-            if (!$endTime) {
-                $endTime = Carbon::now()->timestamp;
-            }
+            $this->ensureShopCipher();
+
+            $tz = 'America/Los_Angeles';
+            $startDate = $startDate ?: Carbon::now($tz)->subDays(30)->format('Y-m-d');
+            $endDate = $endDate ?: Carbon::now($tz)->format('Y-m-d');
 
             $params = [
-                'start_time' => $startTime,
-                'end_time' => $endTime,
+                'start_date_ge' => $startDate,
+                'end_date_lt' => $endDate,
+                'page_size' => 50,
             ];
 
-            if (!empty($productIds)) {
-                $params['product_id_list'] = array_slice($productIds, 0, 50);
-            }
+            $this->output('info', "Calling Analytics shop_products/performance ({$startDate}..{$endDate})...");
 
-            // Try to use library's method with API version 202405
-            // First, try using reflection to set API version if the library supports it
-            try {
-                $reflection = new \ReflectionClass($this->client);
-                if ($reflection->hasMethod('setApiVersion')) {
-                    $this->client->setApiVersion('202405');
-                    $this->output('info', 'Set API version to 202405');
-                }
-            } catch (\Exception $e) {
-                // Method doesn't exist, continue
-            }
+            $response = $this->withAnalyticsApi(
+                fn () => $this->client->Analytics->getShopProductPerformanceList($params)
+            );
 
-            $this->output('info', 'Calling Analytics->getShopProductPerformanceList() with API version 202405...');
-            $this->output('info', 'Params: ' . json_encode($params));
-            
-            // Use getShopProductPerformanceList for product analytics
-            $response = $this->client->Analytics->getShopProductPerformanceList($params);
             $this->lastResponse = $response;
-            
-            if (isset($response['code']) && $response['code'] != 0) {
-                $this->output('error', 'getProductAnalytics API error: Code ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message'));
-                
-                // If version error, try making direct signed request
-                if (isset($response['message']) && strpos($response['message'], '202405') !== false) {
-                    $this->output('info', 'Library method failed with version error, trying direct signed API call...');
-                    return $this->getProductAnalyticsDirect($startTime, $endTime, $productIds);
-                }
-                
-                return null;
-            }
-            
-            $this->output('info', 'getProductAnalytics: Response received. Keys: ' . implode(', ', array_keys($response)));
+            $this->output('info', 'getProductAnalytics: Response keys: '.implode(', ', array_keys(is_array($response) ? $response : [])));
+
             return $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
             $this->output('info', 'getProductAnalytics: Token expired, refreshing...');
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
-                $response = $this->client->Analytics->getShopProductPerformanceList($params);
-                $this->lastResponse = $response;
-                return $response;
+
+                return $this->getProductAnalytics($startDate, $endDate, $productIds);
             }
-            $this->output('error', 'getProductAnalytics: Failed to refresh token - ' . $e->getMessage());
+            $this->output('error', 'getProductAnalytics: Failed to refresh token - '.$e->getMessage());
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+
             return null;
         } catch (\Exception $e) {
-            $errorMessage = $e->getMessage();
-            $this->output('error', 'getProductAnalytics Exception: ' . $errorMessage . ' (Class: ' . get_class($e) . ')');
-            
-            // If version error, try direct signed request
-            if (strpos($errorMessage, '202405') !== false || strpos($errorMessage, 'API version') !== false) {
-                $this->output('info', 'Library method failed with version error, trying direct signed API call...');
-                return $this->getProductAnalyticsDirect($startTime, $endTime, $productIds);
-            }
-            
+            $this->output('error', 'getProductAnalytics Exception: '.$e->getMessage());
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+
             return null;
         }
     }
-    
-    /**
-     * Make direct signed API call to Analytics endpoint with version 202405
-     * Uses the library's internal signing mechanism
-     */
-    protected function getProductAnalyticsDirect(int $startTime, int $endTime, array $productIds): ?array
+
+    protected function ensureShopCipher(): void
     {
-        try {
-            if (!$this->accessToken || !$this->shopCipher) {
-                $this->output('error', 'Missing access token or shop cipher for direct API call');
-                return null;
-            }
-            
-            // Use reflection to access the library's internal request method
-            $reflection = new \ReflectionClass($this->client);
-            
-            // Try to find the request method
-            $requestMethod = null;
-            if ($reflection->hasMethod('request')) {
-                $requestMethod = $reflection->getMethod('request');
-                $requestMethod->setAccessible(true);
-            } elseif ($reflection->hasMethod('call')) {
-                $requestMethod = $reflection->getMethod('call');
-                $requestMethod->setAccessible(true);
-            }
-            
-            if ($requestMethod) {
-                $this->output('info', 'Using library internal request method with API version 202405...');
-                
-                $body = [
-                    'shop_cipher' => $this->shopCipher,
-                    'start_time' => $startTime,
-                    'end_time' => $endTime,
-                ];
-                
-                if (!empty($productIds)) {
-                    $body['product_id_list'] = array_slice($productIds, 0, 50);
-                }
-                
-                // Try calling the internal method
-                $response = $requestMethod->invoke($this->client, 'GET', '/analytics/202405/products/query', $body);
-                
-                if ($response && !isset($response['code'])) {
-                    $this->output('info', '✓ Successfully fetched analytics using direct signed request');
-                    return $response;
-                }
-            }
-            
-            // Fallback: Try using library's HTTP client directly
-            $this->output('info', 'Trying alternative method: using library HTTP client...');
-            return $this->makeSignedAnalyticsRequest($startTime, $endTime, $productIds);
-            
-        } catch (\Exception $e) {
-            $this->output('error', 'Direct signed request failed: ' . $e->getMessage());
-            Log::error('TikTok direct signed analytics request failed', ['error' => $e->getMessage()]);
-            return null;
+        if ($this->shopCipher) {
+            $this->client->setShopCipher($this->shopCipher);
+
+            return;
         }
-    }
-    
-    /**
-     * Make signed HTTP request to TikTok Analytics API
-     * This creates a properly signed request using HMAC
-     */
-    protected function makeSignedAnalyticsRequest(int $startTime, int $endTime, array $productIds): ?array
-    {
-        try {
-            $baseUrl = 'https://open-api.tiktokglobalshop.com';
-            $path = '/analytics/202405/products/query';
-            $method = 'POST';
-            
-            $body = [
-                'shop_cipher' => $this->shopCipher,
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-            ];
-            
-            if (!empty($productIds)) {
-                $body['product_id_list'] = array_slice($productIds, 0, 50);
-            }
-            
-            $timestamp = time();
-            $nonce = bin2hex(random_bytes(16));
-            
-            // Create signature using TikTok's HMAC signing
-            $signString = $this->clientKey . $path . $timestamp . $nonce . $this->shopCipher . json_encode($body);
-            $sign = hash_hmac('sha256', $signString, $this->clientSecret);
-            
-            $this->output('info', 'Making signed request to: ' . $baseUrl . $path);
-            
-            $response = Http::timeout(30)->withHeaders([
-                'Content-Type' => 'application/json',
-                'X-TT-ACCESS-TOKEN' => $this->accessToken,
-                'X-TT-ACCESS-TIMESTAMP' => $timestamp,
-                'X-TT-ACCESS-NONCE' => $nonce,
-                'X-TT-ACCESS-SIGN' => $sign,
-            ])->post($baseUrl . $path, $body);
-            
-            if ($response->successful()) {
-                $data = $response->json();
-                $this->output('info', '✓ Successfully fetched analytics using signed request');
-                return $data;
-            } else {
-                $this->output('error', 'Signed request failed: Status ' . $response->status() . ', Body: ' . $response->body());
-                return null;
-            }
-            
-        } catch (\Exception $e) {
-            $this->output('error', 'Signed request exception: ' . $e->getMessage());
-            return null;
+
+        $shopInfo = $this->getShopInfo();
+        $cipher = $shopInfo['shops'][0]['cipher'] ?? null;
+        if ($cipher) {
+            $this->shopCipher = $cipher;
+            $this->client->setShopCipher($cipher);
         }
     }
 
@@ -679,362 +722,104 @@ class TikTokShopService
     }
 
     /**
-     * Get product views - try multiple methods to fetch view data
+     * Fetch L30 page_views via Analytics getShopProductPerformance (API 202405).
+     * List endpoint does not return page_views; per-product performance does.
      */
     public function getProductViews(array $products): ?array
     {
         try {
             if (empty($products)) {
                 $this->output('warn', 'getProductViews: No products provided');
+
                 return null;
             }
-            
-            $this->output('info', 'getProductViews: Attempting to fetch view data for ' . count($products) . ' products...');
-            
-            // Debug: Log first product structure to see what fields are available
-            if (!empty($products[0])) {
-                $sampleProduct = $products[0];
-                $sampleKeys = array_keys($sampleProduct);
-                $this->output('info', 'Sample product keys: ' . implode(', ', array_slice($sampleKeys, 0, 20)) . (count($sampleKeys) > 20 ? '...' : ''));
-                Log::debug('TikTok product sample structure', [
-                    'keys' => $sampleKeys,
-                    'has_data' => isset($sampleProduct['data']),
-                    'has_metrics' => isset($sampleProduct['metrics']),
-                    'has_performance' => isset($sampleProduct['performance']),
-                ]);
+
+            if (! $this->accessToken) {
+                $this->output('error', 'getProductViews: No access token available');
+
+                return null;
             }
-            
-            $viewsData = [];
-            $productIds = [];
-            
-            // First, try to extract views from product data directly
+
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $tz = 'America/Los_Angeles';
+            $startDate = Carbon::now($tz)->subDays(30)->format('Y-m-d');
+            $endDate = Carbon::now($tz)->format('Y-m-d');
+
+            $productMap = [];
             foreach ($products as $product) {
-                $productId = $product['id'] ?? $product['product_id'] ?? null;
-                if (!$productId) continue;
-                
-                $productIds[] = (string)$productId;
-                
-                // Try to extract views from various possible fields in product data
-                $views = $product['product_views'] 
-                    ?? $product['views'] 
-                    ?? $product['total_views']
-                    ?? $product['view_count']
-                    ?? $product['page_views']
-                    ?? $product['data']['product_views'] 
-                    ?? $product['data']['views']
-                    ?? $product['data']['total_views']
-                    ?? $product['metrics']['product_views'] 
-                    ?? $product['metrics']['views']
-                    ?? $product['performance']['product_views']
-                    ?? $product['performance']['views']
-                    ?? $product['analytics']['product_views']
-                    ?? $product['analytics']['views']
-                    ?? $product['statistics']['product_views']
-                    ?? $product['statistics']['views'] ?? null;
-                
-                // Also try to get SKU for matching
-                $sku = $product['seller_sku'] 
-                    ?? $product['sku'] 
-                    ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null) ?? null;
-                
-                if ($views !== null) {
-                    $viewsData[] = [
-                        'product_id' => (string)$productId,
-                        'sku' => $sku,
-                        'views' => (int)$views,
-                        'product_views' => (int)$views,
-                    ];
-                }
-            }
-            
-            $this->output('info', 'Extracted ' . count($viewsData) . ' products with views from product list data');
-            
-            // If we didn't find views in product data, try fetching detailed product info
-            if (empty($viewsData) && !empty($productIds)) {
-                $this->output('info', 'Views not found in product list, trying to fetch detailed product data...');
-                $viewsData = $this->fetchViewsFromProductDetails($productIds, $products);
-            }
-            
-            // If still no views, try direct API call to analytics endpoint
-            if (empty($viewsData) && !empty($productIds)) {
-                // Ensure shopCipher is set
-                if (!$this->shopCipher) {
-                    $this->output('info', 'Getting shop info to retrieve shop cipher...');
-                    $shopInfo = $this->getShopInfo();
-                    if ($shopInfo && isset($shopInfo['shops'][0]['cipher'])) {
-                        $this->shopCipher = $shopInfo['shops'][0]['cipher'];
-                        $this->output('info', '✓ Shop cipher retrieved');
-                    } else {
-                        $this->output('warn', 'Could not retrieve shop cipher from shop info');
-                    }
-                }
-                
-                if ($this->shopCipher) {
-                    $this->output('info', 'Trying direct API call to analytics endpoint with ' . count($productIds) . ' product IDs...');
-                    $viewsData = $this->fetchViewsDirectApi($productIds, $products);
-                } else {
-                    $this->output('warn', 'Shop cipher not available, skipping direct API call');
-                }
-            }
-            
-            $this->output('info', "getProductViews: Found view data for " . count($viewsData) . " products");
-            
-            $this->lastResponse = ['analytics' => $viewsData];
-            return ['analytics' => $viewsData];
-        } catch (\Exception $e) {
-            $this->output('error', 'getProductViews Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
-            Log::error('TikTok getProductViews failed', ['error' => $e->getMessage()]);
-            return null;
-        }
-    }
-    
-    /**
-     * Fetch views by getting detailed product information
-     */
-    protected function fetchViewsFromProductDetails(array $productIds, array $products): array
-    {
-        $viewsData = [];
-        $productMap = [];
-        
-        // Create a map of product_id to product data for SKU lookup
-        foreach ($products as $product) {
-            $productId = $product['id'] ?? $product['product_id'] ?? null;
-            if ($productId) {
-                $productMap[(string)$productId] = $product;
-            }
-        }
-        
-        // Try fetching detailed product info in batches
-        $batches = array_chunk($productIds, 10); // Smaller batches for detailed calls
-        foreach ($batches as $batchIndex => $batch) {
-            $this->output('info', "Fetching detailed product data for batch " . ($batchIndex + 1) . " (" . count($batch) . " products)...");
-            
-            foreach ($batch as $productId) {
-                try {
-                    $productDetails = $this->getProductDetails([$productId]);
-                    if ($productDetails) {
-                        // Try to extract views from detailed product response
-                        $productData = $productDetails['data']['product'] ?? $productDetails['product'] ?? $productDetails['data'] ?? $productDetails;
-                        
-                        $views = $productData['product_views'] 
-                            ?? $productData['views'] 
-                            ?? $productData['total_views']
-                            ?? $productData['view_count']
-                            ?? $productData['page_views']
-                            ?? $productData['metrics']['product_views'] 
-                            ?? $productData['metrics']['views']
-                            ?? $productData['performance']['product_views']
-                            ?? $productData['performance']['views'] ?? null;
-                        
-                        if ($views !== null) {
-                            $product = $productMap[$productId] ?? [];
-                            $sku = $product['seller_sku'] 
-                                ?? $product['sku'] 
-                                ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null) ?? null;
-                            
-                            $viewsData[] = [
-                                'product_id' => $productId,
-                                'sku' => $sku,
-                                'views' => (int)$views,
-                                'product_views' => (int)$views,
-                            ];
-                        }
-                    }
-                    usleep(100000); // 0.1 second delay between calls
-                } catch (\Exception $e) {
-                    // Continue with next product
+                $productId = (string) ($product['id'] ?? $product['product_id'] ?? '');
+                if ($productId === '') {
                     continue;
                 }
+                $productMap[$productId] = $product;
             }
-        }
-        
-        return $viewsData;
-    }
-    
-    /**
-     * Try direct API call to analytics endpoint with different API versions
-     */
-    protected function fetchViewsDirectApi(array $productIds, array $products): array
-    {
-        $viewsData = [];
-        
-        if (!$this->accessToken || !$this->shopCipher) {
-            return $viewsData;
-        }
-        
-        try {
-            // Try making direct HTTP call to TikTok API analytics endpoint
-            // TikTok API base URL - try both US and global endpoints
-            $baseUrls = [
-                'https://open-api.tiktokglobalshop.com',
-                'https://open-api-us.tiktokglobalshop.com',
-            ];
-            
-            $batches = array_chunk($productIds, 50);
-            $startTime = Carbon::now()->subDays(30)->timestamp;
-            $endTime = Carbon::now()->timestamp;
-            
-            // First, try using the library's Analytics method (might work with proper error handling)
-            $this->output('info', 'Attempting to use library Analytics method...');
-            try {
-                $analyticsResponse = $this->getProductAnalytics($startTime, $endTime, array_slice($productIds, 0, 50));
-                if ($analyticsResponse && !isset($analyticsResponse['code'])) {
-                    $performanceList = $analyticsResponse['data']['product_performance_list'] 
-                        ?? $analyticsResponse['data']['products'] 
-                        ?? $analyticsResponse['product_performance_list']
-                        ?? $analyticsResponse['products']
-                        ?? $analyticsResponse['data'] ?? [];
-                    
-                    if (!empty($performanceList) && is_array($performanceList)) {
-                        foreach ($performanceList as $item) {
-                            $productId = $item['product_id'] ?? $item['id'] ?? null;
-                            $views = $item['product_views'] 
-                                ?? $item['views'] 
-                                ?? $item['total_views']
-                                ?? $item['view_count']
-                                ?? $item['page_views']
-                                ?? $item['metrics']['product_views']
-                                ?? $item['metrics']['views'] ?? null;
-                            
-                            if ($productId && $views !== null) {
-                                $product = collect($products)->first(function($p) use ($productId) {
-                                    return ($p['id'] ?? $p['product_id'] ?? null) == $productId;
-                                });
-                                
-                                $sku = $product['seller_sku'] 
-                                    ?? $product['sku'] 
-                                    ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null) ?? null;
-                                
-                                $viewsData[] = [
-                                    'product_id' => (string)$productId,
-                                    'sku' => $sku,
-                                    'views' => (int)$views,
-                                    'product_views' => (int)$views,
-                                ];
-                            }
-                        }
-                        
-                        if (!empty($viewsData)) {
-                            $this->output('info', "✓ Successfully fetched views using library Analytics method");
-                            return $viewsData;
-                        }
+
+            $productIds = array_keys($productMap);
+            $this->output('info', 'getProductViews: Fetching page_views for '.count($productIds)." products ({$startDate}..{$endDate})...");
+
+            $viewsData = [];
+            $failed = 0;
+
+            foreach ($productIds as $index => $productId) {
+                try {
+                    $perf = $this->withAnalyticsApi(
+                        fn () => $this->client->Analytics->getShopProductPerformance($productId, [
+                            'start_date_ge' => $startDate,
+                            'end_date_lt' => $endDate,
+                            'data_granularity' => 'ALL',
+                        ])
+                    );
+
+                    $interval = $perf['performance']['intervals'][0] ?? null;
+                    $views = $interval['page_views']
+                        ?? $perf['performance']['page_views']
+                        ?? $perf['page_views']
+                        ?? null;
+
+                    if ($views === null) {
+                        $failed++;
+                        continue;
+                    }
+
+                    $product = $productMap[$productId] ?? [];
+                    $sku = $product['seller_sku']
+                        ?? $product['sku']
+                        ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null);
+
+                    $viewsData[] = [
+                        'product_id' => $productId,
+                        'sku' => $sku,
+                        'views' => (int) $views,
+                        'product_views' => (int) $views,
+                        'impressions' => (int) ($interval['impressions'] ?? 0),
+                        'orders' => (int) ($interval['orders'] ?? 0),
+                    ];
+                } catch (\Throwable $e) {
+                    $failed++;
+                    if ($failed <= 3) {
+                        $this->output('warn', "getProductViews: product {$productId} failed — ".$e->getMessage());
                     }
                 }
-            } catch (\Exception $e) {
-                $this->output('info', 'Library Analytics method failed: ' . $e->getMessage());
-            }
-            
-            // If library method failed, try direct HTTP calls
-            $this->output('info', 'Trying direct HTTP calls to TikTok API...');
-            $batches = array_chunk($productIds, 50);
-            
-            foreach ($batches as $batchIndex => $batch) {
-                $this->output('info', "Trying direct API call for batch " . ($batchIndex + 1) . " (" . count($batch) . " products)...");
-                
-                // Try different API versions (newest first)
-                $apiVersions = ['202405', '202401', '202312', '202309'];
-                
-                foreach ($baseUrls as $baseUrl) {
-                    foreach ($apiVersions as $apiVersion) {
-                        try {
-                            // Try different endpoint formats
-                            $endpoints = [
-                                "/analytics/{$apiVersion}/products/query",
-                                "/analytics/{$apiVersion}/products/performance",
-                                "/analytics/{$apiVersion}/shop/products/performance",
-                            ];
-                            
-                            foreach ($endpoints as $endpoint) {
-                                $url = $baseUrl . $endpoint;
-                                $this->output('info', "  Trying: {$url}");
-                                
-                                $body = [
-                                    'shop_cipher' => $this->shopCipher,
-                                    'start_time' => $startTime,
-                                    'end_time' => $endTime,
-                                    'product_id_list' => $batch,
-                                ];
-                                
-                                $response = Http::timeout(30)->withHeaders([
-                                    'Authorization' => 'Bearer ' . $this->accessToken,
-                                    'Content-Type' => 'application/json',
-                                ])->post($url, $body);
-                                
-                                $status = $response->status();
-                                $this->output('info', "  Response status: {$status}");
-                                
-                                if ($response->successful()) {
-                                    $data = $response->json();
-                                    
-                                    // Log response structure for debugging
-                                    if (isset($data['code'])) {
-                                        $this->output('info', "  API Response code: {$data['code']}, message: " . ($data['message'] ?? 'N/A'));
-                                    }
-                                    
-                                    // Check various response structures
-                                    $performanceList = $data['data']['product_performance_list'] 
-                                        ?? $data['data']['products'] 
-                                        ?? $data['product_performance_list']
-                                        ?? $data['products']
-                                        ?? $data['data'] ?? [];
-                                    
-                                    if (!empty($performanceList) && is_array($performanceList)) {
-                                        $this->output('info', "  Found " . count($performanceList) . " performance records");
-                                        foreach ($performanceList as $item) {
-                                            $productId = $item['product_id'] ?? $item['id'] ?? null;
-                                            $views = $item['product_views'] 
-                                                ?? $item['views'] 
-                                                ?? $item['total_views']
-                                                ?? $item['view_count']
-                                                ?? $item['page_views']
-                                                ?? $item['metrics']['product_views']
-                                                ?? $item['metrics']['views'] ?? null;
-                                            
-                                            if ($productId && $views !== null) {
-                                                // Find SKU from products array
-                                                $product = collect($products)->first(function($p) use ($productId) {
-                                                    return ($p['id'] ?? $p['product_id'] ?? null) == $productId;
-                                                });
-                                                
-                                                $sku = $product['seller_sku'] 
-                                                    ?? $product['sku'] 
-                                                    ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null) ?? null;
-                                                
-                                                $viewsData[] = [
-                                                    'product_id' => (string)$productId,
-                                                    'sku' => $sku,
-                                                    'views' => (int)$views,
-                                                    'product_views' => (int)$views,
-                                                ];
-                                            }
-                                        }
-                                        
-                                        if (!empty($viewsData)) {
-                                            $this->output('info', "✓ Successfully fetched views using {$baseUrl}{$endpoint}");
-                                            return $viewsData; // Success, return immediately
-                                        }
-                                    }
-                                } elseif ($status == 403) {
-                                    $this->output('info', "  Access forbidden (403) - API version {$apiVersion} may not be available");
-                                } elseif ($status == 400) {
-                                    $errorData = $response->json();
-                                    $this->output('info', "  Bad request (400): " . ($errorData['message'] ?? 'Unknown error'));
-                                }
-                            }
-                        } catch (\Exception $e) {
-                            $this->output('info', "  Exception: " . $e->getMessage());
-                            // Try next endpoint/version
-                            continue;
-                        }
-                    }
+
+                if (($index + 1) % 10 === 0) {
+                    $this->output('info', 'getProductViews: processed '.($index + 1).'/'.count($productIds));
                 }
+
+                usleep(80000);
             }
+
+            $this->output('info', 'getProductViews: Found views for '.count($viewsData).' products'.($failed ? " ({$failed} skipped)" : ''));
+            $this->lastResponse = ['analytics' => $viewsData];
+
+            return ['analytics' => $viewsData];
         } catch (\Exception $e) {
-            $this->output('warn', 'Direct API call failed: ' . $e->getMessage());
-            Log::error('TikTok direct API call failed', ['error' => $e->getMessage()]);
+            $this->output('error', 'getProductViews Exception: '.$e->getMessage());
+            Log::error('TikTok getProductViews failed', ['error' => $e->getMessage()]);
+
+            return null;
         }
-        
-        return $viewsData;
     }
 
     /**
@@ -1134,16 +919,14 @@ class TikTokShopService
                 $this->output('warn', '⚠ No inventory data retrieved');
             }
             
-            // Analytics/Views: Try to extract from product data
-            // Note: Analytics API requires version 202405+ which isn't available in current library
-            $this->output('info', 'Step 3: Extracting view data from product data...');
+            // Analytics/Views via Analytics API v202405 (per-product page_views)
+            $this->output('info', 'Step 3: Fetching view data from TikTok Analytics API...');
             $viewsData = $this->getProductViews($products);
-            if ($viewsData && !empty($viewsData['analytics'])) {
+            if ($viewsData && ! empty($viewsData['analytics'])) {
                 $result['analytics'] = $viewsData['analytics'];
-                $this->output('info', '✓ Extracted view data for ' . count($viewsData['analytics']) . ' products');
+                $this->output('info', '✓ Fetched view data for '.count($viewsData['analytics']).' products');
             } else {
-                // Only show info message, not a warning, since this is expected
-                $this->output('info', 'ℹ View data not found in product response. (Analytics API requires v202405+ which is not available)');
+                $this->output('warn', '⚠ No view data returned from Analytics API');
                 $result['analytics'] = [];
             }
             

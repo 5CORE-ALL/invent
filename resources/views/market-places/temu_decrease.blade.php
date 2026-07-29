@@ -4353,7 +4353,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold;" title="Missing listing: not in temu_pricing, or in pricing with stock but no base price">M</span>';
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Missing listing: not in Temu API metrics, or listed with stock but no base price">M</span>';
                         }
                         return '';
                     }

@@ -3028,8 +3028,8 @@ class TemuController extends Controller
                 $normalizedSkuMap[$normalizeSku($sku)] = $sku;
             }
 
-            // 3. Listing / price source:
-            //    Temu 1 → temu_metrics (API: base_price, goods_id, sku_id) — no sheet
+            // 3. Listing / price / stock source:
+            //    Temu 1 → temu_metrics (API: base_price, goods_id, sku_id, quantity) — no sheet
             //    Temu 2 → temu2_pricing (sheet; no Temu 2 metrics API yet)
             $pricingSelect = [
                 'sku',
@@ -3049,7 +3049,7 @@ class TemuController extends Controller
                 $allPricingData = Temu2Pricing::select($pricingSelect)->get();
             } else {
                 $allPricingData = TemuMetric::query()
-                    ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'recommended_base_price', 'product_clicks_l30'])
+                    ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'recommended_base_price', 'product_clicks_l30'])
                     ->get()
                     ->map(static function ($m) {
                         return (object) [
@@ -3057,7 +3057,7 @@ class TemuController extends Controller
                             'product_name' => '',
                             'category' => '',
                             'variation' => '',
-                            'quantity' => 0,
+                            'quantity' => (int) ($m->quantity ?? 0),
                             'base_price' => $m->base_price,
                             'status' => '',
                             'detail_status' => '',
@@ -3525,7 +3525,7 @@ class TemuController extends Controller
                 $shopify = $shopifyData->get($sku);
                 $temuSales = $temuSalesData->get($sku);
                 
-                // Get Temu Stock from temu_pricing quantity column (like eBay stock)
+                // Temu Stock: Temu 1 = API temu_metrics.quantity; Temu 2 = sheet quantity
                 $temuStock = $item ? ($item->quantity ?? 0) : 0;
                 
                 // Get values from product master - check Values JSON first, then direct properties
@@ -6248,6 +6248,60 @@ class TemuController extends Controller
         }
         fclose($handle);
         return [$headers, $dataRows];
+    }
+
+    /**
+     * N Map SKU rows from temu-decrease / temu2-decrease tabular payload
+     * (same Map / N Map rules as the page badges and MappingChannelCounts).
+     *
+     * @param  array<int, mixed>  $rows
+     * @return array<int, array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     */
+    public static function nmapSkuRowsFromDecrease(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            $inventory = (float) ($row['inventory'] ?? 0);
+            $temuStock = (float) ($row['temu_stock'] ?? 0);
+            $missing = (string) ($row['missing'] ?? '');
+            $temuPrice = (float) ($row['temu_price'] ?? 0);
+            $nrReq = strtoupper(trim((string) ($row['nr_req'] ?? 'REQ')));
+
+            if ($inventory <= 0 || $nrReq !== 'REQ' || $missing === 'M' || $temuPrice <= 0 || $temuStock <= 0) {
+                continue;
+            }
+
+            $diff = abs($inventory - $temuStock);
+            $isNotMap = ($inventory * 0.03 < 3)
+                ? ($diff > 3)
+                : (round(($diff / $inventory) * 100) > 3);
+
+            if (! $isNotMap) {
+                continue;
+            }
+
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inventory,
+                'channel_inv' => $temuStock,
+                'diff' => $diff,
+            ];
+        }
+
+        return $out;
     }
 }
 
