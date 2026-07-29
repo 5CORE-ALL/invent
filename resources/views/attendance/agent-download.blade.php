@@ -320,6 +320,10 @@
                     <p class="da-faq-a">No. Download the latest installer and run it — it upgrades the existing app in place. Your login and settings stay saved.</p>
                 </div>
                 <div class="da-faq-item">
+                    <div class="da-faq-q">How do I know I have the latest app?</div>
+                    <p class="da-faq-a">Check the footer at the bottom of the app. It must show <strong>v{{ $agent_version }}</strong> (or higher). If it still shows v1.2.x, the update did not install — download again and run the installer.</p>
+                </div>
+                <div class="da-faq-item">
                     <div class="da-faq-q">Do I need to keep the browser open?</div>
                     <p class="da-faq-a">No. The desktop app works independently. You only need the browser to download it or view Team Monitoring as a manager.</p>
                 </div>

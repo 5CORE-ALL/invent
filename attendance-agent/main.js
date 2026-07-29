@@ -14,7 +14,7 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.3.0';
+const AGENT_VERSION = '1.3.1';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 
@@ -296,7 +296,12 @@ function mergeServerStats(data) {
         lastSessionStats.break_seconds = localStats.break;
     }
     if (data.activity_state) {
-        activityState = data.activity_state;
+        // Don't let a stale server "working" wipe local idle while the machine is still idle.
+        const systemIdle = powerMonitor.getSystemIdleTime();
+        const idleAt = config.idle_threshold_seconds || 30;
+        if (!(data.activity_state === 'working' && activityState === 'idle' && systemIdle >= idleAt)) {
+            activityState = data.activity_state;
+        }
     }
     if (data.today) {
         dailyStats.active = Math.max(dailyStats.active, data.today.active_seconds ?? 0);
@@ -329,6 +334,7 @@ function pushStatsToUi() {
         process: lastLive.process,
         app: lastLive.process,
         idle_seconds: systemIdle,
+        idle_threshold_seconds: config.idle_threshold_seconds || 30,
         activity_state: activityState,
         session: lastSessionMeta,
         active_seconds: localStats.active,
@@ -347,6 +353,11 @@ function pushStatsToUi() {
 
 function tickLocalStats() {
     if (!lastSessionMeta) return;
+
+    // Re-evaluate idle every second so the timer turns red promptly.
+    if (lastSessionMeta.status === 'active' && activityState !== 'break') {
+        checkIdleState();
+    }
 
     if (lastSessionMeta.status === 'paused' || activityState === 'break') {
         localStats.break += 1;

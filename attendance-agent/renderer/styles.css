@@ -163,24 +163,24 @@ h2 { font-size: 1.25rem; margin-bottom: 4px; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
 
 .hero-card.is-idle {
-    border-color: rgba(239, 68, 68, 0.75);
-    background: linear-gradient(135deg, #3f1518 0%, #1a1520 55%, var(--surface) 100%);
-    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    background: linear-gradient(135deg, #5a1216 0%, #2a1014 45%, #1a1520 100%);
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.55), 0 0 24px rgba(239, 68, 68, 0.25);
 }
 .session-row {
     display: flex; justify-content: space-between; align-items: baseline;
 }
 .session-row.frozen .session-timer { color: var(--muted); }
 .session-row.is-idle .session-label {
-    color: #f87171;
-    font-size: 0.95rem;
+    color: #fecaca;
+    font-size: 1rem;
     font-weight: 800;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
 }
 .session-row.is-idle .session-timer {
-    color: #ef4444;
-    text-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+    color: #ff3b3b;
+    text-shadow: 0 0 18px rgba(239, 68, 68, 0.55);
 }
 .session-label { font-size: 0.72rem; color: var(--muted); }
 .session-timer {
@@ -222,8 +222,18 @@ h2 { font-size: 1.25rem; margin-bottom: 4px; }
 .stat-active.stat-live { border-color: rgba(34,197,94,0.5); }
 .stat-active.stat-live .stat-val { color: #4ade80; }
 .stat-idle .stat-icon { color: var(--idle); }
-.stat-idle.stat-live { border-color: rgba(249,115,22,0.55); background: rgba(249,115,22,0.08); }
-.stat-idle.stat-live .stat-val { color: var(--idle); }
+.stat-idle.stat-live,
+.stat-idle.is-idle {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.18);
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35);
+}
+.stat-idle.stat-live .stat-val,
+.stat-idle.is-idle .stat-val { color: #ff3b3b; }
+.stat-idle.stat-live .stat-lbl,
+.stat-idle.is-idle .stat-lbl { color: #fecaca; }
+.stat-idle.stat-live .stat-icon,
+.stat-idle.is-idle .stat-icon { color: #ff3b3b; }
 .stat-break .stat-icon { color: var(--warning); }
 .stat-break.stat-live { border-color: rgba(245,158,11,0.5); }
 .stat-break.stat-live .stat-val { color: #fbbf24; }

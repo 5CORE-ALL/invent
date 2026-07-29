@@ -76,7 +76,16 @@ function renderDailyDom() {
     if ($('dailyBreak')) $('dailyBreak').textContent = formatHms(state.daily.break);
 }
 
+let lastSystemIdleSeconds = 0;
+let idleThresholdSeconds = 30;
+
 function applyUi(live) {
+    if (live?.idle_threshold_seconds !== undefined) {
+        idleThresholdSeconds = Math.max(5, Number(live.idle_threshold_seconds) || 30);
+    }
+    if (live?.idle_seconds !== undefined) {
+        lastSystemIdleSeconds = Math.max(0, Number(live.idle_seconds) || 0);
+    }
     if (live?.activity_state) state.activityState = live.activity_state;
     if (live?.today) {
         applyDailyFromToday({
@@ -116,8 +125,20 @@ function applyUi(live) {
     if (onBreak && sessionFrozenSeconds === null && state.session) {
         sessionFrozenSeconds = state.sessionActive + state.sessionIdle;
     }
-    const isIdle = !!state.session && state.session.status === 'active' && state.activityState === 'idle';
-    const { cls, text } = currentStatusLabel();
+
+    // Prefer activity_state; also turn red from system idle so the UI can't lag behind.
+    const isIdle = !!state.session
+        && state.session.status === 'active'
+        && !onBreak
+        && (state.activityState === 'idle' || lastSystemIdleSeconds >= idleThresholdSeconds);
+
+    if (isIdle && state.activityState !== 'idle') {
+        state.activityState = 'idle';
+    }
+
+    const { cls, text } = isIdle
+        ? { cls: 'status-idle', text: 'IDLE' }
+        : currentStatusLabel();
     const badge = $('statusBadge');
     badge.className = `status-badge ${cls}`;
     $('statusText').textContent = text;
@@ -126,6 +147,7 @@ function applyUi(live) {
     $('heroCard')?.classList.toggle('is-idle', isIdle);
     $('sessionRow')?.classList.toggle('is-idle', isIdle);
     $('sessionRow')?.classList.toggle('frozen', onBreak);
+    $('idleStatBox')?.classList.toggle('is-idle', isIdle);
     if (onBreak) {
         if ($('sessionLabel')) $('sessionLabel').textContent = 'Session paused';
     } else if (isIdle) {
@@ -135,9 +157,9 @@ function applyUi(live) {
     }
     renderDailyDom();
 
-    $('activeStatBox')?.classList.toggle('stat-live', state.session?.status === 'active' && state.activityState === 'working');
+    $('activeStatBox')?.classList.toggle('stat-live', state.session?.status === 'active' && !isIdle && !onBreak);
     $('idleStatBox')?.classList.toggle('stat-live', isIdle);
-    $('breakStatBox')?.classList.toggle('stat-live', state.session?.status === 'paused' || state.activityState === 'break');
+    $('breakStatBox')?.classList.toggle('stat-live', onBreak);
 
     const clockedIn = state.session && (state.session.status === 'active' || state.session.status === 'paused');
     $('actionsZone')?.classList.toggle('actions-bottom', clockedIn);
