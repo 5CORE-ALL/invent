@@ -245,15 +245,20 @@ class FetchTemuMetrics extends Command
     private function fetchStock(): void
     {
         Log::info('Starting fetchStock');
-        $this->info('Fetching Temu stock from goods list API...');
+        $this->info('Fetching Temu stock from goods list + SKU list APIs...');
 
         try {
             $service = new TemuApiService();
             $items = $service->getinventory();
-            $count = is_array($items) ? count($items) : 0;
+            $goodsCount = is_array($items) ? count($items) : 0;
+            $skuUpdates = $service->syncSkuListStock();
             $withQty = TemuMetric::where('quantity', '>', 0)->count();
-            $this->info("Goods list items: {$count}; temu_metrics with stock > 0: {$withQty}");
-            Log::info('Completed fetchStock', ['goods' => $count, 'with_qty' => $withQty]);
+            $this->info("Goods list items: {$goodsCount}; SKU stock updates: {$skuUpdates}; temu_metrics qty>0: {$withQty}");
+            Log::info('Completed fetchStock', [
+                'goods' => $goodsCount,
+                'sku_updates' => $skuUpdates,
+                'with_qty' => $withQty,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error in fetchStock: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Error in fetchStock: '.$e->getMessage());
@@ -704,12 +709,22 @@ class FetchTemuMetrics extends Command
                     }
                     $price = is_numeric($price) ? (float) $price : null;
 
+                    $stock = $sku['stock']
+                        ?? $sku['quantity']
+                        ?? $sku['skuStockQuantity']
+                        ?? null;
+
+                    $payload = [
+                        'sku_id' => (string) $skuId,
+                        'base_price' => $price,
+                    ];
+                    if ($stock !== null && is_numeric($stock)) {
+                        $payload['quantity'] = (int) $stock;
+                    }
+
                     TemuMetric::updateOrCreate(
                         ['sku' => (string) $outSkuSn],
-                        [
-                            'sku_id' => (string) $skuId,
-                            'base_price' => $price,
-                        ]
+                        $payload
                     );
                     $totalProcessed++;
                 }

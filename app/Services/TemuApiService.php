@@ -185,46 +185,78 @@ class TemuApiService
     public function persistGoodsListInventory(array $goodsList): int
     {
         $updated = 0;
+        if (! Schema::hasColumn('temu_metrics', 'quantity')) {
+            return 0;
+        }
 
         foreach ($goodsList as $titem) {
-            $quantity = (int) ($titem['quantity'] ?? 0);
+            $goodsQty = (int) ($titem['quantity'] ?? 0);
+            $goodsId = isset($titem['goodsId']) ? (string) $titem['goodsId'] : '';
             $skuTargets = [];
+            $skuIdQty = []; // skuId => qty (prefer per-SKU stock when API provides it)
 
             foreach ($titem['outSkuSnList'] ?? [] as $outSku) {
                 $outSku = trim((string) $outSku);
                 if ($outSku !== '') {
-                    $skuTargets[$outSku] = true;
+                    $skuTargets[$outSku] = $goodsQty;
                 }
             }
 
             foreach ($titem['skuInfoList'] ?? [] as $skuInfo) {
+                $skuQty = $goodsQty;
+                foreach (['stock', 'quantity', 'skuStockQuantity', 'virtualStock'] as $stockKey) {
+                    if (isset($skuInfo[$stockKey]) && is_numeric($skuInfo[$stockKey])) {
+                        $skuQty = (int) $skuInfo[$stockKey];
+                        break;
+                    }
+                }
+
                 foreach (['outSkuSn', 'skuSn', 'extCode'] as $key) {
                     $candidate = trim((string) ($skuInfo[$key] ?? ''));
                     if ($candidate !== '') {
-                        $skuTargets[$candidate] = true;
+                        $skuTargets[$candidate] = $skuQty;
                     }
                 }
 
                 $skuId = isset($skuInfo['skuId']) ? (string) $skuInfo['skuId'] : '';
-                if ($skuId !== '' && Schema::hasColumn('temu_metrics', 'quantity')) {
-                    $n = TemuMetric::where('sku_id', $skuId)->update(['quantity' => $quantity]);
-                    $updated += $n;
+                if ($skuId !== '') {
+                    $skuIdQty[$skuId] = $skuQty;
                 }
             }
 
             $outGoodsSn = trim((string) ($titem['outGoodsSn'] ?? ''));
             if ($outGoodsSn !== '' && $skuTargets === []) {
-                $skuTargets[$outGoodsSn] = true;
+                $skuTargets[$outGoodsSn] = $goodsQty;
             }
 
-            foreach (array_keys($skuTargets) as $sku) {
-                if (Schema::hasColumn('temu_metrics', 'quantity')) {
-                    $updated += TemuMetric::where('sku', $sku)->update(['quantity' => $quantity]);
-                }
+            foreach ($skuIdQty as $skuId => $qty) {
+                $updated += TemuMetric::where('sku_id', $skuId)->update(['quantity' => $qty]);
+                // Loose match: some rows store sku_id as int-like string with different casting
+                $updated += TemuMetric::whereRaw('CAST(sku_id AS CHAR) = ?', [$skuId])
+                    ->where('quantity', '!=', $qty)
+                    ->update(['quantity' => $qty]);
+            }
+
+            // Match seller SKUs case-insensitively (API outSkuSn vs temu_metrics.sku)
+            foreach ($skuTargets as $sku => $qty) {
+                $updated += TemuMetric::where('sku', $sku)->update(['quantity' => $qty]);
+                $updated += TemuMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->where('quantity', '!=', $qty)
+                    ->update(['quantity' => $qty]);
 
                 ProductStockMapping::where('sku', $sku)->update([
-                    'inventory_temu' => (string) $quantity,
+                    'inventory_temu' => (string) $qty,
                 ]);
+            }
+
+            // Fallback: goods-level qty onto metrics for this goods_id that still have no stock
+            // (covers outSkuSn / sku string mismatches). Do not overwrite non-zero per-SKU stock.
+            if ($goodsId !== '' && $goodsQty >= 0) {
+                $updated += TemuMetric::where('goods_id', $goodsId)
+                    ->where(function ($q) {
+                        $q->whereNull('quantity')->orWhere('quantity', 0);
+                    })
+                    ->update(['quantity' => $goodsQty]);
             }
         }
 
@@ -232,6 +264,107 @@ class TemuApiService
             'goods' => count($goodsList),
             'metric_updates' => $updated,
         ]);
+
+        return $updated;
+    }
+
+    /**
+     * Sync per-SKU stock via bg.local.goods.sku.list.query (returns stock per SKU).
+     * Complements goods-list inventory when outSkuSn matching misses temu_metrics rows.
+     */
+    public function syncSkuListStock(): int
+    {
+        if (! Schema::hasColumn('temu_metrics', 'quantity')) {
+            return 0;
+        }
+
+        $pageNumber = 1;
+        $pageSize = 100;
+        $totalPages = null;
+        $updated = 0;
+
+        Log::info('======================= Started SKU Stock Sync =======================');
+
+        do {
+            $requestBody = [
+                'type' => 'bg.local.goods.sku.list.query',
+                'pageSize' => $pageSize,
+                'pageNumber' => $pageNumber,
+                'skuSearchType' => 2, // on sale
+            ];
+
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+
+            try {
+                $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $signedRequest);
+            } catch (\Exception $e) {
+                Log::error('SKU stock sync HTTP exception page '.$pageNumber.': '.$e->getMessage());
+                break;
+            }
+
+            if ($response->failed()) {
+                Log::error('SKU stock sync failed page '.$pageNumber, [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                break;
+            }
+
+            $data = $response->json();
+            if (! ($data['success'] ?? false)) {
+                // Some accounts use pageNo instead of pageNumber / different skuSearchType
+                Log::warning('SKU stock sync API error page '.$pageNumber.': '.($data['errorMsg'] ?? 'Unknown'));
+                break;
+            }
+
+            $result = $data['result'] ?? [];
+            $items = $result['skuList'] ?? [];
+            if ($items === []) {
+                break;
+            }
+
+            foreach ($items as $item) {
+                $qty = $item['stock'] ?? $item['quantity'] ?? null;
+                if ($qty === null || ! is_numeric($qty)) {
+                    continue;
+                }
+                $qty = (int) $qty;
+
+                $skuId = isset($item['skuId']) ? (string) $item['skuId'] : '';
+                $outSkuSn = trim((string) ($item['outSkuSn'] ?? $item['skuSn'] ?? ''));
+                $goodsId = isset($item['goodsId']) ? (string) $item['goodsId'] : '';
+
+                if ($skuId !== '') {
+                    $updated += TemuMetric::where('sku_id', $skuId)->update(['quantity' => $qty]);
+                }
+                if ($outSkuSn !== '') {
+                    $updated += TemuMetric::where('sku', $outSkuSn)->update(['quantity' => $qty]);
+                    $updated += TemuMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($outSkuSn)])
+                        ->where('quantity', '!=', $qty)
+                        ->update(['quantity' => $qty]);
+                }
+                // Last resort for this SKU row: goods_id when only one metric shares it
+                if ($goodsId !== '' && $skuId === '' && $outSkuSn === '') {
+                    $updated += TemuMetric::where('goods_id', $goodsId)->update(['quantity' => $qty]);
+                }
+            }
+
+            if ($totalPages === null) {
+                $total = (int) ($result['total'] ?? 0);
+                $totalPages = $total > 0 ? (int) ceil($total / $pageSize) : $pageNumber;
+            }
+
+            $pageNumber++;
+            if ($pageNumber > 1000) {
+                break;
+            }
+        } while ($pageNumber <= ($totalPages ?? 1));
+
+        Log::info('SKU stock sync finished', ['updated' => $updated, 'pages' => $pageNumber - 1]);
 
         return $updated;
     }
