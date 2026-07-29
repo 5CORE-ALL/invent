@@ -23,7 +23,7 @@ use App\Models\PLSProduct;
 use App\Models\ProductMaster;
 use App\Models\RefundRate;
 use App\Models\ReverbProduct;
-use App\Models\TemuProductSheet;
+use App\Models\TemuMetric;
 use App\Models\TiendamiaProduct;
 use App\Models\ValidTrackingRate;
 use App\Models\VoilanceRate;
@@ -486,11 +486,11 @@ class AccountHealthMasterDashboardController extends Controller
     public function getTemuChannelData(Request $request)
     {
         $data = $this->fetchChannelData(
-            TemuProductSheet::class,
+            TemuMetric::class,
             'Temu',
-            'l30',
-            'l60',
-            'price',
+            'quantity_purchased_l30',
+            'quantity_purchased_l60',
+            'base_price',
             'Temu'
         );
         return response()->json([

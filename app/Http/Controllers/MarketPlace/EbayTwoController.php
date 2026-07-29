@@ -23,10 +23,11 @@ use App\Models\Ebay2Order;
 use App\Models\Ebay2OrderItem;
 use App\Models\AmazonDatasheet;
 use App\Models\EbaySkuCompetitor;
-use App\Models\TemuPricing;
+use App\Models\TemuMetric;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -220,18 +221,20 @@ class EbayTwoController extends Controller
             return (string) $value;
         };
         $temuPriceByNormalizedSku = [];
-        foreach (TemuPricing::select('sku', 'base_price')->get() as $temuRow) {
-            $basePrice = (float) ($temuRow->base_price ?? 0);
-            if ($basePrice <= 0) {
-                continue;
+        if (Schema::hasTable('temu_metrics')) {
+            foreach (TemuMetric::select('sku', 'base_price')->get() as $temuRow) {
+                $basePrice = (float) ($temuRow->base_price ?? 0);
+                if ($basePrice <= 0) {
+                    continue;
+                }
+                $key = $temuPriceNormalizer($temuRow->sku);
+                if ($key === '' || isset($temuPriceByNormalizedSku[$key])) {
+                    continue;
+                }
+                $temuPriceByNormalizedSku[$key] = $basePrice <= 26.99
+                    ? round($basePrice + 2.99, 2)
+                    : round($basePrice, 2);
             }
-            $key = $temuPriceNormalizer($temuRow->sku);
-            if ($key === '' || isset($temuPriceByNormalizedSku[$key])) {
-                continue;
-            }
-            $temuPriceByNormalizedSku[$key] = $basePrice <= 26.99
-                ? round($basePrice + 2.99, 2)
-                : round($basePrice, 2);
         }
         
         // Add OPEN BOX and USED items from ebay2_metrics to processing list

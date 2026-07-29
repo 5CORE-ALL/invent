@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
-use App\Models\TemuPricing;
 use App\Models\TemuMetric;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
@@ -597,10 +596,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return null;
         }
 
-        $goodsId = TemuPricing::where('sku', $sku)->value('goods_id');
-        if ($goodsId !== null && $goodsId !== '') {
-            return (string) $goodsId;
-        }
         $goodsId = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('goods_id');
         if ($goodsId !== null && $goodsId !== '') {
             return (string) $goodsId;
@@ -661,7 +656,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
-     * Cache the goodsId/skuId mapping in temu_pricing so the next call short-circuits to the DB
+     * Cache the goodsId/skuId mapping in temu_metrics so the next call short-circuits to the DB
      * instead of paginating the goods/sku list API again. List-API pagination is the source of
      * the intermittent "goodsId not found" failures on title-master pushes.
      */
@@ -672,20 +667,20 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return;
         }
         try {
-            if (! Schema::hasTable('temu_pricing') || ! Schema::hasColumn('temu_pricing', 'sku')) {
+            if (! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'sku')) {
                 return;
             }
             $update = [];
-            if ($goodsId !== null && $goodsId !== '' && Schema::hasColumn('temu_pricing', 'goods_id')) {
+            if ($goodsId !== null && $goodsId !== '' && Schema::hasColumn('temu_metrics', 'goods_id')) {
                 $update['goods_id'] = $goodsId;
             }
-            if ($skuId !== null && $skuId !== '' && Schema::hasColumn('temu_pricing', 'sku_id')) {
+            if ($skuId !== null && $skuId !== '' && Schema::hasColumn('temu_metrics', 'sku_id')) {
                 $update['sku_id'] = $skuId;
             }
             if ($update === []) {
                 return;
             }
-            TemuPricing::updateOrCreate(['sku' => $sku], $update);
+            TemuMetric::updateOrCreate(['sku' => $sku], $update);
         } catch (\Throwable $e) {
             Log::warning('Temu persistTemuMapping failed', [
                 'sku' => $sku,
@@ -708,10 +703,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $sku = trim($sku);
         if ($sku === '') {
             return null;
-        }
-        $skuId = TemuPricing::where('sku', $sku)->value('sku_id');
-        if ($skuId !== null && $skuId !== '') {
-            return (string) $skuId;
         }
         $skuId = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('sku_id');
         if ($skuId !== null && $skuId !== '') {
@@ -767,10 +758,6 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      */
     public function getProductPrice(string $sku): ?float
     {
-        $price = TemuPricing::where('sku', $sku)->value('base_price');
-        if ($price !== null && (float) $price > 0) {
-            return (float) $price;
-        }
         $price = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('base_price');
         if ($price !== null && (float) $price > 0) {
             return (float) $price;

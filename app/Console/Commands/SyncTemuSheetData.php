@@ -28,30 +28,8 @@ class SyncTemuSheetData extends Command
      */
     public function handle()
     {
-        $controller = new ApiController();
-        $sheet = $controller->fetchDataFromTemuListingDataSheet();
-        $rows = collect($sheet->getData()->data ?? []);
-
-        foreach ($rows as $row) {
-            $sku = trim($row->{'(Child) sku'} ?? '');
-            if (!$sku) continue;
-
-            TemuMetric::updateOrCreate(
-                ['sku' => $sku],
-                [
-                    'temu_sheet_price'     => $this->toDecimalOrNull($row->{'R prc'} ?? null),
-                    // 'pft'       => $this->toDecimalOrNull($row->{'Pft%'} ?? null),
-                    // 'roi'       => $this->toDecimalOrNull($row->{'ROI%'} ?? null),
-                    // 'l30'       => $this->toIntOrNull($row->{'TL30'} ?? null),
-                    // 'l60'       => $this->toIntOrNull($row->{'T L60'} ?? null),
-                    // 'dil'       => $this->toDecimalOrNull($row->{'Dil%'} ?? null),
-                    // 'clicks'    => $this->toIntOrNull($row->{'Clicks'} ?? null)
-                   
-                ]
-            );
-        }
-
-        $this->info('Temu sheet data synced successfully!');
+        $this->info('Temu sheet data sync has been deprecated (temu_product_sheets dropped). Use temu_metrics instead.');
+        return 0;
     }
 
     private function toDecimalOrNull($value)

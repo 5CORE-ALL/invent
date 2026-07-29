@@ -14,8 +14,6 @@ use App\Models\AmazonDatasheet;
 use App\Models\MacyProduct;
 use App\Models\MacysPriceData;
 use App\Models\TemuMetric;
-use App\Models\TemuDailyData;
-use App\Models\TemuPricing;
 use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
@@ -344,7 +342,10 @@ class CvrMasterController extends Controller
 
             // Fetch Temu data for GPFT/AD/PFT calculations
             // Pricing map onto ProductMaster SKUs via normalized SKU
-            $temuPricingsAll = TemuPricing::query()->get(['sku', 'base_price', 'goods_id', 'quantity']);
+            $temuPricingsAll = collect();
+            if (Schema::hasTable('temu_metrics')) {
+                $temuPricingsAll = TemuMetric::query()->get(['sku', 'base_price', 'goods_id', 'quantity']);
+            }
             $temuPricingByProductSku = $this->buildTemuPricingMapForProductSkus($temuPricingsAll, $skus);
             $temuPricings = collect($temuPricingByProductSku)->filter(); // keyed by PM sku
 
@@ -386,10 +387,26 @@ class CvrMasterController extends Controller
             // Margin — marketplace_percentages Temu (temu-decrease / temu-tabulator)
             $temuPercentage = TemuShopifySalesService::temuMarginDecimal();
 
-            // Temu views = SUM(product_clicks) by goods_id — same source as /temu-decrease
-            // Index by both raw and normalized goods_id so joins don't miss type/format variants
+            // Temu views by goods_id — prefer temu_metrics.product_clicks_l30, else legacy temu_view_data
             $temuViewByGoodsId = [];
-            if (Schema::hasTable('temu_view_data')) {
+            if (Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
+                foreach (
+                    TemuMetric::selectRaw('goods_id, SUM(product_clicks_l30) as product_clicks')
+                        ->whereNotNull('goods_id')
+                        ->groupBy('goods_id')
+                        ->get() as $r
+                ) {
+                    $clicks = (int) ($r->product_clicks ?? 0);
+                    $rawGid = (string) ($r->goods_id ?? '');
+                    if ($rawGid !== '') {
+                        $temuViewByGoodsId[$rawGid] = $clicks;
+                    }
+                    $nk = TemuGoodsIdHelper::normalizeKey($r->goods_id);
+                    if ($nk) {
+                        $temuViewByGoodsId[$nk] = $clicks;
+                    }
+                }
+            } elseif (Schema::hasTable('temu_view_data')) {
                 foreach (
                     TemuViewData::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
                         ->groupBy('goods_id')
@@ -2498,10 +2515,13 @@ class CvrMasterController extends Controller
             Log::info('Temu lookup - Full SKU: ' . $fullSku . ', Normalized: ' . $normalizedSku);
             
             // Get Temu pricing - check full SKU and normalized
-            $temuPricing = TemuPricing::where(function($query) use ($fullSku, $normalizedSku) {
-                $query->where('sku', $fullSku)
-                      ->orWhere('sku', $normalizedSku);
-            })->first();
+            $temuPricing = null;
+            if (Schema::hasTable('temu_metrics')) {
+                $temuPricing = TemuMetric::where(function ($query) use ($fullSku, $normalizedSku) {
+                    $query->where('sku', $fullSku)
+                          ->orWhere('sku', $normalizedSku);
+                })->first();
+            }
             
             if ($temuPricing) {
                 Log::info('Temu pricing found - SKU in DB: ' . $temuPricing->sku . ', base_price: ' . $temuPricing->base_price);
@@ -2509,13 +2529,25 @@ class CvrMasterController extends Controller
                 Log::warning('No Temu pricing found for SKU: ' . $fullSku . ' or normalized: ' . $normalizedSku);
             }
             
-            // Get Temu sales - check full SKU and normalized
-            $temuSales = TemuDailyData::where(function($query) use ($fullSku, $normalizedSku) {
-                $query->where('contribution_sku', $fullSku)
-                      ->orWhere('contribution_sku', $normalizedSku);
-            })->selectRaw('SUM(quantity_purchased) as temu_l30')->first();
-            
-            $temuL30Value = $temuSales ? ($temuSales->temu_l30 ?? 0) : 0;
+            // Get Temu sales L30 from temu_orders (same as /temu-tabulator)
+            $temuL30Value = 0;
+            try {
+                [$apiStart, $apiEnd] = TemuShopifySalesService::channelMasterL30Window();
+                $normFull = $normalizedSku;
+                $normNoSpace = str_replace(' ', '', $normFull);
+                foreach (TemuShopifySalesService::getOrdersTableRows($apiStart, $apiEnd) as $orderRow) {
+                    $raw = trim((string) ($orderRow['contribution_sku'] ?? ''));
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $n = self::normalizeTemuSkuForCvr($raw);
+                    if ($n === $normFull || str_replace(' ', '', $n) === $normNoSpace) {
+                        $temuL30Value += (int) ($orderRow['quantity_purchased'] ?? 0);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Temu L30 (temu_orders): ' . $e->getMessage());
+            }
             
             Log::info('Temu sales L30: ' . $temuL30Value);
             
@@ -3079,13 +3111,16 @@ class CvrMasterController extends Controller
             $temu2Marketplace = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
             $temu2Margin = $temu2Marketplace ? ($temu2Marketplace->percentage / 100) : $temuMargin;
             $normalizedSku = self::normalizeTemuSkuForCvr($fullSku);
-            $temuPriceMapOne = $this->buildTemuPricingMapForProductSkus(
-                TemuPricing::query()->get(['sku', 'base_price', 'goods_id', 'quantity']),
-                [$fullSku]
-            );
+            $temuPriceMapOne = [];
+            if (Schema::hasTable('temu_metrics')) {
+                $temuPriceMapOne = $this->buildTemuPricingMapForProductSkus(
+                    TemuMetric::query()->get(['sku', 'base_price', 'goods_id', 'quantity']),
+                    [$fullSku]
+                );
+            }
             $temuPricing = $temuPriceMapOne[$fullSku] ?? null;
-            if (!$temuPricing) {
-                $temuPricing = TemuPricing::where(function ($query) use ($fullSku, $normalizedSku) {
+            if (!$temuPricing && Schema::hasTable('temu_metrics')) {
+                $temuPricing = TemuMetric::where(function ($query) use ($fullSku, $normalizedSku) {
                     $query->where('sku', $fullSku)->orWhere('sku', $normalizedSku);
                 })->first();
             }
@@ -6267,6 +6302,9 @@ class CvrMasterController extends Controller
                 $target = $normalizeSku($sku);
                 $row = $temuLmpByNormalizedSku[$target] ?? null;
                 if (!$row) {
+                    if (!Schema::hasTable('temu_lmp')) {
+                        return response()->json(['success' => false, 'error' => 'Temu LMP table not available'], 404);
+                    }
                     $row = TemuLmp::create([
                         'sku' => $sku,
                         'lmp_entries' => $entries,
@@ -6464,6 +6502,14 @@ class CvrMasterController extends Controller
     {
         if ($goodsId === null || $goodsId === '') {
             return null;
+        }
+        if (!$isTemu2 && Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
+            $nk = TemuGoodsIdHelper::normalizeKey($goodsId);
+            $sum = (int) TemuMetric::where('goods_id', $goodsId)->sum('product_clicks_l30');
+            if ($sum === 0 && $nk && (string) $goodsId !== $nk) {
+                $sum = (int) TemuMetric::where('goods_id', $nk)->sum('product_clicks_l30');
+            }
+            return $sum;
         }
         $tableOk = $isTemu2
             ? Schema::hasTable('temu2_view_data')

@@ -5,16 +5,16 @@ namespace App\Console\Commands;
 use App\Console\Commands\Concerns\MonitorsCronExecution;
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\ProductMaster;
-use App\Models\TemuPricing;
-use App\Models\TemuViewData;
-use App\Models\TemuDailyData;
+use App\Models\TemuMetric;
 use App\Models\TemuAdData;
+use App\Services\TemuShopifySalesService;
 use App\Models\TemuBadgeDailyData;
 use App\Services\CronMonitor\CronExecutionContext;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class CollectTemuMetrics extends Command
 {
@@ -46,29 +46,43 @@ class CollectTemuMetrics extends Command
         $this->info('Collection date (California Time): ' . $today->toDateString());
 
         $temuPricing = collect();
-        TemuPricing::select('id', 'sku', 'goods_id', 'base_price', 'quantity')
-            ->whereNotNull('sku')
-            ->orderBy('id')
-            ->chunkById($chunkSize, function ($rows) use (&$temuPricing) {
-                foreach ($rows as $item) {
-                    $temuPricing[strtoupper(trim($item->sku))] = $item;
+        if (Schema::hasTable('temu_metrics')) {
+            TemuMetric::select('id', 'sku', 'goods_id', 'base_price', 'quantity')
+                ->whereNotNull('sku')
+                ->orderBy('id')
+                ->chunkById($chunkSize, function ($rows) use (&$temuPricing) {
+                    foreach ($rows as $item) {
+                        $temuPricing[strtoupper(trim($item->sku))] = $item;
+                    }
+                });
+        }
+
+        $this->info('Found ' . $temuPricing->count() . ' SKUs in Temu Metrics');
+
+        $temuViewsData = collect();
+        if (Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
+            $temuViewsData = TemuMetric::select('goods_id', DB::raw('SUM(product_clicks_l30) as total_clicks'))
+                ->whereNotNull('goods_id')
+                ->groupBy('goods_id')
+                ->get()
+                ->keyBy('goods_id');
+        }
+
+        $temuSalesData = collect();
+        try {
+            [$temuL30Start, $temuL30End] = TemuShopifySalesService::channelMasterL30Window();
+            $salesBySku = [];
+            foreach (TemuShopifySalesService::getOrdersTableRows($temuL30Start, $temuL30End) as $orderRow) {
+                $skuKey = strtoupper(trim((string) ($orderRow['contribution_sku'] ?? '')));
+                if ($skuKey === '') {
+                    continue;
                 }
-            });
-
-        $this->info('Found ' . $temuPricing->count() . ' SKUs in Temu Pricing');
-
-        // Aggregated lookups (groupBy) — load via get/keyBy; not chunkById-safe
-        $temuViewsData = TemuViewData::select('goods_id', DB::raw('SUM(product_clicks) as total_clicks'))
-            ->groupBy('goods_id')
-            ->get()
-            ->keyBy('goods_id');
-
-        $temuSalesData = TemuDailyData::select('contribution_sku', DB::raw('SUM(quantity_purchased) as temu_l30'))
-            ->groupBy('contribution_sku')
-            ->get()
-            ->keyBy(function ($item) {
-                return strtoupper(trim($item->contribution_sku));
-            });
+                $salesBySku[$skuKey] = ($salesBySku[$skuKey] ?? 0) + (int) ($orderRow['quantity_purchased'] ?? 0);
+            }
+            $temuSalesData = collect($salesBySku)->map(fn ($qty) => (object) ['temu_l30' => $qty]);
+        } catch (\Throwable $e) {
+            Log::warning('CollectTemuMetrics: temu_orders L30 skipped: ' . $e->getMessage());
+        }
 
         $temuAdData = collect();
         TemuAdData::select('id', 'goods_id', 'spend')

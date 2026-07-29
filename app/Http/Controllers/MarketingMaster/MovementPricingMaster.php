@@ -26,7 +26,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\MacyProduct;
 use App\Models\ReverbProduct;
-use App\Models\TemuProductSheet;
+use App\Models\TemuMetric;
 use App\Models\WalmartDataView;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
@@ -46,6 +46,7 @@ use Illuminate\Contracts\Session\Session;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Session as FacadesSession;
 use PhpParser\Node\Stmt\Else_;
 use SebastianBergmann\CodeCoverage\Report\Xml\Totals;
@@ -109,7 +110,9 @@ class MovementPricingMaster extends Controller
         $pricingData = PricingMaster::whereIn('sku', $skus)->get()->keyBy('sku');
         $macyData    = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $reverbData  = ReverbProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-        $temuLookup  = TemuProductSheet::all()->keyBy('sku');
+        $temuLookup = Schema::hasTable('temu_metrics')
+            ? TemuMetric::all()->keyBy('sku')
+            : collect();
         $walmartLookup = WalmartDataView::all()->keyBy('sku');
         $ebay2Lookup = Ebay2Metric::all()->keyBy('sku');
         $ebay3Lookup = Ebay3Metric::all()->keyBy('sku');
@@ -256,11 +259,11 @@ class MovementPricingMaster extends Controller
                 'reverb_seller_link' => isset($reverbListingData[$sku]) ? ($reverbListingData[$sku]->value['seller_link'] ?? null) : null,
 
                 // Temu
-                'temu_price' => $temu ? (float) ($temu->{'price'} ?? 0) : 0,
-                'temu_l30'   => $temu ? (float) ($temu->{'l30'} ?? 0) : 0,
-                'temu_dil'   => $temu ? (float) ($temu->{'dil'} ?? 0) : 0,
-                'temu_pft'   => $temu && ($temu->price ?? 0) > 0 ? (($temu->price * 0.87 - $lp - $temuship) / $temu->price) : 0,
-                'temu_roi'   => $temu && $lp > 0 && ($temu->price ?? 0) > 0 ? (($temu->price * 0.87 - $lp - $temuship) / $lp) : 0,
+                'temu_price' => $temu ? (float) ($temu->temu_sheet_price ?? $temu->base_price ?? 0) : 0,
+                'temu_l30'   => $temu ? (float) ($temu->quantity_purchased_l30 ?? 0) : 0,
+                'temu_dil'   => 0,
+                'temu_pft'   => $temu && (($temu->temu_sheet_price ?? $temu->base_price ?? 0) > 0) ? ((($temu->temu_sheet_price ?? $temu->base_price) * 0.87 - $lp - $temuship) / ($temu->temu_sheet_price ?? $temu->base_price)) : 0,
+                'temu_roi'   => $temu && $lp > 0 && (($temu->temu_sheet_price ?? $temu->base_price ?? 0) > 0) ? ((($temu->temu_sheet_price ?? $temu->base_price) * 0.87 - $lp - $temuship) / $lp) : 0,
                 'temu_buyer_link' => isset($temuListingData[$sku]) ? ($temuListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'temu_seller_link' => isset($temuListingData[$sku]) ? ($temuListingData[$sku]->value['seller_link'] ?? null) : null,
 

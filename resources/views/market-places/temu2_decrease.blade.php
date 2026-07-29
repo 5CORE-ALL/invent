@@ -537,13 +537,23 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="upload-actions-btn">
                             <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
+                                    <i class="fa fa-dollar-sign me-1 text-info"></i> Up Pricing
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
+                                    <i class="fa fa-calendar me-1 text-primary"></i> Up Daily Data
+                                </a>
+                            </li>
+                            <li>
                                 <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
                                     <i class="fa fa-eye me-1 text-success"></i> Up View Data
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                                    <i class="fa fa-dollar-sign me-1 text-info"></i> Up Pricing
+                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadLmpModal">
+                                    <i class="fa fa-link me-1 text-warning"></i> Up LMP
                                 </a>
                             </li>
                         </ul>
@@ -720,6 +730,86 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Daily Data Modal (temu2_daily_data / temu2_daily_data_l60) -->
+    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
+                        <i class="fa fa-upload me-2"></i>Upload Temu 2 Daily Data
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="dailyDataUploadPeriod" class="form-label">Upload for</label>
+                        <select id="dailyDataUploadPeriod" class="form-select form-select-sm" style="width: auto;">
+                            <option value="L30">L30 Sales (temu2_daily_data)</option>
+                            <option value="L60">L60 Sales (temu2_daily_data_l60)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="dailyDataFile" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="dailyDataFile" accept=".xlsx,.xls,.csv">
+                        <div class="form-text">
+                            Same format as Temu 2 tabulator daily upload.
+                            <a href="{{ route('temu.daily.sample') }}" class="text-primary">
+                                <i class="fa fa-download me-1"></i>Download Sample
+                            </a>
+                        </div>
+                    </div>
+                    <div id="uploadProgressContainer" style="display: none;">
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <div id="uploadStatus" class="text-muted small"></div>
+                    </div>
+                    <div id="uploadResult" class="alert" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="startUploadBtn">
+                        <i class="fa fa-upload me-1"></i>Start Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload LMP Modal (shared temu_lmp) -->
+    <div class="modal fade" id="uploadLmpModal" tabindex="-1" aria-labelledby="uploadLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title" id="uploadLmpModalLabel">
+                        <i class="fa fa-link me-2"></i>Upload Temu LMP
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadLmpForm" method="POST" action="{{ route('temu.lmp.upload') }}" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="lmp_file" class="form-label fw-bold">File (Excel or CSV/TSV)</label>
+                            <input type="file" class="form-control" id="lmp_file" name="lmp_file"
+                                   accept=".xlsx,.xls,.csv,.txt" required>
+                            <div class="form-text">
+                                Writes to shared <code>temu_lmp</code> (used by Temu 1 &amp; Temu 2 decrease).
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadLmpForm" class="btn btn-warning">
+                        <i class="fa fa-upload me-1"></i>Upload LMP
+                    </button>
                 </div>
             </div>
         </div>
@@ -5034,6 +5124,88 @@
             $('#badgeTrendChartSuffix').text('(Rolling L' + days + ')');
             loadBadgeChartData(currentBadgeChartMetricKey, currentBadgeChartLabel, days);
         });
+
+        // Temu 2 daily data upload → temu2_daily_data / temu2_daily_data_l60
+        $('#startUploadBtn').on('click', function() {
+            const fileInput = document.getElementById('dailyDataFile');
+            const file = fileInput && fileInput.files[0];
+            if (!file) {
+                showToast('Please select a file to upload', 'error');
+                return;
+            }
+            $('#uploadProgressContainer').show();
+            $('#uploadResult').hide();
+            $('#startUploadBtn').prop('disabled', true);
+            const totalChunks = 5;
+            const period = $('#dailyDataUploadPeriod').val() || 'L30';
+            const uploadUrl = period === 'L60' ? '/temu2/upload-daily-data-l60-chunk' : '/temu2/upload-daily-data-chunk';
+            const uploadId = (period === 'L60' ? 'temu2_l60_' : 'temu2_') + Date.now();
+            let currentChunk = 0;
+            let totalImported = 0;
+
+            function uploadChunk() {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('chunk', currentChunk);
+                formData.append('totalChunks', totalChunks);
+                formData.append('uploadId', uploadId);
+                formData.append('_token', '{{ csrf_token() }}');
+                $.ajax({
+                    url: uploadUrl,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success) {
+                            totalImported += response.imported || 0;
+                            const progress = response.progress || 0;
+                            $('#uploadProgressBar').css('width', progress + '%').text(Math.round(progress) + '%');
+                            $('#uploadStatus').text('Processing chunk ' + (currentChunk + 1) + ' of ' + totalChunks + '...');
+                            if (currentChunk < totalChunks - 1) {
+                                currentChunk++;
+                                setTimeout(uploadChunk, 500);
+                            } else {
+                                $('#uploadProgressBar').removeClass('progress-bar-animated').addClass('bg-success');
+                                $('#uploadResult').removeClass('alert-danger').addClass('alert-success')
+                                    .html('<i class="fa fa-check-circle me-2"></i>Upload completed! ' + totalImported + ' records imported.').show();
+                                $('#startUploadBtn').prop('disabled', false);
+                                showToast(period + ' upload completed (' + totalImported + ' rows)', 'success');
+                                setTimeout(function() {
+                                    $('#uploadDailyDataModal').modal('hide');
+                                    resetTemu2DailyUploadForm();
+                                    if (table) table.setData('/temu2-decrease-data');
+                                }, 1200);
+                            }
+                        } else {
+                            throw new Error(response.message || 'Upload failed');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMessage = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : 'Upload failed. Please try again.';
+                        $('#uploadProgressBar').removeClass('progress-bar-animated').addClass('bg-danger');
+                        $('#uploadResult').removeClass('alert-success').addClass('alert-danger')
+                            .html('<i class="fa fa-exclamation-circle me-2"></i>' + errorMessage).show();
+                        $('#startUploadBtn').prop('disabled', false);
+                        showToast(errorMessage, 'error');
+                    }
+                });
+            }
+            uploadChunk();
+        });
+
+        $('#uploadDailyDataModal').on('hidden.bs.modal', resetTemu2DailyUploadForm);
+
+        function resetTemu2DailyUploadForm() {
+            $('#dailyDataFile').val('');
+            $('#uploadProgressContainer').hide();
+            $('#uploadResult').hide();
+            $('#uploadProgressBar').removeClass('bg-success bg-danger').addClass('progress-bar-animated').css('width', '0%').text('0%');
+            $('#uploadStatus').text('');
+            $('#startUploadBtn').prop('disabled', false);
+        }
 
         updateCampaignPeriodUi();
     });

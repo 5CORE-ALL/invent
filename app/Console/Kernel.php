@@ -1426,12 +1426,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('sync:temu-sheet-data')
-            ->twiceDaily(9, 18)
-            ->name('sync-temu-sheet')
-            ->withoutOverlapping(90)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Deprecated: Temu sheet tables dropped (temu_pricing, temu_product_sheets, etc.)
+        // $ist($schedule->command('sync:temu-sheet-data')
+        //     ->twiceDaily(9, 18)
+        //     ->name('sync-temu-sheet')
+        //     ->withoutOverlapping(90)
+        //     ->runInBackground()
+        //     ->appendOutputTo($log));
 
         $ist($schedule->command('app:sync-cp-master-to-sheet')
             ->hourly()

@@ -4,14 +4,15 @@ namespace App\Services;
 
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
+use App\Models\TemuMetric;
 use App\Models\TemuOrder;
-use App\Models\TemuPricing;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Temu L30/L60/L7/Y sales sourced from the `temu_orders` table (Temu API order-wise data,
- * populated by `app:fetch-temu-orders`). Line price comes from temu_pricing (base_price);
+ * populated by `app:fetch-temu-orders`). Line price comes from temu_metrics (base_price);
  * LP / Temu ship from product_master. (No longer reads apicentral.shopify_order_items.)
  */
 class TemuShopifySalesService
@@ -190,8 +191,8 @@ class TemuShopifySalesService
         $productMasters = self::productMastersForSkus($skus);
 
         $skuList = $skus->filter()->unique()->values()->toArray();
-        $priceBySku = ! empty($skuList)
-            ? TemuPricing::whereIn('sku', $skuList)->pluck('base_price', 'sku')
+        $priceBySku = ! empty($skuList) && Schema::hasTable('temu_metrics')
+            ? TemuMetric::whereIn('sku', $skuList)->pluck('base_price', 'sku')
             : collect();
 
         $result = [];
@@ -208,7 +209,7 @@ class TemuShopifySalesService
             // temu_orders.order_base_amount) over catalog price × qty — the same principle
             // as Amazon summing real per-order item price. order_base_amount is the line
             // total for this sub-order, so per-unit = amount / qty. Fall back to temu_pricing
-            // when the amount hasn't been fetched yet, so nothing regresses.
+            // when the amount hasn't been fetched yet, so nothing regresses (temu_metrics fallback).
             $price = (float) ($priceBySku[$sku] ?? 0);
             if ($o->order_base_amount !== null && $quantity > 0) {
                 $price = ((float) $o->order_base_amount) / $quantity;

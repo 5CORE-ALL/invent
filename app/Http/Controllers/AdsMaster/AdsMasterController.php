@@ -22,7 +22,6 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\MacyProduct;
 use App\Models\ReverbProduct;
-use App\Models\TemuProductSheet;
 use App\Models\WalmartDataView;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
@@ -53,6 +52,7 @@ use App\Services\EbayApiService;
 use App\Services\WalmartService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 
 class AdsMasterController extends Controller
@@ -129,23 +129,9 @@ class AdsMasterController extends Controller
         $pricingData = PricingMaster::whereIn('sku', $skus)->get()->keyBy('sku');
         $macyData    = MacyProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $reverbData  = ReverbProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-        $temuLookup  = TemuProductSheet::whereIn('sku', $skus)->get()->keyBy('sku');
-        $walmartLookup = DB::connection('apicentral')
-            ->table('walmart_api_data as api')
-            ->select(
-                'api.sku',
-                'api.price',
-                DB::raw('COALESCE(m.l30, 0) as l30'),
-                DB::raw('COALESCE(m.l60, 0) as l60')
-            )
-            ->leftJoin('walmart_metrics as m', 'api.sku', '=', 'm.sku')
-            ->whereIn('api.sku', $skus)
-            ->get()
-            ->keyBy('sku');
-
-
-            
-
+        $temuMetricLookup = Schema::hasTable('temu_metrics')
+            ? TemuMetric::whereIn('sku', $skus)->get()->keyBy('sku')
+            : collect();
 
 
         $dobaData = DB::connection('apicentral')
@@ -169,8 +155,20 @@ class AdsMasterController extends Controller
             ->get()
             ->keyBy('sku');
 
+        $walmartLookup = DB::connection('apicentral')
+            ->table('walmart_api_data as api')
+            ->select(
+                'api.sku',
+                'api.price',
+                DB::raw('COALESCE(m.l30, 0) as l30'),
+                DB::raw('COALESCE(m.l60, 0) as l60')
+            )
+            ->leftJoin('walmart_metrics as m', 'api.sku', '=', 'm.sku')
+            ->whereIn('api.sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
         $ebay3Lookup = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
-        $temuMetricLookup = TemuMetric::whereIn('sku', $skus)->get()->keyBy('sku');
         $amazonDataView = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $ebayDataView = EbayDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $shopifyb2cDataView = Shopifyb2cDataView::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -248,7 +246,6 @@ class AdsMasterController extends Controller
             $pricing = $pricingData[$sku] ?? null;
             $macy    = $macyData[$sku] ?? null;
             $reverb  = $reverbData[$sku] ?? null;
-            $temu    = $temuLookup[$sku] ?? null;
             $temuMetric = $temuMetricLookup[$sku] ?? null;
             $walmart = $walmartLookup[$sku] ?? null;
             $ebay2   = $ebay2Lookup[$sku] ?? null;
