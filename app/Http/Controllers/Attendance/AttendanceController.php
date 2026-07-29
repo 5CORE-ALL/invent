@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Attendance;
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceAiFlag;
 use App\Models\AttendanceDailySummary;
-use App\Models\AttendanceDevice;
 use App\Models\AttendancePolicy;
 use App\Models\User;
 use App\Services\Attendance\AttendanceAiMisuseService;
@@ -31,21 +30,15 @@ class AttendanceController extends Controller
         $date = $request->input('date', now()->toDateString());
         $data = $this->attendanceService->employeeDashboardData($user, $date);
 
-        $latestAgent = (string) config('attendance.agent_version', '1.0.0');
-        $device = AttendanceDevice::query()
-            ->where('user_id', $user->id)
-            ->where('is_active', true)
-            ->orderByDesc('last_seen_at')
-            ->first();
-        $installedAgent = $device?->agent_version ? (string) $device->agent_version : null;
-        $agentUpdateAvailable = $installedAgent !== null
-            && version_compare($latestAgent, $installedAgent, '>');
+        $agentStatus = $this->attendanceService->desktopAgentStatusForUser($user);
 
         return view('attendance.index', array_merge($data, [
             'title' => 'My Attendance',
-            'agent_update_available' => $agentUpdateAvailable,
-            'agent_installed_version' => $installedAgent,
-            'agent_latest_version' => $latestAgent,
+            'agent_update_available' => $agentStatus['update_available'],
+            'agent_has_installed' => $agentStatus['has_installed'],
+            'agent_installed_version' => $agentStatus['installed_version'],
+            'agent_latest_version' => $agentStatus['latest_version'],
+            'agent_download_url' => route('attendance.agent.download'),
         ]));
     }
 

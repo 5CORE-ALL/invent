@@ -4,6 +4,7 @@ namespace App\Services\Attendance;
 
 use App\Models\AttendanceActivityLog;
 use App\Models\AttendanceDailySummary;
+use App\Models\AttendanceDevice;
 use App\Models\AttendancePolicy;
 use App\Models\AttendanceSession;
 use App\Models\User;
@@ -215,6 +216,46 @@ class AttendanceService
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
             'message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
+        ];
+    }
+
+    /**
+     * Portal UI status for the signed-in user's desktop agent install.
+     *
+     * @return array{
+     *   has_installed: bool,
+     *   installed_version: string|null,
+     *   latest_version: string,
+     *   update_available: bool,
+     *   up_to_date: bool,
+     *   device_name: string|null
+     * }
+     */
+    public function desktopAgentStatusForUser(User $user): array
+    {
+        $latest = (string) config('attendance.agent_version', '1.0.0');
+        $device = AttendanceDevice::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('last_seen_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $hasInstalled = $device !== null;
+        $installed = $device?->agent_version ? (string) $device->agent_version : null;
+
+        // Any registered desktop device with a missing/old version needs an update.
+        $updateAvailable = $hasInstalled && (
+            $installed === null || version_compare($latest, $installed, '>')
+        );
+        $upToDate = $hasInstalled && $installed !== null && version_compare($latest, $installed, '<=');
+
+        return [
+            'has_installed' => $hasInstalled,
+            'installed_version' => $installed,
+            'latest_version' => $latest,
+            'update_available' => $updateAvailable,
+            'up_to_date' => $upToDate,
+            'device_name' => $device?->device_name,
         ];
     }
 

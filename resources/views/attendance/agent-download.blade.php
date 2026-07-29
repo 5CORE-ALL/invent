@@ -172,27 +172,99 @@
         font-size: .82rem;
         color: #64748b;
     }
+    .da-badge.warn { color: #9a3412; background: #ffedd5; }
+    .da-badge.ok { color: #166534; background: #dcfce7; }
+    .da-hero.update {
+        background: linear-gradient(135deg, #fff7ed 0%, #f8fafc 55%, #fff 100%);
+        border-color: #fdba74;
+    }
+    .da-update-box {
+        margin-top: 1rem;
+        padding: .85rem 1rem;
+        border-radius: 12px;
+        background: #fff7ed;
+        border: 1px solid #fdba74;
+        font-size: .82rem;
+        color: #9a3412;
+        max-width: 36rem;
+        position: relative;
+        z-index: 1;
+    }
+    .da-download-btn.btn-warning { color: #1c1917; }
 </style>
 @endsection
 
 @section('content')
+@php
+    $hasInstalled = !empty($agent_has_installed);
+    $needsUpdate = !empty($agent_update_available);
+    $upToDate = !empty($agent_up_to_date);
+@endphp
 <div class="container-fluid">
-    <div class="da-hero mb-4">
-        <span class="da-badge"><i class="ri-windows-fill"></i> Windows · v{{ $agent_version }}</span>
-        <h1>5Core Attendance — Desktop App</h1>
-        <p class="lead mb-0">
-            Install this small app on your work computer to clock in, track your work time, and stay connected with your team.
-            It runs quietly in the system tray while you work.
-        </p>
+    <div class="da-hero mb-4 {{ $needsUpdate ? 'update' : '' }}">
+        @if($needsUpdate)
+            <span class="da-badge warn"><i class="ri-error-warning-line"></i> Update required · Latest v{{ $agent_latest_version }}</span>
+            <h1>Update your installed 5Core Attendance</h1>
+            <p class="lead mb-0">
+                We detected your PC already has the desktop app
+                @if(!empty($agent_installed_version))
+                    (installed <strong>v{{ $agent_installed_version }}</strong>)
+                @endif.
+                Download the update and run it — it replaces the existing app.
+                It does <strong>not</strong> install a second copy.
+            </p>
+        @elseif($upToDate)
+            <span class="da-badge ok"><i class="ri-checkbox-circle-line"></i> Up to date · v{{ $agent_installed_version }}</span>
+            <h1>5Core Attendance — Desktop App</h1>
+            <p class="lead mb-0">
+                Your installed app is current (v{{ $agent_installed_version }}).
+                You only need to download again if you moved to a new PC.
+            </p>
+        @else
+            <span class="da-badge"><i class="ri-windows-fill"></i> Windows · v{{ $agent_version }}</span>
+            <h1>5Core Attendance — Desktop App</h1>
+            <p class="lead mb-0">
+                Install this small app on your work computer to clock in, track your work time, and stay connected with your team.
+                It runs quietly in the system tray while you work.
+            </p>
+        @endif
+
         <div class="mt-3 position-relative" style="z-index:1">
             @if($download_available)
-                <a href="{{ $download_url }}" class="btn btn-primary da-download-btn">
-                    <i class="ri-download-cloud-2-line" style="font-size:1.2rem"></i>
-                    Download for Windows
-                </a>
-                <div class="da-meta">
-                    File: {{ $download_filename }} · Safe to install on your company PC
-                </div>
+                @if($needsUpdate)
+                    <a href="{{ $download_url }}" class="btn btn-warning da-download-btn">
+                        <i class="ri-download-cloud-2-line" style="font-size:1.2rem"></i>
+                        Update installed app (v{{ $agent_latest_version }})
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary da-download-btn ms-2" onclick="window.showAttendanceAgentUpdateModal && window.showAttendanceAgentUpdateModal()">
+                        How to update
+                    </button>
+                    <div class="da-update-box">
+                        <strong>Before you run the installer:</strong>
+                        Quit 5Core Attendance from the system tray (right‑click → Quit).
+                        Then run the downloaded file and keep the default folder so Windows updates the same app.
+                    </div>
+                @elseif($upToDate)
+                    <a href="{{ $download_url }}" class="btn btn-outline-primary da-download-btn">
+                        <i class="ri-download-cloud-2-line" style="font-size:1.2rem"></i>
+                        Re-download installer
+                    </a>
+                    <div class="da-meta">
+                        File: {{ $download_filename }} · Same installer upgrades your current app
+                    </div>
+                @else
+                    <a href="{{ $download_url }}" class="btn btn-primary da-download-btn">
+                        <i class="ri-download-cloud-2-line" style="font-size:1.2rem"></i>
+                        Download for Windows
+                    </a>
+                    <div class="da-meta">
+                        File: {{ $download_filename }} · Safe to install on your company PC
+                    </div>
+                    <div class="da-meta mt-2">
+                        Already installed? <a href="{{ $download_url }}">Download the update</a>
+                        and run it over the existing app (quit from tray first).
+                    </div>
+                @endif
             @else
                 <div class="da-unavailable">
                     <i class="ri-information-line me-1"></i>
@@ -203,6 +275,15 @@
         </div>
     </div>
 
+    @if($needsUpdate)
+        @include('partials.attendance-agent-update-modal', [
+            'agent_update_available' => true,
+            'agent_installed_version' => $agent_installed_version,
+            'agent_latest_version' => $agent_latest_version,
+            'download_url' => $download_url,
+        ])
+    @endif
+
     <div class="row g-3 mb-4">
         <div class="col-lg-7">
             <div class="da-card">
@@ -211,11 +292,16 @@
                     <li class="da-step">
                         <span class="da-step-num">1</span>
                         <div>
-                            <div class="da-step-title">Download &amp; install</div>
+                            <div class="da-step-title">{{ $needsUpdate ? 'Update (not a second install)' : 'Download &amp; install' }}</div>
                             <p class="da-step-desc">
-                                Click <strong>Download for Windows</strong> above and run the installer.
-                                Follow the prompts — it only takes a minute. You may see a Windows security notice;
-                                choose <strong>Run anyway</strong> or ask IT if you are unsure.
+                                @if($needsUpdate)
+                                    Quit the running app from the tray, then click <strong>Update installed app</strong>.
+                                    Keep the default install location so Windows replaces the same program — you will not get a second app.
+                                @else
+                                    Click <strong>Download for Windows</strong> above and run the installer.
+                                    If the app is already installed, the same installer updates it in place.
+                                @endif
+                                You may see a Windows security notice; choose <strong>Run anyway</strong> or ask IT if you are unsure.
                             </p>
                         </div>
                     </li>
@@ -317,7 +403,11 @@
                 </div>
                 <div class="da-faq-item">
                     <div class="da-faq-q">Do I need to uninstall before updating?</div>
-                    <p class="da-faq-a">No. Download the latest installer and run it — it upgrades the existing app in place. Your login and settings stay saved.</p>
+                    <p class="da-faq-a">No. Quit the app from the tray, then run the new installer and keep the default folder. It updates the same app — it does not create a second copy. Login and settings stay saved.</p>
+                </div>
+                <div class="da-faq-item">
+                    <div class="da-faq-q">Why did I get two apps before?</div>
+                    <p class="da-faq-a">That happened if the installer was pointed at a different folder. The update button now installs to the same default location. Remove any extra “5Core Attendance” shortcut if you still see a duplicate, and keep the one whose footer shows v{{ $agent_version }}.</p>
                 </div>
                 <div class="da-faq-item">
                     <div class="da-faq-q">How do I know I have the latest app?</div>

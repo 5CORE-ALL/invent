@@ -77,7 +77,7 @@ return [
     /*
     | Desktop agent
     */
-    'agent_version' => '1.3.2',
+    'agent_version' => '1.3.3',
     'agent_installer_path' => env('ATTENDANCE_AGENT_INSTALLER_PATH'),
     'agent_download_filename' => env('ATTENDANCE_AGENT_DOWNLOAD_FILENAME', '5Core-Attendance-Setup.exe'),
     'screenshots_enabled' => env('ATTENDANCE_SCREENSHOTS_ENABLED', true),

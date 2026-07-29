@@ -214,20 +214,26 @@ class AttendanceMonitorController extends Controller
         );
     }
 
-    public function agentDownload()
+    public function agentDownload(Request $request)
     {
         abort_unless(AttendanceAccess::canSeeMenu(), 403);
 
         $installer = $this->resolveAgentInstaller();
+        $agentStatus = $this->attendanceService->desktopAgentStatusForUser($request->user());
 
         return view('attendance.agent-download', [
             'title' => 'Desktop Agent',
-            'agent_version' => config('attendance.agent_version', '1.0.0'),
+            'agent_version' => $agentStatus['latest_version'],
             'server_url' => rtrim((string) config('app.url'), '/'),
             'download_available' => $installer !== null,
             'download_url' => $installer ? route('attendance.agent.download') : null,
             'download_filename' => config('attendance.agent_download_filename', '5Core-Attendance-Setup.exe'),
             'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
+            'agent_has_installed' => $agentStatus['has_installed'],
+            'agent_update_available' => $agentStatus['update_available'],
+            'agent_up_to_date' => $agentStatus['up_to_date'],
+            'agent_installed_version' => $agentStatus['installed_version'],
+            'agent_latest_version' => $agentStatus['latest_version'],
         ]);
     }
 

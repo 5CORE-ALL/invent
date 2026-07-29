@@ -1,6 +1,6 @@
 {
   "name": "5core-attendance-agent",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "5Core employee attendance desktop agent — clock in/out, app tracking, screenshots",
   "main": "main.js",
   "scripts": {
@@ -48,15 +48,17 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "5Core Attendance",
+      "uninstallDisplayName": "5Core Attendance",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "artifactName": "5Core-Attendance-Setup.exe",
-      "differentialPackage": false
+      "differentialPackage": false,
+      "displayLanguageSelector": false
     },
     "portable": {
       "artifactName": "5Core-Attendance-Portable.exe"
