@@ -294,6 +294,8 @@ class AttendanceAgentController extends Controller
             $this->deviceService->touch($device, $request->input('agent_version'));
         }
 
+        $installedVersion = $request->input('agent_version') ?: $device?->agent_version;
+
         return response()->json([
             'ok' => true,
             'has_session' => (bool) $session,
@@ -308,6 +310,9 @@ class AttendanceAgentController extends Controller
             ] : null,
             'today' => $this->attendanceService->todayStats($user),
             'config' => $this->agentConfig(),
+            'agent_update' => $this->attendanceService->agentUpdatePayload(
+                is_string($installedVersion) ? $installedVersion : null
+            ),
         ]);
     }
 
@@ -420,11 +425,13 @@ class AttendanceAgentController extends Controller
             'process_name' => 'nullable|string|max:200',
             'keystroke_count' => 'nullable|integer|min:0|max:9999',
             'mouse_click_count' => 'nullable|integer|min:0|max:9999',
+            'agent_version' => 'nullable|string|max:30',
         ]);
 
         $result = $this->attendanceService->recordHeartbeat($request->user(), array_merge($validated, [
             'source' => 'desktop',
             'device_id' => $device?->id,
+            'agent_version' => $validated['agent_version'] ?? $device?->agent_version,
         ]));
 
         return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
@@ -507,7 +514,7 @@ class AttendanceAgentController extends Controller
 
         return [
             'heartbeat_interval_seconds' => (int) config('attendance.heartbeat_interval_seconds', 15),
-            'screenshot_interval_seconds' => (int) config('attendance.screenshot_interval_seconds', 30),
+            'screenshot_interval_seconds' => (int) config('attendance.screenshot_interval_seconds', 120),
             'idle_threshold_seconds' => (int) config('attendance.idle_threshold_seconds', 30),
             // Legacy v1.2.x popup threshold — keep high so old installs stop prompting.
             'idle_prompt_seconds' => (int) config('attendance.idle_prompt_seconds', 31536000),

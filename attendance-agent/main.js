@@ -14,9 +14,10 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.3.1';
+const AGENT_VERSION = '1.3.2';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
+let lastUpdatePayload = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -116,7 +117,7 @@ function api() {
 
 let config = {
     heartbeat_interval_seconds: 15,
-    screenshot_interval_seconds: 30,
+    screenshot_interval_seconds: 120,
     idle_threshold_seconds: 30,
     idle_prompt_seconds: 31536000,
     idle_prompt_timeout_seconds: 60,
@@ -441,63 +442,84 @@ function compareVersions(a, b) {
     return 0;
 }
 
-function pushUpdateToUi(payload) {
+function pushUpdateToUi(payload, { forceShow = false } = {}) {
     if (!win || win.isDestroyed()) return;
-    win.webContents.send('update-available', payload);
+    lastUpdatePayload = payload;
+    // Always send — renderer shows a small banner even when the modal is snoozed.
+    win.webContents.send('update-available', {
+        ...(payload || { available: false }),
+        force_show: !!forceShow,
+        snoozed: !forceShow && !!payload && Date.now() < Number(store.get('updateSnoozeUntil') || 0),
+    });
+}
+
+function applyAgentUpdateInfo(update, { forceShow = false } = {}) {
+    if (!update) {
+        pushUpdateToUi(null);
+        return null;
+    }
+
+    const remoteVersion = update.latest_version || config.agent_version || '';
+    if (!remoteVersion || compareVersions(remoteVersion, AGENT_VERSION) <= 0) {
+        pushUpdateToUi(null);
+        return null;
+    }
+
+    if (update.download_page_url) config.download_page_url = update.download_page_url;
+    if (update.download_url) config.download_url = update.download_url;
+    if (update.message) config.update_message = update.message;
+    config.agent_version = remoteVersion;
+
+    const payload = {
+        available: true,
+        current_version: AGENT_VERSION,
+        latest_version: remoteVersion,
+        download_page_url: config.download_page_url || `${getApiBase()}/attendance/agent`,
+        download_url: config.download_url || `${getApiBase()}/attendance/agent/download`,
+        message: config.update_message
+            || update.message
+            || 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
+    };
+
+    const snoozeUntil = Number(store.get('updateSnoozeUntil') || 0);
+    const snoozed = !forceShow && Date.now() < snoozeUntil;
+    if (!snoozed) {
+        showWindow();
+    }
+    pushUpdateToUi(payload, { forceShow: forceShow || !snoozed });
+    updateTrayTooltip(`Update available (v${remoteVersion})`);
+    return payload;
 }
 
 async function checkForUpdate({ forceShow = false } = {}) {
     try {
-        let remoteVersion = '';
-        let downloadPageUrl = '';
-        let downloadUrl = '';
-        let updateMessage = '';
-
         if (store.get('token')) {
             await refreshConfig();
-            remoteVersion = config.agent_version || '';
-            downloadPageUrl = config.download_page_url || '';
-            downloadUrl = config.download_url || '';
-            updateMessage = config.update_message || '';
-        } else if (getApiBase()) {
-            const { data } = await axios.get(`${getAgentApiPath()}/ping`, { timeout: 8000 });
-            remoteVersion = data?.version || '';
-            downloadPageUrl = data?.download_page_url || '';
-            downloadUrl = data?.download_url || '';
-            updateMessage = data?.update_message || '';
-            if (data?.version) {
-                config.agent_version = data.version;
-                config.download_page_url = downloadPageUrl;
-                config.download_url = downloadUrl;
-                config.update_message = updateMessage;
-            }
-        } else {
-            return null;
+            return applyAgentUpdateInfo({
+                available: compareVersions(config.agent_version || '', AGENT_VERSION) > 0,
+                latest_version: config.agent_version || '',
+                download_page_url: config.download_page_url || '',
+                download_url: config.download_url || '',
+                message: config.update_message || '',
+            }, { forceShow });
         }
 
-        if (!remoteVersion || compareVersions(remoteVersion, AGENT_VERSION) <= 0) {
-            pushUpdateToUi(null);
-            return null;
+        if (!getApiBase()) return null;
+
+        const { data } = await axios.get(`${getAgentApiPath()}/ping`, { timeout: 8000 });
+        if (data?.version) {
+            config.agent_version = data.version;
+            config.download_page_url = data.download_page_url || config.download_page_url;
+            config.download_url = data.download_url || config.download_url;
+            config.update_message = data.update_message || config.update_message;
         }
-
-        const snoozeUntil = Number(store.get('updateSnoozeUntil') || 0);
-        if (!forceShow && Date.now() < snoozeUntil) {
-            return null;
-        }
-
-        const payload = {
-            current_version: AGENT_VERSION,
-            latest_version: remoteVersion,
-            download_page_url: downloadPageUrl || `${getApiBase()}/attendance/agent`,
-            download_url: downloadUrl || `${getApiBase()}/attendance/agent/download`,
-            message: updateMessage
-                || 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
-        };
-
-        showWindow();
-        pushUpdateToUi(payload);
-        updateTrayTooltip(`Update available (v${remoteVersion})`);
-        return payload;
+        return applyAgentUpdateInfo({
+            available: compareVersions(data?.version || '', AGENT_VERSION) > 0,
+            latest_version: data?.version || '',
+            download_page_url: data?.download_page_url || '',
+            download_url: data?.download_url || '',
+            message: data?.update_message || '',
+        }, { forceShow });
     } catch (_) {
         return null;
     }
@@ -551,6 +573,18 @@ async function sendHeartbeat(force = false) {
             });
 
             mergeServerStats(data);
+            if (data.agent_update) {
+                applyAgentUpdateInfo(data.agent_update);
+            }
+            // Keep local idle in sync when server classifies idle from OS idle time.
+            if (data.activity_state === 'idle' && activityState === 'working' && lastSessionMeta?.status === 'active') {
+                const systemIdle = powerMonitor.getSystemIdleTime();
+                const idleAt = config.idle_threshold_seconds || 30;
+                if (systemIdle >= idleAt) {
+                    activityState = 'idle';
+                    lastSessionMeta.activity_state = 'idle';
+                }
+            }
             pushStatsToUi();
         } catch (e) {
             console.error('heartbeat failed', e.message);
@@ -626,7 +660,7 @@ function startTracking() {
     refreshConfig().catch(() => {});
 
     const hb = (config.heartbeat_interval_seconds || 15) * 1000;
-    const ss = (config.screenshot_interval_seconds || 30) * 1000;
+    const ss = (config.screenshot_interval_seconds || 120) * 1000;
 
     pollActiveWindow().catch(() => {});
     windowPollTimer = setInterval(() => { pollActiveWindow().catch(() => {}); }, 3000);
@@ -646,7 +680,9 @@ async function fetchSessionState() {
         return { loggedIn: false };
     }
     try {
-        const { data } = await enqueueApi(() => jsonApi(15000).get('/status'));
+        const { data } = await enqueueApi(() => jsonApi(15000).get('/status', {
+            params: { agent_version: AGENT_VERSION },
+        }));
         if (!data || typeof data !== 'object') {
             throw new Error('Server returned an invalid response. Check the server URL.');
         }
@@ -665,7 +701,11 @@ async function fetchSessionState() {
         const today = todayPayload();
         pushTodayToRenderer();
         pushStatsToUi();
-        checkForUpdate().catch(() => {});
+        if (data.agent_update) {
+            applyAgentUpdateInfo(data.agent_update, { forceShow: true });
+        } else {
+            checkForUpdate({ forceShow: true }).catch(() => {});
+        }
         return {
             loggedIn: true,
             user: store.get('user'),
@@ -1152,7 +1192,11 @@ ipcMain.handle('openUpdateDownload', async () => {
 
 ipcMain.handle('snoozeUpdate', () => {
     store.set('updateSnoozeUntil', Date.now() + UPDATE_SNOOZE_MS);
-    pushUpdateToUi(null);
+    if (lastUpdatePayload) {
+        pushUpdateToUi(lastUpdatePayload, { forceShow: false });
+    } else {
+        pushUpdateToUi(null);
+    }
     updateTrayTooltip(lastSessionMeta?.status === 'active' ? 'Tracking active' : 'Running');
     return { ok: true };
 });

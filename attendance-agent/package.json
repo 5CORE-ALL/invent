@@ -1,6 +1,6 @@
 {
   "name": "5core-attendance-agent",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "5Core employee attendance desktop agent — clock in/out, app tracking, screenshots",
   "main": "main.js",
   "scripts": {

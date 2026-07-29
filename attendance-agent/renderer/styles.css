@@ -288,6 +288,44 @@ h2 { font-size: 1.25rem; margin-bottom: 4px; }
     text-align: center;
 }
 
+.update-banner {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(59, 130, 246, 0.16);
+    border: 1px solid rgba(59, 130, 246, 0.45);
+    margin-bottom: 2px;
+}
+.update-banner.hidden { display: none; }
+.update-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    font-size: 0.72rem;
+    color: #bfdbfe;
+}
+.update-banner-text strong {
+    color: #93c5fd;
+    font-size: 0.75rem;
+}
+.btn-update-mini {
+    flex-shrink: 0;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: #3b82f6;
+    color: #fff;
+}
+.btn-update-mini:hover { background: #2563eb; }
+
 .update-overlay {
     position: fixed;
     inset: 0;

@@ -245,17 +245,32 @@ async function refresh(opts = {}) {
 
 function showUpdateOverlay(payload) {
     const overlay = $('updateOverlay');
-    if (!overlay) return;
-    if (!payload) {
-        overlay.classList.add('hidden');
-        overlay.setAttribute('aria-hidden', 'true');
+    const banner = $('updateBanner');
+    if (!payload || payload.available === false || !payload.latest_version) {
+        overlay?.classList.add('hidden');
+        overlay?.setAttribute('aria-hidden', 'true');
+        banner?.classList.add('hidden');
         return;
     }
+
     if ($('updateCurrent')) $('updateCurrent').textContent = `v${payload.current_version || '—'}`;
     if ($('updateLatest')) $('updateLatest').textContent = `v${payload.latest_version || '—'}`;
     if ($('updateMessage') && payload.message) $('updateMessage').textContent = payload.message;
-    overlay.classList.remove('hidden');
-    overlay.setAttribute('aria-hidden', 'false');
+    if ($('updateBannerVersions')) {
+        $('updateBannerVersions').textContent = `v${payload.current_version || '—'} → v${payload.latest_version}`;
+    }
+
+    // Small banner always stays visible while an update exists.
+    banner?.classList.remove('hidden');
+
+    const showModal = payload.force_show === true || payload.snoozed === false;
+    if (showModal && !payload.snoozed) {
+        overlay?.classList.remove('hidden');
+        overlay?.setAttribute('aria-hidden', 'false');
+    } else {
+        overlay?.classList.add('hidden');
+        overlay?.setAttribute('aria-hidden', 'true');
+    }
 }
 
 async function init() {
@@ -283,20 +298,23 @@ async function init() {
         window.agent.onUpdateAvailable((payload) => showUpdateOverlay(payload));
     }
 
+    const openUpdate = async (btn) => {
+        if (btn) btn.disabled = true;
+        try {
+            await window.agent.openUpdateDownload();
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
     if ($('btnUpdateNow')) {
-        $('btnUpdateNow').onclick = async () => {
-            $('btnUpdateNow').disabled = true;
-            try {
-                await window.agent.openUpdateDownload();
-            } finally {
-                $('btnUpdateNow').disabled = false;
-            }
-        };
+        $('btnUpdateNow').onclick = () => openUpdate($('btnUpdateNow'));
+    }
+    if ($('btnUpdateBanner')) {
+        $('btnUpdateBanner').onclick = () => openUpdate($('btnUpdateBanner'));
     }
     if ($('btnUpdateLater')) {
         $('btnUpdateLater').onclick = async () => {
             await window.agent.snoozeUpdate();
-            showUpdateOverlay(null);
         };
     }
 

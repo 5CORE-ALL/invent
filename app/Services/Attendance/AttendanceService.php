@@ -134,21 +134,36 @@ class AttendanceService
             ];
         }
 
-        $activityState = in_array($payload['activity_state'] ?? 'working', ['working', 'idle', 'break'], true)
+        $systemIdle = max(0, (int) ($payload['idle_seconds'] ?? 0));
+        $idleThreshold = max(1, (int) config('attendance.idle_threshold_seconds', 30));
+        $requestedState = in_array($payload['activity_state'] ?? 'working', ['working', 'idle', 'break'], true)
             ? $payload['activity_state']
             : 'working';
-        $isActive = $activityState === 'working' && (bool) ($payload['is_active'] ?? true);
-        $interval = max(1, min(120, (int) ($payload['elapsed_seconds'] ?? config('attendance.heartbeat_interval_seconds', 15))));
         $source = in_array($payload['source'] ?? 'web', ['web', 'desktop'], true) ? $payload['source'] : 'web';
 
-        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState) {
+        // Count idle from OS idle time so old desktop agents (v1.2.x) still capture idle
+        // even when they never flip activity_state / never show the idle popup.
+        if ($requestedState === 'break') {
+            $activityState = 'break';
+            $isActive = false;
+        } elseif ($systemIdle >= $idleThreshold || $requestedState === 'idle' || ! (bool) ($payload['is_active'] ?? true)) {
+            $activityState = 'idle';
+            $isActive = false;
+        } else {
+            $activityState = 'working';
+            $isActive = true;
+        }
+
+        $interval = max(1, min(120, (int) ($payload['elapsed_seconds'] ?? config('attendance.heartbeat_interval_seconds', 15))));
+
+        DB::transaction(function () use ($session, $user, $payload, $isActive, $interval, $source, $activityState, $systemIdle) {
             AttendanceActivityLog::create([
                 'attendance_session_id' => $session->id,
                 'user_id' => $user->id,
                 'recorded_at' => now(),
                 'is_active' => $isActive,
                 'activity_state' => $activityState,
-                'idle_seconds' => max(0, (int) ($payload['idle_seconds'] ?? 0)),
+                'idle_seconds' => $systemIdle,
                 'window_title' => isset($payload['window_title']) ? mb_substr((string) $payload['window_title'], 0, 500) : null,
                 'page_url' => isset($payload['page_url']) ? mb_substr((string) $payload['page_url'], 0, 1000) : null,
                 'source' => $source,
@@ -179,6 +194,27 @@ class AttendanceService
             'break_seconds' => $fresh->total_break_seconds,
             'activity_state' => $fresh->last_activity_state,
             'today' => $this->todayStats($user),
+            'agent_update' => $this->agentUpdatePayload($payload['agent_version'] ?? null),
+        ];
+    }
+
+    /**
+     * @return array{available: bool, current_version: string|null, latest_version: string, download_page_url: string, download_url: string, message: string}
+     */
+    public function agentUpdatePayload(?string $installedVersion): array
+    {
+        $base = rtrim((string) config('app.url'), '/');
+        $latest = (string) config('attendance.agent_version', '1.0.0');
+        $current = $installedVersion !== null && $installedVersion !== '' ? (string) $installedVersion : null;
+        $available = $current !== null && version_compare($latest, $current, '>');
+
+        return [
+            'available' => $available,
+            'current_version' => $current,
+            'latest_version' => $latest,
+            'download_page_url' => $base.'/attendance/agent',
+            'download_url' => $base.'/attendance/agent/download',
+            'message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
         ];
     }
 

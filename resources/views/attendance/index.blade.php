@@ -46,6 +46,39 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="agentUpdateModal" tabindex="-1" aria-labelledby="agentUpdateModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title" id="agentUpdateModalLabel">
+                        <i class="ri-download-cloud-2-line text-primary me-1"></i>
+                        Update 5Core Attendance
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">A newer desktop app is available for your PC.</p>
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="badge bg-secondary">Installed v{{ $agent_installed_version }}</span>
+                        <span class="text-muted">→</span>
+                        <span class="badge bg-primary">Latest v{{ $agent_latest_version }}</span>
+                    </div>
+                    <p class="small text-muted mb-0">
+                        Download and run the installer over your existing app.
+                        <strong>No uninstall needed</strong> — login and settings stay saved.
+                        After updating, the footer should show <strong>v{{ $agent_latest_version }}</strong>.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Later</button>
+                    <a href="{{ route('attendance.agent') }}" class="btn btn-primary">
+                        Download update
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
     @endif
 
     <div class="row mb-3">
@@ -269,6 +302,23 @@
     if (window.AttendanceTracker) {
         window.AttendanceTracker.init({ baseUrl: base, csrf: csrf });
     }
+
+    @if(!empty($agent_update_available))
+    try {
+        const updateModalEl = document.getElementById('agentUpdateModal');
+        if (updateModalEl && window.bootstrap?.Modal) {
+            const key = 'att_agent_update_snooze_{{ $agent_latest_version }}';
+            const snoozeUntil = Number(localStorage.getItem(key) || 0);
+            if (Date.now() > snoozeUntil) {
+                const modal = bootstrap.Modal.getOrCreateInstance(updateModalEl);
+                modal.show();
+                updateModalEl.addEventListener('hidden.bs.modal', function () {
+                    localStorage.setItem(key, String(Date.now() + (4 * 60 * 60 * 1000)));
+                }, { once: true });
+            }
+        }
+    } catch (e) {}
+    @endif
 
     function fmt(sec) {
         sec = Math.max(0, parseInt(sec, 10) || 0);

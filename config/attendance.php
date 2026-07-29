@@ -77,11 +77,11 @@ return [
     /*
     | Desktop agent
     */
-    'agent_version' => '1.3.1',
+    'agent_version' => '1.3.2',
     'agent_installer_path' => env('ATTENDANCE_AGENT_INSTALLER_PATH'),
     'agent_download_filename' => env('ATTENDANCE_AGENT_DOWNLOAD_FILENAME', '5Core-Attendance-Setup.exe'),
     'screenshots_enabled' => env('ATTENDANCE_SCREENSHOTS_ENABLED', true),
-    'screenshot_interval_seconds' => (int) env('ATTENDANCE_SCREENSHOT_INTERVAL', 30),
+    'screenshot_interval_seconds' => (int) env('ATTENDANCE_SCREENSHOT_INTERVAL', 120),
     'screenshot_max_kb' => (int) env('ATTENDANCE_SCREENSHOT_MAX_KB', 5120),
     'screenshot_grid_limit' => (int) env('ATTENDANCE_SCREENSHOT_GRID_LIMIT', 300),
     'screenshot_page_size' => (int) env('ATTENDANCE_SCREENSHOT_PAGE_SIZE', 48),
