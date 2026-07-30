@@ -708,7 +708,7 @@
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
                         id="sprice-cvr-controls"
                         style="background: #ffc107;"
-                        title="Adjust SPRICE by CVR trend vs previous day + bands. Floor at ROI%. Gear edits rule (shared).">
+                        title="Adjust SPRICE by % of price from CVR trend rules (not PFT%). Gear edits rule (shared).">
                         <button type="button" id="apply-sprice-cvr-btn"
                             class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
                             style="background: transparent;">
@@ -1127,11 +1127,8 @@
                             <input type="hidden" id="sprice-cvr-low-input" value="3.5">
                             <input type="hidden" id="sprice-cvr-mid-input" value="7">
                             <input type="hidden" id="sprice-cvr-high-input" value="13">
-                            <span class="text-muted">GROI floor</span>
-                            <div class="input-group input-group-sm" style="width: 96px;" title="Lowest SPRICE = (LP×(1+GROI%/100)+Ship)/0.80">
-                                <input type="number" id="sprice-cvr-roi-floor-input" class="form-control text-end" value="40" step="0.1" min="0" max="500">
-                                <span class="input-group-text">%</span>
-                            </div>
+                            {{-- roi_floor kept for stored rule compat; CVR % adjusts PRICE only (not GROI/PFT) --}}
+                            <input type="hidden" id="sprice-cvr-roi-floor-input" value="40">
                         </div>
                         <div id="sprice-cvr-modal-status" class="small text-muted"></div>
                     </div>
@@ -1150,7 +1147,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1169,7 +1166,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1188,7 +1185,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1235,7 +1232,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1254,7 +1251,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1273,7 +1270,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1350,7 +1347,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1369,7 +1366,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1388,7 +1385,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1435,7 +1432,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1454,7 +1451,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1473,7 +1470,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1520,7 +1517,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1539,7 +1536,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1558,7 +1555,7 @@
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
+                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -4683,19 +4680,16 @@
             }
 
             /**
-             * Resolve multiplier from signed % input:
-             *   +N → increase N%, −N → decrease N%, 0 → no suggestion.
-             * Dil% > threshold → force increase by |N| (or 1% if N is 0).
-             * No decrease when Dil% > 100.
+             * Signed % of PRICE (not PFT/GROI): +N raise price N%, −N lower N%, 0 = no suggestion.
+             * Dil% > threshold → force +|N| (or +1% if N is 0). No decrease when Dil% > 100.
              */
-            function resolveSpriceCvrMult(cvr, trend, rule, rd) {
+            function resolveSpriceCvrSignedPct(cvr, trend, rule, rd) {
                 if (!trend || !rule) return null;
                 const slabs = resolveSpriceCvrSlabs(rule);
                 const slab = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
                 const slabPct = normalizeSlabPct(rule.slab_pct, rule.yellow_pct, rule.actions);
                 let signed = slabPctForTrend(slabPct, slab, trend);
                 if (!isFinite(signed)) signed = 0;
-                // Dil% > threshold → force Increase
                 if (rd && dilOverrideApplies(slab, trend)) {
                     if (amazonRowDilPct(rd) > dilOverrideThreshold(rule, slab, trend)) {
                         signed = Math.abs(signed) > 0 ? Math.abs(signed) : 1;
@@ -4703,12 +4697,24 @@
                 }
                 if (signed === 0) return null;
                 if (signed < 0 && rd && amazonRowDilPct(rd) > 100) return null;
-                const pct = Math.abs(signed);
-                const mult = signed > 0 ? (1 + pct / 100) : (1 - pct / 100);
-                if (signed > 0) {
-                    return (isFinite(mult) && mult > 1) ? +mult.toFixed(6) : (rule.up_mult || 1.01);
-                }
-                return (isFinite(mult) && mult > 0 && mult < 1) ? +mult.toFixed(6) : (rule.down_mult || 0.99);
+                return signed;
+            }
+
+            /** Price multiplier from signed % of price: price × (1 + pct/100). */
+            function resolveSpriceCvrMult(cvr, trend, rule, rd) {
+                const signed = resolveSpriceCvrSignedPct(cvr, trend, rule, rd);
+                if (signed == null || !isFinite(signed) || signed === 0) return null;
+                const mult = 1 + (signed / 100);
+                return (isFinite(mult) && mult > 0) ? +mult.toFixed(6) : null;
+            }
+
+            /** Suggest SPRICE = current price × (1 + signed%/100). Never back-solves from PFT/GROI. */
+            function applySpriceCvrPctToPrice(basePrice, signedPct) {
+                const base = parseFloat(basePrice);
+                const pct = parseFloat(signedPct);
+                if (!isFinite(base) || base <= 0 || !isFinite(pct) || pct === 0) return null;
+                const sprice = +(base * (1 + pct / 100)).toFixed(2);
+                return (isFinite(sprice) && sprice > 0) ? sprice : null;
             }
 
             /** Lowest SPRICE where Sroi = roi_floor_pct: (LP×(1+ROI/100)+Ship)/0.80 */
@@ -5346,13 +5352,12 @@
                 refreshSpriceCvrSlabLabels();
                 const sp = r.slab_pct;
                 $('#apply-sprice-cvr-btn').attr('title',
-                    'Signed % (+inc / −dec / 0=hold) · Dil override forces +|%| · Z ' +
+                    'Adjust SPRICE by % of price (not PFT%): +inc / −dec / 0=hold · Dil forces +|%| · Z ' +
                     sp.zero.down + '/' + sp.zero.equal + '/' + sp.zero.up +
                     ' · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
                     ' · B ' + sp.blue.down + '/' + sp.blue.equal + '/' + sp.blue.up +
                     ' · G ' + sp.green.down + '/' + sp.green.equal + '/' + sp.green.up +
-                    ' · P ' + sp.pink.down + '/' + sp.pink.equal + '/' + sp.pink.up +
-                    ' · ROI floor ' + r.roi_floor_pct + '%');
+                    ' · P ' + sp.pink.down + '/' + sp.pink.equal + '/' + sp.pink.up);
                 syncCvrFilterSlabOptions();
             }
 
@@ -5635,7 +5640,6 @@
                 const useSelection = effectiveSelected.size > 0;
                 const rowsToProcess = [];
                 const seen = new Set();
-                let flooredCount = 0;
                 let zeroCvrCount = 0;
 
                 table.getRows('active').forEach(function(r) {
@@ -5647,26 +5651,22 @@
 
                     const cvr = amazonRowCvrL30(rd);
                     const trend = amazonCvrTrend(rd, rule.trend_tolerance);
-                    const mult = resolveSpriceCvrMult(cvr, trend, rule, rd);
-                    if (mult == null) return;
+                    const signedPct = resolveSpriceCvrSignedPct(cvr, trend, rule, rd);
+                    if (signedPct == null) return;
 
                     const existing = parseFloat(rd.SPRICE) || 0;
                     const amazonPrice = parseFloat(rd.price) || 0;
                     const base = existing > 0 ? existing : amazonPrice;
-                    if (base <= 0) return;
-
-                    let sprice = +Number(base * mult).toFixed(2);
-                    if (!isFinite(sprice) || sprice <= 0) return;
-
-                    const floor = amazonSpriceRoiFloor(rd, rule.roi_floor_pct);
-                    if (floor != null && sprice < floor) {
-                        sprice = floor;
-                        flooredCount++;
-                    }
+                    // % of PRICE only: SPRICE = base × (1 + pct/100) — not PFT/GROI back-solve
+                    const sprice = applySpriceCvrPctToPrice(base, signedPct);
+                    if (sprice == null) return;
 
                     seen.add(sku);
                     if (amazonCvrIsZero(cvr)) zeroCvrCount++;
-                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice, trend: trend, mult: mult });
+                    rowsToProcess.push({
+                        row: r, sku: sku, sprice: sprice, trend: trend,
+                        mult: 1 + signedPct / 100, signed_pct: signedPct
+                    });
                 });
 
                 if (rowsToProcess.length === 0) {
@@ -5677,9 +5677,6 @@
                 }
 
                 const scope = useSelection ? 'selected' : 'visible eligible';
-                const floorNote = flooredCount > 0
-                    ? ('\n' + flooredCount + ' SKU(s) capped at ' + rule.roi_floor_pct + '% ROI floor')
-                    : '';
                 const zeroNote = zeroCvrCount > 0
                     ? ('\n' + zeroCvrCount + ' SKU(s) via CVR=0% trend')
                     : '';
@@ -5689,7 +5686,7 @@
                     const pct = slabPctForTrend(sp, slab || 'red', trend || 'down');
                     if (!isFinite(pct) || pct === 0) return 'hold';
                     const s = formatSlabBound(pct);
-                    return (pct > 0 ? '+' : '') + s + '%';
+                    return (pct > 0 ? '+' : '') + s + '% of price';
                 };
                 const midL = formatSlabBound(slabs.mid);
                 const highL = formatSlabBound(slabs.high);
@@ -5703,7 +5700,8 @@
                     return ' (Inc if Dil>' + formatSlabBound(dilOverrideThreshold(rule, slab, trend)) + '%)';
                 };
                 if (!confirm(
-                    'Adjust SPRICE by CVR trend for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
+                    'Adjust SPRICE by % of current price for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
+                    '(SPRICE = price × (1 + %/100) — not PFT%)\n' +
                     '1 Red CVR=0%: Down=' + actLabel('zero', 'down') + dilInc('zero', 'down') +
                     ', Equal=' + actLabel('zero', 'equal') + dilInc('zero', 'equal') +
                     ', Up=' + actLabel('zero', 'up') + dilInc('zero', 'up') + '\n' +
@@ -5719,9 +5717,8 @@
                     '5 Pink >' + pinkAfter + '%: Down=' + actLabel('pink', 'down') + dilInc('pink', 'down') +
                     ', Equal=' + actLabel('pink', 'equal') + dilInc('pink', 'equal') +
                     ', Up=' + actLabel('pink', 'up') + dilInc('pink', 'up') + '\n' +
-                    'Floor: SGROI ≥ ' + rule.roi_floor_pct + '%' +
-                    '\nNo decrease when Dil% > 100' +
-                    floorNote + zeroNote
+                    'No decrease when Dil% > 100' +
+                    zeroNote
                 )) {
                     return;
                 }

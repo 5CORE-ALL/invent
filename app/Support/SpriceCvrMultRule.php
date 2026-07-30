@@ -16,14 +16,14 @@ use Illuminate\Support\Facades\DB;
  *   3 Blue   : 3.51 – mid_cvr (default 3.51–7)
  *   4 Green  : mid+0.01 – high (default 7.01–13)
  *   5 Pink   : > high+0.01 (default >13.01)
- * Signed slab_pct: +N increase, −N decrease, 0 = hold (no suggestion).
+ * Signed slab_pct is % of PRICE (not PFT/GROI): SPRICE = price × (1 + pct/100).
+ *   +N increase price, −N decrease price, 0 = hold (no suggestion).
  * Legacy actions (increase|decrease|hold) are derived from the sign of slab_pct.
  * Every rule also has Dil overrides for Down/Equal/Up: if Dil% > *_*_dil (default 100) → Increase.
  *
- * After multiply:
- *   - floor so Sroi (gross) ≥ roi_floor_pct:
- *       floor = (LP × (1 + roi_floor_pct/100) + Ship) / 0.80
+ * After apply:
  *   - no decrease when Dil% (L30/INV×100) > 100
+ *   - does not back-solve from PFT% / GROI%
  *
  * Rule 1 when CVR L30 = 0%: same CVR-trend format as Yellow (actions.zero + zero_*_dil)
  *
