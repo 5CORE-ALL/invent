@@ -100,6 +100,7 @@ class MarketplaceSyncSettings extends Model
         $isReverb = $marketplace === 'reverb';
         $isNewegg = $marketplace === 'newegg';
         $isShein = $marketplace === 'shein';
+        $isEbay3 = $marketplace === 'ebay3';
         $isFaire = $marketplace === 'faire';
 
         $sourceName = 'aliexpress';
@@ -116,6 +117,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isShein) {
             $sourceName = 'shein';
             $sourceDisplay = 'Shein';
+        } elseif ($isEbay3) {
+            $sourceName = 'ebay3';
+            $sourceDisplay = 'eBay 3';
         } elseif ($isFaire) {
             $sourceName = 'faire';
             $sourceDisplay = 'Faire';
@@ -141,7 +145,7 @@ class MarketplaceSyncSettings extends Model
             'order' => [
                 'fetch_orders' => true,
                 // Newegg/Shein/Faire: keep order + address + tracking automation ON by default.
-                'auto_import_to_shopify' => $isNewegg || $isShein || $isFaire,
+                'auto_import_to_shopify' => $isNewegg || $isShein || $isEbay3 || $isFaire,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
@@ -149,9 +153,10 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_reverb' => $isReverb,
                 'push_tracking_to_newegg' => $isNewegg,
                 'push_tracking_to_shein' => $isShein,
+                'push_tracking_to_ebay3' => $isEbay3,
                 'push_tracking_to_faire' => $isFaire,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'aliexpress', 'reverb', 'faire'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'ebay3', 'aliexpress', 'reverb', 'faire'], true),
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
@@ -165,6 +170,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_reverb' => false,
                 'create_products_on_newegg' => false,
                 'create_products_on_shein' => false,
+                'create_products_on_ebay3' => false,
                 'create_products_on_faire' => false,
                 'sync_title' => false,
                 'sync_images' => false,

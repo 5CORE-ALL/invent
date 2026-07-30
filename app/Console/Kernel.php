@@ -1244,6 +1244,50 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // eBay 3 Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToEbay3)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('ebay3'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay3', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncEbay3TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncEbay3AddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay3:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay3-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Faire Marketplace Manager
         $schedule->job(new \App\Jobs\SyncInventoryToFaire)
             ->everyFourHours()

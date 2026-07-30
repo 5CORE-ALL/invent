@@ -54,6 +54,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'alibaba' => 'alibaba:sync-orders',
             'newegg' => 'newegg:sync-orders',
             'shein' => 'shein:sync-orders',
+            'ebay3' => 'ebay3:sync-orders',
             'faire' => 'faire:sync-orders',
             default => null,
         };
@@ -109,6 +110,8 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncNeweggAddressJob::dispatch(false, 25);
             } elseif ($slug === 'shein' && \App\Services\MarketplaceManager\SheinOrderPushService::canAutoSyncAddress()) {
                 SyncSheinAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'ebay3' && \App\Services\MarketplaceManager\Ebay3OrderPushService::canAutoSyncAddress()) {
+                SyncEbay3AddressJob::dispatch(false, 25);
             } elseif ($slug === 'faire' && \App\Services\MarketplaceManager\FaireOrderPushService::canAutoSyncAddress()) {
                 \App\Jobs\SyncFaireAddressJob::dispatch(false, 25);
             }

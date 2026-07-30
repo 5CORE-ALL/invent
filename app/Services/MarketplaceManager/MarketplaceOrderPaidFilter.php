@@ -51,11 +51,39 @@ class MarketplaceOrderPaidFilter
         return match ($marketplace) {
             'newegg' => self::isNeweggPaid($order),
             'shein' => self::isSheinPaid($order),
+            'ebay3' => self::isEbay3Paid($order),
             'faire' => self::isFairePaid($order),
             'reverb' => self::isReverbPaid($order),
             'aliexpress', 'alibaba' => self::isAliFamilyPaid($order),
             default => true,
         };
+    }
+
+    protected static function isEbay3Paid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->status ?? '')));
+        $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];
+        $payment = strtoupper(trim((string) ($raw['orderPaymentStatus'] ?? '')));
+
+        if (str_contains($status, 'CANCEL') || str_contains($payment, 'FAILED') || str_contains($payment, 'PENDING')) {
+            // PENDING payment = not paid; FAILED/CANCEL = not importable.
+            if (str_contains($payment, 'PENDING') || str_contains($payment, 'FAILED') || str_contains($status, 'CANCEL')) {
+                return false;
+            }
+        }
+
+        if (in_array($payment, ['PAID', 'FULLY_REFUNDED', 'PARTIALLY_REFUNDED', ''], true)
+            || $payment === ''
+            || str_contains($payment, 'PAID')) {
+            // FULLY_REFUNDED should not import.
+            if (str_contains($payment, 'FULLY_REFUNDED')) {
+                return false;
+            }
+
+            return true;
+        }
+
+        return ! in_array($status, ['UNPAID', 'PAYMENT_PENDING', 'PENDING_PAYMENT'], true);
     }
 
     protected static function isSheinPaid(object $order): bool

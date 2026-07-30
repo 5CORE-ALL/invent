@@ -91,6 +91,14 @@ class MarketplaceManagerRegistry
                 'enabled' => true,
             ],
             [
+                'slug' => 'ebay3',
+                'label' => 'eBay 3',
+                'short' => 'E3',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/3.png',
+                'enabled' => true,
+            ],
+            [
                 'slug' => 'faire',
                 'label' => 'Faire',
                 'short' => 'FR',

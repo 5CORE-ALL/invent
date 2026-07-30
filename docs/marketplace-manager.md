@@ -11,6 +11,16 @@ Living doc for channels under `/marketplace-manager` and `/marketplace/{slug}`. 
 | `alibaba` | Alibaba | Sync stack without live/state tabs | No | `AlibabaApiService` |
 | `newegg` | Newegg | **Clone of AliExpress** (2026-07-15) | Yes — states `active` / `inactive` from `newegg_pricing` | `NeweggApiService::updateItemInventory*` (Seller Part #) |
 | `shein` | Shein | **Clone of Newegg** (2026-07-31) | Yes — states from `shein_pricing_prices` / `shein_metrics` | `SheinApiService::updateInventory` (`/open-api/gsp/goods/change-inventory`, needs `SHEIN_WAREHOUSE_CODE`) |
+| `ebay3` | eBay 3 | **Clone of Shein** (2026-07-31) | Yes — states from `ebay_3_metrics` (`item_id` = product_id) | `EbayThreeApiService::reviseFixedPriceItem` (qty + price; Trading API) |
+
+### eBay 3 first-run checklist
+
+1. `.env`: `EBAY_3_APP_ID`, `EBAY_3_CERT_ID`, `EBAY_3_DEV_ID`, `EBAY_3_REFRESH_TOKEN` (already in `config/services.php` → `ebay3`).
+2. `php artisan migrate --path=database/migrations/2026_07_31_020000_create_ebay3_mm_tables.php` (`ebay3_order_metrics` only — reuses existing `ebay_3_metrics`).
+3. Ensure `ebay_3_metrics` populated (`app:fetch-ebay-three-metrics` / existing pricing sync). Linked = `item_id` present and ≠ `sku`.
+4. Marketplace Manager → eBay 3 → Connect → Test connection (bearer + GetItem).
+5. Listings → Sync link map (validates `ebay_3_metrics` sku/item_id rows).
+6. Settings → turn on `inventory_sync` (+ orders if needed). **Tracking push is stubbed** until Sell Fulfillment `createShippingFulfillment` is implemented.
 
 ### Shein first-run checklist
 

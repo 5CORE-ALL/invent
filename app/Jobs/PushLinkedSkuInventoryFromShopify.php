@@ -10,6 +10,7 @@ use App\Services\MarketplaceManager\FaireInventorySyncService;
 use App\Services\MarketplaceManager\NeweggInventorySyncService;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\SheinInventorySyncService;
+use App\Services\MarketplaceManager\Ebay3InventorySyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -122,6 +123,7 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
         AlibabaInventorySyncService $alibaba,
         NeweggInventorySyncService $newegg,
         SheinInventorySyncService $shein,
+        Ebay3InventorySyncService $ebay3,
         FaireInventorySyncService $faire,
     ): void {
         $skus = self::normalizeSkus(array_merge(
@@ -153,6 +155,7 @@ class PushLinkedSkuInventoryFromShopify implements ShouldQueue, ShouldBeUnique
             'alibaba' => $alibaba,
             'newegg' => $newegg,
             'shein' => $shein,
+            'ebay3' => $ebay3,
             'faire' => $faire,
             default => null,
         };

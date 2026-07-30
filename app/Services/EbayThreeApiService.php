@@ -1589,4 +1589,66 @@ class EbayThreeApiService
             $html
         );
     }
+
+    public function isConfigured(): bool
+    {
+        $appId = config('services.ebay3.app_id', env('EBAY_3_APP_ID'));
+        $certId = config('services.ebay3.cert_id', env('EBAY_3_CERT_ID'));
+        $refresh = config('services.ebay3.refresh_token', env('EBAY_3_REFRESH_TOKEN'));
+
+        return trim((string) $appId) !== ''
+            && trim((string) $certId) !== ''
+            && trim((string) $refresh) !== '';
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_item_id?: string|null}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Configure EBAY_3_APP_ID, EBAY_3_CERT_ID, and EBAY_3_REFRESH_TOKEN in .env.',
+            ];
+        }
+
+        try {
+            $token = $this->generateBearerToken();
+            if (empty($token)) {
+                return ['success' => false, 'message' => 'Failed to generate eBay 3 bearer token.'];
+            }
+
+            $itemId = null;
+            if (Schema::hasTable('ebay_3_metrics')) {
+                $itemId = Ebay3Metric::query()
+                    ->whereNotNull('item_id')
+                    ->where('item_id', '!=', '')
+                    ->whereColumn('item_id', '!=', 'sku')
+                    ->value('item_id');
+            }
+
+            if ($itemId) {
+                $item = $this->getItem((string) $itemId);
+                $ok = is_array($item) && (isset($item['Item']) || (($item['Ack'] ?? '') === 'Success'));
+
+                return [
+                    'success' => (bool) $ok,
+                    'message' => $ok
+                        ? 'Connected. Trading API GetItem succeeded for item '.$itemId.'.'
+                        : 'Token OK but GetItem failed for sample item '.$itemId.'.',
+                    'sample_item_id' => (string) $itemId,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Connected. Bearer token generated (no sample item_id in ebay_3_metrics yet).',
+                'sample_item_id' => null,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Connection test failed: '.$e->getMessage()];
+        }
+    }
+
 }

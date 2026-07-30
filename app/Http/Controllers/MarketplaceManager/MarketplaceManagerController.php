@@ -12,6 +12,7 @@ use App\Models\FaireMetric;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\SheinMmMetric;
+use App\Models\Ebay3Metric;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -159,6 +160,9 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'shein' => Schema::hasTable('shein_metric')
                 ? (int) SheinMmMetric::query()->whereNotNull('sku')->whereNotNull('product_id')->whereColumn('sku', '!=', 'product_id')->count()
+                : 0,
+            'ebay3' => Schema::hasTable('ebay_3_metrics')
+                ? (int) Ebay3Metric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()
                 : 0,
             'faire' => Schema::hasTable('faire_metric')
                 ? (int) FaireMetric::query()->whereNotNull('sku')->count()

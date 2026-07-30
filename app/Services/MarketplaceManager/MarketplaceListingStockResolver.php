@@ -28,6 +28,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_SHEIN = 'shein';
 
+    public const CHANNEL_EBAY3 = 'ebay3';
+
     public const CHANNEL_FAIRE = 'faire';
 
     public static function shopifyQtyFromRow(?ShopifySku $row): ?int
@@ -837,6 +839,9 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_SHEIN) {
             self::hydrateFromPricing($map, $keys, 'shein');
             self::hydrateFromMappings($map, $keys, 'inventory_shein');
+        } elseif ($channel === self::CHANNEL_EBAY3) {
+            self::hydrateFromPricing($map, $keys, 'ebay3');
+            self::hydrateFromMappings($map, $keys, 'inventory_ebay3');
         } elseif ($channel === self::CHANNEL_FAIRE) {
             self::hydrateFromPricing($map, $keys, 'faire');
             self::hydrateFromMappings($map, $keys, 'inventory_faire');
@@ -938,6 +943,21 @@ final class MarketplaceListingStockResolver
                 ->get(['sku', 'shein_stock'])
                 ->each(function ($row) use (&$map) {
                     self::put($map, (string) $row->sku, (int) $row->shein_stock);
+                });
+
+            return;
+        }
+
+        if ($channel === 'ebay3') {
+            if (! Schema::hasTable('ebay_3_metrics') || ! Schema::hasColumn('ebay_3_metrics', 'ebay_stock')) {
+                return;
+            }
+            \App\Models\Ebay3Metric::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('ebay_stock')
+                ->get(['sku', 'ebay_stock'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->ebay_stock);
                 });
 
             return;

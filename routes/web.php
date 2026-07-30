@@ -587,6 +587,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/shein/sync-inventory', [\App\Http\Controllers\MarketPlace\SheinSyncController::class, 'syncInventoryNow'])->name('shein.sync.inventory');
         Route::post('/shein/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\SheinSyncController::class, 'syncMismatchInventoryNow'])->name('shein.sync.mismatch.inventory');
         Route::post('/shein/sync-tracking', [\App\Http\Controllers\MarketPlace\SheinSyncController::class, 'syncTrackingNow'])->name('shein.sync.tracking');
+        Route::get('/ebay3/connect', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'connect'])->name('ebay3.connect');
+        Route::post('/ebay3/test-connection', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'testConnection'])->name('ebay3.test');
+        Route::post('/ebay3/refresh-products', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'refreshProducts'])->name('ebay3.refresh');
+        Route::get('/ebay3/refresh-products/status', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'refreshProductsStatus'])->name('ebay3.refresh.status');
+        Route::post('/ebay3/fetch-orders', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'fetchOrders'])->name('ebay3.fetch.orders');
+        Route::post('/ebay3/sync-inventory', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'syncInventoryNow'])->name('ebay3.sync.inventory');
+        Route::post('/ebay3/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'syncMismatchInventoryNow'])->name('ebay3.sync.mismatch.inventory');
+        Route::post('/ebay3/sync-tracking', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'syncTrackingNow'])->name('ebay3.sync.tracking');
         Route::get('/faire/connect', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'connect'])->name('faire.connect');
         Route::post('/faire/test-connection', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'testConnection'])->name('faire.test');
         Route::post('/faire/save-access-token', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'saveAccessToken'])->name('faire.save.token');
@@ -600,14 +608,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/faire/sync-tracking', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncTrackingNow'])->name('faire.sync.tracking');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'aliexpress|alibaba|reverb|newegg|shein|faire');
+            ->where('marketplace', 'aliexpress|alibaba|reverb|newegg|shein|ebay3|faire');
     });
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
 
-    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, faire)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba|newegg|shein|faire'])->group(function () {
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay3, faire)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba|newegg|shein|ebay3|faire'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
