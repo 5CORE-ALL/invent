@@ -101,7 +101,6 @@ use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ReverbProduct;
 use App\Models\ReverbListingStatus;
-use App\Models\SheinSheetData;
 use App\Models\SheinDailyData;
 use App\Models\SheinListingStatus;
 use App\Models\ShopifySku;
@@ -10441,48 +10440,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Approximate L30 revenue from shein_sheet_data when daily table is empty (SKU × l30 × price).
-     */
-    private function aggregateSheinSheetSalesFallback(): ?array
-    {
-        if (! Schema::hasTable((new SheinSheetData)->getTable())) {
-            return null;
-        }
-
-        $hasShopifyPrice = Schema::hasColumn((new SheinSheetData)->getTable(), 'shopify_price');
-        $priceExpr = $hasShopifyPrice
-            ? 'COALESCE(NULLIF(price, 0), NULLIF(shopify_price, 0), 0)'
-            : 'COALESCE(NULLIF(price, 0), 0)';
-
-        $totalSales = (float) (SheinSheetData::query()
-            ->where('sku', 'not like', '%Parent%')
-            ->selectRaw("SUM(COALESCE(l30, 0) * ({$priceExpr})) as t")
-            ->value('t') ?? 0);
-
-        if ($totalSales <= 0) {
-            return null;
-        }
-
-        $qtySum = (int) (SheinSheetData::query()
-            ->where('sku', 'not like', '%Parent%')
-            ->sum('l30') ?? 0);
-
-        return [
-            'total_orders' => 0,
-            'total_quantity' => $qtySum,
-            'total_sales' => $totalSales,
-            'total_cogs' => 0.0,
-            'total_pft' => 0.0,
-            'pft_percentage' => 0.0,
-            'roi_percentage' => 0.0,
-            'avg_price' => $qtySum > 0 ? $totalSales / $qtySum : 0.0,
-        ];
-    }
-
-    /**
      * Shein sales / orders / PFT — same rules as Shein Daily Data tabulator (shein_tabulator_view updateSummary)
      * and /shein/daily-data (marketplace_margin_decimal from marketplace_percentages).
-     * Uses a cursor + scoped product_master load so large uploads do not OOM (which previously yielded an empty row).
+     * Uses a cursor + scoped product_master load so large order syncs do not OOM (which previously yielded an empty row).
      */
     private function aggregateSheinDailyDataLikeTabulator(): ?array
     {
@@ -10722,9 +10682,8 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 + L60 from Shopify Sen Shp (same source as /shein-tabulator).
-        // Old paths (shein_daily_data + shein_daily_data_l60 + sheet fallback) are kept as fallback
-        // only when the Shopify pull is empty, so legacy uploads don't disappear.
+        // L30 from Shein Open API order sync (shein_daily_data) — same source as /shein-tabulator.
+        // Fallback: marketplace_daily_metrics when daily table is empty.
         [$l30Start, $l30End] = SheinShopifySalesService::tabulatorL30Window();
         $shopifyL30 = SheinShopifySalesService::computeChannelSummary($l30Start, $l30End);
 
@@ -10742,9 +10701,7 @@ class ChannelMasterController extends Controller
             $nPftValue = $totalProfit;
             $nRoi = $gRoi;
         } else {
-            // Legacy fallback chain: shein_daily_data → marketplace_daily_metrics → shein sheet.
             $agg = $this->aggregateSheinDailyDataLikeTabulator();
-            $sheetAgg = $agg === null ? $this->aggregateSheinSheetSalesFallback() : null;
             $aggLooksEmpty = $agg !== null
                 && $agg['total_orders'] === 0
                 && ($agg['total_sales'] ?? 0) <= 0.00001
@@ -10774,16 +10731,6 @@ class ChannelMasterController extends Controller
                 $gRoi = (float) ($metrics->roi_percentage ?? 0);
                 $nPftValue = (float) ($metrics->n_pft ?? $totalProfit);
                 $nRoi = (float) ($metrics->n_roi ?? $gRoi);
-            } elseif ($sheetAgg !== null) {
-                $l30Sales = $sheetAgg['total_sales'];
-                $l30Orders = $sheetAgg['total_orders'];
-                $totalQuantity = $sheetAgg['total_quantity'];
-                $totalProfit = $sheetAgg['total_pft'];
-                $totalCogs = $sheetAgg['total_cogs'];
-                $gProfitPct = $sheetAgg['pft_percentage'];
-                $gRoi = $sheetAgg['roi_percentage'];
-                $nPftValue = $totalProfit;
-                $nRoi = $gRoi;
             } else {
                 $l30Sales = (float) ($metrics?->total_sales ?? 0);
                 $l30Orders = (int) ($metrics?->total_orders ?? 0);

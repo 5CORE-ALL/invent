@@ -8,7 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\SheinDataView;
 use App\Models\SheinListingStatus;
-use App\Models\SheinSheetData;
+use App\Models\SheinMetric;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -93,7 +93,7 @@ class SheinZeroController extends Controller
     //     $shopifyData = ShopifySku::mapByProductSkus($skus);
     //     $shienDataViews = SheinListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
-    //     $ebayMetrics = SheinSheetData::whereIn('sku', $skus)->get()->keyBy('sku');
+    //     $ebayMetrics = SheinMetric::whereIn('sku', $skus)->get()->keyBy('sku');
 
 
     //     $listedCount = 0;
@@ -165,7 +165,7 @@ class SheinZeroController extends Controller
         $sheinDataViews = SheinDataView::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
-        $sheinMetrics = SheinSheetData::whereIn('sku', $skus)->get()
+        $sheinMetrics = SheinMetric::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
         $listedCount = 0;
@@ -211,22 +211,12 @@ class SheinZeroController extends Controller
                 $liveCount++;
             }
 
-            // --- Views / Zero-View logic ---
+            // --- Views / Zero-View logic (shein_metrics from Shein Open API) ---
             $metricRecord = $sheinMetrics[$sku] ?? null;
             $views = null;
 
-            if ($metricRecord) {
-                // Direct field
-                if (!empty($metricRecord->views_clicks) || $metricRecord->views_clicks === "0" || $metricRecord->views_clicks === 0) {
-                    $views = (int)$metricRecord->views_clicks;
-                }
-                // Or inside JSON column `value`
-                elseif (!empty($metricRecord->value)) {
-                    $metricData = json_decode($metricRecord->value, true);
-                    if (isset($metricData['views_clicks'])) {
-                        $views = (int)$metricData['views_clicks'];
-                    }
-                }
+            if ($metricRecord && ($metricRecord->views !== null && $metricRecord->views !== '')) {
+                $views = (int) $metricRecord->views;
             }
 
             // Normalize $inv to numeric

@@ -5203,9 +5203,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::post('/shein/save-nr', [SheinController::class, 'saveNrToDatabase']);
 
-    // Shein Daily Data routes (API sync — sheet uploads removed)
-    Route::post('/shein/upload-daily-data', [SheinController::class, 'uploadDailyDataChunk'])->name('shein.upload.daily.data'); // 410
-    Route::post('/shein/upload-daily-data-l60', [SheinController::class, 'uploadDailyDataL60Chunk'])->name('shein.upload.daily.data.l60'); // 410
+    // Shein Daily Data routes (API sync)
     Route::post('/shein/sync-orders', [SheinController::class, 'syncOrdersFromApi'])->name('shein.sync.orders');
     Route::get('/shein/daily-data', [SheinController::class, 'getDailyData'])->name('shein.get.daily.data');
     Route::get('/shein/l60-sales', [SheinController::class, 'getL60Sales'])->name('shein.get.l60.sales');
@@ -5218,11 +5216,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shein-listing-variation-verify/data', [SheinListingVariationVerifyController::class, 'data'])->name('shein.listing.variation.verify.data');
     Route::post('/shein-listing-variation-verify/pull-listings', [SheinListingVariationVerifyController::class, 'pullListings'])->name('shein.listing.variation.verify.pull');
 
-    // Shein Pricing Page (API sync — sheet uploads removed)
+    // Shein Pricing Page (API sync)
     Route::get('/shein-pricing', [SheinController::class, 'sheinPricingView'])->name('shein.pricing.view');
     Route::get('/shein/pricing-data', [SheinController::class, 'getSheinPricingData'])->name('shein.pricing.data');
-    Route::get('/shein/pricing-sample', [SheinController::class, 'downloadSheinPricingSample'])->name('shein.pricing.sample');
-    Route::post('/shein/pricing-upload-price', [SheinController::class, 'uploadSheinPriceSheet'])->name('shein.pricing.upload.price'); // 410
     Route::post('/shein/sync-pricing', [SheinController::class, 'syncPricingFromApi'])->name('shein.sync.pricing');
     Route::post('/shein/save-sprice', [SheinController::class, 'saveSheinSpriceUpdates'])->name('shein.pricing.save.sprice');
     Route::post('/shein/save-links', [SheinController::class, 'saveLinks'])->name('shein.pricing.save.links');

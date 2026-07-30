@@ -37,7 +37,10 @@ use App\Models\Shopifyb2cDataView;
 use App\Models\TemuDataView;
 use App\Models\TemuListingStatus;
 use App\Models\WalmartListingStatus;
-use App\Models\SheinSheetData;
+use App\Models\SheinMetric;
+use App\Models\SheinPricingPrice;
+use App\Models\SheinDailyData;
+use App\Models\SheinDailyDataL60;
 use App\Models\SheinListingStatus;
 use App\Models\BestbuyUsaProduct;
 use App\Models\BestbuyUSADataView;
@@ -177,7 +180,26 @@ class AdsMasterController extends Controller
         $reverbDataView = ReverbViewData::whereIn('sku', $skus)->get()->keyBy('sku');
         $macyDataView = MacyDataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $sheinDataView = SheinDataView::whereIn('sku', $skus)->get()->keyBy('sku');
-        $sheinData = SheinSheetData::whereIn('sku', $skus)->get()->keyBy('sku');
+        $sheinMetrics = SheinMetric::whereIn('sku', $skus)->get()->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
+        $sheinPricing = SheinPricingPrice::whereIn('sku', $skus)->get()->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
+        $sheinL30BySku = collect();
+        $sheinL60BySku = collect();
+        if (Schema::hasTable((new SheinDailyData)->getTable())) {
+            $sheinL30BySku = SheinDailyData::query()
+                ->whereNotNull('seller_sku')
+                ->where('seller_sku', '!=', '')
+                ->selectRaw('UPPER(TRIM(seller_sku)) as u_sku, SUM(GREATEST(COALESCE(quantity, 1), 1)) as qty')
+                ->groupByRaw('UPPER(TRIM(seller_sku))')
+                ->pluck('qty', 'u_sku');
+        }
+        if (Schema::hasTable((new SheinDailyDataL60)->getTable())) {
+            $sheinL60BySku = SheinDailyDataL60::query()
+                ->whereNotNull('seller_sku')
+                ->where('seller_sku', '!=', '')
+                ->selectRaw('UPPER(TRIM(seller_sku)) as u_sku, SUM(GREATEST(COALESCE(quantity, 1), 1)) as qty')
+                ->groupByRaw('UPPER(TRIM(seller_sku))')
+                ->pluck('qty', 'u_sku');
+        }
         $bestbuyUsaLookup = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $bestbuyUsaDataView = BestbuyUSADataView::whereIn('sku', $skus)->get()->keyBy('sku');
         $tiendamiaLookup = TiendamiaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -252,7 +274,18 @@ class AdsMasterController extends Controller
             $ebay3   = $ebay3Lookup[$sku] ?? null;
             $lmpa    = $lmpaLookup[$sku] ?? null;
             $lmp     = $lmpLookup[$sku] ?? null;
-            $shein   = $sheinData[$sku] ?? null;
+            $skuKey = strtoupper(trim((string) $sku));
+            $sheinMetric = $sheinMetrics[$skuKey] ?? null;
+            $sheinPriceRow = $sheinPricing[$skuKey] ?? null;
+            $sheinPrice = 0.0;
+            if ($sheinPriceRow) {
+                $sheinPrice = (float) ($sheinPriceRow->special_offer_price ?: $sheinPriceRow->price ?: 0);
+            } elseif ($sheinMetric) {
+                $sheinPrice = (float) ($sheinMetric->price ?? 0);
+            }
+            $sheinL30 = (int) ($sheinL30BySku[$skuKey] ?? 0);
+            $sheinL60 = (int) ($sheinL60BySku[$skuKey] ?? 0);
+            $sheinViews = $sheinMetric ? (int) ($sheinMetric->views ?? 0) : 0;
             $bestbuyUsa = $bestbuyUsaLookup[$sku] ?? null;
             $tiendamia = $tiendamiaLookup[$sku] ?? null;
 
@@ -266,7 +299,7 @@ class AdsMasterController extends Controller
                 ($ebay ? ($ebay->views ?? 0) : 0) +
                 ($ebay2 ? ($ebay2->views ?? 0) : 0) +
                 ($ebay3 ? ($ebay3->views ?? 0) : 0) +
-                ($shein ? ($shein->views_clicks ?? 0) : 0) +
+                $sheinViews +
                 ($reverb ? ($reverb->views ?? 0) : 0) +
                 ($temuMetric ? (($temuMetric->product_impressions_l30 ?? 0) + ($temuMetric->product_clicks_l30 ?? 0)) : 0);
 
@@ -433,18 +466,18 @@ class AdsMasterController extends Controller
                 'shopifyb2c_buyer_link' => isset($shopifyb2cListingData[$sku]) ? ($shopifyb2cListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'shopifyb2c_seller_link' => isset($shopifyb2cListingData[$sku]) ? ($shopifyb2cListingData[$sku]->value['seller_link'] ?? null) : null,
 
-                // Shein
-                'shein_price' => $shein ? ($shein->price ?? 0) : 0,
-                'shein_l30'   => $shein ? ($shein->shopify_sheinl30 ?? $shein->l30 ?? 0) : 0,
-                'shein_l60'   => $shein ? ($shein->shopify_sheinl60 ?? $shein->l60 ?? 0) : 0,
-                'shein_dil'   => $shein ? ($shein->dil ?? 0) : 0,
-                'shein_pft'   => $shein && ($shein->price ?? 0) > 0 ? (($shein->price * 0.89 - $lp - $ship) / $shein->price) : 0,
-                'shein_roi'   => $shein && $lp > 0 && ($shein->price ?? 0) > 0 ? (($shein->price * 0.89 - $lp - $ship) / $lp) : 0,
-                'shein_req_view' => $shein && $shein->views && $shein->l30 ? (($inv / 90) * 30) / (($shein->l30 / $shein->views)) : 0,
+                // Shein (API: shein_pricing_prices + shein_metrics + shein_daily_data)
+                'shein_price' => $sheinPrice,
+                'shein_l30'   => $sheinL30,
+                'shein_l60'   => $sheinL60,
+                'shein_dil'   => ($inv > 0 && $sheinL30 > 0) ? (($sheinL30 / $inv) * 100) : 0,
+                'shein_pft'   => $sheinPrice > 0 ? (($sheinPrice * 0.89 - $lp - $ship) / $sheinPrice) : 0,
+                'shein_roi'   => $lp > 0 && $sheinPrice > 0 ? (($sheinPrice * 0.89 - $lp - $ship) / $lp) : 0,
+                'shein_req_view' => ($sheinViews > 0 && $sheinL30 > 0) ? (($inv / 90) * 30) / (($sheinL30 / $sheinViews)) : 0,
                 'shein_buyer_link' => isset($sheinListingData[$sku]) ? ($sheinListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'shein_seller_link' => isset($sheinListingData[$sku]) ? ($sheinListingData[$sku]->value['seller_link'] ?? null) : null,
-                'shein_link1' => $shein ? ($shein->link1 ?? null) : null,
-                'shein_cvr' => $shein ? $this->calculateCVR($shein->shopify_sheinl30 ?? 0, ($shein->views_clicks ?? 0) * 3.7) : null,
+                'shein_link1' => isset($sheinListingData[$sku]) ? ($sheinListingData[$sku]->value['link1'] ?? null) : null,
+                'shein_cvr' => $this->calculateCVR($sheinL30, $sheinViews * 3.7),
 
                 // Bestbuy
                 'bestbuy_price' => $bestbuyUsa ? ($bestbuyUsa->price ?? 0) : 0,
@@ -469,9 +502,9 @@ class AdsMasterController extends Controller
                 'tiendamia_seller_link' => isset($tiendamiaListingData[$sku]) ? ($tiendamiaListingData[$sku]->value['seller_link'] ?? null) : null,
 
                 // Direct assignments for blade template
-                'views_clicks' => $shein ? ($shein->views_clicks ?? 0) : 0,
-                'lmp' => $shein ? ($shein->lmp ?? 0) : 0,
-                'shopify_sheinl30' => $shein ? ($shein->shopify_sheinl30 ?? 0) : 0,
+                'views_clicks' => $sheinViews,
+                'lmp' => 0,
+                'shopify_sheinl30' => $sheinL30,
 
                 // Total required views from all channels
                 // 'total_req_view' => (
@@ -486,7 +519,7 @@ class AdsMasterController extends Controller
                     ($ebay2 && $ebay2->views && $ebay2->ebay_l30 ? (($inv * 20)) : 0) +
                     ($ebay3 && $ebay3->views && $ebay3->ebay_l30 ? (($inv * 20)) : 0) +
                     ($amazon && $amazon->sessions_l30 && $amazon->units_ordered_l30 ? (($inv * 20)) : 0) +
-                    ($shein && $shein->views_clicks && $shein->shopify_sheinl30 ? (($inv * 20)) : 0) +
+                    ($sheinViews && $sheinL30 ? (($inv * 20)) : 0) +
                     ($reverb && $reverb->views && $reverb->r_l30 ? (($inv * 20)) : 0) +
                     ($temuMetric && (($temuMetric->{'product_impressions_l30'} ?? 0) + ($temuMetric->{'product_clicks_l30'} ?? 0)) && ($temuMetric->{'quantity_purchased_l30'} ?? 0) ? (($inv * 20)) : 0)
                 ),

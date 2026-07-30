@@ -536,7 +536,7 @@
     <script>
         let table = null;
         let summaryDataCache = [];
-        // Sales / GPFT / GROI from /shein-tabulator upload (product_price × qty) — not special_offer
+        // Sales / GPFT / GROI from /shein-tabulator API orders (product_price × qty) — not special_offer
         let salesPageTotals = null;
 
         // Badge-click filter flags (identical to TikTok pattern)
@@ -1000,7 +1000,7 @@
                 }
             });
 
-            // Sales / Qty / GPFT / GROI — identical to /shein-tabulator (uploaded order product_price)
+            // Sales / Qty / GPFT / GROI — identical to /shein-tabulator (API order product_price)
             const sp = salesPageTotals || {};
             const totalSales = parseFloat(sp.total_sales) || 0;
             const totalPft   = parseFloat(sp.total_pft) || 0;

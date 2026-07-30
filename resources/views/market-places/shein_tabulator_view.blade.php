@@ -46,7 +46,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Shein Daily Data',
-        'sub_title' => 'Orders from Shein Open API (shein_daily_data) — sheet upload removed',
+        'sub_title' => 'Orders from Shein Open API (shein_daily_data)',
     ])
     <div class="toast-container"></div>
     <div class="row">

@@ -19,8 +19,9 @@ use App\Models\WalmartMetrics;
 use App\Models\PLSProduct;
 use App\Models\WaifairProductSheet;
 use App\Models\FaireProductSheet;
-use App\Models\SheinSheetData;
+use App\Models\SheinDailyData;
 use App\Models\TiktokOrder;
+use App\Services\SheinShopifySalesService;
 use App\Models\InstagramShopSheetdata;
 use App\Models\AliExpressSheetData;
 use App\Models\MercariWShipSheetdata;
@@ -31,6 +32,7 @@ use App\Models\BusinessFiveCoreSheetdata;
 use App\Models\TopDawgSheetdata;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 
@@ -1037,52 +1039,6 @@ class ApiController extends Controller
 
 
 
-    public function fetchDataFromSheinMasterGoogleSheet()
-    {
-        // URL of the Google Apps Script web app
-        $url = 'https://script.google.com/macros/s/AKfycbwNwG2rdvGOK49cRJQan7-3MSR2DQ2S-H0bP8iYx-olcfwWn_pswO-q7RS7hcZ152y5/exec';
-
-        try {
-            // Make a GET request to the Google Apps Script URL
-            $response = Http::timeout(seconds: 120)->get($url);
-
-            // Check if the request was successful
-            if ($response->successful()) {
-                // Decode the JSON response
-                $data = $response->json();
-
-                // Log the data for debugging (optional)
-                // Log::info('Data fetched from Google Sheet:', $data);
-
-                // Return the data as a JSON response
-                return response()->json([
-                    'message' => 'Data fetched successfully',
-                    'data' => $data,
-                    'status' => 200
-                ]);
-            } else {
-                // Log the error if the request failed
-                Log::error('Failed to fetch data from Google Sheet. Response:', $response->body());
-
-                // Return an error response
-                return response()->json([
-                    'message' => 'Failed to fetch data from Google Sheet',
-                    'status' => $response->status()
-                ], $response->status());
-            }
-        } catch (\Exception $e) {
-            // Log the exception if something goes wrong
-            Log::error('Exception while fetching data from Google Sheet:', ['error' => $e->getMessage()]);
-
-            // Return an error response
-            return response()->json([
-                'message' => 'An error occurred while fetching data',
-                'error' => $e->getMessage(),
-                'status' => 500
-            ], 500);
-        }
-    }
-
     // Fetch data from Newegg B2C master Apps Script
     public function fetchDataFromWayfairMasterGoogleSheet()
     {
@@ -1605,8 +1561,13 @@ class ApiController extends Controller
         $faire_product_sheet_query = FaireProductSheet::where('sku', 'not like', '%Parent%');
         $faire_product_sheet_l30Sales  = (clone $faire_product_sheet_query)->selectRaw('SUM(f_l30 * price) as total')->value('total') ?? 0;
 
-        $shein_sheet_query = SheinSheetData::where('sku', 'not like', '%Parent%');
-        $shein_sheet_l30Sales  = (clone $shein_sheet_query)->selectRaw('SUM(shopify_sheinl30 * shopify_price) as total')->value('total') ?? 0;
+        // Shein L30 from API-synced shein_daily_data (same as /shein-tabulator)
+        $shein_l30Sales = (float) (SheinShopifySalesService::computeSalesPageTotals()['total_sales'] ?? 0);
+        if ($shein_l30Sales <= 0 && Schema::hasTable((new SheinDailyData)->getTable())) {
+            $shein_l30Sales = (float) (SheinDailyData::query()
+                ->selectRaw('SUM(COALESCE(product_price, 0) * GREATEST(COALESCE(quantity, 1), 1)) as total')
+                ->value('total') ?? 0);
+        }
 
         [$tiktokStart, $tiktokEnd] = TiktokOrder::californiaDaysWindow(30);
         $tiktok_l30Sales = TiktokOrder::salesAmountBetween($tiktokStart, $tiktokEnd);
@@ -1638,7 +1599,7 @@ class ApiController extends Controller
      
         $total_l30_sales = intval($amz_l30Sales) + intval($ebay_l30Sales) + intval($ebay_two_channel_l30Sales) + intval($ebay_3channel_l30Sales) + intval($macy_l30sales) +
                          intval($tiend_l30Sales) + intval($best_buy_usa_l30Sales) + intval($reverb_product_l30Sales) + intval($doba_sheetdata_l30Sales) + intval($temu_metric_l30Sales) +
-                         intval($walmart_l30Sales) + intval($pls_product_l30Sales) + intval($waifair_product_l30Sales) + intval($faire_product_sheet_l30Sales) + intval($shein_sheet_l30Sales) +
+                         intval($walmart_l30Sales) + intval($pls_product_l30Sales) + intval($waifair_product_l30Sales) + intval($faire_product_sheet_l30Sales) + intval($shein_l30Sales) +
                          intval($tiktok_l30Sales) + intval($instagram_shop_l30Sales) + intval($aliexpress_sheet_l30Sales) + intval($mercari_l30Sales) + intval($mercariwoship_sheet_l30Sales) +
                          intval($fb_marketplace_sheet_l30Sales) + intval($fb_shop_sheet_l30Sales) + intval($business_five_coresheet_l30Sales) + intval($topdawg_sheetdata_l30Sales);
                         //  dd($fb_marketplace_sheet_l30Sales);

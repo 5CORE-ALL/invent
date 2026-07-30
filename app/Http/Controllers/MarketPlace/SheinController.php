@@ -15,7 +15,6 @@ use App\Services\SheinShopifySalesService;
 use App\Services\SheinApiService;
 use App\Services\LmpSkuGroupService;
 use App\Models\AmazonChannelSummary;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -161,138 +160,6 @@ class SheinController extends Controller
     }
 
     /**
-     * Load a Shein order export. Accepts any extension — auto-detects spreadsheet vs
-     * delimited text (Seller Hub CSVs are often tab-separated and may be .csv/.txt/.xlsx).
-     */
-    private function loadSheinOrderSpreadsheet(string $filePath)
-    {
-        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        $spreadsheetExts = ['xlsx', 'xls', 'xlsm', 'ods'];
-
-        // Try Excel/ODS by extension first
-        if (in_array($ext, $spreadsheetExts, true)) {
-            return IOFactory::load($filePath);
-        }
-
-        // Delimited text (csv/tsv/txt/unknown): sniff delimiter and use CSV reader
-        if ($this->looksLikeDelimitedText($filePath) || in_array($ext, ['csv', 'txt', 'tsv', ''], true) || $ext === '') {
-            try {
-                $delimiter = $this->detectSheinCsvDelimiter($filePath);
-                $reader = IOFactory::createReader('Csv');
-                $reader->setDelimiter($delimiter);
-                $reader->setEnclosure('"');
-                $reader->setSheetIndex(0);
-
-                return $reader->load($filePath);
-            } catch (\Throwable $e) {
-                // Fall through to generic IOFactory
-            }
-        }
-
-        // Last resort: let PhpSpreadsheet guess (xlsx/xls/csv/etc.)
-        return IOFactory::load($filePath);
-    }
-
-    private function looksLikeDelimitedText(string $filePath): bool
-    {
-        $handle = @fopen($filePath, 'rb');
-        if (! $handle) {
-            return false;
-        }
-        $chunk = fread($handle, 4096) ?: '';
-        fclose($handle);
-        // Binary Excel/zip files start with PK or other non-text signatures
-        if (str_starts_with($chunk, 'PK') || str_starts_with($chunk, "\xD0\xCF")) {
-            return false;
-        }
-        $sample = substr($chunk, 0, 800);
-
-        return str_contains($sample, "\t") || str_contains($sample, ',') || str_contains(strtolower($sample), 'order');
-    }
-
-    private function detectSheinCsvDelimiter(string $filePath): string
-    {
-        $handle = fopen($filePath, 'r');
-        if (! $handle) {
-            return ',';
-        }
-        $line = fgets($handle) ?: '';
-        fclose($handle);
-        $tabs = substr_count($line, "\t");
-        $commas = substr_count($line, ',');
-
-        return $tabs > $commas ? "\t" : ',';
-    }
-
-    /**
-     * Map one Shein Seller Hub order-export row (header row 2) into shein_daily_data columns.
-     * Format matches sheinorders.csv: Number of items sold @ 38, Province @ 39, City @ 40.
-     */
-    private function mapSheinOrderExportRow(array $row): ?array
-    {
-        if (empty($row[1])) {
-            return null;
-        }
-
-        $qty = isset($row[38]) && is_numeric($row[38]) ? max(1, (int) $row[38]) : 1;
-
-        return [
-            'order_type' => isset($row[0]) && $row[0] !== '' ? trim((string) $row[0]) : null,
-            'order_number' => isset($row[1]) && $row[1] !== '' ? trim((string) $row[1]) : null,
-            'exchange_order' => isset($row[2]) && $row[2] !== '' ? trim((string) $row[2]) : null,
-            'order_status' => isset($row[3]) && $row[3] !== '' ? trim((string) $row[3]) : null,
-            'shipment_mode' => isset($row[4]) && $row[4] !== '' ? trim((string) $row[4]) : null,
-            'urged_or_not' => isset($row[5]) && $row[5] !== '' ? trim((string) $row[5]) : null,
-            'is_it_lost' => isset($row[6]) && $row[6] !== '' ? trim((string) $row[6]) : null,
-            'whether_to_stay' => isset($row[7]) && $row[7] !== '' ? trim((string) $row[7]) : null,
-            'order_issue' => isset($row[8]) && $row[8] !== '' ? trim((string) $row[8]) : null,
-            'product_name' => isset($row[9]) && $row[9] !== '' ? trim((string) $row[9]) : null,
-            'product_description' => isset($row[10]) && $row[10] !== '' ? trim((string) $row[10]) : null,
-            'specification' => isset($row[11]) && $row[11] !== '' ? trim((string) $row[11]) : null,
-            'seller_sku' => isset($row[12]) && $row[12] !== '' ? trim((string) $row[12]) : null,
-            'shein_sku' => isset($row[13]) && $row[13] !== '' ? trim((string) $row[13]) : null,
-            'skc' => isset($row[14]) && $row[14] !== '' ? trim((string) $row[14]) : null,
-            'item_id' => isset($row[15]) && $row[15] !== '' ? trim((string) $row[15]) : null,
-            'product_status' => isset($row[16]) && $row[16] !== '' ? trim((string) $row[16]) : null,
-            'inventory_id' => isset($row[17]) && $row[17] !== '' ? trim((string) $row[17]) : null,
-            'exchange_id' => isset($row[18]) && $row[18] !== '' ? trim((string) $row[18]) : null,
-            'reason_for_replacement' => isset($row[19]) && $row[19] !== '' ? trim((string) $row[19]) : null,
-            'product_id_to_be_exchanged' => isset($row[20]) && $row[20] !== '' ? trim((string) $row[20]) : null,
-            'locked_or_not' => isset($row[21]) && $row[21] !== '' ? trim((string) $row[21]) : null,
-            'order_processed_on' => isset($row[22]) ? $this->parseDate($row[22]) : null,
-            'collection_deadline' => isset($row[23]) ? $this->parseDate($row[23]) : null,
-            'requested_shipping_time' => isset($row[24]) ? $this->parseDate($row[24]) : null,
-            'delivery_deadline' => isset($row[25]) ? $this->parseDate($row[25]) : null,
-            'delivery_time' => isset($row[26]) ? $this->parseDate($row[26]) : null,
-            'tracking_number' => isset($row[27]) && $row[27] !== '' ? trim((string) $row[27]) : null,
-            'sellers_package' => isset($row[28]) && $row[28] !== '' ? trim((string) $row[28]) : null,
-            'seller_currency' => isset($row[29]) && $row[29] !== '' ? trim((string) $row[29]) : null,
-            'product_price' => isset($row[30]) ? $this->sanitizePrice($row[30]) : null,
-            'coupon_discount' => isset($row[31]) ? $this->sanitizePrice($row[31]) : null,
-            'store_campaign_discount' => isset($row[32]) ? $this->sanitizePrice($row[32]) : null,
-            'commission' => isset($row[33]) ? $this->sanitizePrice($row[33]) : null,
-            'estimated_merchandise_revenue' => isset($row[34]) ? $this->sanitizePrice($row[34]) : null,
-            'fulfillment_service_fee' => isset($row[35]) ? $this->sanitizePrice($row[35]) : null,
-            'storage_fee' => isset($row[36]) ? $this->sanitizePrice($row[36]) : null,
-            'consumption_tax' => isset($row[37]) ? $this->sanitizePrice($row[37]) : null,
-            'quantity' => $qty,
-            'province' => isset($row[39]) && $row[39] !== '' ? trim((string) $row[39]) : null,
-            'city' => isset($row[40]) && $row[40] !== '' ? trim((string) $row[40]) : null,
-        ];
-    }
-
-    /**
-     * Sheet upload removed — use Shein Open API sync instead.
-     */
-    public function uploadDailyDataChunk(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Sheet upload removed. Use Sync Orders (API) on /shein-tabulator or POST /shein/sync-orders.',
-        ], 410);
-    }
-
-    /**
      * Sync L30/L60 orders from Shein API into shein_daily_data / shein_daily_data_l60.
      */
     public function syncOrdersFromApi(Request $request, SheinApiService $sheinApi)
@@ -330,79 +197,6 @@ class SheinController extends Controller
                 'message' => 'Pricing API sync failed: '.$e->getMessage(),
             ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
-    }
-
-    /**
-     * Sanitize price values
-     */
-    private function sanitizePrice($value)
-    {
-        if (empty($value) || $value === '?') {
-            return null;
-        }
-
-        // Remove currency symbols, commas, and whitespace
-        $cleaned = preg_replace('/[USD$,\s]/', '', $value);
-        
-        return is_numeric($cleaned) ? (float)$cleaned : null;
-    }
-
-    /**
-     * Parse date string to Carbon instance
-     */
-    private function parseDate($dateString)
-    {
-        if (empty($dateString) || $dateString === null || $dateString === '') {
-            return null;
-        }
-
-        try {
-            // Handle Excel numeric dates
-            if (is_numeric($dateString)) {
-                $baseDate = Carbon::create(1899, 12, 30);
-                return $baseDate->addDays((int)$dateString);
-            }
-
-            // Try common date formats
-            $formats = [
-                'Y-F-d H:i',       // 2025-December-10 07:31
-                'Y-M-d H:i',       // 2025-Dec-10 07:31
-                'm/d/Y H:i',
-                'd/m/Y H:i',
-                'Y-m-d H:i:s',
-                'Y-m-d',
-                'm/d/Y',
-                'd/m/Y',
-            ];
-
-            foreach ($formats as $format) {
-                try {
-                    $parsed = Carbon::createFromFormat($format, trim($dateString));
-                    if ($parsed) {
-                        return $parsed;
-                    }
-                } catch (\Exception $e) {
-                    continue;
-                }
-            }
-
-            // Try general parsing as last resort
-            return Carbon::parse($dateString);
-        } catch (\Exception $e) {
-            Log::warning("Failed to parse date: {$dateString}");
-            return null;
-        }
-    }
-
-    /**
-     * Upload L60 sales daily data file in chunks (same format as L30, stored in shein_daily_data_l60)
-     */
-    public function uploadDailyDataL60Chunk(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Sheet upload removed. Use Sync L60 (API) on /shein-tabulator or POST /shein/sync-orders with target=l60.',
-        ], 410);
     }
 
     /**
@@ -607,148 +401,6 @@ class SheinController extends Controller
         return view('market-places.shein_pricing_view');
     }
 
-    public function downloadSheinPricingSample()
-    {
-        $fileName = 'shein_pricing_sample.csv';
-        $rows = [
-            ['sku', 'price', 'stock'],
-            ['SKU-001', '19.99', '10'],
-            ['SKU-002', '24.50', '25'],
-            ['SKU-003', '13.25', '0'],
-        ];
-
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $handle = fopen('php://output', 'w');
-        foreach ($rows as $row) {
-            fputcsv($handle, $row);
-        }
-        fclose($handle);
-        exit;
-    }
-
-    public function uploadSheinPriceSheet(Request $request)
-    {
-        return response()->json([
-            'success' => false,
-            'message' => 'Sheet upload removed. Use Sync from API on /shein-pricing or POST /shein/sync-pricing.',
-        ], 410);
-    }
-
-    /**
-     * Parse header + data rows from Shein native sheet OR simple sku/price/stock sheet.
-     *
-     * Shein native sheet columns (normalised lowercase, non-alnum stripped):
-     *   sellersku                        → sku
-     *   current inventory                → stock
-     *   original price shein us usd      → price
-     *   special offer price shein us usd → special_offer_price
-     *
-     * Simple sheet columns: sku, price, stock (+ optional special_offer_price)
-     */
-    private function parseSheinRows(array $headerRow, array $dataRows, bool $isCsv): array
-    {
-        // Normalise headers – keep letters/numbers/spaces only, then trim
-        $headers = array_map(
-            fn($h) => strtolower(trim(preg_replace('/[^a-z0-9 ]/i', ' ', (string) $h))),
-            $headerRow
-        );
-
-        // ── Detect Shein native format (has "sellersku" column) ──────────
-        $isNativeShein = in_array('sellersku', $headers, true)
-                      || in_array('seller sku', $headers, true);
-
-        if ($isNativeShein) {
-            // CSV columns (Shein native export):
-            //   sellerSKU                         → sku
-            //   price                             → price        (the plain "price" column)
-            //   Original Price(shein-us_USD)      → original_price
-            //   Special Offer Price(shein-us_USD) → special_offer_price
-            //   Current inventory                 → shein_stock
-            $skuIdx          = null;
-            $priceIdx        = null;   // exact "price" column
-            $origPriceIdx    = null;   // Original Price(shein-us_USD)
-            $spOfferIdx      = null;   // Special Offer Price(shein-us_USD)
-            $stockIdx        = null;
-
-            foreach ($headers as $i => $h) {
-                if ($skuIdx       === null && (str_contains($h, 'sellersku') || $h === 'seller sku'))  $skuIdx       = $i;
-                if ($stockIdx     === null && str_contains($h, 'current inventory'))                    $stockIdx     = $i;
-                if ($spOfferIdx   === null && str_contains($h, 'special offer price'))                  $spOfferIdx   = $i;
-                if ($origPriceIdx === null && str_contains($h, 'original price'))                       $origPriceIdx = $i;
-                // Match plain "price" exactly — must come after the above so it doesn't grab "original price"
-                if ($priceIdx     === null && trim($h) === 'price')                                     $priceIdx     = $i;
-            }
-
-            if ($skuIdx === null) {
-                throw new \RuntimeException('sellerSKU column not found in Shein sheet.');
-            }
-        } else {
-            // Generic sheet: supports standard (sku/price/stock) and marketplace exports (Offer SKU/Price/Quantity)
-            $skuIdx          = null;
-            $priceIdx        = null;
-            $origPriceIdx    = null;
-            $spOfferIdx      = null;
-            $stockIdx        = null;
-
-            foreach ($headers as $i => $h) {
-                $h = trim($h);
-                if ($skuIdx       === null && in_array($h, ['sku', 'offer sku', 'offer_sku', 'offersku'], true)) $skuIdx       = $i;
-                if ($priceIdx     === null && $h === 'price')                                                     $priceIdx     = $i;
-                if ($stockIdx     === null && in_array($h, ['stock', 'quantity'], true))                          $stockIdx     = $i;
-                if ($origPriceIdx === null && in_array($h, ['original price', 'original_price'], true))           $origPriceIdx = $i;
-                if ($spOfferIdx   === null && in_array($h, ['special offer price', 'special_offer_price', 'discount price'], true)) $spOfferIdx = $i;
-            }
-
-            if ($skuIdx === null || $priceIdx === null) {
-                throw new \RuntimeException(
-                    'Columns not found. Detected: [' . implode(', ', array_slice($headers, 0, 12)) . ']. ' .
-                    'Expected "sku" and "price" columns.'
-                );
-            }
-        }
-
-        $rows = [];
-        foreach ($dataRows as $row) {
-            // Normalize at upload time so shein_pricing_prices.sku matches product_masters.sku
-            // even when the sheet contains NBSP or stray whitespace (a frequent Shein export issue).
-            $sku = $this->normalizeSheinSkuExact((string) ($row[$skuIdx] ?? ''));
-            // Skip blank rows and repeated header rows
-            if ($sku === '' || in_array(strtolower($sku), ['sellersku', 'seller sku', 'offer sku', 'sku'], true)) continue;
-
-            $price      = $priceIdx     !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIdx]     ?? ''))) : 0;
-            $origPrice  = $origPriceIdx !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$origPriceIdx] ?? ''))) : 0;
-            $spOffer    = $spOfferIdx   !== null ? (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$spOfferIdx]   ?? ''))) : 0;
-            $stock      = $stockIdx     !== null ? (int) trim((string) ($row[$stockIdx] ?? '0')) : 0;
-
-            // Simple sku/price/stock sheets have no "special offer" column — grid + margin math use special_offer_price.
-            if ($spOffer <= 0 && $price > 0) {
-                $spOffer = $price;
-            }
-
-            $rows[] = [
-                'sku'                 => $this->sanitizeUtf8String($sku),
-                'price'               => $price,
-                'original_price'      => $origPrice,
-                'special_offer_price' => $spOffer,
-                'stock'               => $stock,
-            ];
-        }
-
-        return $rows;
-    }
-
-    private function sheinIsExcelFile(string $path): bool
-    {
-        $handle = fopen($path, 'rb');
-        if (!$handle) return false;
-        $magic  = fread($handle, 4);
-        fclose($handle);
-        return str_starts_with($magic, "\x50\x4B\x03\x04") || str_starts_with($magic, "\xD0\xCF\x11\xE0");
-    }
-
     /**
      * Strip invalid UTF-8 from a string (legacy DB / CSV bytes mis-labeled as UTF-8).
      */
@@ -806,7 +458,7 @@ class SheinController extends Controller
                 )->keyBy(fn($r) => $normalizeSku($r->sku));
             }
 
-            // ── 3. Shein sales → al30 / sales from uploaded shein_daily_data (Seller Hub CSV)
+            // ── 3. Shein sales → al30 / sales from API-synced shein_daily_data
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
             $salesAgg = new SupportCollection();
             SheinDailyData::query()
@@ -902,7 +554,7 @@ class SheinController extends Controller
 
                 $sale  = $salesAgg->get($normalizedSku);
                 $al30  = $sale ? (float) $sale->al30 : 0;
-                // Actual L30 revenue from uploaded shein_daily_data (Seller Hub CSV).
+                // Actual L30 revenue from API-synced shein_daily_data.
                 // Fall back to theoretical al30 × special_offer only when qty exists but revenue missing.
                 $sales = $sale ? (float) ($sale->sales ?? 0) : 0;
                 if ($sales <= 0 && $al30 > 0 && $spOffer > 0) {

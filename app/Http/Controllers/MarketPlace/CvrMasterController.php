@@ -3471,14 +3471,9 @@ class CvrMasterController extends Controller
             $hasSheinData = $sheinPricingRowBd && ($sheinPriceBd > 0 || $sheinL30Bd > 0);
             $sheinViewsBd = null;
             try {
-                $sheinSheetBd = \App\Models\SheinSheetData::where('sku', $fullSku)->first();
-                if ($sheinSheetBd && ($sheinSheetBd->views_clicks !== null && $sheinSheetBd->views_clicks !== '')) {
-                    $sheinViewsBd = intval($sheinSheetBd->views_clicks);
-                } else {
-                    $sheinMetricBd = \App\Models\SheinMetric::where('sku', $fullSku)->first();
-                    if ($sheinMetricBd && ($sheinMetricBd->views !== null && $sheinMetricBd->views !== '')) {
-                        $sheinViewsBd = intval($sheinMetricBd->views);
-                    }
+                $sheinMetricBd = \App\Models\SheinMetric::where('sku', $fullSku)->first();
+                if ($sheinMetricBd && ($sheinMetricBd->views !== null && $sheinMetricBd->views !== '')) {
+                    $sheinViewsBd = intval($sheinMetricBd->views);
                 }
             } catch (\Exception $e) {
                 // leave N/A

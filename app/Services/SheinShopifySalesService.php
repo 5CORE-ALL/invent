@@ -10,8 +10,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * Shein L30/L60 metrics from uploaded Seller Hub order exports
- * (shein_daily_data / shein_daily_data_l60) — same CSV format as sheinorders.csv.
+ * Shein L30/L60 metrics from Shein Open API order sync
+ * (shein_daily_data / shein_daily_data_l60).
  */
 class SheinShopifySalesService
 {
@@ -59,8 +59,7 @@ class SheinShopifySalesService
     }
 
     /**
-     * Row shape for /shein-tabulator from uploaded shein_daily_data.
-     * Date args ignored — the upload file is the period source of truth.
+     * Row shape for /shein-tabulator from API-synced shein_daily_data.
      */
     public static function getDailyDataRows(?Carbon $startDate = null, ?Carbon $endDate = null): array
     {
@@ -181,7 +180,7 @@ class SheinShopifySalesService
 
     /**
      * Sales / PFT% / ROI% totals for /shein-tabulator badges
-     * (uploaded shein_daily_data, product_price × qty).
+     * (API-synced shein_daily_data, product_price × qty).
      *
      * @return array{total_orders: int, total_quantity: int, total_sales: float, total_cogs: float, total_pft: float, pft_percentage: float, roi_percentage: float, avg_price: float, total_commission: float}
      */
