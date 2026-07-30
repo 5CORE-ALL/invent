@@ -332,17 +332,16 @@ class MapIssuesController extends Controller
                 $ebay3MismatchCount++;
             }
             $ebay3NrReq = $this->isReqStatus($nrStatus3, $pm->sku) ? 'REQ' : 'NR';
-            // eBay 3 caps listing stock at 100, so the expected stock is min(INV, 100).
-            // Allow a 3% tolerance against that expected value. NL / 0 stock and Not Req rows are not counted.
+            // eBay 3: same N Map rule as eBay / eBay 2 and /ebay3 pricing — |INV − eBay3 Stock|
+            // with 3-unit / rounded 3% tolerance. NL / 0 stock and Not Req rows are not counted.
             $ebay3IsNotMap = false;
             $ebay3Within3 = false;
             if ($ebay3ItemId && $ebay3ItemId !== null && $ebay3ItemId !== '' && $ebay3NrReq === 'REQ' && $inv > 0 && $ebay3Stock > 0) {
-                $ebay3Expected = min($inv, 100.0);
-                $ebay3DiffUnits = abs($ebay3Stock - $ebay3Expected);
-                if ($ebay3Expected * 0.03 < 3) {
+                $ebay3DiffUnits = abs($inv - $ebay3Stock);
+                if ($inv * 0.03 < 3) {
                     $ebay3IsNotMap = $ebay3DiffUnits > 3;
                 } else {
-                    $ebay3IsNotMap = round(($ebay3DiffUnits / $ebay3Expected) * 100) > 3;
+                    $ebay3IsNotMap = round(($ebay3DiffUnits / $inv) * 100) > 3;
                 }
                 if ($ebay3IsNotMap) {
                     $ebay3NotMapCount++;
