@@ -12,11 +12,12 @@ use Illuminate\Support\Facades\DB;
  * Five dynamic CVR rules:
  *   1 Red    : CVR = 0% — CVR trend Down/Equal/Up (key: zero; defaults like Yellow)
  *   2 Yellow : 0.01 – 3.5 (fixed; stored action key: red / low_cvr=3.5)
- *              Per-rule Down/Equal/Up % via slab_pct (Yellow defaults 2/1/1; others 1/1/1)
+ *              Per-rule Down/Equal/Up signed % via slab_pct (Yellow defaults −2/−1/0)
  *   3 Blue   : 3.51 – mid_cvr (default 3.51–7)
  *   4 Green  : mid+0.01 – high (default 7.01–13)
  *   5 Pink   : > high+0.01 (default >13.01)
- * Per Zero/Yellow/Blue/Green/Pink, Down / Equal / Up actions are configurable: increase | decrease | hold.
+ * Signed slab_pct: +N increase, −N decrease, 0 = hold (no suggestion).
+ * Legacy actions (increase|decrease|hold) are derived from the sign of slab_pct.
  * Every rule also has Dil overrides for Down/Equal/Up: if Dil% > *_*_dil (default 100) → Increase.
  *
  * After multiply:
@@ -69,14 +70,12 @@ final class SpriceCvrMultRule
 
     public const DEFAULT_ZERO_CVR_ROI_HIGH = 60.0;
 
-    /** Yellow (red) Down vs prev: adjust SPRICE by this % */
-    public const DEFAULT_YELLOW_DOWN_PCT = 2.0;
+    /** Signed %: +increase, −decrease, 0=hold */
+    public const DEFAULT_YELLOW_DOWN_PCT = -2.0;
 
-    /** Yellow (red) Equal vs prev: adjust SPRICE by this % */
-    public const DEFAULT_YELLOW_EQUAL_PCT = 1.0;
+    public const DEFAULT_YELLOW_EQUAL_PCT = -1.0;
 
-    /** Yellow (red) Up vs prev: adjust SPRICE by this % */
-    public const DEFAULT_YELLOW_UP_PCT = 1.0;
+    public const DEFAULT_YELLOW_UP_PCT = 0.0;
 
     /** @var list<string> */
     public const ACTIONS = ['increase', 'decrease', 'hold'];
@@ -118,8 +117,17 @@ final class SpriceCvrMultRule
     public static function defaultBandPct(): array
     {
         return [
-            'down' => 1.0,
-            'equal' => 1.0,
+            'down' => 0.0,
+            'equal' => 0.0,
+            'up' => 0.0,
+        ];
+    }
+
+    public static function defaultPinkPct(): array
+    {
+        return [
+            'down' => 0.0,
+            'equal' => -1.0,
             'up' => 1.0,
         ];
     }
@@ -140,11 +148,13 @@ final class SpriceCvrMultRule
             'red' => self::defaultYellowPct(),
             'blue' => self::defaultBandPct(),
             'green' => self::defaultBandPct(),
-            'pink' => self::defaultBandPct(),
+            'pink' => self::defaultPinkPct(),
         ];
     }
 
     /**
+     * Signed trend % (−50…+50). 0 = hold.
+     *
      * @param  array<string, mixed>  $in
      * @param  array{down: float, equal: float, up: float}|null  $def
      * @return array{down: float, equal: float, up: float}
@@ -155,13 +165,13 @@ final class SpriceCvrMultRule
         $down = isset($in['down']) && is_numeric($in['down']) ? (float) $in['down'] : $def['down'];
         $equal = isset($in['equal']) && is_numeric($in['equal']) ? (float) $in['equal'] : $def['equal'];
         $up = isset($in['up']) && is_numeric($in['up']) ? (float) $in['up'] : $def['up'];
-        if ($down < 0.1 || $down > 50) {
+        if ($down < -50 || $down > 50) {
             $down = $def['down'];
         }
-        if ($equal < 0.1 || $equal > 50) {
+        if ($equal < -50 || $equal > 50) {
             $equal = $def['equal'];
         }
-        if ($up < 0.1 || $up > 50) {
+        if ($up < -50 || $up > 50) {
             $up = $def['up'];
         }
 
@@ -402,6 +412,105 @@ final class SpriceCvrMultRule
         return $out;
     }
 
+    public static function actionFromSignedPct(float $v): string
+    {
+        if (abs($v) < 0.00001) {
+            return 'hold';
+        }
+
+        return $v > 0 ? 'increase' : 'decrease';
+    }
+
+    /**
+     * @param  array<string, array{down: float, equal: float, up: float}>  $slabPct
+     * @return array<string, array{down: string, equal: string, up: string}>
+     */
+    public static function actionsFromSlabPct(array $slabPct): array
+    {
+        $out = [];
+        foreach (['zero', 'red', 'blue', 'green', 'pink'] as $slab) {
+            $row = isset($slabPct[$slab]) && is_array($slabPct[$slab])
+                ? $slabPct[$slab]
+                : self::defaultSlabPct()[$slab];
+            $out[$slab] = [
+                'down' => self::actionFromSignedPct((float) ($row['down'] ?? 0)),
+                'equal' => self::actionFromSignedPct((float) ($row['equal'] ?? 0)),
+                'up' => self::actionFromSignedPct((float) ($row['up'] ?? 0)),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Legacy rows stored positive % + actions; signed format uses ≤0 (0=hold, negative=decrease).
+     *
+     * @param  array<string, mixed>  $slabIn
+     * @param  array<string, mixed>  $actionsIn
+     * @param  array{down: float, equal: float, up: float}|null  $yellowLegacy
+     * @return array{
+     *   zero: array{down: float, equal: float, up: float},
+     *   red: array{down: float, equal: float, up: float},
+     *   blue: array{down: float, equal: float, up: float},
+     *   green: array{down: float, equal: float, up: float},
+     *   pink: array{down: float, equal: float, up: float}
+     * }
+     */
+    public static function migrateLegacySlabPctToSigned(array $slabIn, array $actionsIn, ?array $yellowLegacy = null): array
+    {
+        $looksSigned = false;
+        foreach (['zero', 'red', 'blue', 'green', 'pink'] as $slab) {
+            $row = isset($slabIn[$slab]) && is_array($slabIn[$slab]) ? $slabIn[$slab] : null;
+            if ($row === null) {
+                continue;
+            }
+            foreach (['down', 'equal', 'up'] as $k) {
+                if (isset($row[$k]) && is_numeric($row[$k]) && (float) $row[$k] <= 0) {
+                    $looksSigned = true;
+                    break 2;
+                }
+            }
+        }
+        if ($looksSigned) {
+            return self::sanitizeSlabPct($slabIn, $yellowLegacy);
+        }
+
+        $def = self::defaultSlabPct();
+        $out = [];
+        foreach (['zero', 'red', 'blue', 'green', 'pink'] as $slab) {
+            $row = isset($slabIn[$slab]) && is_array($slabIn[$slab]) ? $slabIn[$slab] : [];
+            if ($slab === 'red' && $row === [] && $yellowLegacy !== null) {
+                $row = $yellowLegacy;
+            }
+            $mag = self::sanitizeTrendPct([
+                'down' => isset($row['down']) && is_numeric($row['down']) ? abs((float) $row['down']) : abs($def[$slab]['down']),
+                'equal' => isset($row['equal']) && is_numeric($row['equal']) ? abs((float) $row['equal']) : abs($def[$slab]['equal']),
+                'up' => isset($row['up']) && is_numeric($row['up']) ? abs((float) $row['up']) : abs($def[$slab]['up']),
+            ], [
+                'down' => abs($def[$slab]['down']) ?: 1.0,
+                'equal' => abs($def[$slab]['equal']) ?: 1.0,
+                'up' => abs($def[$slab]['up']) ?: 1.0,
+            ]);
+            $acts = self::sanitizeSlabActions(
+                is_array($actionsIn[$slab] ?? null) ? $actionsIn[$slab] : [],
+                $slab
+            );
+            $signed = [];
+            foreach (['down', 'equal', 'up'] as $t) {
+                if ($acts[$t] === 'hold') {
+                    $signed[$t] = 0.0;
+                } elseif ($acts[$t] === 'decrease') {
+                    $signed[$t] = -abs($mag[$t]);
+                } else {
+                    $signed[$t] = abs($mag[$t]);
+                }
+            }
+            $out[$slab] = self::sanitizeTrendPct($signed, $def[$slab]);
+        }
+
+        return $out;
+    }
+
     /**
      * @param  array<string, mixed>  $in
      * @return array<string, mixed>
@@ -458,28 +567,6 @@ final class SpriceCvrMultRule
         }
 
         $actionsIn = isset($in['actions']) && is_array($in['actions']) ? $in['actions'] : [];
-        $actions = [
-            'zero' => self::sanitizeSlabActions(
-                is_array($actionsIn['zero'] ?? null) ? $actionsIn['zero'] : [],
-                'zero'
-            ),
-            'red' => self::sanitizeSlabActions(
-                is_array($actionsIn['red'] ?? null) ? $actionsIn['red'] : [],
-                'red'
-            ),
-            'blue' => self::sanitizeSlabActions(
-                is_array($actionsIn['blue'] ?? null) ? $actionsIn['blue'] : [],
-                'blue'
-            ),
-            'green' => self::sanitizeSlabActions(
-                is_array($actionsIn['green'] ?? null) ? $actionsIn['green'] : [],
-                'green'
-            ),
-            'pink' => self::sanitizeSlabActions(
-                is_array($actionsIn['pink'] ?? null) ? $actionsIn['pink'] : [],
-                'pink'
-            ),
-        ];
 
         $zeroIn = [];
         if (isset($in['zero_cvr_dil']) && is_array($in['zero_cvr_dil'])) {
@@ -526,7 +613,9 @@ final class SpriceCvrMultRule
                 }
             }
         }
-        $slabPct = self::sanitizeSlabPct($slabIn, $yellowPct);
+        // Accept signed % (−50…+50, 0=hold). Migrate legacy positive% + actions → signed.
+        $slabPct = self::migrateLegacySlabPctToSigned($slabIn, $actionsIn, $yellowPct);
+        $actions = self::actionsFromSlabPct($slabPct);
 
         return [
             'low_cvr' => round($low, 2),

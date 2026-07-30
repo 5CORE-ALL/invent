@@ -1148,16 +1148,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-zero-down" class="form-select form-select-sm sprice-cvr-action-select" data-slab="zero" data-trend="down">
-                                                    <option value="decrease" selected>Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold">Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="2" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1174,16 +1167,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-zero-equal" class="form-select form-select-sm sprice-cvr-action-select" data-slab="zero" data-trend="equal">
-                                                    <option value="decrease" selected>Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold">Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1200,16 +1186,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-zero-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="zero" data-trend="up">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1254,16 +1233,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-red-down" class="form-select form-select-sm sprice-cvr-action-select" data-slab="red" data-trend="down">
-                                                    <option value="decrease" selected>Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold">Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="2" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1280,16 +1252,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-red-equal" class="form-select form-select-sm sprice-cvr-action-select" data-slab="red" data-trend="equal">
-                                                    <option value="decrease" selected>Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold">Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1306,16 +1271,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-red-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="red" data-trend="up">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1390,16 +1348,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-blue-down" class="form-select form-select-sm sprice-cvr-action-select" data-slab="blue" data-trend="down">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1416,16 +1367,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-blue-equal" class="form-select form-select-sm sprice-cvr-action-select" data-slab="blue" data-trend="equal">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1442,16 +1386,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-blue-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="blue" data-trend="up">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1496,16 +1433,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-green-down" class="form-select form-select-sm sprice-cvr-action-select" data-slab="green" data-trend="down">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1522,16 +1452,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-green-equal" class="form-select form-select-sm sprice-cvr-action-select" data-slab="green" data-trend="equal">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1548,16 +1471,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-green-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="green" data-trend="up">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1602,16 +1518,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-pink-down" class="form-select form-select-sm sprice-cvr-action-select" data-slab="pink" data-trend="down">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold" selected>Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1628,16 +1537,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-pink-equal" class="form-select form-select-sm sprice-cvr-action-select" data-slab="pink" data-trend="equal">
-                                                    <option value="decrease" selected>Decrease</option>
-                                                    <option value="increase">Increase</option>
-                                                    <option value="hold">Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1654,16 +1556,9 @@
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
-                                            <div class="col-4">
-                                                <select id="sprice-cvr-pink-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="pink" data-trend="up">
-                                                    <option value="decrease">Decrease</option>
-                                                    <option value="increase" selected>Increase</option>
-                                                    <option value="hold">Hold</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-4">
+                                            <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="0.1" max="50">
+                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Positive = increase %, negative = decrease %, 0 = hold">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -4342,15 +4237,17 @@
             const SPRICE_CVR_YELLOW_START = 0.01;
             /** Default Yellow≤ / Blue start boundary. */
             const SPRICE_CVR_YELLOW_END_DEFAULT = 3.5;
-            const SPRICE_CVR_DEFAULT_TREND_PCT = { down: 1, equal: 1, up: 1 };
-            const SPRICE_CVR_DEFAULT_YELLOW_PCT = { down: 2, equal: 1, up: 1 };
-            const SPRICE_CVR_DEFAULT_ZERO_PCT = { down: 2, equal: 1, up: 1 };
+            /** Signed %: +increase, −decrease, 0=hold (no suggestion) */
+            const SPRICE_CVR_DEFAULT_TREND_PCT = { down: 0, equal: 0, up: 0 };
+            const SPRICE_CVR_DEFAULT_YELLOW_PCT = { down: -2, equal: -1, up: 0 };
+            const SPRICE_CVR_DEFAULT_ZERO_PCT = { down: -2, equal: -1, up: 0 };
+            const SPRICE_CVR_DEFAULT_PINK_PCT = { down: 0, equal: -1, up: 1 };
             const SPRICE_CVR_DEFAULT_SLAB_PCT = {
                 zero: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ZERO_PCT)),
                 red: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_YELLOW_PCT)),
                 blue: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
                 green: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
-                pink: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT))
+                pink: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_PINK_PCT))
             };
             /** Rule 1 Dil% band edges: Down < dil_low · Equal mid · Up > dil_high */
             const SPRICE_CVR_DEFAULT_ZERO_CVR_DIL = {
@@ -4437,26 +4334,28 @@
                 return out;
             }
 
+            function actionFromSignedPct(v) {
+                const n = parseFloat(v);
+                if (!isFinite(n) || n === 0) return 'hold';
+                return n > 0 ? 'increase' : 'decrease';
+            }
+
+            /** Derive legacy actions from signed % inputs (for storage / Dil override titles). */
             function readSpriceCvrActionsFromUi() {
+                const sp = readSlabPctFromUi();
                 const out = {};
                 SPRICE_CVR_SLABS.forEach(function(slab) {
-                    const def = SPRICE_CVR_DEFAULT_ACTIONS[slab];
                     out[slab] = {
-                        down: sanitizeSpriceCvrAction($('#sprice-cvr-' + slab + '-down').val(), def.down),
-                        equal: sanitizeSpriceCvrAction($('#sprice-cvr-' + slab + '-equal').val(), def.equal),
-                        up: sanitizeSpriceCvrAction($('#sprice-cvr-' + slab + '-up').val(), def.up)
+                        down: actionFromSignedPct(sp[slab].down),
+                        equal: actionFromSignedPct(sp[slab].equal),
+                        up: actionFromSignedPct(sp[slab].up)
                     };
                 });
                 return out;
             }
 
-            function applySpriceCvrActionsToUi(actions) {
-                const a = normalizeSpriceCvrActions(actions);
-                SPRICE_CVR_SLABS.forEach(function(slab) {
-                    $('#sprice-cvr-' + slab + '-down').val(a[slab].down);
-                    $('#sprice-cvr-' + slab + '-equal').val(a[slab].equal);
-                    $('#sprice-cvr-' + slab + '-up').val(a[slab].up);
-                });
+            function applySpriceCvrActionsToUi() {
+                // Actions removed from UI — signed % inputs only
             }
 
             function normalizeTrendPct(raw, def) {
@@ -4465,9 +4364,9 @@
                 let down = parseFloat(src.down);
                 let equal = parseFloat(src.equal);
                 let up = parseFloat(src.up);
-                if (!isFinite(down) || down < 0.1 || down > 50) down = d.down;
-                if (!isFinite(equal) || equal < 0.1 || equal > 50) equal = d.equal;
-                if (!isFinite(up) || up < 0.1 || up > 50) up = d.up;
+                if (!isFinite(down) || down < -50 || down > 50) down = d.down;
+                if (!isFinite(equal) || equal < -50 || equal > 50) equal = d.equal;
+                if (!isFinite(up) || up < -50 || up > 50) up = d.up;
                 return { down: down, equal: equal, up: up };
             }
 
@@ -4475,7 +4374,54 @@
                 return normalizeTrendPct(raw, SPRICE_CVR_DEFAULT_YELLOW_PCT);
             }
 
-            function normalizeSlabPct(raw, yellowLegacy) {
+            /** Convert legacy positive % + action → signed % (once). */
+            function migrateLegacySlabPctToSigned(raw, actions, yellowLegacy) {
+                const src = raw && typeof raw === 'object' ? raw : {};
+                const acts = normalizeSpriceCvrActions(actions);
+                // Signed format uses ≤0 (0=hold). Legacy magnitudes were always >0.
+                let looksSigned = false;
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    const row = src[slab];
+                    if (row && typeof row === 'object') {
+                        ['down', 'equal', 'up'].forEach(function(k) {
+                            const n = parseFloat(row[k]);
+                            if (isFinite(n) && n <= 0) looksSigned = true;
+                        });
+                    }
+                });
+                const out = {};
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    const def = SPRICE_CVR_DEFAULT_SLAB_PCT[slab];
+                    let row = src[slab];
+                    if ((!row || typeof row !== 'object') && slab === 'red' && yellowLegacy) {
+                        row = yellowLegacy;
+                    }
+                    if (looksSigned) {
+                        out[slab] = normalizeTrendPct(row, def);
+                        return;
+                    }
+                    // Legacy: magnitude was always positive; Hold → 0
+                    const magSrc = row && typeof row === 'object' ? row : {};
+                    let down = parseFloat(magSrc.down);
+                    let equal = parseFloat(magSrc.equal);
+                    let up = parseFloat(magSrc.up);
+                    if (!isFinite(down) || down < 0 || down > 50) down = Math.abs(def.down);
+                    if (!isFinite(equal) || equal < 0 || equal > 50) equal = Math.abs(def.equal);
+                    if (!isFinite(up) || up < 0 || up > 50) up = Math.abs(def.up);
+                    const a = acts[slab] || SPRICE_CVR_DEFAULT_ACTIONS[slab];
+                    out[slab] = {
+                        down: a.down === 'hold' ? 0 : (a.down === 'decrease' ? -Math.abs(down) : Math.abs(down)),
+                        equal: a.equal === 'hold' ? 0 : (a.equal === 'decrease' ? -Math.abs(equal) : Math.abs(equal)),
+                        up: a.up === 'hold' ? 0 : (a.up === 'decrease' ? -Math.abs(up) : Math.abs(up))
+                    };
+                });
+                return out;
+            }
+
+            function normalizeSlabPct(raw, yellowLegacy, actions) {
+                if (actions) {
+                    return migrateLegacySlabPctToSigned(raw, actions, yellowLegacy);
+                }
                 const src = raw && typeof raw === 'object' ? raw : {};
                 const out = {};
                 SPRICE_CVR_SLABS.forEach(function(slab) {
@@ -4584,8 +4530,9 @@
                     mid_cvr: resp && resp.mid_cvr,
                     high_cvr: resp && resp.high_cvr
                 });
+                const actions = normalizeSpriceCvrActions(resp && resp.actions);
                 const yellowPct = normalizeYellowPct(resp && resp.yellow_pct);
-                const slabPct = normalizeSlabPct(resp && resp.slab_pct, yellowPct);
+                const slabPct = normalizeSlabPct(resp && resp.slab_pct, yellowPct, actions);
                 return {
                     low_cvr: slabs.low,
                     mid_cvr: slabs.mid,
@@ -4594,7 +4541,7 @@
                     up_mult: parseFloat(resp && resp.up_mult) || 1.01,
                     roi_floor_pct: parseFloat(resp && resp.roi_floor_pct) || 40,
                     trend_tolerance: parseFloat(resp && resp.trend_tolerance) || 0.1,
-                    actions: normalizeSpriceCvrActions(resp && resp.actions),
+                    actions: actions,
                     yellow_pct: slabPct.red,
                     slab_pct: slabPct,
                     zero_down_dil: normalizeDilOverride(resp && resp.zero_down_dil),
@@ -4736,29 +4683,29 @@
             }
 
             /**
-             * Resolve multiplier from slab + trend using per-rule % inputs.
+             * Resolve multiplier from signed % input:
+             *   +N → increase N%, −N → decrease N%, 0 → no suggestion.
+             * Dil% > threshold → force increase by |N| (or 1% if N is 0).
              * No decrease when Dil% > 100.
-             * Rule1/Yellow Up + Blue/Green Equal|Up + Pink Down|Equal|Up: Increase when Dil% > threshold.
              */
             function resolveSpriceCvrMult(cvr, trend, rule, rd) {
                 if (!trend || !rule) return null;
                 const slabs = resolveSpriceCvrSlabs(rule);
-                // Rule 1 Red (CVR=0%): CVR trend + zero actions (same format as Yellow)
                 const slab = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
-                const actions = normalizeSpriceCvrActions(rule.actions);
-                let action = (actions[slab] && actions[slab][trend]) || 'hold';
+                const slabPct = normalizeSlabPct(rule.slab_pct, rule.yellow_pct, rule.actions);
+                let signed = slabPctForTrend(slabPct, slab, trend);
+                if (!isFinite(signed)) signed = 0;
                 // Dil% > threshold → force Increase
                 if (rd && dilOverrideApplies(slab, trend)) {
                     if (amazonRowDilPct(rd) > dilOverrideThreshold(rule, slab, trend)) {
-                        action = 'increase';
+                        signed = Math.abs(signed) > 0 ? Math.abs(signed) : 1;
                     }
                 }
-                if (action === 'hold') return null;
-                if (action === 'decrease' && rd && amazonRowDilPct(rd) > 100) return null;
-                const slabPct = normalizeSlabPct(rule.slab_pct, rule.yellow_pct);
-                const pct = slabPctForTrend(slabPct, slab, trend);
-                const mult = action === 'increase' ? (1 + pct / 100) : (1 - pct / 100);
-                if (action === 'increase') {
+                if (signed === 0) return null;
+                if (signed < 0 && rd && amazonRowDilPct(rd) > 100) return null;
+                const pct = Math.abs(signed);
+                const mult = signed > 0 ? (1 + pct / 100) : (1 - pct / 100);
+                if (signed > 0) {
                     return (isFinite(mult) && mult > 1) ? +mult.toFixed(6) : (rule.up_mult || 1.01);
                 }
                 return (isFinite(mult) && mult > 0 && mult < 1) ? +mult.toFixed(6) : (rule.down_mult || 0.99);
@@ -5378,7 +5325,7 @@
                 if (parseFloat(r.mid_cvr) <= r.low_cvr) r.mid_cvr = slabs.mid;
                 if (parseFloat(r.high_cvr) <= parseFloat(r.mid_cvr)) r.high_cvr = slabs.high;
                 if (!r.actions) r.actions = normalizeSpriceCvrActions(null);
-                r.slab_pct = normalizeSlabPct(r.slab_pct, r.yellow_pct);
+                r.slab_pct = normalizeSlabPct(r.slab_pct, r.yellow_pct, r.actions);
                 r.yellow_pct = r.slab_pct.red;
                 Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).forEach(function(k) {
                     if (k === 'zero_up_dil') r[k] = normalizeZeroUpDil(r[k]);
@@ -5392,17 +5339,15 @@
                 $('#sprice-cvr-mid-input').val(r.mid_cvr);
                 $('#sprice-cvr-high-input').val(r.high_cvr);
                 $('#sprice-cvr-roi-floor-input').val(r.roi_floor_pct);
-                applySpriceCvrActionsToUi(r.actions);
                 applySlabPctToUi(r.slab_pct);
                 applyDilOverridesToUi(r);
                 applyZeroCvrDilToUi(r.zero_cvr_dil);
+                r.actions = readSpriceCvrActionsFromUi();
                 refreshSpriceCvrSlabLabels();
                 const sp = r.slab_pct;
-                const zActs = normalizeSpriceCvrActions(r.actions).zero;
                 $('#apply-sprice-cvr-btn').attr('title',
-                    'Per-rule % · Dil override on all Down/Equal/Up · Z ' +
+                    'Signed % (+inc / −dec / 0=hold) · Dil override forces +|%| · Z ' +
                     sp.zero.down + '/' + sp.zero.equal + '/' + sp.zero.up +
-                    ' (' + zActs.down + '/' + zActs.equal + '/' + zActs.up + ')' +
                     ' · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
                     ' · B ' + sp.blue.down + '/' + sp.blue.equal + '/' + sp.blue.up +
                     ' · G ' + sp.green.down + '/' + sp.green.equal + '/' + sp.green.up +
@@ -5449,62 +5394,74 @@
             }
 
             function saveSpriceCvrRuleFromModal() {
-                const slabs = readSpriceCvrSlabInputs();
-                const zeroDil = readZeroCvrDilFromUi();
-                const slabPct = readSlabPctFromUi();
-                const dilOverrides = readDilOverridesFromUi();
-                const payload = Object.assign({
-                    low_cvr: SPRICE_CVR_YELLOW_END_DEFAULT,
-                    mid_cvr: slabs.mid,
-                    high_cvr: slabs.high,
-                    down_mult: spriceCvrRule.down_mult || 0.99,
-                    up_mult: spriceCvrRule.up_mult || 1.01,
-                    roi_floor_pct: parseFloat(String($('#sprice-cvr-roi-floor-input').val()).replace(',', '.')),
-                    actions: readSpriceCvrActionsFromUi(),
-                    yellow_pct: slabPct.red,
-                    slab_pct: slabPct,
-                    zero_cvr_dil: zeroDil
-                }, dilOverrides);
-                const pctOk = SPRICE_CVR_SLABS.every(function(slab) {
-                    const p = slabPct[slab];
-                    return p && isFinite(p.down) && isFinite(p.equal) && isFinite(p.up);
-                });
-                const dilOk = Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).every(function(k) {
-                    return isFinite(dilOverrides[k]);
-                });
-                if (!isFinite(payload.mid_cvr) || !isFinite(payload.high_cvr) ||
-                    !isFinite(payload.roi_floor_pct) || !dilOk || !pctOk) {
+                try {
+                    const slabs = readSpriceCvrSlabInputs();
+                    const zeroDil = readZeroCvrDilFromUi();
+                    const slabPct = readSlabPctFromUi();
+                    const dilOverrides = readDilOverridesFromUi();
+                    const payload = Object.assign({
+                        low_cvr: SPRICE_CVR_YELLOW_END_DEFAULT,
+                        mid_cvr: slabs.mid,
+                        high_cvr: slabs.high,
+                        down_mult: spriceCvrRule.down_mult || 0.99,
+                        up_mult: spriceCvrRule.up_mult || 1.01,
+                        roi_floor_pct: parseFloat(String($('#sprice-cvr-roi-floor-input').val()).replace(',', '.')),
+                        actions: readSpriceCvrActionsFromUi(),
+                        yellow_pct: slabPct.red,
+                        slab_pct: slabPct,
+                        zero_cvr_dil: zeroDil
+                    }, dilOverrides);
+                    const pctOk = SPRICE_CVR_SLABS.every(function(slab) {
+                        const p = slabPct[slab];
+                        return p && isFinite(p.down) && isFinite(p.equal) && isFinite(p.up);
+                    });
+                    const dilOk = Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).every(function(k) {
+                        return isFinite(dilOverrides[k]);
+                    });
+                    if (!isFinite(payload.mid_cvr) || !isFinite(payload.high_cvr) ||
+                        !isFinite(payload.roi_floor_pct) || !dilOk || !pctOk) {
+                        $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
+                            .text('Enter valid numbers for all fields (incl. rule %, Dil overrides)');
+                        return;
+                    }
+                    if (!(payload.mid_cvr > payload.low_cvr && payload.high_cvr > payload.mid_cvr)) {
+                        $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
+                            .text('Need Blue≤ > 3.5 and Green≤ > Blue≤');
+                        return;
+                    }
+                    const $btn = $('#sprice-cvr-save-btn');
+                    const btnHtml = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
+                    $.ajax({
+                        url: SPRICE_CVR_URL,
+                        method: 'POST',
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                            'Accept': 'application/json'
+                        },
+                        data: JSON.stringify(payload),
+                        success: function(resp) {
+                            if (resp && resp.rule) spriceCvrRule = normalizeSpriceCvrRule(resp.rule);
+                            refreshSpriceCvrUi();
+                            refreshSpriceCvrPieChart();
+                            $('#sprice-cvr-modal-status').removeClass('text-danger').addClass('text-success').text('Saved');
+                            if (typeof showToast === 'function') showToast('success', 'Sprice × CVR rule saved');
+                        },
+                        error: function(xhr) {
+                            const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                                || ('Failed to save' + (xhr.status ? ' (' + xhr.status + ')' : ''));
+                            $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger').text(msg);
+                            if (typeof showToast === 'function') showToast('error', msg);
+                        },
+                        complete: function() { $btn.prop('disabled', false).html(btnHtml); }
+                    });
+                } catch (err) {
+                    console.error('saveSpriceCvrRuleFromModal', err);
                     $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
-                        .text('Enter valid numbers for all fields (incl. rule %, Dil overrides)');
-                    return;
+                        .text('Save failed: ' + (err && err.message ? err.message : 'JS error'));
                 }
-                if (!(payload.mid_cvr > payload.low_cvr && payload.high_cvr > payload.mid_cvr)) {
-                    $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
-                        .text('Need Blue≤ > 3.5 and Green≤ > Blue≤');
-                    return;
-                }
-                const $btn = $('#sprice-cvr-save-btn');
-                const btnHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
-                $.ajax({
-                    url: SPRICE_CVR_URL,
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: payload,
-                    success: function(resp) {
-                        if (resp && resp.rule) spriceCvrRule = normalizeSpriceCvrRule(resp.rule);
-                        refreshSpriceCvrUi();
-                        refreshSpriceCvrPieChart();
-                        $('#sprice-cvr-modal-status').removeClass('text-danger').addClass('text-success').text('Saved');
-                        showToast('success', 'Sprice × CVR rule saved');
-                    },
-                    error: function(xhr) {
-                        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to save';
-                        $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger').text(msg);
-                        showToast('error', msg);
-                    },
-                    complete: function() { $btn.prop('disabled', false).html(btnHtml); }
-                });
             }
 
             loadSpriceCvrRule();
@@ -5630,13 +5587,10 @@
                 refreshSpriceCvrSlabLabels();
                 refreshSpriceCvrPieChart();
             });
-            $(document).on('change', '.sprice-cvr-action-select', function() {
-                spriceCvrRule.actions = readSpriceCvrActionsFromUi();
-                refreshSpriceCvrPieChart();
-            });
             $(document).on('input change', '.sprice-cvr-slab-pct-input', function() {
                 spriceCvrRule.slab_pct = readSlabPctFromUi();
                 spriceCvrRule.yellow_pct = spriceCvrRule.slab_pct.red;
+                spriceCvrRule.actions = readSpriceCvrActionsFromUi();
                 refreshSpriceCvrPieChart();
             });
             $(document).on('input change', '.sprice-cvr-dil-override-input', function() {
@@ -5730,14 +5684,12 @@
                     ? ('\n' + zeroCvrCount + ' SKU(s) via CVR=0% trend')
                     : '';
                 const slabs = resolveSpriceCvrSlabs(rule);
-                const acts = normalizeSpriceCvrActions(rule.actions);
-                const sp = normalizeSlabPct(rule.slab_pct, rule.yellow_pct);
-                const actLabel = function(a, slab, trend) {
-                    if (a === 'increase' || a === 'decrease') {
-                        const pct = formatSlabBound(slabPctForTrend(sp, slab || 'red', trend || 'down'));
-                        return (a === 'increase' ? 'inc ' : 'dec ') + pct + '%';
-                    }
-                    return 'hold';
+                const sp = normalizeSlabPct(rule.slab_pct, rule.yellow_pct, rule.actions);
+                const actLabel = function(slab, trend) {
+                    const pct = slabPctForTrend(sp, slab || 'red', trend || 'down');
+                    if (!isFinite(pct) || pct === 0) return 'hold';
+                    const s = formatSlabBound(pct);
+                    return (pct > 0 ? '+' : '') + s + '%';
                 };
                 const midL = formatSlabBound(slabs.mid);
                 const highL = formatSlabBound(slabs.high);
@@ -5752,21 +5704,21 @@
                 };
                 if (!confirm(
                     'Adjust SPRICE by CVR trend for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
-                    '1 Red CVR=0%: Down=' + actLabel(acts.zero.down, 'zero', 'down') + dilInc('zero', 'down') +
-                    ', Equal=' + actLabel(acts.zero.equal, 'zero', 'equal') + dilInc('zero', 'equal') +
-                    ', Up=' + actLabel(acts.zero.up, 'zero', 'up') + dilInc('zero', 'up') + '\n' +
-                    '2 Yellow ' + yellowBand + ': Down=' + actLabel(acts.red.down, 'red', 'down') + dilInc('red', 'down') +
-                    ', Equal=' + actLabel(acts.red.equal, 'red', 'equal') + dilInc('red', 'equal') +
-                    ', Up=' + actLabel(acts.red.up, 'red', 'up') + dilInc('red', 'up') + '\n' +
-                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel(acts.blue.down, 'blue', 'down') + dilInc('blue', 'down') +
-                    ', Equal=' + actLabel(acts.blue.equal, 'blue', 'equal') + dilInc('blue', 'equal') +
-                    ', Up=' + actLabel(acts.blue.up, 'blue', 'up') + dilInc('blue', 'up') + '\n' +
-                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel(acts.green.down, 'green', 'down') + dilInc('green', 'down') +
-                    ', Equal=' + actLabel(acts.green.equal, 'green', 'equal') + dilInc('green', 'equal') +
-                    ', Up=' + actLabel(acts.green.up, 'green', 'up') + dilInc('green', 'up') + '\n' +
-                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel(acts.pink.down, 'pink', 'down') + dilInc('pink', 'down') +
-                    ', Equal=' + actLabel(acts.pink.equal, 'pink', 'equal') + dilInc('pink', 'equal') +
-                    ', Up=' + actLabel(acts.pink.up, 'pink', 'up') + dilInc('pink', 'up') + '\n' +
+                    '1 Red CVR=0%: Down=' + actLabel('zero', 'down') + dilInc('zero', 'down') +
+                    ', Equal=' + actLabel('zero', 'equal') + dilInc('zero', 'equal') +
+                    ', Up=' + actLabel('zero', 'up') + dilInc('zero', 'up') + '\n' +
+                    '2 Yellow ' + yellowBand + ': Down=' + actLabel('red', 'down') + dilInc('red', 'down') +
+                    ', Equal=' + actLabel('red', 'equal') + dilInc('red', 'equal') +
+                    ', Up=' + actLabel('red', 'up') + dilInc('red', 'up') + '\n' +
+                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel('blue', 'down') + dilInc('blue', 'down') +
+                    ', Equal=' + actLabel('blue', 'equal') + dilInc('blue', 'equal') +
+                    ', Up=' + actLabel('blue', 'up') + dilInc('blue', 'up') + '\n' +
+                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel('green', 'down') + dilInc('green', 'down') +
+                    ', Equal=' + actLabel('green', 'equal') + dilInc('green', 'equal') +
+                    ', Up=' + actLabel('green', 'up') + dilInc('green', 'up') + '\n' +
+                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel('pink', 'down') + dilInc('pink', 'down') +
+                    ', Equal=' + actLabel('pink', 'equal') + dilInc('pink', 'equal') +
+                    ', Up=' + actLabel('pink', 'up') + dilInc('pink', 'up') + '\n' +
                     'Floor: SGROI ≥ ' + rule.roi_floor_pct + '%' +
                     '\nNo decrease when Dil% > 100' +
                     floorNote + zeroNote
