@@ -12,6 +12,7 @@ use App\Models\SheinDailyData;
 use App\Models\SheinDailyDataL60;
 use App\Models\ShopifySku;
 use App\Services\SheinShopifySalesService;
+use App\Services\SheinApiService;
 use App\Services\LmpSkuGroupService;
 use App\Models\AmazonChannelSummary;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -281,91 +282,53 @@ class SheinController extends Controller
     }
 
     /**
-     * Upload Shein daily data file in chunks
+     * Sheet upload removed — use Shein Open API sync instead.
      */
     public function uploadDailyDataChunk(Request $request)
     {
+        return response()->json([
+            'success' => false,
+            'message' => 'Sheet upload removed. Use Sync Orders (API) on /shein-tabulator or POST /shein/sync-orders.',
+        ], 410);
+    }
+
+    /**
+     * Sync L30/L60 orders from Shein API into shein_daily_data / shein_daily_data_l60.
+     */
+    public function syncOrdersFromApi(Request $request, SheinApiService $sheinApi)
+    {
         try {
-            $request->validate([
-                'file' => 'required|file|max:51200',
-                'chunk' => 'required|integer|min:0',
-                'totalChunks' => 'required|integer|min:1',
-            ]);
+            $target = strtolower((string) $request->input('target', 'l30')) === 'l60' ? 'l60' : 'l30';
+            $days = (int) $request->input('days', $target === 'l60' ? 60 : 30);
+            $result = $sheinApi->syncOrdersToDailyData($days, $target);
 
-            $file = $request->file('file');
-            $chunk = $request->input('chunk');
-            $totalChunks = $request->input('totalChunks');
-            $uploadId = $request->input('uploadId', uniqid('shein_upload_'));
-
-            $tempPath = storage_path('app/temp');
-            if (! file_exists($tempPath)) {
-                mkdir($tempPath, 0755, true);
-            }
-
-            $fileName = $uploadId.'_'.$file->getClientOriginalName();
-            $filePath = $tempPath.'/'.$fileName;
-
-            if ($chunk == 0) {
-                $file->move($tempPath, $fileName);
-
-                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-                SheinDailyData::truncate();
-                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-                Log::info('Shein daily data table truncated before import');
-            }
-
-            $spreadsheet = $this->loadSheinOrderSpreadsheet($filePath);
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            unset($rows[0], $rows[1]);
-
-            $totalRows = count($rows);
-            $chunkSize = max(1, (int) ceil($totalRows / $totalChunks));
-            $startRow = $chunk * $chunkSize;
-            $chunkRows = array_slice($rows, $startRow, $chunkSize, true);
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                foreach ($chunkRows as $row) {
-                    $insertData = $this->mapSheinOrderExportRow(is_array($row) ? $row : []);
-                    if (! $insertData) {
-                        $skipped++;
-                        continue;
-                    }
-                    SheinDailyData::create($insertData);
-                    $imported++;
-                }
-                DB::commit();
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-
-            if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
-                unlink($filePath);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "Chunk $chunk processed successfully",
-                'chunk' => $chunk,
-                'totalChunks' => $totalChunks,
-                'imported' => $imported,
-                'skipped' => $skipped,
-                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2),
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error uploading Shein daily data chunk: '.$e->getMessage());
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $e) {
+            Log::error('Shein syncOrdersFromApi failed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error: '.$e->getMessage(),
-            ], 500);
+                'message' => 'Orders API sync failed: '.$e->getMessage(),
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+    }
+
+    /**
+     * Sync price/stock from Shein API into shein_pricing_prices.
+     */
+    public function syncPricingFromApi(SheinApiService $sheinApi)
+    {
+        try {
+            $result = $sheinApi->syncPricingPricesFromApi();
+
+            return response()->json($result, ($result['success'] ?? false) ? 200 : 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
+        } catch (\Throwable $e) {
+            Log::error('Shein syncPricingFromApi failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Pricing API sync failed: '.$e->getMessage(),
+            ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
     }
 
@@ -436,89 +399,14 @@ class SheinController extends Controller
      */
     public function uploadDailyDataL60Chunk(Request $request)
     {
-        try {
-            $request->validate([
-                'file' => 'required|file|max:51200',
-                'chunk' => 'required|integer|min:0',
-                'totalChunks' => 'required|integer|min:1',
-            ]);
-
-            $file = $request->file('file');
-            $chunk = $request->input('chunk');
-            $totalChunks = $request->input('totalChunks');
-            $uploadId = $request->input('uploadId', uniqid('shein_l60_upload_'));
-
-            $tempPath = storage_path('app/temp');
-            if (! file_exists($tempPath)) {
-                mkdir($tempPath, 0755, true);
-            }
-
-            $fileName = $uploadId.'_'.$file->getClientOriginalName();
-            $filePath = $tempPath.'/'.$fileName;
-
-            if ($chunk == 0) {
-                $file->move($tempPath, $fileName);
-
-                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-                SheinDailyDataL60::truncate();
-                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-                Log::info('Shein L60 daily data table truncated before import');
-            }
-
-            $spreadsheet = $this->loadSheinOrderSpreadsheet($filePath);
-            $rows = $spreadsheet->getActiveSheet()->toArray();
-            unset($rows[0], $rows[1]);
-
-            $totalRows = count($rows);
-            $chunkSize = max(1, (int) ceil($totalRows / $totalChunks));
-            $chunkRows = array_slice($rows, $chunk * $chunkSize, $chunkSize, true);
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                foreach ($chunkRows as $row) {
-                    $insertData = $this->mapSheinOrderExportRow(is_array($row) ? $row : []);
-                    if (! $insertData) {
-                        $skipped++;
-                        continue;
-                    }
-                    SheinDailyDataL60::create($insertData);
-                    $imported++;
-                }
-                DB::commit();
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
-            }
-
-            if ($chunk == $totalChunks - 1 && file_exists($filePath)) {
-                unlink($filePath);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "Chunk $chunk processed successfully",
-                'chunk' => $chunk,
-                'totalChunks' => $totalChunks,
-                'imported' => $imported,
-                'skipped' => $skipped,
-                'progress' => round((($chunk + 1) / $totalChunks) * 100, 2),
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error uploading Shein L60 daily data chunk: '.$e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error: '.$e->getMessage(),
-            ], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'Sheet upload removed. Use Sync L60 (API) on /shein-tabulator or POST /shein/sync-orders with target=l60.',
+        ], 410);
     }
 
     /**
-     * Get L60 sales statistics from uploaded shein_daily_data_l60 (Seller Hub export).
+     * Get L60 sales statistics from shein_daily_data_l60 (Shein API sync).
      */
     public function getL60Sales(Request $request)
     {
@@ -572,8 +460,7 @@ class SheinController extends Controller
 
     /**
      * Get daily data for Shein tabulator view.
-     * Source: uploaded Seller Hub order export only → shein_daily_data
-     * (NOT Shopify / apicentral).
+     * Source: Shein Open API sync → shein_daily_data (NOT Shopify / apicentral).
      */
     public function getDailyData(Request $request)
     {
@@ -611,17 +498,17 @@ class SheinController extends Controller
                 ->values()
                 ->all();
 
-            Log::info('Shein daily data fetched from shein_daily_data upload', [
+            Log::info('Shein daily data fetched from shein_daily_data (API sync)', [
                 'result_count' => count($data),
             ]);
 
             return response()->json([
                 'data' => $data,
-                'source' => 'shein_daily_data_upload',
+                'source' => 'shein_api',
                 'marketplace_margin_decimal' => SheinShopifySalesService::sheinMarginDecimal(),
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching Shein daily data from upload: '.$e->getMessage());
+            Log::error('Error fetching Shein daily data: '.$e->getMessage());
 
             return response()->json(['error' => $e->getMessage(), 'data' => []], 500);
         }
@@ -744,77 +631,10 @@ class SheinController extends Controller
 
     public function uploadSheinPriceSheet(Request $request)
     {
-        $request->validate(['price_file' => 'required|file']);
-
-        try {
-            $file = $request->file('price_file');
-            $path = $file->getPathName();
-
-            $rows = [];
-
-            // ── Detect file type ─────────────────────────────────────────
-            if ($this->sheinIsExcelFile($path)) {
-                // Excel (xlsx / xls)
-                $spreadsheet = IOFactory::load($path);
-                $raw         = $spreadsheet->getActiveSheet()->toArray();
-                $headerRow   = array_shift($raw);
-                $rows        = $this->parseSheinRows($headerRow, $raw, false);
-            } else {
-                // TSV / CSV – handle BOM, auto-detect delimiter
-                $handle = fopen($path, 'r');
-                $bom    = fread($handle, 3);
-                if ($bom !== "\xEF\xBB\xBF") rewind($handle);
-                $firstLine = fgets($handle);
-                rewind($handle);
-                if ($bom === "\xEF\xBB\xBF") fread($handle, 3);
-
-                $delimiter = (substr_count($firstLine, "\t") > substr_count($firstLine, ",")) ? "\t" : ",";
-                $headerRow = fgetcsv($handle, 0, $delimiter);
-                if (!$headerRow) {
-                    fclose($handle);
-                    return response()->json(['success' => false, 'message' => 'Empty file.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
-                }
-
-                $rawData = [];
-                while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
-                    if ($row && count(array_filter($row, fn($v) => $v !== '' && $v !== null)) > 0) {
-                        $rawData[] = $row;
-                    }
-                }
-                fclose($handle);
-                $rows = $this->parseSheinRows($headerRow, $rawData, true);
-            }
-
-            if (empty($rows)) {
-                return response()->json(['success' => false, 'message' => 'No data rows found.'], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
-            }
-
-            $updated = 0;
-            foreach ($rows as $row) {
-                \App\Models\SheinPricingPrice::updateOrCreate(
-                    ['sku' => $row['sku']],
-                    [
-                        'price'               => max(0, $row['price']),
-                        'original_price'      => max(0, $row['original_price'] ?? 0),
-                        'special_offer_price' => max(0, $row['special_offer_price']),
-                        'shein_stock'         => max(0, $row['stock']),
-                    ]
-                );
-                $updated++;
-            }
-
-            return response()->json(
-                ['success' => true, 'message' => "{$updated} SKU(s) updated.", 'updated' => $updated],
-                200,
-                [],
-                JSON_INVALID_UTF8_SUBSTITUTE
-            );
-        } catch (\Throwable $e) {
-            Log::error('Shein pricing upload failed: ' . $e->getMessage());
-            $msg = $this->sanitizeUtf8String('Upload failed: ' . $e->getMessage());
-
-            return response()->json(['success' => false, 'message' => $msg], 500, [], JSON_INVALID_UTF8_SUBSTITUTE);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'Sheet upload removed. Use Sync from API on /shein-pricing or POST /shein/sync-pricing.',
+        ], 410);
     }
 
     /**
@@ -1304,6 +1124,64 @@ class SheinController extends Controller
         }
 
         return $diff <= ($inv * 0.03);
+    }
+
+    /**
+     * N Map SKU rows from /shein-pricing tabular data — same rules as countSheinPricingBadgeTotals.
+     * Used by /map-issues/channel/shein (same pattern as TikTok nmapSkuRowsFromTabular).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{sku: string, channel_sku: string, inv: float, channel_inv: float, diff: float}>
+     */
+    public static function nmapSkuRowsFromPricing(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_object($row)) {
+                $row = (array) $row;
+            }
+            if (! is_array($row) || ! empty($row['is_parent'])) {
+                continue;
+            }
+
+            $inv = (float) ($row['inv'] ?? 0);
+            $nrValue = strtoupper(trim((string) (($row['nr_req'] ?? '') ?: ($row['NR'] ?? ''))));
+            $isMissingShein = (bool) ($row['is_missing_shein'] ?? false)
+                || strtoupper(trim((string) ($row['missing'] ?? ''))) === 'M';
+            $rowPrice = (float) ($row['special_offer'] ?? 0);
+            $sheinStock = (float) ($row['shein_stock'] ?? 0);
+
+            if ($inv <= 0 || $nrValue !== 'REQ') {
+                continue;
+            }
+            if ($isMissingShein || $rowPrice <= 0) {
+                continue;
+            }
+            if ($sheinStock <= 0) {
+                continue;
+            }
+
+            $diff = abs($inv - $sheinStock);
+            $within = $diff <= 3.0 || $diff <= ($inv * 0.03);
+            if ($within) {
+                continue;
+            }
+
+            $sku = trim((string) ($row['sku'] ?? $row['(Child) sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            $out[] = [
+                'sku' => $sku,
+                'channel_sku' => $sku,
+                'inv' => $inv,
+                'channel_inv' => $sheinStock,
+                'diff' => $diff,
+            ];
+        }
+
+        return $out;
     }
 
     /**

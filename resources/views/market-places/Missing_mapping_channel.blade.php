@@ -33,6 +33,11 @@
                         Missing Mapping: <span id="mmc-total-count">0</span>
                     </span>
                     <span class="text-muted small">{{ $channelName }} — SKUs where INV does not match channel stock (N Map)</span>
+                    @if (!empty($hasSkuDetail))
+                        <button type="button" id="mmc-export-btn" class="btn btn-sm btn-success ms-auto" title="Export CSV">
+                            <i class="fas fa-file-excel me-1"></i> Export
+                        </button>
+                    @endif
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -128,6 +133,15 @@
             mmcTable.setFilter(function(row) {
                 return String(row.sku || '').toLowerCase().includes(q)
                     || String(row.channel_sku || '').toLowerCase().includes(q);
+            });
+        });
+
+        $('#mmc-export-btn').on('click', function() {
+            if (!mmcTable) return;
+            const slug = @json($channelSlug);
+            const stamp = new Date().toISOString().slice(0, 10);
+            mmcTable.download("csv", `missing_mapping_${slug}_${stamp}.csv`, {
+                bom: true,
             });
         });
     });

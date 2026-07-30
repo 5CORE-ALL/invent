@@ -46,7 +46,7 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Shein Daily Data',
-        'sub_title' => 'Uses uploaded Seller Hub orders only (shein_daily_data) — not Shopify',
+        'sub_title' => 'Orders from Shein Open API (shein_daily_data) — sheet upload removed',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -68,11 +68,11 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadDailyDataModal">
-                        <i class="fa fa-upload"></i> Upload L30
+                    <button type="button" class="btn btn-sm btn-primary" id="sync-orders-l30-btn" title="Pull last 30 days from Shein API">
+                        <i class="fa fa-cloud-download-alt"></i> Sync L30 (API)
                     </button>
-                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadL60Modal">
-                        <i class="fa fa-upload"></i> Upload L60
+                    <button type="button" class="btn btn-sm btn-success" id="sync-orders-l60-btn" title="Pull last 60 days from Shein API">
+                        <i class="fa fa-cloud-download-alt"></i> Sync L60 (API)
                     </button>
 
                     <button type="button" class="btn btn-sm btn-info" id="export-btn">
@@ -82,7 +82,7 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics (uploaded orders)</h6>
+                    <h6 class="mb-3">Summary Statistics (API orders)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
@@ -122,80 +122,6 @@
         </div>
     </div>
 
-    {{-- Upload L30 (Seller Hub order export) --}}
-    <div class="modal fade" id="uploadDailyDataModal" tabindex="-1" aria-labelledby="uploadDailyDataModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadDailyDataModalLabel">
-                        <i class="fa fa-upload me-2"></i>Upload Shein L30 Order Export
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="dailyDataFile" class="form-label">Select Seller Hub export (any file type)</label>
-                        <input type="file" class="form-control" id="dailyDataFile">
-                        <div class="form-text">
-                            Same format as <code>sheinorders.csv</code> (2 header rows, Order Number, Seller SKU, Product Price, Estimated merchandise revenue, Number of items sold, …).
-                            Accepts any extension (.csv, .xlsx, .xls, .txt, etc.). Replaces all current L30 rows.
-                        </div>
-                    </div>
-                    <div id="uploadProgressContainer" style="display: none;">
-                        <div class="mb-2"><strong>Upload Progress:</strong></div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
-                                 role="progressbar" style="width: 0%">0%</div>
-                        </div>
-                        <div id="uploadStatus" class="text-muted small"></div>
-                    </div>
-                    <div id="uploadResult" class="alert" style="display: none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="startUploadBtn">
-                        <i class="fa fa-upload me-1"></i>Start Upload
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- Upload L60 --}}
-    <div class="modal fade" id="uploadL60Modal" tabindex="-1" aria-labelledby="uploadL60ModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="uploadL60ModalLabel">
-                        <i class="fa fa-upload me-2"></i>Upload Shein L60 Order Export
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="dailyDataFileL60" class="form-label">Select Seller Hub L60 export (any file type)</label>
-                        <input type="file" class="form-control" id="dailyDataFileL60">
-                        <div class="form-text">Same CSV/Excel format as L30. Accepts any extension. Stores in the L60 table only.</div>
-                    </div>
-                    <div id="uploadL60ProgressContainer" style="display: none;">
-                        <div class="mb-2"><strong>Upload Progress:</strong></div>
-                        <div class="progress mb-2" style="height: 25px;">
-                            <div id="uploadL60ProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
-                                 role="progressbar" style="width: 0%">0%</div>
-                        </div>
-                        <div id="uploadL60Status" class="text-muted small"></div>
-                    </div>
-                    <div id="uploadL60Result" class="alert" style="display: none;"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-success" id="startUploadL60Btn">
-                        <i class="fa fa-upload me-1"></i>Upload L60
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @section('script-bottom')
@@ -884,123 +810,59 @@
             table.download("csv", "shein_daily_data.csv");
         });
 
-        // ── Upload L30 / L60 (Seller Hub CSV) ──
-        function uploadSheinFile(fileInputId, url, progressWrap, progressBar, statusEl, resultEl, startBtnSelector, onDone) {
-            const fileInput = document.getElementById(fileInputId);
-            const file = fileInput && fileInput.files[0];
-            if (!file) {
-                showToast('Please select a file first', 'error');
-                return;
-            }
-            const $btn = $(startBtnSelector);
-            const uploadId = 'shein_' + Date.now();
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('chunk', 0);
-            formData.append('totalChunks', 1);
-            formData.append('uploadId', uploadId);
-
+        // ── Sync L30 / L60 from Shein Open API ──
+        function syncSheinOrders(target, btnSelector) {
+            const $btn = $(btnSelector);
+            const days = target === 'l60' ? 60 : 30;
             $btn.prop('disabled', true);
-            $(progressWrap).show();
-            $(resultEl).hide();
-            $(progressBar).addClass('progress-bar-animated').css('width', '40%').text('40%');
-            $(statusEl).text('Uploading and importing…');
+            const originalHtml = $btn.html();
+            $btn.html('<i class="fa fa-spinner fa-spin"></i> Syncing…');
+            showToast('Syncing Shein ' + target.toUpperCase() + ' orders from API…', 'info');
 
             $.ajax({
-                url: url,
+                url: '{{ route("shein.sync.orders") }}',
                 type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                data: { target: target, days: days, _token: '{{ csrf_token() }}' },
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
                 success: function(res) {
-                    $(progressBar).removeClass('progress-bar-animated').css('width', '100%').text('100%');
                     if (res && res.success) {
-                        const msg = 'Imported ' + (res.imported || 0) + ' rows'
-                            + (res.skipped ? (' (skipped ' + res.skipped + ')') : '');
-                        $(statusEl).text('Done');
-                        $(resultEl).removeClass('alert-danger').addClass('alert-success').text(msg).show();
-                        showToast('Upload complete — ' + msg, 'success');
-                        try {
-                            if (typeof onDone === 'function') onDone();
-                        } catch (e) {
-                            console.error(e);
-                        }
-                        // Close modal shortly after success so it doesn't look stuck
-                        setTimeout(function() {
-                            const modalEl = $(progressWrap).closest('.modal')[0];
-                            if (modalEl && window.bootstrap) {
-                                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                        showToast(res.message || 'Orders synced', 'success');
+                        if (table) {
+                            try {
+                                const p = table.replaceData('/shein/daily-data');
+                                if (p && typeof p.then === 'function') {
+                                    p.then(function() { updateSummary(); }).catch(function() {
+                                        table.setData('/shein/daily-data');
+                                        setTimeout(updateSummary, 400);
+                                    });
+                                } else {
+                                    table.setData('/shein/daily-data');
+                                    setTimeout(updateSummary, 400);
+                                }
+                            } catch (e) {
+                                table.setData('/shein/daily-data');
                             }
-                        }, 800);
+                        }
+                        loadL60Sales();
                     } else {
-                        $(statusEl).text('Failed');
-                        $(resultEl).removeClass('alert-success').addClass('alert-danger')
-                            .text((res && res.message) || 'Upload failed').show();
+                        showToast((res && res.message) || 'Sync failed', 'error');
                     }
                 },
                 error: function(xhr) {
-                    $(progressBar).removeClass('progress-bar-animated');
-                    $(statusEl).text('Failed');
-                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Upload failed';
-                    $(resultEl).removeClass('alert-success').addClass('alert-danger').text(msg).show();
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || xhr.statusText || 'Sync failed';
                     showToast(msg, 'error');
                 },
                 complete: function() {
-                    $btn.prop('disabled', false);
+                    $btn.prop('disabled', false).html(originalHtml);
                 }
             });
         }
 
-        $('#startUploadBtn').on('click', function() {
-            uploadSheinFile(
-                'dailyDataFile',
-                '{{ route("shein.upload.daily.data") }}',
-                '#uploadProgressContainer',
-                '#uploadProgressBar',
-                '#uploadStatus',
-                '#uploadResult',
-                '#startUploadBtn',
-                function() {
-                    if (table) {
-                        try {
-                            const p = table.replaceData('/shein/daily-data');
-                            if (p && typeof p.then === 'function') {
-                                p.then(function() { updateSummary(); }).catch(function() {
-                                    table.setData('/shein/daily-data');
-                                });
-                            } else {
-                                table.setData('/shein/daily-data');
-                                setTimeout(updateSummary, 400);
-                            }
-                        } catch (e) {
-                            table.setData('/shein/daily-data');
-                        }
-                    }
-                    loadL60Sales();
-                }
-            );
+        $('#sync-orders-l30-btn').on('click', function() {
+            syncSheinOrders('l30', '#sync-orders-l30-btn');
         });
-
-        $('#startUploadL60Btn').on('click', function() {
-            uploadSheinFile(
-                'dailyDataFileL60',
-                '{{ route("shein.upload.daily.data.l60") }}',
-                '#uploadL60ProgressContainer',
-                '#uploadL60ProgressBar',
-                '#uploadL60Status',
-                '#uploadL60Result',
-                '#startUploadL60Btn',
-                function() { loadL60Sales(); }
-            );
-        });
-
-        // Reset progress UI when modal opens again
-        $('#uploadDailyDataModal, #uploadL60Modal').on('show.bs.modal', function() {
-            $(this).find('[id$="ProgressContainer"]').hide();
-            $(this).find('[id$="Result"]').hide().text('');
-            $(this).find('[id$="Status"]').text('');
-            $(this).find('.progress-bar').css('width', '0%').text('0%').addClass('progress-bar-animated');
+        $('#sync-orders-l60-btn').on('click', function() {
+            syncSheinOrders('l60', '#sync-orders-l60-btn');
         });
     });
 </script>

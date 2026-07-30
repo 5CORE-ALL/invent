@@ -13,6 +13,8 @@ class SheinMetric extends Model
 
     protected $fillable = [
         'sku',
+        'shein_sku_code',
+        'sku_source',
         'product_name',
         'spu_name',
         'inventory',

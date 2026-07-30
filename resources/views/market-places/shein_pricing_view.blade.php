@@ -301,27 +301,12 @@
                             </button>
                         </div>
 
-                        <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary pricing-filter-item">
+                        <button type="button" id="refresh-pricing-table" class="btn btn-sm btn-outline-primary pricing-filter-item" title="Reload table">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <div class="btn-group pricing-filter-item">
-                            <button type="button" class="btn btn-sm btn-warning dropdown-toggle" data-bs-toggle="dropdown"
-                                aria-expanded="false" title="Sample / Upload Price">
-                                <i class="fas fa-file-import"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item" href="{{ route('shein.pricing.sample') }}">
-                                        <i class="fas fa-download text-info"></i> Sample CSV
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPriceSheetModal">
-                                        <i class="fas fa-upload text-warning"></i> Upload Price
-                                    </a>
-                                </li>
-                            </ul>
-                        </div>
+                        <button type="button" id="sync-pricing-api-btn" class="btn btn-sm btn-warning pricing-filter-item" title="Pull price/stock from Shein API">
+                            <i class="fas fa-cloud-download-alt"></i> Sync API
+                        </button>
 
                         <div class="btn-group align-items-center pricing-filter-item" role="group" aria-label="Parent navigation">
                             <button type="button" id="play-backward" class="btn btn-sm btn-light" title="Previous parent" disabled>
@@ -361,7 +346,7 @@
                         <div class="shein-summary-badge-row">
                             <span class="badge bg-danger fs-6 p-2" id="ae-zero-sold-badge" style="font-weight:700;cursor:pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                             <span class="badge fs-6 p-2" id="ae-more-sold-badge" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
-                            <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from uploaded orders">Sales: $0</span>
+                            <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from API orders">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
                             <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator PFT%: Σ PFT / Σ Sales (sold product_price)">GPFT: 0%</span>
                             <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator ROI%: Σ PFT / Σ (LP × qty)">GROI: 0%</span>
@@ -431,25 +416,6 @@
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No trend data yet. Data is saved each time the page loads.</p>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="uploadPriceSheetModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Upload Pricing Sheet</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="file" class="form-control" id="priceSheetFile" accept=".xlsx,.xls,.csv,.txt">
-                    <small class="text-muted">Headers: sku, price, stock</small>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-warning" id="uploadPriceSheetBtn">Upload</button>
                 </div>
             </div>
         </div>
@@ -2167,65 +2133,37 @@
                 table.download("csv", "shein_pricing_data.csv");
             });
 
-            $('#uploadPriceSheetBtn').on('click', function() {
-                const file = document.getElementById('priceSheetFile').files[0];
-                if (!file) {
-                    alert('Please select a file first.');
-                    return;
-                }
-
-                const $btn = $('#uploadPriceSheetBtn');
-                const formData = new FormData();
-                formData.append('price_file', file);
-                formData.append('_token', '{{ csrf_token() }}');
-
-                $btn.prop('disabled', true);
-
+            $('#sync-pricing-api-btn').on('click', function() {
+                const $btn = $(this);
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Syncing…');
                 $.ajax({
-                    url: '/shein/pricing-upload-price',
+                    url: '{{ route("shein.sync.pricing") }}',
                     type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
+                    data: { _token: '{{ csrf_token() }}' },
                     headers: {
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
                     success: function(response) {
+                        const msg = (response && response.message) ? response.message : 'Pricing synced from Shein API.';
                         if (response && response.success === false) {
-                            const errMsg = response.message || 'Price upload failed.';
-                            if (window.toastr) toastr.error(errMsg);
-                            else alert(errMsg);
+                            if (window.toastr) toastr.error(msg); else alert(msg);
                             return;
                         }
-                        if (window.toastr) {
-                            toastr.success((response && response.message) ? response.message : 'Price upload completed.');
-                        } else {
-                            alert((response && response.message) ? response.message : 'Price upload completed.');
-                        }
-                        $('#uploadPriceSheetModal').modal('hide');
-                        $('#priceSheetFile').val('');
+                        if (window.toastr) toastr.success(msg); else alert(msg);
                         table.setData('/shein/pricing-data');
                     },
                     error: function(xhr) {
-                        let message = 'Price upload failed.';
+                        let message = 'Pricing API sync failed.';
                         const j = xhr.responseJSON;
-                        if (j) {
-                            if (j.message) message = j.message;
-                            else if (j.errors) {
-                                message = Object.values(j.errors).flat().join(' ');
-                            }
-                        } else if (xhr.status === 419) {
-                            message = 'Session expired. Refresh the page and try again.';
-                        } else if (xhr.status === 0) {
-                            message = 'Network error. Check your connection.';
-                        }
-                        if (window.toastr) toastr.error(message);
-                        else alert(message);
+                        if (j && j.message) message = j.message;
+                        else if (xhr.status === 419) message = 'Session expired. Refresh the page and try again.';
+                        if (window.toastr) toastr.error(message); else alert(message);
                     },
                     complete: function() {
-                        $btn.prop('disabled', false);
+                        $btn.prop('disabled', false).html(originalHtml);
                     }
                 });
             });

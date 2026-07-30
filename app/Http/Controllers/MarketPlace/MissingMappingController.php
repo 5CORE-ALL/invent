@@ -4,6 +4,7 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\MapIssuesController;
+use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Models\ChannelMaster;
 use App\Support\Badges\AllMarketplaceMasterBadgeCalculator;
@@ -94,6 +95,7 @@ class MissingMappingController extends Controller
             in_array($slug, ['tiktok2', 'tiktokshop2'], true) => 'TikTok 2 inv',
             $slug === 'temu' => 'Temu Inv',
             $slug === 'temu2' => 'Temu 2 Inv',
+            $slug === 'shein' => 'Shein Inv',
             default => 'Channel Inv',
         };
 
@@ -131,6 +133,27 @@ class MissingMappingController extends Controller
                     : [];
                 $rows = is_array($payload['data'] ?? null) ? $payload['data'] : (is_array($payload) ? $payload : []);
                 $data = collect(TikTokPricingController::nmapSkuRowsFromTabular($rows))
+                    ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
+                    ->values();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $data,
+                    'count' => $data->count(),
+                    'channel' => $resolved['name'],
+                ]);
+            }
+
+            // Shein — SKU list from /shein-pricing table (same N Map rules as shein pricing badges)
+            if ($slug === 'shein') {
+                $raw = app(SheinController::class)->getSheinPricingData(
+                    Request::create('/shein/pricing-data', 'GET')
+                );
+                $payload = $raw instanceof \Illuminate\Http\JsonResponse
+                    ? json_decode($raw->getContent(), true)
+                    : [];
+                $rows = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+                $data = collect(SheinController::nmapSkuRowsFromPricing($rows))
                     ->map(fn (array $row) => $row + ['channel' => $resolved['name']])
                     ->values();
 

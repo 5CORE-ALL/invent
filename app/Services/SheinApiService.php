@@ -10,10 +10,14 @@ use SimpleXMLElement;
 use ZipArchive;
 use Illuminate\Support\Str;
 use App\Models\ProductStockMapping;
+use App\Models\SheinDailyData;
+use App\Models\SheinDailyDataL60;
 use App\Models\SheinMetric;
+use App\Models\SheinPricingPrice;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\SavesMarketplaceImageMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
+use Illuminate\Support\Facades\DB;
 
 class SheinApiService
 {
@@ -221,6 +225,210 @@ class SheinApiService
     }
 
     /**
+     * Persist one getStock()/full-detail row into shein_metrics.
+     * Renames old hash sellerSku rows to the resolved match SKU and keys by shein_sku_code.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public function persistSheinMetricRow(array $item): ?SheinMetric
+    {
+        if (! $this->metricsTableExists()) {
+            return null;
+        }
+
+        $resolvedSku = trim((string) ($item['sku'] ?? ''));
+        if ($resolvedSku === '') {
+            Log::warning('Missing SKU in Shein inventory data', $item);
+
+            return null;
+        }
+
+        $sheinCode = trim((string) ($item['shein_sku_code'] ?? ''));
+        $sellerSkuRaw = trim((string) ($item['seller_sku'] ?? ''));
+        $productNumber = trim((string) ($item['product_number'] ?? ''));
+        $skuSource = (string) ($item['sku_source'] ?? '');
+
+        $metricData = [
+            'sku' => $resolvedSku,
+            'inventory' => (int) ($item['quantity'] ?? $item['inventory'] ?? 0),
+            'price' => $item['price'] ?? null,
+            'retail_price' => $item['retail_price'] ?? null,
+            'views' => $item['views'] ?? 0,
+            'rating' => $item['rating'] ?? null,
+            'review_count' => $item['review_count'] ?? 0,
+            'last_synced_at' => now(),
+        ];
+
+        if (Schema::hasColumn('shein_metrics', 'shein_sku_code') && $sheinCode !== '') {
+            $metricData['shein_sku_code'] = $sheinCode;
+        }
+        if (Schema::hasColumn('shein_metrics', 'sku_source') && $skuSource !== '') {
+            $metricData['sku_source'] = $skuSource;
+        }
+        foreach (['raw_data', 'product_name', 'spu_name', 'status', 'description', 'image_url', 'category'] as $key) {
+            if (array_key_exists($key, $item)) {
+                $metricData[$key] = $item[$key];
+            }
+        }
+
+        try {
+            $metric = $this->findExistingSheinMetricForPersist($sheinCode, $sellerSkuRaw, $resolvedSku);
+
+            if ($metric) {
+                $oldSku = (string) $metric->sku;
+                // Avoid unique(sku) collisions when another row already owns the resolved SKU.
+                if ($oldSku !== $resolvedSku) {
+                    $conflict = SheinMetric::query()
+                        ->where('sku', $resolvedSku)
+                        ->where('id', '!=', $metric->id)
+                        ->first();
+                    if ($conflict) {
+                        $conflictCode = trim((string) ($conflict->shein_sku_code ?? data_get($conflict->raw_data, 'skuCode', '')));
+                        if ($sheinCode !== '' && $conflictCode === $sheinCode) {
+                            $conflict->delete();
+                        } elseif ($sheinCode !== '') {
+                            $metricData['sku'] = $resolvedSku.' ['.$sheinCode.']';
+                        }
+                    }
+                }
+
+                $metric->fill($metricData);
+                $metric->save();
+            } else {
+                try {
+                    $metric = SheinMetric::updateOrCreate(
+                        $sheinCode !== '' && Schema::hasColumn('shein_metrics', 'shein_sku_code')
+                            ? ['shein_sku_code' => $sheinCode]
+                            : ['sku' => $resolvedSku],
+                        $metricData
+                    );
+                } catch (\Throwable $e) {
+                    // Fallback if unique(sku) still conflicts.
+                    if ($sheinCode !== '') {
+                        $metricData['sku'] = $resolvedSku.' ['.$sheinCode.']';
+                        $metric = SheinMetric::updateOrCreate(
+                            Schema::hasColumn('shein_metrics', 'shein_sku_code')
+                                ? ['shein_sku_code' => $sheinCode]
+                                : ['sku' => $metricData['sku']],
+                            $metricData
+                        );
+                    } else {
+                        throw $e;
+                    }
+                }
+            }
+
+            // Remove stale hash rows for this listing after rename/create.
+            $staleSkus = array_values(array_unique(array_filter([
+                $sellerSkuRaw !== $metric->sku ? $sellerSkuRaw : null,
+                $productNumber !== '' && $productNumber !== $metric->sku && $this->isUsableSheinSellerSku($productNumber) === false
+                    ? $productNumber
+                    : null,
+            ])));
+            if ($staleSkus !== []) {
+                $q = SheinMetric::query()
+                    ->whereIn('sku', $staleSkus)
+                    ->where('id', '!=', $metric->id);
+                if ($sheinCode !== '') {
+                    $q->where(function ($inner) use ($sheinCode) {
+                        $inner->where('shein_sku_code', $sheinCode)
+                            ->orWhere('raw_data->skuCode', $sheinCode)
+                            ->orWhereNull('shein_sku_code');
+                    });
+                }
+                $q->delete();
+            }
+
+            // Keep shein_pricing_prices in sync when hash SKUs are remapped.
+            $this->remapSheinPricingSku($sellerSkuRaw, (string) $metric->sku, $item);
+
+            return $metric->fresh() ?? $metric;
+        } catch (\Throwable $e) {
+            Log::error('Shein persistSheinMetricRow failed', [
+                'sku' => $resolvedSku,
+                'shein_sku_code' => $sheinCode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Find an existing metrics row for a Shein listing (prefer shein skuCode, then hash sellerSku).
+     */
+    private function findExistingSheinMetricForPersist(string $sheinCode, string $sellerSkuRaw, string $resolvedSku): ?SheinMetric
+    {
+        if ($sheinCode !== '' && Schema::hasColumn('shein_metrics', 'shein_sku_code')) {
+            $byCode = SheinMetric::query()->where('shein_sku_code', $sheinCode)->first();
+            if ($byCode) {
+                return $byCode;
+            }
+        }
+
+        if ($sheinCode !== '') {
+            $byRaw = SheinMetric::query()->where('raw_data->skuCode', $sheinCode)->first();
+            if ($byRaw) {
+                return $byRaw;
+            }
+        }
+
+        if ($sellerSkuRaw !== '' && $sellerSkuRaw !== $resolvedSku) {
+            $bySeller = SheinMetric::query()->where('sku', $sellerSkuRaw)->first();
+            if ($bySeller) {
+                return $bySeller;
+            }
+        }
+
+        return SheinMetric::query()->where('sku', $resolvedSku)->first();
+    }
+
+    /**
+     * When a hash sellerSku is resolved, rewrite shein_pricing_prices.sku to the match SKU.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function remapSheinPricingSku(string $fromSku, string $toSku, array $item): void
+    {
+        if ($fromSku === '' || $toSku === '' || $fromSku === $toSku) {
+            return;
+        }
+        // Only remap unusable hash sellerSku → readable match SKU
+        if ($this->isUsableSheinSellerSku($fromSku) || ! $this->isUsableSheinSellerSku($toSku)) {
+            return;
+        }
+
+        try {
+            if (! Schema::hasTable('shein_pricing_prices')) {
+                return;
+            }
+
+            $from = \App\Models\SheinPricingPrice::query()->where('sku', $fromSku)->first();
+            if (! $from) {
+                return;
+            }
+
+            $to = \App\Models\SheinPricingPrice::query()->where('sku', $toSku)->first();
+            if ($to) {
+                $to->update([
+                    'price' => $item['retail_price'] ?? $item['price'] ?? $to->price,
+                    'special_offer_price' => $item['price'] ?? $to->special_offer_price,
+                    'shein_stock' => $item['quantity'] ?? $to->shein_stock,
+                ]);
+                $from->delete();
+            } else {
+                $from->update(['sku' => $toSku]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shein pricing SKU remap failed', [
+                'from' => $fromSku,
+                'to' => $toSku,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * @return \App\Models\SheinMetric|null
      */
     private function safeSheinMetricFindBySku(string $sku)
@@ -410,64 +618,29 @@ class SheinApiService
             $allProducts = array_merge($allProducts, $products);
         }
         
-        $spuNames = array_map(function ($item) {
-    return $item['skuCodeList'][0] ?? null;
-}, $allProducts);
+        // Flatten every skuCode from every row (do not keep only skuCodeList[0]).
+        $sheinSkuCodes = [];
+        foreach ($allProducts as $item) {
+            foreach (($item['skuCodeList'] ?? []) as $code) {
+                $code = trim((string) $code);
+                if ($code !== '') {
+                    $sheinSkuCodes[] = $code;
+                }
+            }
+        }
+        $sheinSkuCodes = array_values(array_unique($sheinSkuCodes));
 
-$spuNames = array_filter($spuNames); // remove nulls if any
-
-        $result = $this->getStock($spuNames);
+        $result = $this->getStock($sheinSkuCodes);
 
         if (! $this->metricsTableExists()) {
             Log::warning('shein_metrics table missing; skipping DB persistence. Run migrations to create shein_metrics.');
         } else {
             try {
                 foreach ($result as $item) {
-                    $sku = $item['sku'] ?? null;
-
-                    if (! $sku) {
-                        Log::warning('Missing SKU in Shein inventory data', $item);
-
+                    $metric = $this->persistSheinMetricRow($item);
+                    if (! $metric) {
                         continue;
                     }
-
-                    $metricData = [
-                        'sku' => $sku,
-                        'inventory' => $item['quantity'] ?? 0,
-                        'price' => $item['price'] ?? null,
-                        'retail_price' => $item['retail_price'] ?? null,
-                        'views' => $item['views'] ?? 0,
-                        'rating' => $item['rating'] ?? null,
-                        'review_count' => $item['review_count'] ?? 0,
-                        'last_synced_at' => now(),
-                    ];
-
-                    if (isset($item['raw_data'])) {
-                        $metricData['raw_data'] = $item['raw_data'];
-                    }
-                    if (isset($item['product_name'])) {
-                        $metricData['product_name'] = $item['product_name'];
-                    }
-                    if (isset($item['spu_name'])) {
-                        $metricData['spu_name'] = $item['spu_name'];
-                    }
-                    if (isset($item['status'])) {
-                        $metricData['status'] = $item['status'];
-                    }
-                    if (isset($item['description'])) {
-                        $metricData['description'] = $item['description'];
-                    }
-                    if (isset($item['image_url'])) {
-                        $metricData['image_url'] = $item['image_url'];
-                    }
-                    if (isset($item['category'])) {
-                        $metricData['category'] = $item['category'];
-                    }
-
-                    $metric = SheinMetric::updateOrCreate(
-                        ['sku' => $sku],
-                        $metricData
-                    );
 
                     if ($metric->wasRecentlyCreated) {
                         $this->lastMetricCreated++;
@@ -492,173 +665,308 @@ $spuNames = array_filter($spuNames); // remove nulls if any
     }
 
 
-public function getStock(array $skuCodes)
-{
-    $endpoint = "/open-api/openapi-business-backend/product/full-detail";
-    $chunkSize = 100;
-    $allStock = [];
-
-    // Split SKU codes into chunks of 100
-    $chunks = array_chunk($skuCodes, $chunkSize);
-
-    foreach ($chunks as $chunk) {
-        $timestamp = round(microtime(true) * 1000);
-        $random = Str::random(5);
-        $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
-        $url = $this->baseUrl . $endpoint;
-
-        $payload = [
-            "skuCodes" => $chunk
-        ];
-
-        $response = Http::withoutVerifying()->withHeaders([
-            "Language" => "en-us",
-            "x-lt-openKeyId" => config('services.shein.open_key_id'),
-            "x-lt-timestamp" => $timestamp,
-            "x-lt-signature" => $signature,
-            "Content-Type" => "application/json",
-        ])->post($url, $payload);
-
-        if (!$response->successful()) {
-            Log::error("Shein API Error: " . $response->body());
-            throw new \Exception("Shein API Error: " . $response->body());
+    /**
+     * True when a Shein seller-facing SKU can match Shopify / product_master
+     * (non-empty and not an auto-generated 32-char hex id).
+     */
+    public function isUsableSheinSellerSku(?string $sku): bool
+    {
+        $sku = trim((string) $sku);
+        if ($sku === '') {
+            return false;
         }
 
-        $data = $response->json();
+        return ! (bool) preg_match('/^[a-f0-9]{32}$/i', $sku);
+    }
 
-        if (isset($data["info"]) && is_array($data["info"])) {
-            foreach ($data["info"] as $item) {
-                $skuCode = $item['sellerSku'] ?? null;
-                $quantity = $item['goodsInventory']['inventoryQuantity'] ?? null;
-                
-                // Extract price data from currentPrices array (actual API structure)
-                $price = null;
-                $retailPrice = null;
-                $costPrice = null;
-                
-                if (isset($item['currentPrices']) && is_array($item['currentPrices']) && count($item['currentPrices']) > 0) {
-                    $priceData = $item['currentPrices'][0];
-                    $price = $priceData['salePrice'] ?? $priceData['specialPrice'] ?? null;
-                    $retailPrice = $priceData['shopPrice'] ?? $priceData['suggestedRetailPrice'] ?? null;
-                }
-                
-                // Extract views/visits data
-                $views = $item['viewCount'] ?? $item['visits'] ?? $item['pageViews'] ?? null;
-                
-                // Extract rating data
-                $rating = $item['rating'] ?? $item['averageRating'] ?? $item['starRating'] ?? null;
-                $reviewCount = $item['reviewCount'] ?? $item['ratingCount'] ?? null;
-                
-                // Extract additional product info (matching actual API structure)
-                $productName = $item['productName'] ?? null;
-                $spuName = $item['spuName'] ?? null;
-                $categoryName = $item['categoryName'] ?? null;
-                $description = $item['productDesc'] ?? null;
-                
-                // Extract main image from imageList
-                $imageUrl = null;
-                if (isset($item['imageList']) && is_array($item['imageList'])) {
-                    foreach ($item['imageList'] as $image) {
-                        if (isset($image['imageType']) && $image['imageType'] === 'MAIN') {
-                            $imageUrl = $image['imageUrl'] ?? null;
-                            break;
+    /**
+     * Pull readable seller SKU from full-detail attributeLists (产品型号 / product model).
+     * Many hash-SKU listings still store the real SKU here.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    public function extractSheinModelSku(array $item): ?string
+    {
+        foreach (($item['attributeLists'] ?? []) as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+
+            $name = strtolower(trim((string) (
+                $attr['attributeMulti']['attributeMulti']
+                ?? $attr['attributeName']
+                ?? ''
+            )));
+
+            // 产品型号 = product model number on Shein seller backend
+            if ($name !== '产品型号' && ! str_contains($name, '型号') && ! str_contains($name, 'model')) {
+                continue;
+            }
+
+            $value = $attr['attributeAdditionList'][0]['additionValue']
+                ?? $attr['attributeValueMulti']['attributeValueMulti']
+                ?? $attr['attributeValue']
+                ?? null;
+
+            $value = trim((string) $value);
+            if ($value !== '' && $this->isUsableSheinSellerSku($value)) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the SKU used to match Shopify from a product/full-detail row.
+     *
+     * Prefer sellerSku; if empty/hex fall back to productNumber, then attributeLists 产品型号.
+     *
+     * @param  array<string, mixed>  $item
+     * @return array{sku: ?string, source: string, usable: bool, seller_sku: string, product_number: string, model_sku: ?string, shein_sku_code: string}
+     */
+    public function resolveSheinMatchSku(array $item): array
+    {
+        $sellerSku = trim((string) ($item['sellerSku'] ?? ''));
+        $productNumber = trim((string) ($item['productNumber'] ?? ''));
+        $sheinSkuCode = trim((string) ($item['skuCode'] ?? ''));
+        $modelSku = $this->extractSheinModelSku($item);
+
+        if ($this->isUsableSheinSellerSku($sellerSku)) {
+            return [
+                'sku' => $sellerSku,
+                'source' => 'sellerSku',
+                'usable' => true,
+                'seller_sku' => $sellerSku,
+                'product_number' => $productNumber,
+                'model_sku' => $modelSku,
+                'shein_sku_code' => $sheinSkuCode,
+            ];
+        }
+
+        if ($this->isUsableSheinSellerSku($productNumber)) {
+            return [
+                'sku' => $productNumber,
+                'source' => 'productNumber',
+                'usable' => true,
+                'seller_sku' => $sellerSku,
+                'product_number' => $productNumber,
+                'model_sku' => $modelSku,
+                'shein_sku_code' => $sheinSkuCode,
+            ];
+        }
+
+        if ($modelSku !== null) {
+            return [
+                'sku' => $modelSku,
+                'source' => 'attributeModel',
+                'usable' => true,
+                'seller_sku' => $sellerSku,
+                'product_number' => $productNumber,
+                'model_sku' => $modelSku,
+                'shein_sku_code' => $sheinSkuCode,
+            ];
+        }
+
+        // Last resort: keep whatever Shein stored (hash) so the row is not dropped.
+        $fallback = $sellerSku !== '' ? $sellerSku : ($productNumber !== '' ? $productNumber : $sheinSkuCode);
+
+        return [
+            'sku' => $fallback !== '' ? $fallback : null,
+            'source' => $fallback !== '' ? 'unmapped_hash' : 'missing',
+            'usable' => false,
+            'seller_sku' => $sellerSku,
+            'product_number' => $productNumber,
+            'model_sku' => $modelSku,
+            'shein_sku_code' => $sheinSkuCode,
+        ];
+    }
+
+    public function getStock(array $skuCodes)
+    {
+        $endpoint = '/open-api/openapi-business-backend/product/full-detail';
+        $chunkSize = 100;
+        $allStock = [];
+
+        // Split SKU codes into chunks of 100
+        $chunks = array_chunk(array_values(array_filter(array_map('strval', $skuCodes))), $chunkSize);
+
+        foreach ($chunks as $chunk) {
+            $timestamp = round(microtime(true) * 1000);
+            $random = Str::random(5);
+            $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+            $url = $this->baseUrl.$endpoint;
+
+            $payload = [
+                'skuCodes' => $chunk,
+            ];
+
+            $response = Http::withoutVerifying()->withHeaders([
+                'Language' => 'en-us',
+                'x-lt-openKeyId' => config('services.shein.open_key_id'),
+                'x-lt-timestamp' => $timestamp,
+                'x-lt-signature' => $signature,
+                'Content-Type' => 'application/json',
+            ])->post($url, $payload);
+
+            if (! $response->successful()) {
+                Log::error('Shein API Error: '.$response->body());
+                throw new \Exception('Shein API Error: '.$response->body());
+            }
+
+            $data = $response->json();
+
+            if (isset($data['info']) && is_array($data['info'])) {
+                foreach ($data['info'] as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+
+                    $resolved = $this->resolveSheinMatchSku($item);
+                    $matchSku = $resolved['sku'];
+                    if ($matchSku === null || $matchSku === '') {
+                        Log::warning('Shein getStock: no sellerSku/productNumber/skuCode on row', [
+                            'item_keys' => array_keys($item),
+                        ]);
+
+                        continue;
+                    }
+
+                    $quantity = $item['goodsInventory']['inventoryQuantity'] ?? null;
+
+                    // Extract price data from currentPrices array (actual API structure)
+                    $price = null;
+                    $retailPrice = null;
+                    $costPrice = null;
+
+                    if (isset($item['currentPrices']) && is_array($item['currentPrices']) && count($item['currentPrices']) > 0) {
+                        $priceData = $item['currentPrices'][0];
+                        $price = $priceData['salePrice'] ?? $priceData['specialPrice'] ?? null;
+                        $retailPrice = $priceData['shopPrice'] ?? $priceData['suggestedRetailPrice'] ?? null;
+                    }
+
+                    // Extract views/visits data
+                    $views = $item['viewCount'] ?? $item['visits'] ?? $item['pageViews'] ?? null;
+
+                    // Extract rating data
+                    $rating = $item['rating'] ?? $item['averageRating'] ?? $item['starRating'] ?? null;
+                    $reviewCount = $item['reviewCount'] ?? $item['ratingCount'] ?? null;
+
+                    // Extract additional product info (matching actual API structure)
+                    $productName = $item['productName'] ?? null;
+                    $spuName = $item['spuName'] ?? null;
+                    $categoryName = $item['categoryName'] ?? null;
+                    $description = $item['productDesc'] ?? null;
+
+                    // Extract main image from imageList
+                    $imageUrl = null;
+                    if (isset($item['imageList']) && is_array($item['imageList'])) {
+                        foreach ($item['imageList'] as $image) {
+                            if (isset($image['imageType']) && $image['imageType'] === 'MAIN') {
+                                $imageUrl = $image['imageUrl'] ?? null;
+                                break;
+                            }
+                        }
+                        // If no MAIN image, get first image
+                        if (! $imageUrl && count($item['imageList']) > 0) {
+                            $imageUrl = $item['imageList'][0]['imageUrl'] ?? null;
                         }
                     }
-                    // If no MAIN image, get first image
-                    if (!$imageUrl && count($item['imageList']) > 0) {
-                        $imageUrl = $item['imageList'][0]['imageUrl'] ?? null;
-                    }
-                }
-                
-                // Extract status from shelfDetails
-                $status = null;
-                if (isset($item['shelfDetails']) && is_array($item['shelfDetails']) && count($item['shelfDetails']) > 0) {
-                    $shelfDetail = $item['shelfDetails'][0];
-                    $isOnShelf = $shelfDetail['isOnShelf'] ?? false;
-                    $status = $isOnShelf ? 'active' : 'inactive';
-                }
-                
-                // Determine status from inventory if not set
-                if (!$status) {
-                    if ($quantity === 0) {
-                        $status = 'out_of_stock';
-                    } elseif ($quantity > 0 && $quantity < 10) {
-                        $status = 'low_stock';
-                    } else {
-                        $status = 'active';
-                    }
-                }
 
-                if ($skuCode !== null) {
+                    // Extract status from shelfDetails
+                    $status = null;
+                    if (isset($item['shelfDetails']) && is_array($item['shelfDetails']) && count($item['shelfDetails']) > 0) {
+                        $shelfDetail = $item['shelfDetails'][0];
+                        $isOnShelf = $shelfDetail['isOnShelf'] ?? false;
+                        $status = $isOnShelf ? 'active' : 'inactive';
+                    }
+
+                    // Determine status from inventory if not set
+                    if (! $status) {
+                        if ($quantity === 0) {
+                            $status = 'out_of_stock';
+                        } elseif ($quantity > 0 && $quantity < 10) {
+                            $status = 'low_stock';
+                        } else {
+                            $status = 'active';
+                        }
+                    }
+
                     $stockData = [
-                        'sku' => $skuCode,
+                        'sku' => $matchSku,
+                        'sku_source' => $resolved['source'],
+                        'sku_usable' => $resolved['usable'],
+                        'seller_sku' => $resolved['seller_sku'],
+                        'product_number' => $resolved['product_number'],
+                        'model_sku' => $resolved['model_sku'],
+                        'shein_sku_code' => $resolved['shein_sku_code'],
                         'quantity' => $quantity !== null ? (int) $quantity : 0,
                     ];
-                    
+
                     // Add price if available
                     if ($price !== null) {
                         $stockData['price'] = (float) $price;
                     }
-                    
+
                     if ($retailPrice !== null) {
                         $stockData['retail_price'] = (float) $retailPrice;
                     }
-                    
+
                     if ($costPrice !== null) {
                         $stockData['cost_price'] = (float) $costPrice;
                     }
-                    
+
                     // Add views if available
                     if ($views !== null) {
                         $stockData['views'] = (int) $views;
                     }
-                    
+
                     // Add rating if available
                     if ($rating !== null) {
                         $stockData['rating'] = (float) $rating;
                     }
-                    
+
                     if ($reviewCount !== null) {
                         $stockData['review_count'] = (int) $reviewCount;
                     }
-                    
+
                     // Add product info
                     if ($productName !== null) {
                         $stockData['product_name'] = $productName;
                     }
-                    
+
                     if ($spuName !== null) {
                         $stockData['spu_name'] = $spuName;
                     }
-                    
+
                     if ($status !== null) {
                         $stockData['status'] = $status;
                     }
-                    
+
                     if ($description !== null) {
                         $stockData['description'] = $description;
                     }
-                    
+
                     if ($imageUrl !== null) {
                         $stockData['image_url'] = $imageUrl;
                     }
-                    
+
                     if ($categoryName !== null) {
                         $stockData['category'] = $categoryName;
                     }
-                    
+
                     // Store raw API data
                     $stockData['raw_data'] = $item;
-                    
+
                     $allStock[] = $stockData;
                 }
             }
         }
-    }
 
-    Log::info('Shein Stock API - Chunks processed: ' . count($chunks) . ', Products: ' . count($allStock));
-    return $allStock;
-}
+        Log::info('Shein Stock API - Chunks processed: '.count($chunks).', Products: '.count($allStock));
+
+        return $allStock;
+    }
 
     public function getStock1(array $spus)
 {
@@ -774,8 +1082,16 @@ public function getStock(array $skuCodes)
                 $status = $quantity === 0 ? 'out_of_stock' : ($quantity < 10 ? 'low_stock' : 'active');
             }
             
+            $resolved = $this->resolveSheinMatchSku($item);
+
             $productDetails = [
-                'sku' => $item['sellerSku'] ?? $sku,
+                'sku' => $resolved['sku'] ?? $sku,
+                'sku_source' => $resolved['source'],
+                'sku_usable' => $resolved['usable'],
+                'seller_sku' => $resolved['seller_sku'],
+                'product_number' => $resolved['product_number'],
+                'model_sku' => $resolved['model_sku'],
+                'shein_sku_code' => $resolved['shein_sku_code'],
                 'product_name' => $item['productName'] ?? null,
                 'spu_name' => $item['spuName'] ?? null,
                 'quantity' => $quantity,
@@ -791,13 +1107,10 @@ public function getStock(array $skuCodes)
                 'category' => $item['categoryName'] ?? null,
                 'raw_data' => $item, // Store full response for debugging
             ];
-            
+
             if ($this->metricsTableExists()) {
                 try {
-                    SheinMetric::updateOrCreate(
-                        ['sku' => $productDetails['sku']],
-                        array_merge($productDetails, ['last_synced_at' => now()])
-                    );
+                    $this->persistSheinMetricRow($productDetails);
                 } catch (\Throwable $e) {
                     Log::warning('Shein getProductDetails: could not save to shein_metrics', [
                         'sku' => $sku,
@@ -816,8 +1129,392 @@ public function getStock(array $skuCodes)
     }
 
     /**
+     * POST signed JSON to Shein Open API.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function sheinApiPost(string $endpoint, array $payload): array
+    {
+        $url = $this->baseUrl.$endpoint;
+        $response = Http::withoutVerifying()
+            ->timeout(60)
+            ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+            ->post($url, $payload);
+
+        $json = is_array($response->json()) ? $response->json() : null;
+        if (! $response->successful()) {
+            throw new \RuntimeException('Shein API HTTP '.$response->status().': '.mb_substr($response->body(), 0, 500));
+        }
+        if (! is_array($json)) {
+            throw new \RuntimeException('Shein API invalid JSON: '.mb_substr($response->body(), 0, 500));
+        }
+
+        $code = $json['code'] ?? null;
+        if (! ($code === 0 || $code === '0' || $code === 200 || $code === '200')) {
+            throw new \RuntimeException('Shein API error: '.($json['msg'] ?? $json['message'] ?? json_encode($json)));
+        }
+
+        return $json;
+    }
+
+    /**
+     * Order list — POST /open-api/order/order-list
+     * start/end must be within 48 hours (Shein limit). Timezone: Asia/Shanghai.
+     *
+     * @return array{count:int, orderList: array<int, array<string, mixed>>, raw: array<string, mixed>}
+     */
+    public function getOrderList(string $startTime, string $endTime, int $queryType = 1, int $page = 1, int $pageSize = 30): array
+    {
+        $endpoint = '/open-api/order/order-list';
+        $pageSize = max(1, min(30, $pageSize));
+        $json = $this->sheinApiPost($endpoint, [
+            'queryType' => $queryType,
+            'startTime' => $startTime,
+            'endTime' => $endTime,
+            'page' => max(1, $page),
+            'pageSize' => $pageSize,
+        ]);
+
+        $info = is_array($json['info'] ?? null) ? $json['info'] : [];
+
+        return [
+            'count' => (int) ($info['count'] ?? 0),
+            'orderList' => is_array($info['orderList'] ?? null) ? $info['orderList'] : [],
+            'raw' => $json,
+        ];
+    }
+
+    /**
+     * Order detail — POST /open-api/order/order-detail (max 30 orderNos per call).
+     *
+     * @param  array<int, string>  $orderNos
+     * @return array{orders: array<int, array<string, mixed>>, raw: array<string, mixed>}
+     */
+    public function getOrderDetails(array $orderNos): array
+    {
+        $orderNos = array_values(array_filter(array_map(static fn ($n) => trim((string) $n), $orderNos)));
+        if ($orderNos === []) {
+            return ['orders' => [], 'raw' => []];
+        }
+
+        $endpoint = '/open-api/order/order-detail';
+        $all = [];
+        $lastRaw = [];
+        foreach (array_chunk($orderNos, 30) as $chunk) {
+            $json = $this->sheinApiPost($endpoint, ['orderNoList' => $chunk]);
+            $lastRaw = $json;
+            $info = $json['info'] ?? [];
+            if (isset($info[0]) && is_array($info[0])) {
+                $all = array_merge($all, $info);
+            } elseif (isset($info['orderList']) && is_array($info['orderList'])) {
+                $all = array_merge($all, $info['orderList']);
+            } elseif (is_array($info) && isset($info['orderNo'])) {
+                $all[] = $info;
+            }
+        }
+
+        return ['orders' => $all, 'raw' => $lastRaw];
+    }
+
+    /**
+     * Fetch orders raw data from Shein API (list + detail).
+     * Walks backward in <=47h windows (Shein 48h limit).
+     *
+     * @return array{
+     *   success: bool,
+     *   message: string,
+     *   order_count: int,
+     *   detail_count: int,
+     *   windows: int,
+     *   order_list: array<int, array<string, mixed>>,
+     *   order_details: array<int, array<string, mixed>>,
+     *   saved_path: ?string
+     * }
+     */
+    public function fetchOrdersRaw(int $days = 2, int $queryType = 1, bool $includeDetails = true, bool $saveToStorage = true): array
+    {
+        $days = max(1, min(30, $days));
+        $tz = new \DateTimeZone('Asia/Shanghai');
+        $end = new \DateTimeImmutable('now', $tz);
+        $overallStart = $end->modify('-'.$days.' days');
+
+        $orderList = [];
+        $seen = [];
+        $windows = 0;
+
+        // Walk forward from overallStart in ~47h chunks up to now
+        $cursor = $overallStart;
+        while ($cursor < $end) {
+            $windows++;
+            $windowEnd = $cursor->modify('+47 hours');
+            if ($windowEnd > $end) {
+                $windowEnd = $end;
+            }
+
+            $page = 1;
+            do {
+                $result = $this->getOrderList(
+                    $cursor->format('Y-m-d H:i:s'),
+                    $windowEnd->format('Y-m-d H:i:s'),
+                    $queryType,
+                    $page,
+                    30
+                );
+                foreach ($result['orderList'] as $row) {
+                    $no = (string) ($row['orderNo'] ?? '');
+                    if ($no === '' || isset($seen[$no])) {
+                        continue;
+                    }
+                    $seen[$no] = true;
+                    $orderList[] = $row;
+                }
+                $fetched = count($result['orderList']);
+                $page++;
+            } while ($fetched >= 30 && $page <= 200);
+
+            $cursor = $windowEnd;
+        }
+
+        $orderDetails = [];
+        if ($includeDetails && $orderList !== []) {
+            $nos = array_values(array_map(static fn ($r) => (string) ($r['orderNo'] ?? ''), $orderList));
+            $nos = array_values(array_filter($nos));
+            $details = $this->getOrderDetails($nos);
+            $orderDetails = $details['orders'];
+        }
+
+        $payload = [
+            'fetched_at' => now()->toIso8601String(),
+            'days' => $days,
+            'queryType' => $queryType,
+            'order_list' => $orderList,
+            'order_details' => $orderDetails,
+        ];
+
+        $savedPath = null;
+        if ($saveToStorage) {
+            $dir = storage_path('app/shein');
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0755, true);
+            }
+            $savedPath = $dir.'/orders_raw_'.now()->format('Ymd_His').'.json';
+            file_put_contents($savedPath, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            // Keep a stable latest pointer
+            file_put_contents($dir.'/orders_raw_latest.json', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT));
+            $savedPath = 'storage/app/shein/'.basename($savedPath);
+        }
+
+        Log::info('Shein orders raw fetched', [
+            'order_count' => count($orderList),
+            'detail_count' => count($orderDetails),
+            'days' => $days,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Shein orders raw data fetched from API.',
+            'order_count' => count($orderList),
+            'detail_count' => count($orderDetails),
+            'windows' => $windows,
+            'order_list' => $orderList,
+            'order_details' => $orderDetails,
+            'saved_path' => $savedPath,
+        ];
+    }
+
+    /**
+     * Sync price / stock from Shein API into shein_pricing_prices (replaces sheet upload).
+     *
+     * @return array{success: bool, message: string, updated: int, skipped: int}
+     */
+    public function syncPricingPricesFromApi(): array
+    {
+        $products = $this->listAllProducts();
+
+        return $this->syncPricingPricesFromApiUsingProducts($products);
+    }
+
+    /**
+     * Sync orders from Shein API into shein_daily_data (L30) or shein_daily_data_l60.
+     * Replaces Seller Hub sheet upload.
+     *
+     * @param  'l30'|'l60'  $target
+     * @return array{success: bool, message: string, imported: int, order_count: int, days: int}
+     */
+    public function syncOrdersToDailyData(int $days = 30, string $target = 'l30'): array
+    {
+        $target = strtolower($target) === 'l60' ? 'l60' : 'l30';
+        $days = $target === 'l60' ? max(1, min(60, $days ?: 60)) : max(1, min(30, $days ?: 30));
+
+        $modelClass = $target === 'l60' ? SheinDailyDataL60::class : SheinDailyData::class;
+        $table = (new $modelClass)->getTable();
+        if (! Schema::hasTable($table)) {
+            return [
+                'success' => false,
+                'message' => "{$table} table missing — run migrations.",
+                'imported' => 0,
+                'order_count' => 0,
+                'days' => $days,
+            ];
+        }
+
+        // Pull both new + updated orders so we don't miss modifications in-window.
+        $rawNew = $this->fetchOrdersRaw($days, 1, true, true);
+        $rawUpd = $this->fetchOrdersRaw($days, 2, true, false);
+        $detailsByNo = [];
+        foreach (array_merge($rawNew['order_details'] ?? [], $rawUpd['order_details'] ?? []) as $od) {
+            $no = (string) ($od['orderNo'] ?? '');
+            if ($no !== '') {
+                $detailsByNo[$no] = $od;
+            }
+        }
+
+        $rows = [];
+        foreach ($detailsByNo as $order) {
+            $mapped = $this->mapSheinApiOrderToDailyRows($order);
+            foreach ($mapped as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        DB::transaction(function () use ($modelClass, $rows) {
+            $modelClass::query()->delete();
+            foreach (array_chunk($rows, 200) as $chunk) {
+                foreach ($chunk as $row) {
+                    $modelClass::create($row);
+                }
+            }
+        });
+
+        return [
+            'success' => true,
+            'message' => 'Synced '.count($rows)." order line(s) from Shein API into {$table} ({$days}d).",
+            'imported' => count($rows),
+            'order_count' => count($detailsByNo),
+            'days' => $days,
+        ];
+    }
+
+    /**
+     * Map one order-detail payload into shein_daily_data row(s) (one per goods line).
+     *
+     * @param  array<string, mixed>  $order
+     * @return array<int, array<string, mixed>>
+     */
+    public function mapSheinApiOrderToDailyRows(array $order): array
+    {
+        $orderNo = trim((string) ($order['orderNo'] ?? ''));
+        if ($orderNo === '') {
+            return [];
+        }
+
+        $statusCode = $order['orderStatus'] ?? null;
+        $statusMap = [
+            1 => 'Pending',
+            2 => 'To Be Shipped',
+            3 => 'To Be Shipped by SHEIN',
+            4 => 'Shipped',
+            5 => 'Received',
+            6 => 'Refund',
+            7 => 'To Be Collected by SHEIN',
+        ];
+        $status = $statusMap[(int) $statusCode] ?? (string) ($statusCode ?? '');
+
+        $orderTime = $order['orderTime'] ?? $order['paymentTime'] ?? null;
+        $processedOn = null;
+        if (is_string($orderTime) && $orderTime !== '') {
+            try {
+                $processedOn = \Carbon\Carbon::parse($orderTime)->format('Y-m-d H:i:s');
+            } catch (\Throwable $e) {
+                $processedOn = null;
+            }
+        }
+
+        $currency = (string) ($order['saleCurrency'] ?? $order['orderCurrency'] ?? 'USD');
+        $goodsList = is_array($order['orderGoodsInfoList'] ?? null) ? $order['orderGoodsInfoList'] : [];
+        if ($goodsList === []) {
+            return [[
+                'order_type' => (string) ($order['orderType'] ?? null),
+                'order_number' => $orderNo,
+                'order_status' => $status,
+                'seller_sku' => null,
+                'shein_sku' => null,
+                'skc' => null,
+                'product_name' => null,
+                'product_price' => null,
+                'estimated_merchandise_revenue' => null,
+                'commission' => isset($order['totalCommission']) ? (float) $order['totalCommission'] : null,
+                'quantity' => 1,
+                'seller_currency' => $currency,
+                'order_processed_on' => $processedOn,
+            ]];
+        }
+
+        $out = [];
+        foreach ($goodsList as $goods) {
+            if (! is_array($goods)) {
+                continue;
+            }
+            $sellerSku = $this->resolveOrderGoodsSellerSku($goods);
+            $price = isset($goods['sellerCurrencyPrice'])
+                ? (float) $goods['sellerCurrencyPrice']
+                : (isset($goods['orderCurrencyPrice']) ? (float) $goods['orderCurrencyPrice'] : 0.0);
+            $qty = 1; // Shein goods lines are typically one unit each
+            $out[] = [
+                'order_type' => (string) ($order['orderType'] ?? null),
+                'order_number' => $orderNo,
+                'order_status' => $status,
+                'seller_sku' => $sellerSku !== '' ? $sellerSku : null,
+                'shein_sku' => trim((string) ($goods['skuCode'] ?? '')) ?: null,
+                'skc' => trim((string) ($goods['skc'] ?? '')) ?: null,
+                'item_id' => isset($goods['goodsId']) ? (string) $goods['goodsId'] : null,
+                'product_name' => trim((string) ($goods['goodsTitle'] ?? '')) ?: null,
+                'product_price' => $price,
+                'estimated_merchandise_revenue' => $price * $qty,
+                'commission' => isset($goods['commission']) ? (float) $goods['commission'] : null,
+                'quantity' => $qty,
+                'seller_currency' => (string) ($goods['saleCurrency'] ?? $currency),
+                'order_processed_on' => $processedOn,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $goods
+     */
+    private function resolveOrderGoodsSellerSku(array $goods): string
+    {
+        $seller = trim((string) ($goods['sellerSku'] ?? ''));
+        if ($this->isUsableSheinSellerSku($seller)) {
+            return $seller;
+        }
+
+        $goodsSn = trim((string) ($goods['goodsSn'] ?? ''));
+        if ($this->isUsableSheinSellerSku($goodsSn)) {
+            return $goodsSn;
+        }
+
+        $code = trim((string) ($goods['skuCode'] ?? ''));
+        if ($code !== '' && $this->metricsTableExists()) {
+            try {
+                $metric = SheinMetric::query()->where('shein_sku_code', $code)->first();
+                if ($metric && $this->isUsableSheinSellerSku((string) $metric->sku)) {
+                    return trim((string) $metric->sku);
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        return $seller !== '' ? $seller : $goodsSn;
+    }
+
+    /**
      * Sync all product data to database
-     * Updates: Price, Views, Rating, Inventory
+     * Updates: Price, Views, Rating, Inventory (+ pricing prices table)
      */
     public function syncAllProductData(): array
     {
@@ -826,6 +1523,7 @@ public function getStock(array $skuCodes)
         try {
             $result = $this->listAllProducts();
             $tableOk = $this->metricsTableExists();
+            $pricing = $this->syncPricingPricesFromApiUsingProducts($result);
 
             return [
                 'success' => true,
@@ -836,6 +1534,7 @@ public function getStock(array $skuCodes)
                 'db_persisted' => $tableOk,
                 'db_created' => $this->lastMetricCreated,
                 'db_updated' => $this->lastMetricUpdated,
+                'pricing_updated' => $pricing['updated'] ?? 0,
             ];
         } catch (\Throwable $e) {
             Log::error('Shein Sync Failed: '.$e->getMessage());
@@ -845,6 +1544,48 @@ public function getStock(array $skuCodes)
                 'message' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $products
+     * @return array{success: bool, message: string, updated: int, skipped: int}
+     */
+    private function syncPricingPricesFromApiUsingProducts(array $products): array
+    {
+        if (! Schema::hasTable('shein_pricing_prices')) {
+            return ['success' => false, 'message' => 'shein_pricing_prices missing', 'updated' => 0, 'skipped' => 0];
+        }
+
+        $updated = 0;
+        $skipped = 0;
+        foreach ($products as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '') {
+                $skipped++;
+
+                continue;
+            }
+            $sale = isset($item['price']) ? (float) $item['price'] : 0.0;
+            $retail = isset($item['retail_price']) ? (float) $item['retail_price'] : 0.0;
+            $stock = (int) ($item['quantity'] ?? 0);
+            SheinPricingPrice::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'price' => max(0, $retail > 0 ? $retail : $sale),
+                    'original_price' => max(0, $retail),
+                    'special_offer_price' => max(0, $sale > 0 ? $sale : $retail),
+                    'shein_stock' => max(0, $stock),
+                ]
+            );
+            $updated++;
+        }
+
+        return [
+            'success' => true,
+            'message' => "Synced {$updated} SKU price/stock row(s) from Shein API.",
+            'updated' => $updated,
+            'skipped' => $skipped,
+        ];
     }
 
     /**

@@ -165,8 +165,8 @@ class MapIssuesController extends Controller
         $nrStatusTemu   = $this->buildTemuNrReqStatusLookup($skus);
 
         // Shein: stock (shein_stock), price (special_offer_price) and stored SKU come from
-        // shein_pricing_prices (listed = a pricing row with special offer > 0, same as the
-        // shein-pricing page). NR/REQ comes from shein_listing_statuses' "nr_req" key, falling
+        // shein_pricing_prices (filled by Shein Open API sync — same as /shein-pricing Sync API;
+        // listed = special offer > 0). NR/REQ comes from shein_listing_statuses' "nr_req" key, falling
         // back to shein_data_views meta — identical to the shein-pricing page, so Missing L /
         // N Map gate on REQ exactly like that page.
         $sheinByNorm        = $this->buildSheinLookupByNormalizedSku();

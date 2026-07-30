@@ -192,9 +192,9 @@ class MappingChannelCounts
                 'image' => $logos[$slug] ?? null,
                 'missing_mapping' => $nmap,
                 'detail_url' => route('map.issues.channel', ['channel' => $slug]),
-                // mi_key MapIssues channels + pricing loaders that expose SKU detail (TikTok)
+                // mi_key MapIssues channels + pricing loaders that expose SKU detail
                 'has_sku_detail' => isset(self::$sources[$slug]['mi_key'])
-                    || in_array($slug, ['tiktok', 'tiktok2'], true),
+                    || in_array($slug, ['tiktok', 'tiktok2', 'shein'], true),
             ];
         }
 
@@ -224,8 +224,9 @@ class MappingChannelCounts
             Log::warning('MappingChannelCounts MapIssues batch failed: '.$e->getMessage());
         }
 
-        // 2) Pricing pages not covered by MapIssues (live badge totals from those pages)
+        // 2) Pricing-page badge totals (overwrite MapIssues when both exist — page is source of truth)
         $pageLoaders = [
+            'shein' => fn () => self::fromSheinPage(),
             'pls' => fn () => self::fromPlsPage(),
             'wayfair' => fn () => self::fromWayfairPage(),
             'faire' => fn () => self::fromFairePage(),

@@ -439,7 +439,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm("Refresh Shein listings from shein_pricing_prices cache?\n\nUpload price sheet on Shein Pricing (/shein-pricing) if the cache is empty.")) {
+                if (!confirm("Refresh Shein listings from shein_pricing_prices cache?\n\nUse Sync API on Shein Pricing (/shein-pricing) if the cache is empty.")) {
                     return;
                 }
 

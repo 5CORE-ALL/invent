@@ -110,7 +110,7 @@ class SheinListingVariationVerifyController extends Controller
     }
 
     /**
-     * Shein listings come from price sheet upload on /shein-pricing (shein_pricing_prices).
+     * Shein listings come from Shein API sync on /shein-pricing (shein_pricing_prices).
      */
     public function pullListings(Request $request)
     {
@@ -121,7 +121,7 @@ class SheinListingVariationVerifyController extends Controller
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Shein listings in shein_pricing_prices. Upload price sheet on Shein Pricing (/shein-pricing) first.',
+                    'message' => 'No Shein listings in shein_pricing_prices. Sync from API on Shein Pricing (/shein-pricing) first.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
