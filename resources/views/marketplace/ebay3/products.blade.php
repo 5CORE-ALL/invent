@@ -335,6 +335,13 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     var url = '{{ route('marketplace.manager.ebay3.sync.mismatch.inventory') }}';
     var offset = 0;
     var totals = { updated: 0, failed: 0, skipped: 0 };
+    var retries = 0;
+
+    function finish(msg) {
+        alert(msg);
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
 
     function tick() {
         btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing… ' + offset;
@@ -345,14 +352,26 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ offset: offset, limit: 25, scope: scope }),
-        }).then(function (r) { return r.json(); }).then(function (data) {
+            body: JSON.stringify({ offset: offset, limit: 10, scope: scope }),
+        }).then(function (r) {
+            return r.text().then(function (text) {
+                var data = null;
+                try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+                if (!r.ok) {
+                    var errMsg = (data && (data.message || data.error)) || ('HTTP ' + r.status + ' at offset ' + offset);
+                    throw new Error(errMsg);
+                }
+                if (!data || typeof data !== 'object') {
+                    throw new Error('Invalid server response at offset ' + offset);
+                }
+                return data;
+            });
+        }).then(function (data) {
             if (!data.success) {
-                alert(data.message || 'Sync failed.');
-                btn.disabled = false;
-                btn.innerHTML = original;
+                finish(data.message || ('Sync failed at offset ' + offset + '.'));
                 return;
             }
+            retries = 0;
             totals.updated += data.updated || 0;
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
@@ -362,11 +381,16 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 location.reload();
                 return;
             }
-            setTimeout(tick, 200);
-        }).catch(function () {
-            alert('Request failed.');
-            btn.disabled = false;
-            btn.innerHTML = original;
+            setTimeout(tick, 400);
+        }).catch(function (err) {
+            // One automatic retry helps recover from short gateway/timeout blips.
+            if (retries < 1) {
+                retries++;
+                setTimeout(tick, 1500);
+                return;
+            }
+            finish((err && err.message) || ('Request failed at offset ' + offset + '.')
+                + '\nProgress so far — Updated: ' + totals.updated + ', Failed: ' + totals.failed);
         });
     }
 

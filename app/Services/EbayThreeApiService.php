@@ -1602,6 +1602,104 @@ class EbayThreeApiService
     }
 
     /**
+     * Fast quantity (and optional price) update without GetItem.
+     * Prefer this for inventory mismatch sync — ReviseFixedPriceItem is much slower.
+     *
+     * @return array{success: bool, message: string, data?: array, raw?: string}
+     */
+    public function reviseInventoryStatus(string $itemId, int $quantity, ?string $sku = null, ?float $price = null): array
+    {
+        $itemId = trim($itemId);
+        $sku = $sku !== null ? trim($sku) : null;
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'ItemID is required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $status = $xml->addChild('InventoryStatus');
+            $status->addChild('ItemID', $itemId);
+            if ($sku !== null && $sku !== '') {
+                $status->addChild('SKU', $sku);
+            }
+            $status->addChild('Quantity', (string) max(0, $quantity));
+            if ($price !== null && $price > 0) {
+                $status->addChild('StartPrice', number_format($price, 2, '.', ''));
+            }
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseInventoryStatus',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = Http::timeout(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                Log::warning('eBay3 ReviseInventoryStatus: invalid XML', [
+                    'itemId' => $itemId,
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'body' => substr($body, 0, 1000),
+                ]);
+
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return [
+                    'success' => true,
+                    'message' => 'Inventory updated.',
+                    'data' => $data,
+                ];
+            }
+
+            $errors = $data['Errors'] ?? [];
+            $errors = is_array($errors) ? $errors : [$errors];
+            $messages = [];
+            foreach ($errors as $err) {
+                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
+            }
+            $msg = implode('; ', array_filter($messages)) ?: 'ReviseInventoryStatus failed.';
+
+            Log::warning('eBay3 ReviseInventoryStatus failed', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'qty' => $quantity,
+                'ack' => $ack,
+                'message' => $msg,
+            ]);
+
+            return ['success' => false, 'message' => $msg, 'data' => $data];
+        } catch (\Throwable $e) {
+            Log::warning('eBay3 ReviseInventoryStatus exception', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{success: bool, message: string, sample_item_id?: string|null}
      */
     public function testConnection(): array

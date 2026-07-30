@@ -64,6 +64,14 @@ class Ebay3InventorySyncService
             ->whereNotNull('item_id')
             ->where('sku', '!=', '')
             ->whereColumn('sku', '!=', 'item_id')
+            ->where(function ($q) use ($skus, $wantedNorms) {
+                $q->whereIn('sku', $skus);
+                $normSkus = array_keys($wantedNorms);
+                if ($normSkus !== []) {
+                    // Normalized lookup covers hyphen/case variants stored differently than requested SKU.
+                    $q->orWhereIn('sku', $normSkus);
+                }
+            })
             ->get()
             ->filter(function (Ebay3Metric $metric) use ($wantedNorms, $skus) {
                 $raw = (string) $metric->sku;
@@ -371,20 +379,18 @@ class Ebay3InventorySyncService
             }
 
             $qty = max(0, (int) ($row['inventory'] ?? 0));
+            // Qty-only via ReviseInventoryStatus (no GetItem). Price is optional; omit unless valid.
             $price = $row['price'] ?? null;
-            if ($price === null || (float) $price <= 0) {
-                $existing = Ebay3Metric::query()->where('item_id', $itemId)->where('sku', $sku)->value('ebay_price');
-                $price = $existing !== null ? (float) $existing : 0.01;
-            }
+            $price = ($price !== null && (float) $price > 0) ? (float) $price : null;
 
             try {
-                $result = $this->ebay3Api->reviseFixedPriceItem($itemId, (float) $price, $qty, $sku);
+                $result = $this->ebay3Api->reviseInventoryStatus($itemId, $qty, $sku, $price);
                 if (! empty($result['success'])) {
                     $pushed++;
                 } else {
                     $failed++;
-                    $lastMessage = $result['message'] ?? 'ReviseFixedPriceItem failed';
-                    Log::warning('Ebay3InventorySyncService: revise failed', [
+                    $lastMessage = $result['message'] ?? 'ReviseInventoryStatus failed';
+                    Log::warning('Ebay3InventorySyncService: revise inventory failed', [
                         'item_id' => $itemId,
                         'sku' => $sku,
                         'qty' => $qty,
@@ -394,7 +400,7 @@ class Ebay3InventorySyncService
             } catch (\Throwable $e) {
                 $failed++;
                 $lastMessage = $e->getMessage();
-                Log::warning('Ebay3InventorySyncService: revise exception', [
+                Log::warning('Ebay3InventorySyncService: revise inventory exception', [
                     'item_id' => $itemId,
                     'sku' => $sku,
                     'error' => $e->getMessage(),

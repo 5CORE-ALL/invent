@@ -26,6 +26,7 @@ use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -824,14 +825,91 @@ class Ebay3SyncController extends Controller
     {
         @set_time_limit(300);
 
-        $settings = MarketplaceSyncSettings::getFor('ebay3');
-        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+        try {
+            $settings = MarketplaceSyncSettings::getFor('ebay3');
+            if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+                ], 422);
+            }
+
+            $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+            $offset = max(0, (int) $request->input('offset', 0));
+            $limit = max(1, min(20, (int) $request->input('limit', 10)));
+            $cacheKey = 'ebay3_mismatch_sync_list_'.(string) (auth()->id() ?? 'guest').'_'.$scope;
+
+            // Rebuild mismatch list only on first batch; later offsets reuse cache (avoids timeout).
+            $mismatch = null;
+            if ($offset > 0) {
+                $cached = Cache::get($cacheKey);
+                if (is_array($cached)) {
+                    $mismatch = $cached;
+                }
+            }
+            if (! is_array($mismatch)) {
+                $mismatch = $this->resolveEbay3MismatchSkuList($scope);
+                Cache::put($cacheKey, array_values($mismatch), now()->addMinutes(30));
+            }
+
+            $total = count($mismatch);
+            $batch = array_slice($mismatch, $offset, $limit);
+
+            if ($batch === []) {
+                Cache::forget($cacheKey);
+
+                return response()->json([
+                    'success' => true,
+                    'done' => true,
+                    'total' => $total,
+                    'offset' => $offset,
+                    'updated' => 0,
+                    'failed' => 0,
+                    'skipped' => 0,
+                    'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+                ]);
+            }
+
+            $result = app(Ebay3InventorySyncService::class)->syncSkusFromShopify($batch);
+            $nextOffset = $offset + count($batch);
+            $done = $nextOffset >= $total;
+            if ($done) {
+                Cache::forget($cacheKey);
+            }
+
+            return response()->json([
+                'success' => true,
+                'done' => $done,
+                'queued' => false,
+                'total' => $total,
+                'offset' => $nextOffset,
+                'batch' => count($batch),
+                'updated' => (int) ($result['updated'] ?? 0),
+                'failed' => (int) ($result['failed'] ?? 0),
+                'skipped' => (int) ($result['skipped'] ?? 0),
+                'message' => $result['message'] ?? ($done
+                    ? 'Mismatch inventory sync complete.'
+                    : 'Synced batch '.$nextOffset.' / '.$total.'…'),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Ebay3 syncMismatchInventoryNow failed', [
+                'error' => $e->getMessage(),
+                'offset' => (int) $request->input('offset', 0),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
-            ], 422);
+                'done' => false,
+                'message' => 'Sync failed: '.$e->getMessage(),
+            ], 500);
         }
+    }
 
+    /**
+     * @return array<int, string>
+     */
+    protected function resolveEbay3MismatchSkuList(string $scope): array
+    {
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $liveService = app(Ebay3LiveListingsService::class);
         $linkedSkus = $this->linkedEbay3Skus();
@@ -842,7 +920,7 @@ class Ebay3SyncController extends Controller
         );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $mismatchQty = $classified['mismatch'] ?? [];
-        $scope = strtolower((string) $request->input('scope', $request->input('link', 'all')));
+
         if (in_array($scope, ['mismatch', 'active', 'mismatch_active'], true)) {
             $mismatchNormToSku = [];
             foreach ($mismatchQty as $sku) {
@@ -858,14 +936,16 @@ class Ebay3SyncController extends Controller
                 $mismatchNormToSku
             );
             if ($idx['ready']) {
-                $mismatch = $catalog->filterSkusByNormalizedAllowList(
+                return array_values($catalog->filterSkusByNormalizedAllowList(
                     $mismatchQty,
                     $idx['skusByState']['active'] ?? []
-                );
-            } else {
-                $mismatch = $mismatchQty;
+                ));
             }
-        } elseif (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
+
+            return array_values($mismatchQty);
+        }
+
+        if (in_array($scope, ['mismatch_inactive', 'inactive'], true)) {
             $mismatchNormToSku = [];
             foreach ($mismatchQty as $sku) {
                 $n = ShopifySku::normalizeSkuForShopifyLookup((string) $sku);
@@ -884,50 +964,14 @@ class Ebay3SyncController extends Controller
                     $mismatchQty,
                     $idx['skusByState']['active'] ?? []
                 );
-                $mismatch = $catalog->excludeSkusByNormalizedList($mismatchQty, $active);
-            } else {
-                $mismatch = [];
+
+                return array_values($catalog->excludeSkusByNormalizedList($mismatchQty, $active));
             }
-        } else {
-            $mismatch = $mismatchQty;
+
+            return [];
         }
 
-        $offset = max(0, (int) $request->input('offset', 0));
-        $limit = max(1, min(40, (int) $request->input('limit', 25)));
-        $total = count($mismatch);
-        $batch = array_slice($mismatch, $offset, $limit);
-
-        if ($batch === []) {
-            return response()->json([
-                'success' => true,
-                'done' => true,
-                'total' => $total,
-                'offset' => $offset,
-                'updated' => 0,
-                'failed' => 0,
-                'skipped' => 0,
-                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
-            ]);
-        }
-
-        $result = app(Ebay3InventorySyncService::class)->syncSkusFromShopify($batch);
-        $nextOffset = $offset + count($batch);
-        $done = $nextOffset >= $total;
-
-        return response()->json([
-            'success' => true,
-            'done' => $done,
-            'queued' => false,
-            'total' => $total,
-            'offset' => $nextOffset,
-            'batch' => count($batch),
-            'updated' => (int) ($result['updated'] ?? 0),
-            'failed' => (int) ($result['failed'] ?? 0),
-            'skipped' => (int) ($result['skipped'] ?? 0),
-            'message' => $result['message'] ?? ($done
-                ? 'Mismatch inventory sync complete.'
-                : 'Synced batch '.$nextOffset.' / '.$total.'…'),
-        ]);
+        return array_values($mismatchQty);
     }
 
     public function pushOrderToShopify(Request $request): JsonResponse
