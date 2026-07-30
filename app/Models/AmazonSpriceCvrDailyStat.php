@@ -19,6 +19,7 @@ class AmazonSpriceCvrDailyStat extends Model
         'total_count',
         'low_cvr',
         'high_cvr',
+        'rule_pies',
     ];
 
     protected $casts = [
@@ -32,5 +33,6 @@ class AmazonSpriceCvrDailyStat extends Model
         'total_count' => 'integer',
         'low_cvr' => 'float',
         'high_cvr' => 'float',
+        'rule_pies' => 'array',
     ];
 }

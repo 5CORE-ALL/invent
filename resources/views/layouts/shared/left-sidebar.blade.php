@@ -1676,10 +1676,6 @@
                             </a>
                             <div class="collapse" id="sidebarTemu">
                                 <ul class="side-nav-third-level">
-
-
-
-
                                     <li>
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
@@ -1689,8 +1685,9 @@
                                     <li>
                                         <a href="{{ route('temu.ads') }}">Temu Ads (API)</a>
                                     </li>
-
-
+                                    <li>
+                                        <a href="{{ route('map.issues.channel', ['channel' => 'temu']) }}">Missing Mapping Temu</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>

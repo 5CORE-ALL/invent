@@ -4059,6 +4059,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
     Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
+    Route::get('/amazon-badge-prev-day', [OverallAmazonController::class, 'getAmazonBadgePrevDay']);
     Route::post('/amazon-sprice-cvr-stats-save', [OverallAmazonController::class, 'saveAmazonSpriceCvrDailyStats']);
     Route::get('/amazon-sprice-cvr-history', [OverallAmazonController::class, 'getAmazonSpriceCvrHistory']);
     Route::get('/amazon-kw-last-sbid-chart-data', [OverallAmazonController::class, 'getAmazonKwLastSbidChartData']);

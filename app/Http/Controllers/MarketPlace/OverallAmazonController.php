@@ -4734,7 +4734,80 @@ class OverallAmazonController extends Controller
     }
 
     /**
-     * Save today's Amazon Sprice×CVR pie snapshot (INV>0 slab + action counts).
+     * Previous-day Amazon badge % metrics for day-over-day trend dots.
+     * Uses the latest snapshot strictly before today (America/Los_Angeles).
+     */
+    public function getAmazonBadgePrevDay(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = \App\Models\AmazonDailyBadgeStat::query()
+                ->where('snapshot_date', '<', $today)
+                ->orderBy('snapshot_date', 'desc')
+                ->first();
+
+            if (! $row) {
+                return response()->json(['success' => true, 'date' => null, 'metrics' => null]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'date' => \Carbon\Carbon::parse($row->snapshot_date)->toDateString(),
+                'metrics' => [
+                    'gpft_pct' => (float) $row->gpft_pct,
+                    'npft_pct' => (float) $row->npft_pct,
+                    'groi_pct' => (float) $row->groi_pct,
+                    'nroi_pct' => (float) $row->nroi_pct,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getAmazonBadgePrevDay error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching previous day'], 500);
+        }
+    }
+
+    /**
+     * Normalize per-rule pie snapshot payload (Rule 1 Dil bands + Rules 2–5 trends).
+     *
+     * @return array<string, array<string, int>>
+     */
+    private function sanitizeAmazonSpriceCvrRulePies($raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $int = static fn ($v) => max(0, (int) $v);
+
+        $zero = is_array($raw['zero'] ?? null) ? $raw['zero'] : [];
+        $out = [
+            'zero' => [
+                'low' => $int($zero['low'] ?? 0),
+                'mid' => $int($zero['mid'] ?? 0),
+                'high' => $int($zero['high'] ?? 0),
+            ],
+        ];
+
+        foreach (['yellow', 'blue', 'green', 'pink'] as $rule) {
+            $row = is_array($raw[$rule] ?? null) ? $raw[$rule] : [];
+            $out[$rule] = [
+                'down' => $int($row['down'] ?? 0),
+                'equal' => $int($row['equal'] ?? 0),
+                'up' => $int($row['up'] ?? 0),
+                'none' => $int($row['none'] ?? 0),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Save today's Amazon Sprice×CVR pie snapshot (INV>0 slab + action + rule pies).
      */
     public function saveAmazonSpriceCvrDailyStats(Request $request)
     {
@@ -4751,6 +4824,8 @@ class OverallAmazonController extends Controller
                 $total = $increased + $decreased + $hold;
             }
 
+            $rulePies = $this->sanitizeAmazonSpriceCvrRulePies($request->input('rule_pies'));
+
             $row = \App\Models\AmazonSpriceCvrDailyStat::updateOrCreate(
                 ['snapshot_date' => $today],
                 [
@@ -4763,6 +4838,7 @@ class OverallAmazonController extends Controller
                     'total_count' => $total,
                     'low_cvr' => is_numeric($request->input('low_cvr')) ? (float) $request->input('low_cvr') : null,
                     'high_cvr' => is_numeric($request->input('high_cvr')) ? (float) $request->input('high_cvr') : null,
+                    'rule_pies' => $rulePies,
                 ]
             );
 
@@ -4775,14 +4851,15 @@ class OverallAmazonController extends Controller
     }
 
     /**
-     * Rolling history for Amazon Sprice×CVR pie charts (slab or action series).
-     * type=slab → red/green/pink · type=action → increased/decreased/hold
+     * Rolling history for Amazon Sprice×CVR pie charts.
+     * type=slab|action|rule_zero|rule_yellow|rule_blue|rule_green|rule_pink
      */
     public function getAmazonSpriceCvrHistory(Request $request)
     {
         try {
             $type = strtolower((string) $request->input('type', 'slab'));
-            if (! in_array($type, ['slab', 'action'], true)) {
+            $allowed = ['slab', 'action', 'rule_zero', 'rule_yellow', 'rule_blue', 'rule_green', 'rule_pink'];
+            if (! in_array($type, $allowed, true)) {
                 $type = 'slab';
             }
             $days = intval($request->input('days', 30));
@@ -4821,18 +4898,21 @@ class OverallAmazonController extends Controller
                         'data' => $rows->pluck('hold_count')->map(fn ($v) => (int) $v)->values()->all(),
                     ],
                 ];
+            } elseif (str_starts_with($type, 'rule_')) {
+                $ruleKey = substr($type, 5); // zero|yellow|blue|green|pink
+                $series = $this->amazonSpriceCvrRuleHistorySeries($rows, $ruleKey);
             } else {
                 $series = [
                     [
                         'key' => 'red',
-                        'label' => 'Red',
-                        'color' => '#a00211',
+                        'label' => 'Yellow (≤low, incl CVR0)',
+                        'color' => '#ffc107',
                         'data' => $rows->pluck('red_count')->map(fn ($v) => (int) $v)->values()->all(),
                     ],
                     [
                         'key' => 'green',
-                        'label' => 'Green',
-                        'color' => '#28a745',
+                        'label' => 'Blue+Green',
+                        'color' => '#0d6efd',
                         'data' => $rows->pluck('green_count')->map(fn ($v) => (int) $v)->values()->all(),
                     ],
                     [
@@ -4855,6 +4935,63 @@ class OverallAmazonController extends Controller
 
             return response()->json(['success' => false, 'message' => 'Error fetching history'], 500);
         }
+    }
+
+    /**
+     * Build line-series from rule_pies JSON for one rule pie.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\AmazonSpriceCvrDailyStat>  $rows
+     * @return list<array{key: string, label: string, color: string, data: list<int>}>
+     */
+    private function amazonSpriceCvrRuleHistorySeries($rows, string $ruleKey): array
+    {
+        $defs = [
+            'zero' => [
+                ['key' => 'low', 'label' => 'Dil low → GROI', 'color' => '#ff8787'],
+                ['key' => 'mid', 'label' => 'Dil mid → GROI', 'color' => '#fa5252'],
+                ['key' => 'high', 'label' => 'Dil high → GROI', 'color' => '#a00211'],
+            ],
+            'yellow' => [
+                ['key' => 'down', 'label' => 'Down', 'color' => '#e67700'],
+                ['key' => 'equal', 'label' => 'Equal', 'color' => '#f59f00'],
+                ['key' => 'up', 'label' => 'Up', 'color' => '#ffd43b'],
+                ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
+            ],
+            'blue' => [
+                ['key' => 'down', 'label' => 'Down', 'color' => '#1c7ed6'],
+                ['key' => 'equal', 'label' => 'Equal', 'color' => '#4dabf7'],
+                ['key' => 'up', 'label' => 'Up', 'color' => '#a5d8ff'],
+                ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
+            ],
+            'green' => [
+                ['key' => 'down', 'label' => 'Down', 'color' => '#2f9e44'],
+                ['key' => 'equal', 'label' => 'Equal', 'color' => '#51cf66'],
+                ['key' => 'up', 'label' => 'Up', 'color' => '#b2f2bb'],
+                ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
+            ],
+            'pink' => [
+                ['key' => 'down', 'label' => 'Down', 'color' => '#c2255c'],
+                ['key' => 'equal', 'label' => 'Equal', 'color' => '#f06595'],
+                ['key' => 'up', 'label' => 'Up', 'color' => '#fcc2d7'],
+                ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
+            ],
+        ];
+
+        $segments = $defs[$ruleKey] ?? $defs['yellow'];
+
+        return array_map(function (array $seg) use ($rows, $ruleKey) {
+            return [
+                'key' => $seg['key'],
+                'label' => $seg['label'],
+                'color' => $seg['color'],
+                'data' => $rows->map(function ($r) use ($ruleKey, $seg) {
+                    $pies = is_array($r->rule_pies) ? $r->rule_pies : [];
+                    $rule = is_array($pies[$ruleKey] ?? null) ? $pies[$ruleKey] : [];
+
+                    return (int) ($rule[$seg['key']] ?? 0);
+                })->values()->all(),
+            ];
+        }, $segments);
     }
 
     /**
