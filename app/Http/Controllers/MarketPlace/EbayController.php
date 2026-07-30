@@ -746,9 +746,20 @@ class EbayController extends Controller
         // Key by a normalized SKU (UPPER + trim) so saved rows — which saveSpriceToDatabase
         // stores uppercased/trimmed — are still matched on read regardless of the SKU's
         // original case/spacing (otherwise manual SPRICE would appear "not saved" on refresh).
-        $nrValues = EbayDataView::whereIn("sku", $skus)->get()
-            ->keyBy(fn($r) => strtoupper(trim((string) $r->sku)))
-            ->map(fn($r) => $r->value);
+        // Use UPPER(TRIM(sku)) IN (…) so casing drift from auto-push / saves cannot hide SPRICE.
+        $nrValues = collect();
+        if (! empty($skus)) {
+            $upperSkus = array_values(array_unique(array_map(
+                static fn ($s) => strtoupper(trim((string) $s)),
+                $skus
+            )));
+            $placeholders = implode(',', array_fill(0, count($upperSkus), '?'));
+            $nrValues = EbayDataView::query()
+                ->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $upperSkus)
+                ->get()
+                ->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)))
+                ->map(fn ($r) => $r->value);
+        }
         
         // Legacy listing status data for nr_req field (used as fallback)
         // Key listing status by lowercase SKU for case-insensitive lookup (UI sends upper/lower mixed)
@@ -2469,9 +2480,20 @@ class EbayController extends Controller
             $days = intval($request->input('days', 30));
 
             $allowedMetrics = [
+                'zero_sold_count',
+                'sold_count',
+                'total_sales_amt',
+                'total_ebay_l30', // Qty
+                'gpft_percent',
+                'groi_percent',
+                'tcos_percent', // Ads%
+                'npft_percent',
+                'nroi_percent',
+                'cvr_percent',
                 'total_views',
                 'avg_l30_view',
                 'avg_l7_views',
+                'missing_count', // M L
             ];
 
             if (! in_array($metric, $allowedMetrics, true)) {
@@ -2488,39 +2510,103 @@ class EbayController extends Controller
             $rows = $query->get();
 
             $chartData = $rows->map(function ($row) use ($metric) {
-                $summary = $row->summary_data ?? [];
+                $summary = is_array($row->summary_data)
+                    ? $row->summary_data
+                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
                 $totalViews = floatval($summary['total_views'] ?? 0);
 
                 if ($metric === 'avg_l30_view') {
-                    // Prefer stored value when present; otherwise derive from total_views.
                     $raw = array_key_exists('avg_l30_view', $summary)
                         ? $summary['avg_l30_view']
                         : round($totalViews / 30);
-                } elseif ($metric === 'avg_l7_views') {
-                    $raw = $summary['avg_l7_views'] ?? 0;
+                } elseif ($metric === 'npft_percent') {
+                    // Derive when older snapshots lack npft_percent
+                    $raw = array_key_exists('npft_percent', $summary)
+                        ? $summary['npft_percent']
+                        : (floatval($summary['gpft_percent'] ?? 0) - floatval($summary['tcos_percent'] ?? 0));
                 } else {
                     $raw = $summary[$metric] ?? 0;
                 }
 
                 $sd = $row->snapshot_date;
                 $dateStr = '';
+                $fullDate = '';
                 if ($sd) {
-                    $dateStr = $sd instanceof \DateTimeInterface
-                        ? $sd->format('M d')
-                        : date('M d', strtotime((string) $sd));
+                    if ($sd instanceof \DateTimeInterface) {
+                        $dateStr = $sd->format('M d');
+                        $fullDate = $sd->format('Y-m-d');
+                    } else {
+                        $ts = strtotime((string) $sd);
+                        $dateStr = date('M d', $ts);
+                        $fullDate = date('Y-m-d', $ts);
+                    }
                 }
 
                 return [
                     'date' => $dateStr,
+                    'full_date' => $fullDate,
                     'value' => floatval($raw ?? 0),
                 ];
             })->values()->toArray();
 
-            return response()->json(['success' => true, 'data' => $chartData]);
+            return response()->json(['success' => true, 'data' => $chartData, 'metric' => $metric]);
         } catch (\Exception $e) {
             Log::error('getEbayBadgeChartData error: ' . $e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
+     * Previous-day eBay summary metrics for 3-color trend dots on summary badges.
+     */
+    public function getEbayBadgePrevDay(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = AmazonChannelSummary::where('channel', 'ebay')
+                ->where('snapshot_date', '<', $today)
+                ->orderBy('snapshot_date', 'desc')
+                ->first();
+
+            if (! $row) {
+                return response()->json(['success' => true, 'date' => null, 'metrics' => null]);
+            }
+
+            $s = is_array($row->summary_data)
+                ? $row->summary_data
+                : (json_decode($row->summary_data ?? '{}', true) ?: []);
+
+            $gpft = floatval($s['gpft_percent'] ?? 0);
+            $tcos = floatval($s['tcos_percent'] ?? 0);
+            $npft = array_key_exists('npft_percent', $s)
+                ? floatval($s['npft_percent'])
+                : ($gpft - $tcos);
+
+            return response()->json([
+                'success' => true,
+                'date' => Carbon::parse($row->snapshot_date)->toDateString(),
+                'metrics' => [
+                    'zero_sold_count' => floatval($s['zero_sold_count'] ?? 0),
+                    'sold_count' => floatval($s['sold_count'] ?? 0),
+                    'total_sales_amt' => floatval($s['total_sales_amt'] ?? 0),
+                    'total_ebay_l30' => floatval($s['total_ebay_l30'] ?? 0),
+                    'gpft_percent' => $gpft,
+                    'groi_percent' => floatval($s['groi_percent'] ?? 0),
+                    'tcos_percent' => $tcos,
+                    'npft_percent' => $npft,
+                    'nroi_percent' => floatval($s['nroi_percent'] ?? 0),
+                    'cvr_percent' => floatval($s['cvr_percent'] ?? 0),
+                    'total_views' => floatval($s['total_views'] ?? 0),
+                    'avg_l30_view' => floatval($s['avg_l30_view'] ?? 0),
+                    'avg_l7_views' => floatval($s['avg_l7_views'] ?? 0),
+                    'missing_count' => floatval($s['missing_count'] ?? 0),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('getEbayBadgePrevDay error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Error fetching previous day'], 500);
         }
     }
 
@@ -3334,7 +3420,33 @@ class EbayController extends Controller
             // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon / ebay-tabulator badge
             $nroiPercent = $totalLpAmt > 0 ? ((($totalPftAmt - $grandTotalSpend) / $totalLpAmt) * 100) : 0;
             $gpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
-            
+            $npftPercent = $gpftPercent - $tcosPercent;
+            $cvrPercent = $totalViews > 0 ? (($totalEbayL30 / $totalViews) * 100) : 0;
+
+            // Prefer real-orders L30 (same source as live summary badges) when available.
+            try {
+                $ordersAgg = $this->fetchEbayL30OrdersAggregate();
+                $ebayAdSpend = (float) app(ChannelMasterController::class)->getEbayMasterAdSpend();
+                if (($ordersAgg['sales'] ?? 0) > 0) {
+                    $totalSalesAmt = (float) $ordersAgg['sales'];
+                    $totalEbayL30 = (float) ($ordersAgg['qty'] ?? $totalEbayL30);
+                    $totalPftAmt = (float) ($ordersAgg['pft'] ?? $totalPftAmt);
+                    $totalLpAmt = (float) ($ordersAgg['cogs'] ?? $totalLpAmt);
+                    $gpftPercent = (float) ($ordersAgg['gpft'] ?? $gpftPercent);
+                    $groiPercent = (float) ($ordersAgg['groi'] ?? $groiPercent);
+                    $tcosPercent = $totalSalesAmt > 0 ? (($ebayAdSpend / $totalSalesAmt) * 100) : 0;
+                    $npftPercent = $gpftPercent - $tcosPercent;
+                    $nroiPercent = $totalLpAmt > 0
+                        ? ((($totalPftAmt - $ebayAdSpend) / $totalLpAmt) * 100)
+                        : 0;
+                    $cvrPercent = $totalViews > 0 ? (($totalEbayL30 / $totalViews) * 100) : 0;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('eBay summary: orders aggregate unavailable for snapshot', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [
                 // Counts
@@ -3366,11 +3478,13 @@ class EbayController extends Controller
                 // Avg L7 views across E Stock > 0 rows, rounded (matches L7 badge)
                 'avg_l7_views' => (int) round($avgL7Views),
                 
-                // Calculated Percentages
+                // Calculated Percentages (match live summary badges)
                 'tcos_percent' => round($tcosPercent, 2),
                 'groi_percent' => round($groiPercent, 2),
                 'nroi_percent' => round($nroiPercent, 2),
                 'gpft_percent' => round($gpftPercent, 2),
+                'npft_percent' => round($npftPercent, 2),
+                'cvr_percent' => round($cvrPercent, 2),
                 
                 // Averages
                 'avg_price' => round($avgPrice, 2),

@@ -837,7 +837,8 @@
                         </ul>
                     </div>
 
-                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
+                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger"
+                        title="Clear SPRICE for selected SKUs (turn on Prc Mode to select)">
                         <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
 
@@ -2083,8 +2084,8 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalSpriceInputHtml(row)));
                     tr.append($('<td class="text-center"></td>').html(amazonModalAcceptPushHtml(row)));
-                    tr.append($('<td class="text-end"></td>').html(amazonModalSpftColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalSroiColoredHtml(row)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalSpftColoredHtml(row)));
                     tbody.append(tr);
                 });
             }
@@ -3228,7 +3229,6 @@
                 $('.sku-select-checkbox').prop('checked', false);
                 if ($('#select-all-checkbox').length) $('#select-all-checkbox').prop('checked', false);
                 $('#discount-input-container').hide();
-                $('#clear-sprice-btn').hide();
                 $('#price-pct-btn').removeClass('btn-danger btn-warning btn-success btn-info').addClass('btn-primary')
                     .html('<i class="fas fa-percent"></i> Prc Mode');
                 $('#apply-discount-btn').html('<i class="fas fa-check"></i> Apply');
@@ -3253,7 +3253,6 @@
                 increaseModeActive = (mode === 'increase');
                 samePriceModeActive  = (mode === 'same');
                 selectColumn.show();
-                $('#clear-sprice-btn').show();
                 $('#discount-input-container').show();
                 $('#discount-percentage-input').val('');
 
@@ -7203,27 +7202,6 @@
                     },
 
                     {
-                        title: "GPFT %",
-                        field: "GPFT%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const percent = parseFloat(value) || 0;
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 50
-                    },
-
-                    {
                         title: "GROI%",
                         field: "GROI%",
                         hozAlign: "center",
@@ -7243,6 +7221,27 @@
                         },
                         sorter: "number",
                         width: 65
+                    },
+
+                    {
+                        title: "GPFT %",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const percent = parseFloat(value) || 0;
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
                     },
 
                     {
@@ -7472,10 +7471,10 @@
                             const sku = rowData['(Child) sku'] || '';
                             const dot = amazonSpriceChangeDotHtml(sprice, currentPrice, sku);
 
-                            // Price text blank when SPRICE matches Amazon price — still show hold (yellow) dot
+                            // When SPRICE matches Amazon price, show "-" (hold) instead of the same dollar amount
                             if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
                                 return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                    dot + '</span>';
+                                    dot + '<span style="color:#adb5bd;" title="Same as Amazon price">-</span></span>';
                             }
 
                             let formattedValue = '$' + sprice.toFixed(2);
@@ -7985,6 +7984,32 @@
                         width: 80
                     },
                     {
+                        title: "SNROI",
+                        field: "SROI",
+                        hozAlign: "center",
+                        // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
+                        sorter: function(a, b, aRow, bRow) {
+                            const aNet = amazonComputeNetSroi(aRow.getData());
+                            const bNet = amazonComputeNetSroi(bRow.getData());
+                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
+                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
+                        },
+                        formatter: function(cell) {
+                            const percent = amazonComputeNetSroi(cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '';
+                            
+                            let color = '';
+                            // Same as ROI% color logic
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
                         title: "SNPFT",
                         field: "Spft%",
                         hozAlign: "center",
@@ -8013,32 +8038,6 @@
                             else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
                             else if (percent >= 30 && percent < 50) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "SNROI",
-                        field: "SROI",
-                        hozAlign: "center",
-                        // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
-                        sorter: function(a, b, aRow, bRow) {
-                            const aNet = amazonComputeNetSroi(aRow.getData());
-                            const bNet = amazonComputeNetSroi(bRow.getData());
-                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                        },
-                        formatter: function(cell) {
-                            const percent = amazonComputeNetSroi(cell.getRow().getData());
-                            if (percent === null || !isFinite(percent)) return '';
-                            
-                            let color = '';
-                            // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -10521,8 +10520,8 @@
                                     <th class="text-end">LMP</th>
                                     <th class="text-end">S PRC</th>
                                     <th class="text-center">Push</th>
-                                    <th class="text-end">SNPFT %</th>
                                     <th class="text-end">SNROI %</th>
+                                    <th class="text-end">SNPFT %</th>
                                 </tr>
                             </thead>
                             <tbody id="parent-pricing-breakdown-tbody"></tbody>

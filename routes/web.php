@@ -128,6 +128,7 @@ use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayLowVisibilityController;
+use App\Http\Controllers\MarketPlace\EbaySpriceCvrAutoPushController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\EbayViewsController;
@@ -4251,6 +4252,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
 
+    // eBay Sprice×CVR auto push (Clear → Apply → Push) — cron 14:00 IST
+    Route::get('/ebay-sprice-cvr-auto-push', [EbaySpriceCvrAutoPushController::class, 'index'])
+        ->name('ebay.sprice-cvr-auto');
+    Route::post('/ebay-sprice-cvr-auto-push/run', [EbaySpriceCvrAutoPushController::class, 'run'])
+        ->name('ebay.sprice-cvr-auto.run');
+
     // Ebay Listing Variation Verify (Parent / Required / Parent Vs Listed SKU)
     Route::get('/ebay-listing-variation-verify', [EbayListingVariationVerifyController::class, 'index'])->name('ebay.listing.variation.verify');
     Route::get('/ebay-listing-variation-verify/data', [EbayListingVariationVerifyController::class, 'data'])->name('ebay.listing.variation.verify.data');
@@ -4263,6 +4270,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay3-campaign-data-by-sku', [EbayThreeController::class, 'getCampaignDataBySku'])->name('ebay3.campaign.data.by.sku');
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-badge-chart-data', [EbayController::class, 'getEbayBadgeChartData'])->name('ebay.badge.chart.data');
+    Route::get('/ebay-badge-prev-day', [EbayController::class, 'getEbayBadgePrevDay'])->name('ebay.badge.prev.day');
     Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
     Route::get('/ebay-kw-pmt-spend-totals', [EbayController::class, 'getKwPmtSpendTotals'])->name('ebay.kw.pmt.spend.totals');
     Route::post('/update-ebay-rating', [EbayController::class, 'updateEbayRating']);

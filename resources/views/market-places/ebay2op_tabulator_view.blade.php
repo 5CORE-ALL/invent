@@ -354,11 +354,12 @@
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
+                        style="width: auto; display: inline-block;"
+                        title="CVR L30 vs prior period L31–L60 (CVR L60)">
                         <option value="all">CVR trend</option>
-                        <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
-                        <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
-                        <option value="equal">CVR 60 = CVR 30</option>
+                        <option value="down">Down</option>
+                        <option value="up">Up</option>
+                        <option value="same">Same</option>
                     </select>
 
                     <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
@@ -4375,15 +4376,18 @@
                     });
                 }
 
-                // CVR trend filter: CVR 60 vs CVR 30
+                // CVR trend filter: CVR L30 vs prior L31–L60 (same as Amazon — Down / Up / Same)
                 if (cvrTrendFilter !== 'all') {
                     const cvrTrendTol = 0.1;
                     table.addFilter(function(data) {
                         const cvr30 = parseFloat(data['SCVR'] || 0);
                         const cvr60 = parseFloat(data['CVR_60'] || 0);
-                        if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
-                        if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
-                        if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
+                        let trend = 'equal';
+                        if (cvr30 > cvr60 + cvrTrendTol) trend = 'up';
+                        else if (cvr30 < cvr60 - cvrTrendTol) trend = 'down';
+                        if (cvrTrendFilter === 'down') return trend === 'down';
+                        if (cvrTrendFilter === 'up') return trend === 'up';
+                        if (cvrTrendFilter === 'same' || cvrTrendFilter === 'equal') return trend === 'equal';
                         return true;
                     });
                 }

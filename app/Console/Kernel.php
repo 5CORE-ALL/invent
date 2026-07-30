@@ -77,6 +77,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
+        \App\Console\Commands\EbaySpriceCvrAutoPushCommand::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
@@ -586,6 +587,15 @@ class Kernel extends ConsoleKernel
             ->dailyAt('14:00')
             ->timezone('Asia/Kolkata')
             ->name('fetch-ebay-reports')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // Clear SPRICE → Apply % Sprice×CVR → Push to eBay 1/2/3 (2:00 PM IST)
+        $ist($schedule->command('ebay:sprice-cvr-auto-push')
+            ->dailyAt('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-sprice-cvr-auto-push')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log));

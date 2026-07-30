@@ -528,6 +528,254 @@
             width: 100%;
             max-width: 100%;
         }
+
+        #spriceCvrHistoryModal.modal {
+            --tz-modal-width: 100%;
+            --tz-modal-margin: 0.5rem 0;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+        }
+        #skuMetricsModal .modal-dialog,
+        #amzMetricChartModal .modal-dialog,
+        #spriceCvrHistoryModal .modal-dialog {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0.5rem 0 0 0 !important;
+        }
+        #skuMetricsModal .modal-content,
+        #amzMetricChartModal .modal-content,
+        #spriceCvrHistoryModal .modal-content {
+            border-radius: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+        .sprice-cvr-history-btn {
+            border: none;
+            background: transparent;
+            color: #0d6efd;
+            padding: 0 4px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .sprice-cvr-history-btn:hover { color: #0a58ca; }
+
+        /* Sprice × CVR rule modal — fullscreen, one-screen grid */
+        #spriceCvrRuleModal.modal {
+            --tz-modal-width: 100vw;
+            --tz-modal-margin: 0;
+            padding: 0 !important;
+        }
+        #spriceCvrRuleModal .modal-dialog {
+            width: 100vw !important;
+            max-width: 100vw !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
+            margin: 0 !important;
+        }
+        #spriceCvrRuleModal .modal-content {
+            height: 100vh;
+            max-height: 100vh;
+            border: 0;
+            border-radius: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        #spriceCvrRuleModal .modal-header,
+        #spriceCvrRuleModal .modal-footer {
+            flex: 0 0 auto;
+        }
+        /* Header metric badges ~2× default badge size; click opens rolling history */
+        #spriceCvrRuleModal .sprice-cvr-header-metric-badge {
+            font-size: 1.5rem;
+            line-height: 1.2;
+            padding: 0.45rem 0.9rem;
+            cursor: pointer;
+            font-weight: 700;
+            color: #fff !important;
+            border: none;
+        }
+        #spriceCvrRuleModal .sprice-cvr-header-metric-badge.sprice-cvr-badge-ok {
+            background-color: #198754 !important;
+        }
+        #spriceCvrRuleModal .sprice-cvr-header-metric-badge.sprice-cvr-badge-bad {
+            background-color: #dc3545 !important;
+        }
+        #spriceCvrRuleModal .sprice-cvr-trend-dot {
+            display: inline-block;
+            width: 0.55em;
+            height: 0.55em;
+            border-radius: 50%;
+            margin-left: 0.35em;
+            vertical-align: middle;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.55);
+        }
+        #spriceCvrRuleModal .sprice-cvr-trend-dot.up { background: #00ff88; }
+        #spriceCvrRuleModal .sprice-cvr-trend-dot.down { background: #ff6b6b; }
+        #spriceCvrRuleModal .sprice-cvr-trend-dot.flat { background: #adb5bd; }
+        #spriceCvrRuleModal .sprice-cvr-trend-dot.none { display: none; }
+        /* Summary badge 3-color trend dots (click → rolling history) */
+        #summary-stats .summary-trend-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-left: 6px;
+            vertical-align: middle;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.65);
+            flex-shrink: 0;
+        }
+        #summary-stats .summary-trend-dot.up { background: #00ff88; }
+        #summary-stats .summary-trend-dot.down { background: #ff6b6b; }
+        #summary-stats .summary-trend-dot.flat { background: #adb5bd; }
+        #summary-stats .summary-trend-dot.none { background: rgba(255,255,255,0.35); }
+        #summary-stats .badge.ebay1-badge-chart {
+            display: inline-flex;
+            align-items: center;
+        }
+        #ebay1HistoryTableWrap {
+            max-height: 28vh;
+            overflow: auto;
+            margin-top: 8px;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+        }
+        #ebay1HistoryTable th, #ebay1HistoryTable td {
+            font-size: 12px;
+            padding: 4px 8px;
+            white-space: nowrap;
+        }
+        #ebay1HistoryTable .hist-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        #ebay1HistoryTable .hist-dot.up { background: #28a745; }
+        #ebay1HistoryTable .hist-dot.down { background: #dc3545; }
+        #ebay1HistoryTable .hist-dot.flat { background: #adb5bd; }
+        #spriceCvrRuleModal .modal-body.sprice-cvr-fs-body {
+            overflow: hidden;
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            padding: 0.5rem 0.75rem;
+        }
+        #spriceCvrRuleModal .sprice-cvr-toolbar {
+            flex: 0 0 auto;
+        }
+        #spriceCvrRuleModal .sprice-cvr-fs-grid {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-rows: repeat(2, minmax(0, 1fr));
+            gap: 0.45rem;
+        }
+        #spriceCvrRuleModal .sprice-cvr-cell {
+            min-height: 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Rule settings on top · pie chart underneath (symmetrical cells) */
+        #spriceCvrRuleModal .sprice-cvr-rule-pie-row {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            align-items: stretch;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-half {
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-half:has(.sprice-cvr-rule-pie-wrap) {
+            flex: 0 0 28%;
+            max-height: 30%;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-half > .border {
+            width: 100%;
+            overflow: auto;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-half:has(.sprice-cvr-rule-pie-wrap) > .border {
+            overflow: hidden;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-pie-wrap {
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+            width: 100%;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-pie-wrap .sprice-cvr-rule-pie-canvas {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 40px;
+            width: 80%;
+            max-width: 160px;
+            margin: 0 auto;
+        }
+        #spriceCvrRuleModal .sprice-cvr-rule-pie-wrap .sprice-cvr-rule-pie-canvas canvas {
+            max-height: 100%;
+        }
+        #spriceCvrRuleModal .sprice-cvr-summary-stack {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        #spriceCvrRuleModal .sprice-cvr-summary-stack > .border {
+            flex: 1 1 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #spriceCvrRuleModal .sprice-cvr-summary-canvas {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 80px;
+        }
+        #spriceCvrRuleModal .sprice-cvr-compact-legend {
+            font-size: 0.68rem;
+            line-height: 1.25;
+            max-height: 2.6em;
+            overflow: hidden;
+        }
+        /* Baby rule pies: full legend (counts + %) like summary pies — not clipped */
+        #spriceCvrRuleModal .sprice-cvr-rule-pie-legend {
+            font-size: 0.68rem;
+            line-height: 1.3;
+            max-height: none;
+            overflow: visible;
+            white-space: normal;
+            word-break: break-word;
+            padding: 0 2px;
+        }
+        #spriceCvrRuleModal .form-select-sm,
+        #spriceCvrRuleModal .form-control-sm,
+        #spriceCvrRuleModal .input-group-sm > .form-control,
+        #spriceCvrRuleModal .input-group-sm > .input-group-text {
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+            font-size: 0.75rem;
+        }
+@media (max-width: 1200px) {
+            #spriceCvrRuleModal .sprice-cvr-fs-grid {
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: none;
+                overflow-y: auto;
+            }
+        }
+
     </style>
 @endsection
 
@@ -610,11 +858,12 @@
                     </select>
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm pricing-filter-item"
-                        style="width: auto; display: inline-block;">
+                        style="width: auto; display: inline-block;"
+                        title="CVR L30 vs prior period L31–L60 (CVR L60)">
                         <option value="all">CVR trend</option>
-                        <option value="l60_gt_l30">CVR 60 &gt; CVR 30</option>
-                        <option value="l30_gt_l60">CVR 30 &gt; CVR 60</option>
-                        <option value="equal">CVR 60 = CVR 30</option>
+                        <option value="down">Down</option>
+                        <option value="up">Up</option>
+                        <option value="same">Same</option>
                     </select>
 
                     <select id="sprice-filter" class="form-select form-select-sm pricing-filter-item"
@@ -657,11 +906,11 @@
                         </button>
                     </div>
 
-                    {{-- Sprice×CVR — Apply SPRICE × 0.99 when CVR≤7, ×1.01 when CVR>13; gear edits thresholds --}}
-                    <div class="d-inline-flex align-items-center gap-1 pricing-filter-item p-1 border rounded"
+                    {{-- Sprice×CVR — CVR L30 vs L31–L60 + CVR bands; gear edits shared rule --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
                         id="sprice-cvr-controls"
                         style="background: #ffc107;"
-                        title="Adjust SPRICE by CVR: ≤7% → ×0.99, &gt;13% → ×1.01. Selected rows, or all visible eligible. Gear edits rule (shared).">
+                        title="Adjust SPRICE by % of price from CVR trend rules (not PFT%). Gear edits rule (shared).">
                         <button type="button" id="apply-sprice-cvr-btn"
                             class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
                             style="background: transparent;">
@@ -671,10 +920,11 @@
                             class="btn btn-sm border-0 py-0 px-1 text-dark"
                             style="background: transparent;"
                             data-bs-toggle="modal" data-bs-target="#spriceCvrRuleModal"
-                            title="Edit CVR SPRICE multipliers (saved for everyone)">
+                            title="Edit Sprice × CVR trend rules (saved for everyone)">
                             <i class="fas fa-cog"></i>
                         </button>
                     </div>
+
 
                     {{-- LMP filter — "Red" shows only rows that have no LMP value. --}}
                     <select id="lmp-filter" class="form-select form-select-sm pricing-filter-item"
@@ -808,6 +1058,12 @@
                             title="Build rules on For L7 Views / CVR that set the S Bid column">
                         <i class="fas fa-sliders-h me-1"></i>Sbid Rule
                     </button>
+
+                    <button id="clear-sprice-selected-btn" type="button"
+                        class="btn btn-sm btn-danger pricing-filter-item"
+                        title="Clear SPRICE for selected SKUs (turn on Price % to select)">
+                        <i class="fa fa-trash"></i> Clear SPRICE
+                    </button>
                 </div>
 
                 <!-- Summary Stats (layout matches Ebay 2 Analytics summary row) -->
@@ -818,62 +1074,75 @@
                             style="color: white; font-weight: bold;"
                             title="Number of rows currently shown after filters">Rows: 0</span>
 
-                        <!-- Sold Filter Badges (Clickable) -->
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge"
+                        <!-- Sold Filter Badges (badge click = filter; dot click = rolling history) -->
+                        <span class="badge bg-danger fs-6 p-2 ebay1-badge-chart" id="zero-sold-count-badge"
+                            data-metric="zero_sold_count" data-live-value="0"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge"
+                            title="Click badge to filter 0 sold (INV>0). Click dot for rolling history.">0 Sold: 0<span class="summary-trend-dot none" data-metric="zero_sold_count" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="more-sold-count-badge"
+                            data-metric="sold_count" data-live-value="0"
                             style="background-color: #b6e0fe; color: #0f172a; font-weight: 700; cursor: pointer;"
-                            title="Click to filter items with sales (INV>0)">> 0 Sold: 0</span>
+                            title="Click badge to filter items with sales (INV>0). Click dot for rolling history.">> 0 Sold: 0<span class="summary-trend-dot none" data-metric="sold_count" title="Rolling history"></span></span>
 
                         <!-- Financial Metrics -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge"
-                            style="color: black; font-weight: bold;"
-                            title="L30 sales from real eBay orders (tax-inclusive, excl. cancelled & fully-refunded) — same source as /ebay/daily-sales.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}</span>
+                        <span class="badge bg-primary fs-6 p-2 ebay1-badge-chart" id="total-sales-amt-badge"
+                            data-metric="total_sales_amt" data-live-value="{{ (float) ($ordersL30TotalSales ?? 0) }}" data-format="money"
+                            style="color: black; font-weight: bold; cursor: pointer;"
+                            title="L30 sales from real eBay orders. Click dot for rolling history.">Sales: ${{ number_format((float) ($ordersL30TotalSales ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_sales_amt" title="Rolling history"></span></span>
                         
-                        <span class="badge fs-6 p-2" id="qty-sold-badge"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="L30 units sold (Σ ebay_order_items.quantity for period='l30'). Same value /ebay/daily-sales shows.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}</span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="qty-sold-badge"
+                            data-metric="total_ebay_l30" data-live-value="{{ (int) ($ordersL30TotalQty ?? 0) }}"
+                            style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
+                            title="L30 units sold. Click dot for rolling history.">Qty: {{ number_format((int) ($ordersL30TotalQty ?? 0)) }}<span class="summary-trend-dot none" data-metric="total_ebay_l30" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2" id="ebay1-shopify-sales-badge"
                             style="background-color: #0f766e; color: white; font-weight: bold; display: none;"
                             title="eBay1 sales from Shopify raw data (L30, excludes cancelled)">EShp: $0</span>
 
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge"
-                            style="color: black; font-weight: bold;"
-                            title="GPFT% = Σ T PFT / Σ (qty × unit price) × 100 from real L30 orders — same source as /ebay/daily-sales.">GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge"
-                            style="color: white; font-weight: bold;"
-                            title="GROI% = Σ T PFT / Σ COGS × 100 from real L30 orders — same source as /ebay/daily-sales.">GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="ads-percent-badge"
-                            style="background-color: #d63384; color: white; font-weight: bold;"
-                            title="eBay channel Ads% (Total Ad Spend / L30 Sales × 100) — same as the Ads % column">Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="npft-percent-badge"
-                            style="background-color: #0f766e; color: white; font-weight: bold;"
-                            title="NPFT% = GPFT% − Ads% (net profit margin after ad spend).">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%</span>
-                        <span class="badge fs-6 p-2" id="nroi-percent-badge"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same as Amazon (do not cut Ads% from GROI%).">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%</span>
+                        <span class="badge bg-info fs-6 p-2 ebay1-badge-chart" id="avg-gpft-badge"
+                            data-metric="gpft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0)) }}" data-format="pct"
+                            style="color: black; font-weight: bold; cursor: pointer;"
+                            title="GPFT%. Click dot for rolling history.">GPFT: {{ round((float) ($ordersL30Gpft ?? 0)) }}%<span class="summary-trend-dot none" data-metric="gpft_percent" title="Rolling history"></span></span>
+                        <span class="badge bg-secondary fs-6 p-2 ebay1-badge-chart" id="groi-percent-badge"
+                            data-metric="groi_percent" data-live-value="{{ round((float) ($ordersL30Groi ?? 0)) }}" data-format="pct"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="GROI%. Click dot for rolling history.">GROI: {{ round((float) ($ordersL30Groi ?? 0)) }}%<span class="summary-trend-dot none" data-metric="groi_percent" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="ads-percent-badge"
+                            data-metric="tcos_percent" data-live-value="{{ round((float) ($channelAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
+                            style="background-color: #d63384; color: white; font-weight: bold; cursor: pointer;"
+                            title="Ads%. Lower is better (inverted 3-color). Click dot for rolling history.">Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="tcos_percent" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
+                            data-metric="npft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}" data-format="pct"
+                            style="background-color: #0f766e; color: white; font-weight: bold; cursor: pointer;"
+                            title="NPFT% = GPFT% − Ads%. Click dot for rolling history.">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="nroi-percent-badge"
+                            data-metric="nroi_percent" data-live-value="{{ round((float) ($ordersL30Nroi ?? 0)) }}" data-format="pct"
+                            style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
+                            title="NROI%. Click dot for rolling history.">NROI: {{ round((float) ($ordersL30Nroi ?? 0)) }}%<span class="summary-trend-dot none" data-metric="nroi_percent" title="Rolling history"></span></span>
 
                         <!-- eBay Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge"
-                            style="color: white; font-weight: bold;"
-                            title="CVR = (S Qty / Σ Views) × 100. Numerator is the orders-API L30 units (same value the S Qty badge shows, same source /ebay/daily-sales uses). Denominator is the sum of 'views' across rows with E Stock > 0.">CVR: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge"
-                            style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-danger fs-6 p-2 ebay1-badge-chart" id="avg-cvr-badge"
+                            data-metric="cvr_percent" data-live-value="0" data-format="pct"
+                            style="color: white; font-weight: bold; cursor: pointer;"
+                            title="CVR%. Click dot for rolling history.">CVR: 0%<span class="summary-trend-dot none" data-metric="cvr_percent" title="Rolling history"></span></span>
+                        <span class="badge bg-info fs-6 p-2 ebay1-badge-chart" id="total-views-badge"
+                            data-metric="total_views" data-live-value="0"
+                            style="color: black; font-weight: bold; cursor: pointer;"
+                            title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l30-views-badge"
-                            data-metric="avg_l30_view"
+                            data-metric="avg_l30_view" data-live-value="0"
                             style="background-color: #20c997; color: black; font-weight: bold; cursor: pointer;"
-                            title="A L30 View = Σ L30 Views / 30 (rounded). Click for daily history.">A L30 View: 0</span>
+                            title="A L30 View. Click dot for rolling history.">A L30 View: 0<span class="summary-trend-dot none" data-metric="avg_l30_view" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2 ebay1-badge-chart" id="avg-l7-views-badge"
-                            data-metric="avg_l7_views"
+                            data-metric="avg_l7_views" data-live-value="0"
                             style="background-color: #0dcaf0; color: black; font-weight: bold; cursor: pointer;"
-                            title="Avg L7 — Average L7 views across rows with E Stock > 0 (rounded). Click for daily history.">L7: 0</span>
+                            title="Avg L7. Click dot for rolling history.">L7: 0<span class="summary-trend-dot none" data-metric="avg_l7_views" title="Rolling history"></span></span>
 
                         <!-- Badge Filters -->
-                        <span class="badge bg-secondary fs-6 p-2" id="missing-l-count-badge"
+                        <span class="badge bg-secondary fs-6 p-2 ebay1-badge-chart" id="missing-l-count-badge"
+                            data-metric="missing_count" data-live-value="0" data-invert="1"
                             style="color: white; font-weight: bold; cursor: pointer;"
-                            title="Click to filter Missing L (INV>0, not listed on eBay, REQ)">M L: 0</span>
+                            title="Click badge to filter Missing L. Click dot for rolling history (lower is better).">M L: 0<span class="summary-trend-dot none" data-metric="missing_count" title="Rolling history"></span></span>
                         <span class="badge bg-secondary fs-6 p-2" id="missing-m-count-badge"
                             style="color: white; font-weight: bold; cursor: pointer;"
                             title="Click to filter Missing M (listed, INV>0, REQ, INV vs eBay Stock mismatch)">M M: 0</span>
@@ -895,9 +1164,6 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm"
                             placeholder="Enter %" step="0.01" style="width: 100px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
-                        <button id="clear-sprice-selected-btn" class="btn btn-sm btn-danger">
-                            <i class="fa fa-trash"></i> Clear SPRICE
-                        </button>
                     </div>
                 </div>
                 <div id="ebay-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -1110,6 +1376,18 @@
                     <div id="ebay1ChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0" id="ebay1ChartNoDataMsg">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
+                    </div>
+                    <div id="ebay1HistoryTableWrap" style="display: none;">
+                        <table class="table table-sm table-striped table-hover mb-0" id="ebay1HistoryTable">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="text-end">Value</th>
+                                    <th class="text-end">Δ vs prior</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ebay1HistoryTableBody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1416,55 +1694,425 @@
     </div>
 
     <div class="modal fade" id="spriceCvrRuleModal" tabindex="-1" aria-labelledby="spriceCvrRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header py-2" style="background:#ffc107;">
-                    <h5 class="modal-title text-dark" id="spriceCvrRuleModalLabel">
-                        <i class="fas fa-percentage me-2"></i>Sprice × CVR Rule
+                    <h5 class="modal-title text-dark d-flex align-items-center flex-wrap gap-2 mb-0" id="spriceCvrRuleModalLabel">
+                        <span><i class="fas fa-percentage me-2"></i>Sprice × CVR Rule</span>
+                        <span class="badge sprice-cvr-header-metric-badge ebay1-badge-chart sprice-cvr-metric-badge sprice-cvr-badge-bad"
+                            id="sprice-cvr-groi-badge" data-metric="groi_pct" data-threshold="80"
+                            title="GROI% — green if ≥80%. Click for rolling history">
+                            GROI: <span id="sprice-cvr-groi-val">0%</span>
+                            <span class="sprice-cvr-trend-dot none" id="sprice-cvr-groi-trend" aria-hidden="true"></span>
+                        </span>
+                        <span class="badge sprice-cvr-header-metric-badge ebay1-badge-chart sprice-cvr-metric-badge sprice-cvr-badge-bad"
+                            id="sprice-cvr-nroi-badge" data-metric="nroi_pct" data-threshold="60"
+                            title="NROI% — green if ≥60%. Click for rolling history">
+                            NROI: <span id="sprice-cvr-nroi-val">0%</span>
+                            <span class="sprice-cvr-trend-dot none" id="sprice-cvr-nroi-trend" aria-hidden="true"></span>
+                        </span>
+                        <span class="badge sprice-cvr-header-metric-badge ebay1-badge-chart sprice-cvr-metric-badge sprice-cvr-badge-bad"
+                            id="sprice-cvr-gpft-badge" data-metric="gpft_pct" data-threshold="35"
+                            title="GPFT% — green if ≥35%. Click for rolling history">
+                            GPFT: <span id="sprice-cvr-gpft-val">0%</span>
+                            <span class="sprice-cvr-trend-dot none" id="sprice-cvr-gpft-trend" aria-hidden="true"></span>
+                        </span>
+                        <span class="badge sprice-cvr-header-metric-badge ebay1-badge-chart sprice-cvr-metric-badge sprice-cvr-badge-bad"
+                            id="sprice-cvr-npft-badge" data-metric="npft_pct" data-threshold="25"
+                            title="NPFT% — green if ≥25%. Click for rolling history">
+                            NPFT: <span id="sprice-cvr-npft-val">0%</span>
+                            <span class="sprice-cvr-trend-dot none" id="sprice-cvr-npft-trend" aria-hidden="true"></span>
+                        </span>
+                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amazon + eBay</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <p class="text-muted small mb-3">
-                        Adjusts existing <strong>SPRICE</strong> (falls back to eBay Price) by row CVR%.
-                        Shared across eBay 1 / 2 / 3.
-                    </p>
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <label class="form-label fw-bold small" for="sprice-cvr-low-input">Low CVR ≤</label>
-                            <div class="input-group input-group-sm">
-                                <input type="number" id="sprice-cvr-low-input" class="form-control text-end" value="7" step="0.1" min="0" max="100">
-                                <span class="input-group-text">%</span>
+                <div class="modal-body sprice-cvr-fs-body">
+                    <div class="sprice-cvr-toolbar d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <div class="d-flex flex-wrap align-items-center gap-2 small">
+                            <span class="fw-bold">5 CVR Rules</span>
+                            {{-- Yellow≤ / Blue≤ / Green≤ kept as hidden state (bands shown on each rule card) --}}
+                            <input type="hidden" id="sprice-cvr-low-input" value="3.5">
+                            <input type="hidden" id="sprice-cvr-mid-input" value="7">
+                            <input type="hidden" id="sprice-cvr-high-input" value="13">
+                            {{-- roi_floor kept for stored rule compat; CVR % adjusts PRICE only (not GROI/PFT) --}}
+                            <input type="hidden" id="sprice-cvr-roi-floor-input" value="40">
+                        </div>
+                        <div id="sprice-cvr-modal-status" class="small text-muted"></div>
+                    </div>
+
+                    <div class="sprice-cvr-fs-grid">
+                        {{-- Rule 1 Red — CVR trend signed % of price --}}
+                        <div class="sprice-cvr-cell">
+                            <div class="sprice-cvr-rule-pie-row" data-rule-pie="zero">
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-2 h-100" style="background:#fde8ea; border-left:4px solid #a00211 !important;">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge text-white" style="background:#a00211;">1 · Red</span>
+                                            <span class="fw-bold small">CVR = 0%</span>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-1 h-100 sprice-cvr-rule-pie-wrap" style="background:#fff5f5; border-left:4px solid #a00211 !important;">
+                                        <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                            <div class="fw-bold small mb-0">Rule 1 · by trend</div>
+                                            <button type="button" class="sprice-cvr-history-btn" data-history-type="rule_zero" title="View rolling history">
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        </div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-zero-pie-legend">—</div>
+                                        <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="zero">
+                                            <canvas id="sprice-cvr-zero-pie-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label fw-bold small" for="sprice-cvr-down-input">→ Down ×</label>
-                            <input type="number" id="sprice-cvr-down-input" class="form-control form-control-sm text-end" value="0.99" step="0.01" min="0.01" max="2">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label fw-bold small" for="sprice-cvr-high-input">High CVR &gt;</label>
-                            <div class="input-group input-group-sm">
-                                <input type="number" id="sprice-cvr-high-input" class="form-control text-end" value="13" step="0.1" min="0" max="100">
-                                <span class="input-group-text">%</span>
+
+                        {{-- Rule 2 Yellow --}}
+                        <div class="sprice-cvr-cell">
+                            <div class="sprice-cvr-rule-pie-row" data-rule-pie="yellow">
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-2 h-100" style="background:#fff8e1; border-left:4px solid #e6b800 !important;">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge text-dark" style="background:#ffc107;">2 · Yellow</span>
+                                            <span class="fw-bold small" id="sprice-cvr-slab-red-label">0.01 – 3.5%</span>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-1 h-100 sprice-cvr-rule-pie-wrap" style="background:#fffde7; border-left:4px solid #e6b800 !important;">
+                                        <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                            <div class="fw-bold small mb-0">Rule 2 · by trend</div>
+                                            <button type="button" class="sprice-cvr-history-btn" data-history-type="rule_yellow" title="View rolling history">
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        </div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-yellow-pie-legend">—</div>
+                                        <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="yellow">
+                                            <canvas id="sprice-cvr-yellow-pie-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label fw-bold small" for="sprice-cvr-up-input">→ Up ×</label>
-                            <input type="number" id="sprice-cvr-up-input" class="form-control form-control-sm text-end" value="1.01" step="0.01" min="0.01" max="2">
+
+                        {{-- Summary pies --}}
+                        <div class="sprice-cvr-cell">
+                            <div class="sprice-cvr-summary-stack">
+                                <div class="border rounded p-1">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                        <div class="fw-bold small mb-0">SKU by CVR slab</div>
+                                        <button type="button" class="sprice-cvr-history-btn" data-history-type="slab" title="View rolling history">
+                                            <i class="fas fa-history"></i>
+                                        </button>
+                                    </div>
+                                    <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-pie-legend">—</div>
+                                    <div class="sprice-cvr-summary-canvas">
+                                        <canvas id="sprice-cvr-pie-chart"></canvas>
+                                    </div>
+                                </div>
+                                <div class="border rounded p-1">
+                                    <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                        <div class="fw-bold small mb-0">SKU action</div>
+                                        <button type="button" class="sprice-cvr-history-btn" data-history-type="action" title="View rolling history">
+                                            <i class="fas fa-history"></i>
+                                        </button>
+                                    </div>
+                                    <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-action-pie-legend">—</div>
+                                    <div class="sprice-cvr-summary-canvas">
+                                        <canvas id="sprice-cvr-action-pie-chart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Rule 3 Blue --}}
+                        <div class="sprice-cvr-cell">
+                            <div class="sprice-cvr-rule-pie-row" data-rule-pie="blue">
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-2 h-100" style="background:#e7f1ff; border-left:4px solid #0d6efd !important;">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge text-white" style="background:#0d6efd;">3 · Blue</span>
+                                            <span class="fw-bold small" id="sprice-cvr-slab-blue-label">3.51 – 7%</span>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-1 h-100 sprice-cvr-rule-pie-wrap" style="background:#f0f6ff; border-left:4px solid #0d6efd !important;">
+                                        <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                            <div class="fw-bold small mb-0">Rule 3 · by trend</div>
+                                            <button type="button" class="sprice-cvr-history-btn" data-history-type="rule_blue" title="View rolling history">
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        </div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-blue-pie-legend">—</div>
+                                        <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="blue">
+                                            <canvas id="sprice-cvr-blue-pie-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Rule 4 Green --}}
+                        <div class="sprice-cvr-cell">
+                            <div class="sprice-cvr-rule-pie-row" data-rule-pie="green">
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-2 h-100" style="background:#e8f8ee; border-left:4px solid #28a745 !important;">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge text-white" style="background:#28a745;">4 · Green</span>
+                                            <span class="fw-bold small" id="sprice-cvr-slab-green-label">7.01 – 13%</span>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-1 h-100 sprice-cvr-rule-pie-wrap" style="background:#f1faf4; border-left:4px solid #28a745 !important;">
+                                        <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                            <div class="fw-bold small mb-0">Rule 4 · by trend</div>
+                                            <button type="button" class="sprice-cvr-history-btn" data-history-type="rule_green" title="View rolling history">
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        </div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-green-pie-legend">—</div>
+                                        <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="green">
+                                            <canvas id="sprice-cvr-green-pie-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Rule 5 Pink --}}
+                        <div class="sprice-cvr-cell">
+                            <div class="sprice-cvr-rule-pie-row" data-rule-pie="pink">
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-2 h-100" style="background:#fce8f3; border-left:4px solid #e83e8c !important;">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge text-white" style="background:#e83e8c;">5 · Pink</span>
+                                            <span class="fw-bold small" id="sprice-cvr-slab-pink-label">&gt; 13.01%</span>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
+                                            <div class="col-8">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust eBay price by this %: +N raise, −N lower, 0 = hold at eBay price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="sprice-cvr-rule-half">
+                                    <div class="border rounded p-1 h-100 sprice-cvr-rule-pie-wrap" style="background:#fff0f7; border-left:4px solid #e83e8c !important;">
+                                        <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
+                                            <div class="fw-bold small mb-0">Rule 5 · by trend</div>
+                                            <button type="button" class="sprice-cvr-history-btn" data-history-type="rule_pink" title="View rolling history">
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        </div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-pink-pie-legend">—</div>
+                                        <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="pink">
+                                            <canvas id="sprice-cvr-pink-pie-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-text mt-2">Default: CVR ≤7 → ×0.99, CVR &gt;13 → ×1.01. Middle band unchanged.</div>
-                    <div id="sprice-cvr-modal-status" class="small mt-2 text-muted"></div>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="sprice-cvr-save-btn">
-                        <i class="fas fa-save me-1"></i>Save
+                        <i class="fas fa-save me-1"></i>Save Rules
                     </button>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Sprice × CVR pie history (rolling style, same as Amazon metric trend modals) -->
+    <div class="modal fade p-0" id="spriceCvrHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-history me-1"></i>
+                        <span id="spriceCvrHistoryModalTitle">eBay — Sprice × CVR History</span>
+                        <span id="spriceCvrHistoryModalSuffix">(Rolling L30)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sprice-cvr-history-days" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="spriceCvrHistoryContainer" style="height: 22vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="spriceCvrHistoryChart"></canvas>
+                        </div>
+                        <div id="spriceCvrHistoryRefPanel" style="width: 110px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="spriceCvrHistoryHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="spriceCvrHistoryMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="spriceCvrHistoryLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="spriceCvrHistoryLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading history...</p>
+                    </div>
+                    <div id="spriceCvrHistoryNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No history yet. Open the Sprice × CVR modal (or Apply) to save today’s snapshot.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     {{-- Sku Link LMP Modal (same as /amazon-tabulator-view; shared endpoints/table) --}}
     <div class="modal fade" id="skuLinkLmpModal" tabindex="-1" aria-labelledby="skuLinkLmpModalLabel" aria-hidden="true">
@@ -1557,10 +2205,23 @@
 
         /** Daily snapshot badge chart (amazon_channel_summary_data, channel=ebay) */
         const ebay1BadgeMetricLabels = {
+            zero_sold_count: '0 Sold',
+            sold_count: '> 0 Sold',
+            total_sales_amt: 'Sales',
+            total_ebay_l30: 'Qty',
+            gpft_percent: 'GPFT%',
+            groi_percent: 'GROI%',
+            tcos_percent: 'Ads%',
+            npft_percent: 'NPFT%',
+            nroi_percent: 'NROI%',
+            cvr_percent: 'CVR%',
+            total_views: 'Views',
             avg_l30_view: 'A L30 View',
             avg_l7_views: 'L7',
-            total_views: 'Views',
+            missing_count: 'M L',
         };
+        /** Metrics where lower is better → invert 3-color (up=red, down=green) */
+        const ebay1BadgeInvertMetrics = { tcos_percent: true, missing_count: true };
         let ebay1ChartInstance = null;
         let ebay1ChartAjax = null;
         let ebay1ChartDays = 30;
@@ -1572,9 +2233,119 @@
             views: 'L30 View',
             l7_views: 'L7 View',
         };
+        let ebay1BadgePrevDay = null;
+        let ebay1BadgePrevDayLoaded = false;
 
-        function ebay1FmtChartVal(v) {
-            return Math.round(Number(v)).toLocaleString('en-US');
+        function ebay1MetricFormat(metricKey) {
+            const $b = $('#summary-stats .ebay1-badge-chart[data-metric="' + metricKey + '"]').first();
+            return ($b.data('format') || 'number').toString();
+        }
+
+        function ebay1FmtChartVal(v, metricKey) {
+            const n = Number(v);
+            if (!isFinite(n)) return '—';
+            const fmt = metricKey ? ebay1MetricFormat(metricKey) : 'number';
+            if (fmt === 'money') return '$' + Math.round(n).toLocaleString('en-US');
+            if (fmt === 'pct') return Math.round(n) + '%';
+            return Math.round(n).toLocaleString('en-US');
+        }
+
+        function ebay1TrendClass(curr, prev, invert) {
+            if (!isFinite(curr) || !isFinite(prev)) return 'none';
+            const diff = curr - prev;
+            let cls = 'flat';
+            if (diff > 0.05) cls = 'up';
+            else if (diff < -0.05) cls = 'down';
+            if (invert && cls === 'up') cls = 'down';
+            else if (invert && cls === 'down') cls = 'up';
+            return cls;
+        }
+
+        function applyEbay1SummaryTrendDot(metricKey, currentVal) {
+            const $dot = $('#summary-stats .summary-trend-dot[data-metric="' + metricKey + '"]');
+            if (!$dot.length) return;
+            const prev = ebay1BadgePrevDay && ebay1BadgePrevDay[metricKey];
+            const invert = !!ebay1BadgeInvertMetrics[metricKey];
+            if (!isFinite(currentVal) || prev == null || !isFinite(prev)) {
+                $dot.attr('class', 'summary-trend-dot none')
+                    .attr('title', 'Click for rolling history (no prior day yet)');
+                return;
+            }
+            const cls = ebay1TrendClass(currentVal, prev, invert);
+            const tip = (cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : 'Same'))
+                + ' vs prior day (' + ebay1FmtChartVal(prev, metricKey)
+                + ' → ' + ebay1FmtChartVal(currentVal, metricKey) + '). Click for rolling history.';
+            $dot.attr('class', 'summary-trend-dot ' + cls).attr('title', tip);
+        }
+
+        function syncEbay1SummaryTrendDots() {
+            $('#summary-stats .ebay1-badge-chart[data-metric]').each(function() {
+                const metric = $(this).data('metric');
+                if (!metric) return;
+                let live = parseFloat($(this).attr('data-live-value'));
+                if (!isFinite(live)) live = parseFloat($(this).data('live-value'));
+                applyEbay1SummaryTrendDot(metric, live);
+            });
+        }
+
+        function loadEbay1BadgePrevDay(done) {
+            if (ebay1BadgePrevDayLoaded) {
+                if (typeof done === 'function') done();
+                return;
+            }
+            $.ajax({
+                url: '/ebay-badge-prev-day',
+                method: 'GET',
+                success: function(resp) {
+                    ebay1BadgePrevDayLoaded = true;
+                    ebay1BadgePrevDay = (resp && resp.success && resp.metrics) ? resp.metrics : null;
+                    syncEbay1SummaryTrendDots();
+                    if (typeof done === 'function') done();
+                },
+                error: function() {
+                    ebay1BadgePrevDayLoaded = true;
+                    ebay1BadgePrevDay = null;
+                    syncEbay1SummaryTrendDots();
+                    if (typeof done === 'function') done();
+                }
+            });
+        }
+
+        function renderEbay1HistoryTable(data, metricKey) {
+            const $wrap = $('#ebay1HistoryTableWrap');
+            const $tbody = $('#ebay1HistoryTableBody');
+            $tbody.empty();
+            if (!data || !data.length) {
+                $wrap.hide();
+                return;
+            }
+            const invert = !!ebay1BadgeInvertMetrics[metricKey];
+            // Newest first for the table
+            const rows = data.slice().reverse();
+            rows.forEach(function(row, idx) {
+                // prior in chronological sense = next item in reversed list (older)
+                const older = rows[idx + 1];
+                const curr = parseFloat(row.value);
+                const prev = older ? parseFloat(older.value) : NaN;
+                let deltaHtml = '<span class="text-muted">—</span>';
+                if (isFinite(curr) && isFinite(prev)) {
+                    const d = curr - prev;
+                    const cls = ebay1TrendClass(curr, prev, invert);
+                    const sign = d > 0 ? '+' : '';
+                    const fmt = ebay1MetricFormat(metricKey);
+                    const dLabel = fmt === 'pct' ? (sign + Math.round(d) + '%')
+                        : (fmt === 'money' ? (sign + '$' + Math.round(d).toLocaleString('en-US'))
+                        : (sign + Math.round(d).toLocaleString('en-US')));
+                    deltaHtml = '<span class="hist-dot ' + cls + '"></span><span style="font-weight:600;">' + dLabel + '</span>';
+                }
+                const dateLabel = row.full_date || row.date || '';
+                $tbody.append(
+                    '<tr><td>' + dateLabel + '</td>'
+                    + '<td class="text-end fw-semibold">' + ebay1FmtChartVal(curr, metricKey) + '</td>'
+                    + '<td class="text-end">' + deltaHtml + '</td></tr>'
+                );
+            });
+            $wrap.show();
         }
 
         function openEbay1ChartModal() {
@@ -1593,7 +2364,7 @@
             ebay1ChartDays = 30;
             $('#ebay1ChartRangeSelect').val('30');
             const label = ebay1BadgeMetricLabels[metricKey] || metricKey;
-            $('#ebay1ChartModalTitle').text('eBay 1 — ' + label + ' (Daily snapshot)');
+            $('#ebay1ChartModalTitle').text('eBay 1 — ' + label + ' Rolling History');
             openEbay1ChartModal();
             loadEbay1MetricChart();
         }
@@ -1618,6 +2389,7 @@
             }
             $('#ebay1ChartNoData').hide();
             $('#ebay1ChartContainer').hide();
+            $('#ebay1HistoryTableWrap').hide();
             $('#ebay1ChartLoading').show();
 
             if (ebay1ChartMode === 'sku') {
@@ -1635,12 +2407,14 @@
                         const mapped = (rows || []).map(function(d) {
                             return {
                                 date: d.date_formatted || d.date || '',
+                                full_date: d.date || d.date_formatted || '',
                                 value: parseFloat(d[field]) || 0,
                             };
                         }).filter(function(d) { return d.date !== ''; });
                         if (mapped.length > 0) {
                             $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
                             renderEbay1MetricChart(mapped);
+                            renderEbay1HistoryTable(mapped, ebay1ChartMetricKey);
                         } else {
                             $('#ebay1ChartNoData').show();
                         }
@@ -1666,6 +2440,7 @@
                     if (resp.success && resp.data && resp.data.length > 0) {
                         $('#ebay1ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
                         renderEbay1MetricChart(resp.data);
+                        renderEbay1HistoryTable(resp.data, ebay1ChartMetricKey);
                     } else {
                         $('#ebay1ChartNoData').show();
                     }
@@ -1699,9 +2474,9 @@
             const yMin = Math.max(0, dataMin - range * 0.1);
             const yMax = dataMax + range * 0.1;
 
-            document.getElementById('ebay1ChartHighest').textContent = ebay1FmtChartVal(dataMax);
-            document.getElementById('ebay1ChartMedian').textContent = ebay1FmtChartVal(median);
-            document.getElementById('ebay1ChartLowest').textContent = ebay1FmtChartVal(dataMin);
+            document.getElementById('ebay1ChartHighest').textContent = ebay1FmtChartVal(dataMax, ebay1ChartMetricKey);
+            document.getElementById('ebay1ChartMedian').textContent = ebay1FmtChartVal(median, ebay1ChartMetricKey);
+            document.getElementById('ebay1ChartLowest').textContent = ebay1FmtChartVal(dataMin, ebay1ChartMetricKey);
 
             const dotColors = values.map(function(v, i) {
                 if (i === 0) return '#6c757d';
@@ -2581,18 +3356,31 @@
             // Initialize SKU-specific chart
             initSkuMetricsChart();
 
-            // A L30 View (and other ebay1 summary badges) — click opens daily history chart
+            // Dot click → rolling history (chart + table). Filter badges keep badge-body click for filters.
+            $(document).on('click', '#summary-stats .summary-trend-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const m = $(this).data('metric') || $(this).closest('.ebay1-badge-chart').data('metric');
+                if (m) showEbay1MetricChart(m);
+            });
+            // Non-filter summary badges: click badge (not only the dot) opens history
             $(document).on('click', '.ebay1-badge-chart', function(e) {
+                if ($(e.target).closest('.summary-trend-dot').length) return;
+                const id = this.id || '';
+                // These badges still use body click for table filters
+                if (id === 'zero-sold-count-badge' || id === 'more-sold-count-badge'
+                    || id === 'missing-l-count-badge' || id === 'missing-m-count-badge') {
+                    return;
+                }
                 e.stopPropagation();
                 const m = $(this).data('metric');
-                if (m) {
-                    showEbay1MetricChart(m);
-                }
+                if (m) showEbay1MetricChart(m);
             });
             $('#ebay1ChartRangeSelect').on('change', function() {
                 ebay1ChartDays = parseInt($(this).val(), 10) || 0;
                 loadEbay1MetricChart();
             });
+            loadEbay1BadgePrevDay();
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -3120,9 +3908,94 @@
                 });
             });
 
-            // Sprice × CVR — shared via /ebay/sprice-cvr-rule. ≤low → ×down, >high → ×up.
-            let spriceCvrRule = { low_cvr: 7, high_cvr: 13, down_mult: 0.99, up_mult: 1.01 };
+            // Sprice × CVR — shared via /ebay/sprice-cvr-rule.
+            // eBay: CVR L30 vs prior L31–L60 (CVR L60) + band rules.
+            const SPRICE_CVR_DEFAULT_ACTIONS = {
+                // Rule 1 (CVR=0%): same Down/Equal/Up defaults as Yellow
+                zero: { down: 'decrease', equal: 'decrease', up: 'hold' },
+                red: { down: 'decrease', equal: 'decrease', up: 'hold' },
+                blue: { down: 'decrease', equal: 'hold', up: 'increase' },
+                green: { down: 'hold', equal: 'hold', up: 'hold' },
+                pink: { down: 'hold', equal: 'decrease', up: 'increase' }
+            };
+            /** Includes Rule 1 (zero) + Yellow–Pink (red/blue/green/pink). */
+            const SPRICE_CVR_SLABS = ['zero', 'red', 'blue', 'green', 'pink'];
+            /** Yellow band starts at this CVR% (Rule 2: 0.01 – Yellow≤). */
+            const SPRICE_CVR_YELLOW_START = 0.01;
+            /** Default Yellow≤ / Blue start boundary. */
+            const SPRICE_CVR_YELLOW_END_DEFAULT = 3.5;
+            /** Signed %: +increase, −decrease, 0=hold (no suggestion) */
+            const SPRICE_CVR_DEFAULT_TREND_PCT = { down: 0, equal: 0, up: 0 };
+            const SPRICE_CVR_DEFAULT_YELLOW_PCT = { down: -2, equal: -1, up: 0 };
+            /** Rule 1 CVR=0%: Down −1 / Same −1 / Up 0 (% of eBay price) */
+            const SPRICE_CVR_DEFAULT_ZERO_PCT = { down: -1, equal: -1, up: 0 };
+            /** Blue default: Down −1 / Same 0 / Up +1 (% of eBay price) */
+            const SPRICE_CVR_DEFAULT_BLUE_PCT = { down: -1, equal: 0, up: 1 };
+            const SPRICE_CVR_DEFAULT_PINK_PCT = { down: 0, equal: -1, up: 1 };
+            const SPRICE_CVR_DEFAULT_SLAB_PCT = {
+                zero: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ZERO_PCT)),
+                red: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_YELLOW_PCT)),
+                blue: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_BLUE_PCT)),
+                green: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
+                pink: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_PINK_PCT))
+            };
+            /** Rule 1 Dil% band edges: Down < dil_low · Equal mid · Up > dil_high */
+            const SPRICE_CVR_DEFAULT_ZERO_CVR_DIL = {
+                enabled: true,
+                dil_low: 25,
+                dil_high: 50,
+                roi_low: 40,
+                roi_mid: 50,
+                roi_high: 60
+            };
+            /** Stored Dil keys kept for API compat (UI/apply Dil conditions removed) */
+            const SPRICE_CVR_DEFAULT_DIL_OVERRIDE = 100;
+            const SPRICE_CVR_DEFAULT_ZERO_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+            const SPRICE_CVR_DEFAULT_YELLOW_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+            const SPRICE_CVR_DEFAULT_BLUE_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+            const SPRICE_CVR_DEFAULT_GREEN_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+            const SPRICE_CVR_DEFAULT_DIL_OVERRIDES = {
+                zero_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                zero_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                zero_up_dil: SPRICE_CVR_DEFAULT_ZERO_UP_DIL,
+                yellow_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                yellow_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                yellow_up_dil: SPRICE_CVR_DEFAULT_YELLOW_UP_DIL,
+                blue_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                blue_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                blue_up_dil: SPRICE_CVR_DEFAULT_BLUE_UP_DIL,
+                green_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                green_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                green_up_dil: SPRICE_CVR_DEFAULT_GREEN_UP_DIL,
+                pink_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                pink_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                pink_up_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE
+            };
+            let spriceCvrRule = {
+                low_cvr: 3.5,
+                mid_cvr: 7,
+                high_cvr: 13,
+                down_mult: 0.99,
+                up_mult: 1.01,
+                roi_floor_pct: 40,
+                trend_tolerance: 0.1,
+                actions: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ACTIONS)),
+                yellow_pct: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_YELLOW_PCT)),
+                slab_pct: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_SLAB_PCT)),
+                ...JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_DIL_OVERRIDES)),
+                zero_cvr_dil: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ZERO_CVR_DIL))
+            };
             const SPRICE_CVR_URL = @json(url('/ebay/sprice-cvr-rule'));
+            let spriceCvrPieChart = null;
+            let spriceCvrActionPieChart = null;
+            let spriceCvrZeroPieChart = null;
+            const spriceCvrTrendPieCharts = { yellow: null, blue: null, green: null, pink: null };
+            const SPRICE_CVR_TREND_PIE_META = {
+                yellow: { slab: 'red', label: 'Yellow', colors: ['#e67700', '#f59f00', '#ffd43b', '#ced4da'] },
+                blue: { slab: 'blue', label: 'Blue', colors: ['#1c7ed6', '#4dabf7', '#a5d8ff', '#ced4da'] },
+                green: { slab: 'green', label: 'Green', colors: ['#2f9e44', '#51cf66', '#b2f2bb', '#ced4da'] },
+                pink: { slab: 'pink', label: 'Pink', colors: ['#c2255c', '#f06595', '#fcc2d7', '#ced4da'] }
+            };
 
             function formatCvrMult(v) {
                 const n = Number(v);
@@ -3130,25 +4003,1035 @@
                 return String(+n.toFixed(4));
             }
 
-            function getSpriceCvrRule() {
-                return spriceCvrRule;
+            function sanitizeSpriceCvrAction(val, fallback) {
+                const v = String(val || '').toLowerCase();
+                if (v === 'increase' || v === 'decrease' || v === 'hold') return v;
+                return fallback || 'hold';
             }
 
+            function normalizeSpriceCvrActions(raw) {
+                const src = raw && typeof raw === 'object' ? raw : {};
+                const out = {};
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    const def = SPRICE_CVR_DEFAULT_ACTIONS[slab];
+                    const row = src[slab] && typeof src[slab] === 'object' ? src[slab] : {};
+                    out[slab] = {
+                        down: sanitizeSpriceCvrAction(row.down, def.down),
+                        equal: sanitizeSpriceCvrAction(row.equal, def.equal),
+                        up: sanitizeSpriceCvrAction(row.up, def.up)
+                    };
+                });
+                return out;
+            }
+
+            function actionFromSignedPct(v) {
+                const n = parseFloat(v);
+                if (!isFinite(n) || n === 0) return 'hold';
+                return n > 0 ? 'increase' : 'decrease';
+            }
+
+            /** Derive legacy actions from signed % inputs (for storage). */
+            function readSpriceCvrActionsFromUi() {
+                const sp = readSlabPctFromUi();
+                const out = {};
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    out[slab] = {
+                        down: actionFromSignedPct(sp[slab].down),
+                        equal: actionFromSignedPct(sp[slab].equal),
+                        up: actionFromSignedPct(sp[slab].up)
+                    };
+                });
+                return out;
+            }
+
+            function applySpriceCvrActionsToUi() {
+                // Actions removed from UI — signed % inputs only
+            }
+
+            function normalizeTrendPct(raw, def) {
+                const d = def || SPRICE_CVR_DEFAULT_TREND_PCT;
+                const src = raw && typeof raw === 'object' ? raw : {};
+                let down = parseFloat(src.down);
+                let equal = parseFloat(src.equal);
+                let up = parseFloat(src.up);
+                if (!isFinite(down) || down < -50 || down > 50) down = d.down;
+                if (!isFinite(equal) || equal < -50 || equal > 50) equal = d.equal;
+                if (!isFinite(up) || up < -50 || up > 50) up = d.up;
+                return { down: down, equal: equal, up: up };
+            }
+
+            function normalizeYellowPct(raw) {
+                return normalizeTrendPct(raw, SPRICE_CVR_DEFAULT_YELLOW_PCT);
+            }
+
+            /** Convert legacy positive % + action → signed % (once). */
+            function migrateLegacySlabPctToSigned(raw, actions, yellowLegacy) {
+                const src = raw && typeof raw === 'object' ? raw : {};
+                const acts = normalizeSpriceCvrActions(actions);
+                // Signed format uses ≤0 (0=hold). Legacy magnitudes were always >0.
+                let looksSigned = false;
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    const row = src[slab];
+                    if (row && typeof row === 'object') {
+                        ['down', 'equal', 'up'].forEach(function(k) {
+                            const n = parseFloat(row[k]);
+                            if (isFinite(n) && n <= 0) looksSigned = true;
+                        });
+                    }
+                });
+                const out = {};
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    const def = SPRICE_CVR_DEFAULT_SLAB_PCT[slab];
+                    let row = src[slab];
+                    if ((!row || typeof row !== 'object') && slab === 'red' && yellowLegacy) {
+                        row = yellowLegacy;
+                    }
+                    if (looksSigned) {
+                        out[slab] = normalizeTrendPct(row, def);
+                        return;
+                    }
+                    // Legacy: magnitude was always positive; Hold → 0
+                    const magSrc = row && typeof row === 'object' ? row : {};
+                    let down = parseFloat(magSrc.down);
+                    let equal = parseFloat(magSrc.equal);
+                    let up = parseFloat(magSrc.up);
+                    if (!isFinite(down) || down < 0 || down > 50) down = Math.abs(def.down);
+                    if (!isFinite(equal) || equal < 0 || equal > 50) equal = Math.abs(def.equal);
+                    if (!isFinite(up) || up < 0 || up > 50) up = Math.abs(def.up);
+                    const a = acts[slab] || SPRICE_CVR_DEFAULT_ACTIONS[slab];
+                    out[slab] = {
+                        down: a.down === 'hold' ? 0 : (a.down === 'decrease' ? -Math.abs(down) : Math.abs(down)),
+                        equal: a.equal === 'hold' ? 0 : (a.equal === 'decrease' ? -Math.abs(equal) : Math.abs(equal)),
+                        up: a.up === 'hold' ? 0 : (a.up === 'decrease' ? -Math.abs(up) : Math.abs(up))
+                    };
+                });
+                return out;
+            }
+
+            function normalizeSlabPct(raw, yellowLegacy, actions) {
+                if (actions) {
+                    return migrateLegacySlabPctToSigned(raw, actions, yellowLegacy);
+                }
+                const src = raw && typeof raw === 'object' ? raw : {};
+                const out = {};
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    const def = SPRICE_CVR_DEFAULT_SLAB_PCT[slab];
+                    let row = src[slab];
+                    if ((!row || typeof row !== 'object') && slab === 'red' && yellowLegacy) {
+                        row = yellowLegacy;
+                    }
+                    out[slab] = normalizeTrendPct(row, def);
+                });
+                return out;
+            }
+
+            function slabPctForTrend(slabPct, slab, trend) {
+                const sp = normalizeSlabPct(slabPct);
+                const row = sp[slab] || SPRICE_CVR_DEFAULT_TREND_PCT;
+                if (trend === 'equal') return row.equal;
+                if (trend === 'up') return row.up;
+                return row.down;
+            }
+
+            function yellowPctForTrend(yp, trend) {
+                return slabPctForTrend({ red: yp }, 'red', trend);
+            }
+
+            function slabPctInputId(slab, trend) {
+                if (slab === 'red') return '#sprice-cvr-yellow-' + trend + '-pct';
+                if (slab === 'zero') return '#sprice-cvr-zero-' + trend + '-pct';
+                return '#sprice-cvr-' + slab + '-' + trend + '-pct';
+            }
+
+            function readSlabPctFromUi() {
+                const out = {};
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    out[slab] = normalizeTrendPct({
+                        down: String($(slabPctInputId(slab, 'down')).val()).replace(',', '.'),
+                        equal: String($(slabPctInputId(slab, 'equal')).val()).replace(',', '.'),
+                        up: String($(slabPctInputId(slab, 'up')).val()).replace(',', '.')
+                    }, SPRICE_CVR_DEFAULT_SLAB_PCT[slab]);
+                });
+                return out;
+            }
+
+            function readYellowPctFromUi() {
+                return readSlabPctFromUi().red;
+            }
+
+            function applySlabPctToUi(sp) {
+                const r = normalizeSlabPct(sp);
+                SPRICE_CVR_SLABS.forEach(function(slab) {
+                    $(slabPctInputId(slab, 'down')).val(r[slab].down);
+                    $(slabPctInputId(slab, 'equal')).val(r[slab].equal);
+                    $(slabPctInputId(slab, 'up')).val(r[slab].up);
+                });
+            }
+
+            function applyYellowPctToUi(yp) {
+                const r = normalizeYellowPct(yp);
+                $('#sprice-cvr-yellow-down-pct').val(r.down);
+                $('#sprice-cvr-yellow-equal-pct').val(r.equal);
+                $('#sprice-cvr-yellow-up-pct').val(r.up);
+            }
+
+            function normalizeZeroCvrDil(raw) {
+                const def = SPRICE_CVR_DEFAULT_ZERO_CVR_DIL;
+                const src = raw && typeof raw === 'object' ? raw : {};
+                const enRaw = src.enabled;
+                const enabled = !(enRaw === false || enRaw === 0 || enRaw === '0' || enRaw === 'false');
+                let dilLow = parseFloat(src.dil_low);
+                let dilHigh = parseFloat(src.dil_high);
+                if (!isFinite(dilLow)) dilLow = def.dil_low;
+                if (!isFinite(dilHigh)) dilHigh = def.dil_high;
+                if (dilHigh < dilLow) {
+                    const t = dilLow; dilLow = dilHigh; dilHigh = t;
+                }
+                const roi = function(v, fb) {
+                    const n = parseFloat(v);
+                    return (isFinite(n) && n >= 0 && n <= 500) ? n : fb;
+                };
+                return {
+                    enabled: enabled,
+                    dil_low: dilLow,
+                    dil_high: dilHigh,
+                    roi_low: roi(src.roi_low, def.roi_low),
+                    roi_mid: roi(src.roi_mid, def.roi_mid),
+                    roi_high: roi(src.roi_high, def.roi_high)
+                };
+            }
+
+            function readZeroCvrDilFromUi() {
+                // Band edges kept in stored rule (no UI); Rule 1 now uses CVR trend like Rule 2
+                return normalizeZeroCvrDil(spriceCvrRule && spriceCvrRule.zero_cvr_dil);
+            }
+
+            function applyZeroCvrDilToUi(z) {
+                spriceCvrRule.zero_cvr_dil = normalizeZeroCvrDil(z);
+            }
+
+            function normalizeZeroUpDil(raw) {
+                return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_ZERO_UP_DIL);
+            }
+
+            function normalizeSpriceCvrRule(resp) {
+                const slabs = resolveSpriceCvrSlabs({
+                    low_cvr: resp && resp.low_cvr,
+                    mid_cvr: resp && resp.mid_cvr,
+                    high_cvr: resp && resp.high_cvr
+                });
+                const actions = normalizeSpriceCvrActions(resp && resp.actions);
+                const yellowPct = normalizeYellowPct(resp && resp.yellow_pct);
+                const slabPct = normalizeSlabPct(resp && resp.slab_pct, yellowPct, actions);
+                return {
+                    low_cvr: slabs.low,
+                    mid_cvr: slabs.mid,
+                    high_cvr: slabs.high,
+                    down_mult: parseFloat(resp && resp.down_mult) || 0.99,
+                    up_mult: parseFloat(resp && resp.up_mult) || 1.01,
+                    roi_floor_pct: parseFloat(resp && resp.roi_floor_pct) || 40,
+                    trend_tolerance: parseFloat(resp && resp.trend_tolerance) || 0.1,
+                    actions: actions,
+                    yellow_pct: slabPct.red,
+                    slab_pct: slabPct,
+                    zero_down_dil: normalizeDilOverride(resp && resp.zero_down_dil),
+                    zero_equal_dil: normalizeDilOverride(resp && resp.zero_equal_dil),
+                    zero_up_dil: normalizeZeroUpDil(resp && resp.zero_up_dil),
+                    yellow_down_dil: normalizeDilOverride(resp && resp.yellow_down_dil),
+                    yellow_equal_dil: normalizeDilOverride(resp && resp.yellow_equal_dil),
+                    yellow_up_dil: normalizeYellowUpDil(resp && resp.yellow_up_dil),
+                    blue_down_dil: normalizeDilOverride(resp && resp.blue_down_dil),
+                    blue_equal_dil: normalizeDilOverride(resp && resp.blue_equal_dil),
+                    blue_up_dil: normalizeBlueUpDil(resp && resp.blue_up_dil),
+                    green_down_dil: normalizeDilOverride(resp && resp.green_down_dil),
+                    green_equal_dil: normalizeDilOverride(resp && resp.green_equal_dil),
+                    green_up_dil: normalizeGreenUpDil(resp && resp.green_up_dil),
+                    pink_down_dil: normalizeDilOverride(resp && resp.pink_down_dil),
+                    pink_equal_dil: normalizeDilOverride(resp && resp.pink_equal_dil),
+                    pink_up_dil: normalizeDilOverride(resp && resp.pink_up_dil),
+                    zero_cvr_dil: normalizeZeroCvrDil(resp && resp.zero_cvr_dil)
+                };
+            }
+
+            /** CVR L30 treated as zero for Rule 1 (CVR trend + zero actions) */
+            function amazonCvrIsZero(cvr) {
+                const v = parseFloat(cvr);
+                return !isFinite(v) || Math.abs(v) < 0.005;
+            }
+
+            function amazonRowCvrL30(rd) {
+                if (!rd) return 0;
+                // eBay: SCVR is precomputed CVR L30 %
+                const scvr = parseFloat(rd['SCVR']);
+                if (isFinite(scvr)) return scvr;
+                return 0;
+            }
+
+            /** Prior period CVR (L31–L60) — same as CVR L60 column: units_ordered_l60 / sessions_l60 */
+            function amazonRowCvrL60(rd) {
+                if (!rd) return 0;
+                // eBay: CVR_60 is prior-period (L31–L60) CVR %
+                const cvr60 = parseFloat(rd['CVR_60']);
+                if (isFinite(cvr60)) return cvr60;
+                return 0;
+            }
+
+            /**
+             * CVR L30 vs prior L31–L60 (CVR L60).
+             * up = L30 higher · down = L30 lower · equal/same = within tol (±0.1%).
+             */
+            function amazonCvrTrend(rd, tol) {
+                const cvrL30 = amazonRowCvrL30(rd);
+                const cvrL60 = amazonRowCvrL60(rd);
+                const t = (tol != null && isFinite(tol)) ? tol : 0.1;
+                if (cvrL30 > cvrL60 + t) return 'up';
+                if (cvrL30 < cvrL60 - t) return 'down';
+                return 'equal';
+            }
+
+            /** Dil% = L30 / INV × 100 (same as Dil column). */
+            function amazonRowDilPct(rd) {
+                if (!rd) return 0;
+                const inv = parseFloat(rd.INV) || 0;
+                if (inv <= 0) return 0;
+                const l30 = parseFloat(rd.L30) || 0;
+                return (l30 / inv) * 100;
+            }
+
+            function normalizeDilOverride(raw) {
+                let v = parseFloat(raw);
+                if (!isFinite(v) || v < 0 || v > 500) v = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+                return +Number(v).toFixed(2);
+            }
+
+            function normalizeUpDilThreshold(raw, fallback) {
+                return normalizeDilOverride(raw != null ? raw : fallback);
+            }
+
+            function normalizeYellowUpDil(raw) {
+                return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_YELLOW_UP_DIL);
+            }
+
+            function normalizeBlueUpDil(raw) {
+                return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_BLUE_UP_DIL);
+            }
+
+            function normalizeGreenUpDil(raw) {
+                return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_GREEN_UP_DIL);
+            }
+
+            /** Dil override UI removed — keep stored defaults for API compat only. */
+            function readDilOverridesFromUi() {
+                return JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_DIL_OVERRIDES));
+            }
+
+            function applyDilOverridesToUi() {
+                // no-op: Dil conditions removed from UI
+            }
+
+            /**
+             * Signed % of PRICE (not PFT/GROI): +N raise, −N lower, 0 = hold at eBay price (0% change).
+             * Returns null only when trend/rule missing — never silently upgrades 0 to +1.
+             */
+            function resolveSpriceCvrSignedPct(cvr, trend, rule, rd) {
+                if (!trend || !rule) return null;
+                const slabs = resolveSpriceCvrSlabs(rule);
+                const slab = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
+                // Use signed % as stored/entered — do not re-interpret via legacy actions / Dil
+                const slabPct = normalizeSlabPct(rule.slab_pct, rule.yellow_pct);
+                const signed = slabPctForTrend(slabPct, slab, trend);
+                if (!isFinite(signed)) return null;
+                return signed;
+            }
+
+            /** Price multiplier: listing/base price × (1 + pct/100). Null when hold (0%). */
+            function resolveSpriceCvrMult(cvr, trend, rule, rd) {
+                const signed = resolveSpriceCvrSignedPct(cvr, trend, rule, rd);
+                if (signed == null || !isFinite(signed) || signed === 0) return null;
+                const mult = 1 + (signed / 100);
+                return (isFinite(mult) && mult > 0) ? +mult.toFixed(6) : null;
+            }
+
+            /**
+             * Base eBay listing price for % adjust (not PFT/GROI back-solve).
+             * Prefer eBay Price; fall back to existing SPRICE only if price missing.
+             */
+            function amazonSpriceCvrBasePrice(rd) {
+                if (!rd) return 0;
+                const ebayPrice = parseFloat(rd['eBay Price']) || 0;
+                if (ebayPrice > 0) return ebayPrice;
+                return parseFloat(rd.SPRICE) || 0;
+            }
+
+            /**
+             * Suggest SPRICE = eBay price × (1 + signed%/100). Of price only — never PFT%.
+             * 0% → SPRICE = eBay price (clears prior wrong increases).
+             */
+            function applySpriceCvrPctToPrice(basePrice, signedPct) {
+                const base = parseFloat(basePrice);
+                const pct = parseFloat(signedPct);
+                if (!isFinite(base) || base <= 0 || !isFinite(pct)) return null;
+                if (pct === 0) return +base.toFixed(2);
+                const sprice = +(base * (1 + pct / 100)).toFixed(2);
+                return (isFinite(sprice) && sprice > 0) ? sprice : null;
+            }
+
+            /** Lowest SPRICE where Sroi = roi_floor_pct: (LP×(1+ROI/100)+Ship)/0.80 */
+            function amazonSpriceRoiFloor(rd, roiFloorPct) {
+                const lp = parseFloat(rd.LP_productmaster) || 0;
+                if (lp <= 0) return null;
+                const ship = parseFloat(rd.Ship_productmaster) || 0;
+                const roi = (roiFloorPct != null && isFinite(roiFloorPct)) ? roiFloorPct : 40;
+                const floor = (lp * (1 + roi / 100) + ship) / 0.80;
+                if (!isFinite(floor) || floor <= 0) return null;
+                return +Number(floor).toFixed(2);
+            }
+
+            /**
+             * Yellow = 0.01 – 3.5 (fixed). Blue = 3.51 – mid (default 7).
+             * Green = mid+0.01 – high. Pink > high+0.01. Defaults mid/high: 7 / 13.
+             */
+            function resolveSpriceCvrSlabs(ruleOrInputs) {
+                const yellowStart = SPRICE_CVR_YELLOW_START;
+                const low = SPRICE_CVR_YELLOW_END_DEFAULT; // Yellow end fixed at 3.5% per rule
+                let mid = parseFloat(ruleOrInputs && ruleOrInputs.mid_cvr);
+                let high = parseFloat(ruleOrInputs && ruleOrInputs.high_cvr);
+                if (!isFinite(mid) || mid <= low) mid = 7;
+                if (!isFinite(high) || high <= 0) high = 13;
+                if (high <= mid) high = Math.min(100, mid + 6);
+                if (high <= mid) {
+                    mid = 7; high = 13;
+                }
+                return {
+                    low: low,
+                    mid: mid,
+                    high: high,
+                    yellow_start: yellowStart,
+                    blue_start: +(low + 0.01).toFixed(2),
+                    pink_after: high + 0.01
+                };
+            }
+
+            function readSpriceCvrSlabInputs() {
+                return resolveSpriceCvrSlabs({
+                    low_cvr: String($('#sprice-cvr-low-input').val()).replace(',', '.'),
+                    mid_cvr: String($('#sprice-cvr-mid-input').val()).replace(',', '.'),
+                    high_cvr: String($('#sprice-cvr-high-input').val()).replace(',', '.')
+                });
+            }
+
+            /**
+             * 1 Red    : CVR = 0%              (CVR trend + zero actions, like Yellow)
+             * 2 Yellow : 0.01 – low            (default 0.01–3.5; internal key: red)
+             * 3 Blue   : low+0.01 – mid        (default 3.51–7)
+             * 4 Green  : mid+0.01 – high       (default 7.01–13; values through high+0.01 stay green)
+             * 5 Pink   : > high + 0.01         (default >13.01)
+             */
+            function amazonCvrSlab(cvr, low, mid, high) {
+                const v = parseFloat(cvr) || 0;
+                const pinkAfter = high + 0.01;
+                if (v <= low) return 'red'; // Yellow 0.01 – low (CVR=0 handled separately)
+                if (v <= mid) return 'blue';
+                if (v <= pinkAfter) return 'green';
+                return 'pink';
+            }
+
+            function countSpriceCvrPieBands(low, mid, high) {
+                const counts = { zero: 0, yellow: 0, blue: 0, green: 0, pink: 0 };
+                if (!table) return counts;
+                const seen = new Set();
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                    const sku = rd['(Child) sku'];
+                    if (!sku || seen.has(sku)) return;
+                    const inv = parseFloat(rd.INV) || 0;
+                    if (inv <= 0) return;
+                    seen.add(sku);
+                    const cvr = amazonRowCvrL30(rd);
+                    if (amazonCvrIsZero(cvr)) {
+                        counts.zero++;
+                        return;
+                    }
+                    const slab = amazonCvrSlab(cvr, low, mid, high);
+                    if (slab === 'red') counts.yellow++;
+                    else counts[slab]++;
+                });
+                return counts;
+            }
+
+            function formatSlabBound(v) {
+                const n = Number(v);
+                if (!isFinite(n)) return String(v);
+                return Number.isInteger(n) ? String(n) : String(+n.toFixed(2));
+            }
+
+            function refreshSpriceCvrSlabLabels() {
+                const s = readSpriceCvrSlabInputs();
+                const low = formatSlabBound(s.low);
+                const mid = formatSlabBound(s.mid);
+                const high = formatSlabBound(s.high);
+                const yellowStart = formatSlabBound(s.yellow_start || SPRICE_CVR_YELLOW_START);
+                const blueStart = formatSlabBound(s.blue_start != null ? s.blue_start : (s.low + 0.01));
+                const greenStart = formatSlabBound(s.mid + 0.01);
+                const pinkAfter = formatSlabBound(s.pink_after);
+                $('#sprice-cvr-slab-red-label').text(yellowStart + ' – ' + low + '%');
+                $('#sprice-cvr-slab-blue-label').text(blueStart + ' – ' + mid + '%');
+                $('#sprice-cvr-slab-green-label').text(greenStart + ' – ' + high + '%');
+                $('#sprice-cvr-slab-pink-label').text('> ' + pinkAfter + '%');
+            }
+
+            function pieChartTooltipLabel(ctx) {
+                const v = ctx.parsed || 0;
+                const sum = (ctx.dataset.data || []).reduce(function(a, b) {
+                    return a + (parseFloat(b) || 0);
+                }, 0);
+                const pct = sum > 0 ? ((v / sum) * 100).toFixed(1) : '0';
+                return ctx.label + ': ' + v + ' (' + pct + '%)';
+            }
+
+            /** Legend fragment: "Label: 12 (34%)" — same clarity as summary pies */
+            function spriceCvrLegendPart(label, count, total, color) {
+                const n = parseInt(count, 10) || 0;
+                const t = parseInt(total, 10) || 0;
+                const pct = t > 0 ? ((n / t) * 100).toFixed(0) : '0';
+                return '<span style="color:' + color + ';font-weight:600;">' +
+                    label + ': ' + n + ' (' + pct + '%)</span>';
+            }
+
+            function upsertPieChart(existing, canvasId, data, opts) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas || typeof Chart === 'undefined') return existing;
+                const hideLegend = !!(opts && opts.hideLegend);
+                if (existing) {
+                    existing.data = data;
+                    if (existing.options && existing.options.plugins && existing.options.plugins.legend) {
+                        existing.options.plugins.legend.display = !hideLegend;
+                    }
+                    existing.update();
+                    return existing;
+                }
+                return new Chart(canvas.getContext('2d'), {
+                    type: 'pie',
+                    data: data,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: !hideLegend,
+                                position: 'bottom',
+                                labels: { boxWidth: 10, font: { size: 9 } }
+                            },
+                            tooltip: { callbacks: { label: pieChartTooltipLabel } }
+                        }
+                    }
+                });
+            }
+
+            function refreshSpriceCvrPieChart() {
+                const s = readSpriceCvrSlabInputs();
+                const counts = countSpriceCvrPieBands(s.low, s.mid, s.high);
+                const total = counts.zero + counts.yellow + counts.blue + counts.green + counts.pink;
+                const low = formatSlabBound(s.low);
+                const mid = formatSlabBound(s.mid);
+                const high = formatSlabBound(s.high);
+                const yellowStart = formatSlabBound(s.yellow_start || SPRICE_CVR_YELLOW_START);
+                const yellowLabel = yellowStart + '–' + low + '%';
+                const blueStart = formatSlabBound(s.blue_start != null ? s.blue_start : (s.low + 0.01));
+                const greenStart = formatSlabBound(s.mid + 0.01);
+                const pinkAfter = formatSlabBound(s.pink_after);
+                $('#sprice-cvr-pie-legend').html(
+                    total === 0
+                        ? 'No INV &gt; 0 SKUs'
+                        : ('<span style="color:#a00211;font-weight:600;">Red CVR=0%: ' + counts.zero + '</span>' +
+                            ' · <span style="color:#e6b800;font-weight:600;">Yellow ' + yellowLabel + ': ' + counts.yellow + '</span>' +
+                            ' · <span style="color:#0d6efd;font-weight:600;">Blue ' + blueStart + '–' + mid + ': ' + counts.blue + '</span>' +
+                            ' · <span style="color:#28a745;font-weight:600;">Green ' + greenStart + '–' + high + ': ' + counts.green + '</span>' +
+                            ' · <span style="color:#e83e8c;font-weight:600;">Pink &gt;' + pinkAfter + ': ' + counts.pink + '</span>' +
+                            ' <span class="text-muted">(n=' + total + ')</span>')
+                );
+                spriceCvrPieChart = upsertPieChart(spriceCvrPieChart, 'sprice-cvr-pie-chart', {
+                    labels: [
+                        'Red CVR=0%',
+                        'Yellow ' + yellowLabel,
+                        'Blue ' + blueStart + '–' + mid + '%',
+                        'Green ' + greenStart + '–' + high + '%',
+                        'Pink >' + pinkAfter + '%'
+                    ],
+                    datasets: [{
+                        data: [counts.zero, counts.yellow, counts.blue, counts.green, counts.pink],
+                        backgroundColor: ['#a00211', '#ffc107', '#0d6efd', '#28a745', '#e83e8c'],
+                        borderWidth: 1,
+                        borderColor: '#fff'
+                    }]
+                }, { hideLegend: true });
+                refreshSpriceCvrZeroPieChart();
+                refreshSpriceCvrTrendPieCharts();
+                refreshSpriceCvrActionPieChart();
+                syncSpriceCvrSummaryPieSizes();
+                scheduleSpriceCvrDailySnapshot();
+            }
+
+            /** Rule 1: INV>0 SKUs with CVR=0%, split by CVR Down / Equal / Up trend (like Rule 2) */
+            function countSpriceCvrZeroDilBands() {
+                const counts = { down: 0, equal: 0, up: 0, none: 0, low: 0, mid: 0, high: 0 };
+                if (!table) return counts;
+                const tol = spriceCvrRule.trend_tolerance || 0.1;
+                const seen = new Set();
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                    const sku = rd['(Child) sku'];
+                    if (!sku || seen.has(sku)) return;
+                    const inv = parseFloat(rd.INV) || 0;
+                    if (inv <= 0) return;
+                    if (!amazonCvrIsZero(amazonRowCvrL30(rd))) return;
+                    seen.add(sku);
+                    const trend = amazonCvrTrend(rd, tol);
+                    if (trend === 'down') { counts.down++; counts.low++; }
+                    else if (trend === 'equal') { counts.equal++; counts.mid++; }
+                    else if (trend === 'up') { counts.up++; counts.high++; }
+                    else counts.none++;
+                });
+                return counts;
+            }
+
+            /** Size rule pie canvas to the under-rule pie card (~20% inset) */
+            function syncSpriceCvrRulePieSize(key, chart) {
+                const $row = $('.sprice-cvr-rule-pie-row[data-rule-pie="' + key + '"]');
+                const $canvasWrap = $row.find('.sprice-cvr-rule-pie-canvas[data-pie-canvas="' + key + '"]');
+                const pieCard = $row.find('.sprice-cvr-rule-pie-wrap');
+                if (!$canvasWrap.length || !pieCard.length) return;
+                const pieH = pieCard.innerHeight() || 0;
+                const headerH = (pieCard.find('.fw-bold').first().outerHeight(true) || 0) +
+                    (pieCard.find('.sprice-cvr-rule-pie-legend, [id$="-pie-legend"]').first().outerHeight(true) || 0) + 2;
+                const canvasH = Math.max(36, Math.round((pieH - headerH) * 0.8));
+                $canvasWrap.css('height', canvasH + 'px');
+                if (chart && typeof chart.resize === 'function') chart.resize();
+            }
+
+            function syncSpriceCvrZeroPieSize() {
+                syncSpriceCvrRulePieSize('zero', spriceCvrZeroPieChart);
+            }
+
+            function syncSpriceCvrAllRulePieSizes() {
+                syncSpriceCvrZeroPieSize();
+                Object.keys(SPRICE_CVR_TREND_PIE_META).forEach(function(key) {
+                    syncSpriceCvrRulePieSize(key, spriceCvrTrendPieCharts[key]);
+                });
+                syncSpriceCvrSummaryPieSizes();
+            }
+
+            function syncSpriceCvrSummaryPieSizes() {
+                $('.sprice-cvr-summary-stack > .border').each(function() {
+                    const $card = $(this);
+                    const $canvas = $card.find('.sprice-cvr-summary-canvas');
+                    if (!$canvas.length) return;
+                    const h = $card.innerHeight() || 0;
+                    const headerH = ($card.find('.fw-bold').outerHeight(true) || 0) +
+                        ($card.find('.sprice-cvr-compact-legend').outerHeight(true) || 0) + 6;
+                    $canvas.css('height', Math.max(60, h - headerH) + 'px');
+                });
+                if (spriceCvrPieChart && spriceCvrPieChart.resize) spriceCvrPieChart.resize();
+                if (spriceCvrActionPieChart && spriceCvrActionPieChart.resize) spriceCvrActionPieChart.resize();
+            }
+
+            function refreshSpriceCvrZeroPieChart() {
+                const counts = countSpriceCvrZeroDilBands();
+                const total = counts.down + counts.equal + counts.up + counts.none;
+                $('#sprice-cvr-zero-pie-legend').html(
+                    total === 0
+                        ? 'No INV &gt; 0 SKUs with CVR = 0%'
+                        : (spriceCvrLegendPart('CVR % = Down', counts.down, total, '#c92a2a') +
+                            ' · ' + spriceCvrLegendPart('CVR % = Same', counts.equal, total, '#e03131') +
+                            ' · ' + spriceCvrLegendPart('CVR % = Up', counts.up, total, '#a00211') +
+                            (counts.none
+                                ? (' · ' + spriceCvrLegendPart('No trend', counts.none, total, '#ced4da'))
+                                : '') +
+                            ' <span class="text-muted">(n=' + total + ')</span>')
+                );
+                spriceCvrZeroPieChart = upsertPieChart(spriceCvrZeroPieChart, 'sprice-cvr-zero-pie-chart', {
+                    labels: ['CVR % = Down', 'CVR % = Same', 'CVR % = Up', 'No trend'],
+                    datasets: [{
+                        data: [counts.down, counts.equal, counts.up, counts.none],
+                        backgroundColor: ['#ff8787', '#fa5252', '#a00211', '#ced4da'],
+                        borderWidth: 1,
+                        borderColor: '#fff'
+                    }]
+                }, { hideLegend: true });
+                requestAnimationFrame(syncSpriceCvrZeroPieSize);
+            }
+
+            /** INV>0 SKUs in a CVR slab, split by Down / Equal / Up trend */
+            function countSpriceCvrSlabTrendBands(slabKey) {
+                const counts = { down: 0, equal: 0, up: 0, none: 0 };
+                if (!table) return counts;
+                const slabs = resolveSpriceCvrSlabs(readSpriceCvrSlabInputs());
+                const tol = spriceCvrRule.trend_tolerance || 0.1;
+                const seen = new Set();
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                    const sku = rd['(Child) sku'];
+                    if (!sku || seen.has(sku)) return;
+                    const inv = parseFloat(rd.INV) || 0;
+                    if (inv <= 0) return;
+                    const cvr = amazonRowCvrL30(rd);
+                    if (amazonCvrIsZero(cvr)) return;
+                    if (amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high) !== slabKey) return;
+                    seen.add(sku);
+                    const trend = amazonCvrTrend(rd, tol);
+                    if (trend === 'down' || trend === 'equal' || trend === 'up') counts[trend]++;
+                    else counts.none++;
+                });
+                return counts;
+            }
+
+            function refreshSpriceCvrTrendPieChart(uiKey) {
+                const meta = SPRICE_CVR_TREND_PIE_META[uiKey];
+                if (!meta) return;
+                const counts = countSpriceCvrSlabTrendBands(meta.slab);
+                const total = counts.down + counts.equal + counts.up + counts.none;
+                const c = meta.colors;
+                $('#sprice-cvr-' + uiKey + '-pie-legend').html(
+                    total === 0
+                        ? ('No INV &gt; 0 SKUs in ' + meta.label)
+                        : (spriceCvrLegendPart('CVR % = Down', counts.down, total, c[0]) +
+                            ' · ' + spriceCvrLegendPart('CVR % = Same', counts.equal, total, c[1]) +
+                            ' · ' + spriceCvrLegendPart('CVR % = Up', counts.up, total, c[2]) +
+                            (counts.none
+                                ? (' · ' + spriceCvrLegendPart('No trend', counts.none, total, c[3] || '#ced4da'))
+                                : '') +
+                            ' <span class="text-muted">(n=' + total + ')</span>')
+                );
+                spriceCvrTrendPieCharts[uiKey] = upsertPieChart(
+                    spriceCvrTrendPieCharts[uiKey],
+                    'sprice-cvr-' + uiKey + '-pie-chart',
+                    {
+                        labels: ['CVR % = Down', 'CVR % = Same', 'CVR % = Up', 'No trend'],
+                        datasets: [{
+                            data: [counts.down, counts.equal, counts.up, counts.none],
+                            backgroundColor: c,
+                            borderWidth: 1,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    { hideLegend: true }
+                );
+                requestAnimationFrame(function() {
+                    syncSpriceCvrRulePieSize(uiKey, spriceCvrTrendPieCharts[uiKey]);
+                });
+            }
+
+            function refreshSpriceCvrTrendPieCharts() {
+                Object.keys(SPRICE_CVR_TREND_PIE_META).forEach(refreshSpriceCvrTrendPieChart);
+            }
+
+            /** Count INV>0 SKUs by rule action: Increase / Decrease / Hold */
+            function countSpriceCvrActionBands() {
+                const counts = { increase: 0, decrease: 0, hold: 0 };
+                if (!table) return counts;
+                const slabsLive = readSpriceCvrSlabInputs();
+                const zeroDil = readZeroCvrDilFromUi();
+                const rule = {
+                    low_cvr: slabsLive.low,
+                    mid_cvr: slabsLive.mid,
+                    high_cvr: slabsLive.high,
+                    down_mult: spriceCvrRule.down_mult,
+                    up_mult: spriceCvrRule.up_mult,
+                    trend_tolerance: spriceCvrRule.trend_tolerance,
+                    actions: readSpriceCvrActionsFromUi(),
+                    yellow_pct: readYellowPctFromUi(),
+                    slab_pct: readSlabPctFromUi(),
+                    ...readDilOverridesFromUi(),
+                    zero_cvr_dil: zeroDil
+                };
+                const seen = new Set();
+                table.getRows().forEach(function(r) {
+                    const rd = r.getData();
+                    if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                    const sku = rd['(Child) sku'];
+                    if (!sku || seen.has(sku)) return;
+                    const inv = parseFloat(rd.INV) || 0;
+                    if (inv <= 0) return;
+                    seen.add(sku);
+
+                    const cvr = amazonRowCvrL30(rd);
+                    const trend = amazonCvrTrend(rd, rule.trend_tolerance);
+                    const mult = resolveSpriceCvrMult(cvr, trend, rule, rd);
+                    if (mult == null || !isFinite(mult) || mult === 1) {
+                        counts.hold++;
+                        return;
+                    }
+                    if (mult > 1) counts.increase++;
+                    else if (mult < 1) counts.decrease++;
+                    else counts.hold++;
+                });
+                return counts;
+            }
+
+            function refreshSpriceCvrActionPieChart() {
+                const counts = countSpriceCvrActionBands();
+                const total = counts.increase + counts.decrease + counts.hold;
+                $('#sprice-cvr-action-pie-legend').html(
+                    total === 0
+                        ? 'No INV &gt; 0 SKUs'
+                        : ('<span style="color:#28a745;font-weight:600;">Increased: ' + counts.increase + '</span>' +
+                            ' · <span style="color:#a00211;font-weight:600;">Decreased: ' + counts.decrease + '</span>' +
+                            ' · <span style="color:#6c757d;font-weight:600;">Hold: ' + counts.hold + '</span>' +
+                            ' <span class="text-muted">(n=' + total + ')</span>')
+                );
+                spriceCvrActionPieChart = upsertPieChart(spriceCvrActionPieChart, 'sprice-cvr-action-pie-chart', {
+                    labels: ['Increased', 'Decreased', 'Hold'],
+                    datasets: [{
+                        data: [counts.increase, counts.decrease, counts.hold],
+                        backgroundColor: ['#28a745', '#a00211', '#6c757d'],
+                        borderWidth: 1,
+                        borderColor: '#fff'
+                    }]
+                }, { hideLegend: true });
+            }
+
+            let spriceCvrHistoryChart = null;
+            let spriceCvrHistoryType = 'slab';
+            let spriceCvrHistoryDays = 30;
+            let spriceCvrHistoryAjax = null;
+            let spriceCvrSnapshotTimer = null;
+
+            function saveSpriceCvrDailySnapshot() {
+                // eBay1: live pies only — do not overwrite Amazon daily stats table
+                return;
+                if (!table) return;
+                const s = readSpriceCvrSlabInputs();
+                const slabCounts = countSpriceCvrPieBands(s.low, s.mid, s.high);
+                const actionCounts = countSpriceCvrActionBands();
+                const zeroBands = countSpriceCvrZeroDilBands();
+                const rulePies = {
+                    zero: zeroBands,
+                    yellow: countSpriceCvrSlabTrendBands('red'),
+                    blue: countSpriceCvrSlabTrendBands('blue'),
+                    green: countSpriceCvrSlabTrendBands('green'),
+                    pink: countSpriceCvrSlabTrendBands('pink')
+                };
+                // History still stores 3 bands: yellow+zero → red; blue+green → green
+                const redBand = (slabCounts.zero || 0) + (slabCounts.yellow || 0);
+                const greenBand = (slabCounts.blue || 0) + (slabCounts.green || 0);
+                const total = redBand + greenBand + slabCounts.pink;
+                if (total <= 0) return;
+                $.ajax({
+                    url: '/amazon-sprice-cvr-stats-save',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: {
+                        red_count: redBand,
+                        green_count: greenBand,
+                        pink_count: slabCounts.pink,
+                        increased_count: actionCounts.increase,
+                        decreased_count: actionCounts.decrease,
+                        hold_count: actionCounts.hold,
+                        low_cvr: s.low,
+                        high_cvr: s.high,
+                        rule_pies: JSON.stringify(rulePies)
+                    }
+                });
+            }
+
+            function scheduleSpriceCvrDailySnapshot() {
+                if (spriceCvrSnapshotTimer) clearTimeout(spriceCvrSnapshotTimer);
+                spriceCvrSnapshotTimer = setTimeout(saveSpriceCvrDailySnapshot, 600);
+            }
+
+            const SPRICE_CVR_HISTORY_TITLES = {
+                slab: 'Sprice × CVR — Slab History',
+                action: 'Sprice × CVR — Action History',
+                rule_zero: 'Sprice × CVR — Rule 1 Trend History',
+                rule_yellow: 'Sprice × CVR — Rule 2 Yellow Trend History',
+                rule_blue: 'Sprice × CVR — Rule 3 Blue Trend History',
+                rule_green: 'Sprice × CVR — Rule 4 Green Trend History',
+                rule_pink: 'Sprice × CVR — Rule 5 Pink Trend History'
+            };
+
+            function openSpriceCvrHistoryModal(type) {
+                const t = String(type || 'slab');
+                spriceCvrHistoryType = SPRICE_CVR_HISTORY_TITLES[t] ? t : 'slab';
+                spriceCvrHistoryDays = parseInt($('#sprice-cvr-history-days').val(), 10);
+                if (!isFinite(spriceCvrHistoryDays)) spriceCvrHistoryDays = 30;
+                const title = SPRICE_CVR_HISTORY_TITLES[spriceCvrHistoryType] || SPRICE_CVR_HISTORY_TITLES.slab;
+                const rangeLabel = spriceCvrHistoryDays === 0 ? 'Lifetime' : ('L' + spriceCvrHistoryDays);
+                $('#spriceCvrHistoryModalTitle').text(title);
+                $('#spriceCvrHistoryModalSuffix').text('(Rolling ' + rangeLabel + ')');
+                const el = document.getElementById('spriceCvrHistoryModal');
+                if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(el).show();
+                } else {
+                    $('#spriceCvrHistoryModal').modal('show');
+                }
+                loadSpriceCvrHistoryChart();
+            }
+
+            function loadSpriceCvrHistoryChart() {
+                if (spriceCvrHistoryAjax) spriceCvrHistoryAjax.abort();
+                $('#spriceCvrHistoryNoData').hide();
+                $('#spriceCvrHistoryContainer').hide();
+                $('#spriceCvrHistoryLoading').show();
+                spriceCvrHistoryAjax = $.ajax({
+                    url: '/amazon-sprice-cvr-history',
+                    method: 'GET',
+                    data: { type: spriceCvrHistoryType, days: spriceCvrHistoryDays },
+                    success: function(resp) {
+                        spriceCvrHistoryAjax = null;
+                        $('#spriceCvrHistoryLoading').hide();
+                        if (resp && resp.success && resp.labels && resp.labels.length && resp.series && resp.series.length) {
+                            $('#spriceCvrHistoryContainer').show();
+                            renderSpriceCvrHistoryChart(resp.labels, resp.series);
+                        } else {
+                            $('#spriceCvrHistoryNoData').show();
+                        }
+                    },
+                    error: function(xhr, status) {
+                        spriceCvrHistoryAjax = null;
+                        if (status === 'abort') return;
+                        $('#spriceCvrHistoryLoading').hide();
+                        $('#spriceCvrHistoryNoData').show();
+                    }
+                });
+            }
+
+            function renderSpriceCvrHistoryChart(labels, series) {
+                const canvas = document.getElementById('spriceCvrHistoryChart');
+                if (!canvas || typeof Chart === 'undefined') return;
+                const allVals = [];
+                series.forEach(function(s) {
+                    (s.data || []).forEach(function(v) { allVals.push(parseFloat(v) || 0); });
+                });
+                const dataMin = allVals.length ? Math.min.apply(null, allVals) : 0;
+                const dataMax = allVals.length ? Math.max.apply(null, allVals) : 0;
+                const sorted = allVals.slice().sort(function(a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = !sorted.length ? 0
+                    : (sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
+                const range = (dataMax - dataMin) || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = dataMax + range * 0.1;
+                $('#spriceCvrHistoryHighest').text(Math.round(dataMax).toLocaleString());
+                $('#spriceCvrHistoryMedian').text(Math.round(median).toLocaleString());
+                $('#spriceCvrHistoryLowest').text(Math.round(dataMin).toLocaleString());
+
+                if (spriceCvrHistoryChart) {
+                    spriceCvrHistoryChart.destroy();
+                    spriceCvrHistoryChart = null;
+                }
+                spriceCvrHistoryChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: series.map(function(s) {
+                            return {
+                                label: s.label,
+                                data: s.data,
+                                borderColor: s.color,
+                                backgroundColor: s.color,
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                pointHoverRadius: 4,
+                                tension: 0.25,
+                                fill: false
+                            };
+                        })
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const v = ctx.parsed.y;
+                                        return ctx.dataset.label + ': ' + Math.round(v).toLocaleString();
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 10 } } },
+                            y: {
+                                min: yMin,
+                                max: yMax,
+                                ticks: {
+                                    font: { size: 10 },
+                                    callback: function(v) { return Math.round(v).toLocaleString(); }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            $(document).on('click', '.sprice-cvr-history-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openSpriceCvrHistoryModal($(this).data('history-type'));
+            });
+            $('#sprice-cvr-history-days').on('change', function() {
+                const days = parseInt($(this).val(), 10);
+                if (days === spriceCvrHistoryDays) return;
+                spriceCvrHistoryDays = days;
+                const rangeLabel = days === 0 ? 'Lifetime' : ('L' + days);
+                $('#spriceCvrHistoryModalSuffix').text('(Rolling ' + rangeLabel + ')');
+                loadSpriceCvrHistoryChart();
+            });
+
             function refreshSpriceCvrUi() {
-                const r = getSpriceCvrRule();
-                const label = 'S×' + formatCvrMult(r.down_mult) + '/' + formatCvrMult(r.up_mult);
-                $('#sprice-cvr-btn-label').text(label);
-                $('#sprice-cvr-low-input').val(r.low_cvr);
+                const r = spriceCvrRule;
+                const slabs = resolveSpriceCvrSlabs(r);
+                // Yellow end fixed at 3.5%; keep mid/high open if a bad save collapsed them
+                r.low_cvr = SPRICE_CVR_YELLOW_END_DEFAULT;
+                if (parseFloat(r.mid_cvr) <= r.low_cvr) r.mid_cvr = slabs.mid;
+                if (parseFloat(r.high_cvr) <= parseFloat(r.mid_cvr)) r.high_cvr = slabs.high;
+                if (!r.actions) r.actions = normalizeSpriceCvrActions(null);
+                r.slab_pct = normalizeSlabPct(r.slab_pct, r.yellow_pct, r.actions);
+                r.yellow_pct = r.slab_pct.red;
+                $('#sprice-cvr-btn-label').text('Sprice×CVR');
+                $('#sprice-cvr-low-input').val(SPRICE_CVR_YELLOW_END_DEFAULT);
+                $('#sprice-cvr-mid-input').val(r.mid_cvr);
                 $('#sprice-cvr-high-input').val(r.high_cvr);
-                $('#sprice-cvr-down-input').val(formatCvrMult(r.down_mult));
-                $('#sprice-cvr-up-input').val(formatCvrMult(r.up_mult));
+                $('#sprice-cvr-roi-floor-input').val(r.roi_floor_pct);
+                applySlabPctToUi(r.slab_pct);
+                applyZeroCvrDilToUi(r.zero_cvr_dil);
+                r.actions = readSpriceCvrActionsFromUi();
+                refreshSpriceCvrSlabLabels();
+                const sp = r.slab_pct;
                 $('#apply-sprice-cvr-btn').attr('title',
-                    'CVR ≤' + r.low_cvr + '% → SPRICE × ' + formatCvrMult(r.down_mult) +
-                    '; CVR >' + r.high_cvr + '% → SPRICE × ' + formatCvrMult(r.up_mult) +
-                    ' (selected, or all visible eligible)');
-                $('#sprice-cvr-controls').attr('title',
-                    'Adjust SPRICE by CVR: ≤' + r.low_cvr + '% → ×' + formatCvrMult(r.down_mult) +
-                    ', >' + r.high_cvr + '% → ×' + formatCvrMult(r.up_mult) + '. Gear edits rule (shared).');
+                    'SPRICE = eBay price × (1 + %/100) — not PFT%: +inc / −dec / 0=hold at eBay price · Z ' +
+                    sp.zero.down + '/' + sp.zero.equal + '/' + sp.zero.up +
+                    ' · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
+                    ' · B ' + sp.blue.down + '/' + sp.blue.equal + '/' + sp.blue.up +
+                    ' · G ' + sp.green.down + '/' + sp.green.equal + '/' + sp.green.up +
+                    ' · P ' + sp.pink.down + '/' + sp.pink.equal + '/' + sp.pink.up);
+                syncCvrFilterSlabOptions();
+            }
+
+            /** Keep toolbar CVR% filter labels in sync with Sprice × CVR Rule slabs */
+            function syncCvrFilterSlabOptions() {
+                const $sel = $('#cvr-filter');
+                if (!$sel.length) return;
+                const s = resolveSpriceCvrSlabs(spriceCvrRule || {});
+                const yellowStart = formatSlabBound(s.yellow_start || SPRICE_CVR_YELLOW_START);
+                const low = formatSlabBound(s.low);
+                const mid = formatSlabBound(s.mid);
+                const high = formatSlabBound(s.high);
+                const blueStart = formatSlabBound(s.blue_start != null ? s.blue_start : (s.low + 0.01));
+                const greenStart = formatSlabBound(s.mid + 0.01);
+                const pinkAfter = formatSlabBound(s.pink_after != null ? s.pink_after : (s.high + 0.01));
+                // eBay toolbar uses legacy value keys; refresh labels to match rule bands
+                $sel.find('option[value="0-0"]').text('0%');
+                $sel.find('option[value="0-3"]').text(yellowStart + '–' + low + '%');
+                $sel.find('option[value="3-7"]').text(blueStart + '–' + mid + '%');
+                $sel.find('option[value="7-13"]').text(greenStart + '–' + high + '%');
+                $sel.find('option[value="13plus"]').html('&gt;' + pinkAfter + '%');
             }
 
             function loadSpriceCvrRule() {
@@ -3157,72 +5040,235 @@
                     method: 'GET',
                     success: function(resp) {
                         if (resp && typeof resp === 'object') {
-                            spriceCvrRule = {
-                                low_cvr: parseFloat(resp.low_cvr) || 7,
-                                high_cvr: parseFloat(resp.high_cvr) || 13,
-                                down_mult: parseFloat(resp.down_mult) || 0.99,
-                                up_mult: parseFloat(resp.up_mult) || 1.01
-                            };
+                            spriceCvrRule = normalizeSpriceCvrRule(resp);
                         }
                         refreshSpriceCvrUi();
+                        syncCvrFilterSlabOptions();
                     },
-                    error: function() { refreshSpriceCvrUi(); }
-                });
-            }
-
-            function saveSpriceCvrRuleFromModal() {
-                const payload = {
-                    low_cvr: parseFloat(String($('#sprice-cvr-low-input').val()).replace(',', '.')),
-                    high_cvr: parseFloat(String($('#sprice-cvr-high-input').val()).replace(',', '.')),
-                    down_mult: parseFloat(String($('#sprice-cvr-down-input').val()).replace(',', '.')),
-                    up_mult: parseFloat(String($('#sprice-cvr-up-input').val()).replace(',', '.'))
-                };
-                if (!isFinite(payload.low_cvr) || !isFinite(payload.high_cvr) ||
-                    !isFinite(payload.down_mult) || !isFinite(payload.up_mult)) {
-                    $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
-                        .text('Enter valid numbers for all fields');
-                    return;
-                }
-                const $btn = $('#sprice-cvr-save-btn');
-                const btnHtml = $btn.html();
-                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
-                $('#sprice-cvr-modal-status').removeClass('text-danger text-success').addClass('text-muted').text('Saving...');
-
-                $.ajax({
-                    url: SPRICE_CVR_URL,
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                    data: payload,
-                    success: function(resp) {
-                        if (resp && resp.rule) {
-                            spriceCvrRule = resp.rule;
-                        }
+                    error: function() {
                         refreshSpriceCvrUi();
-                        $('#sprice-cvr-modal-status').removeClass('text-danger text-muted').addClass('text-success')
-                            .text('Saved Sprice × CVR rule');
-                        showToast('success', 'Sprice × CVR rule saved');
-                    },
-                    error: function(xhr) {
-                        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to save Sprice × CVR rule';
-                        $('#sprice-cvr-modal-status').removeClass('text-success text-muted').addClass('text-danger').text(msg);
-                        showToast('error', msg);
-                    },
-                    complete: function() {
-                        $btn.prop('disabled', false).html(btnHtml);
+                        syncCvrFilterSlabOptions();
                     }
                 });
             }
 
+            function saveSpriceCvrRuleFromModal() {
+                try {
+                    const slabs = readSpriceCvrSlabInputs();
+                    const zeroDil = readZeroCvrDilFromUi();
+                    const slabPct = readSlabPctFromUi();
+                    const payload = Object.assign({
+                        low_cvr: SPRICE_CVR_YELLOW_END_DEFAULT,
+                        mid_cvr: slabs.mid,
+                        high_cvr: slabs.high,
+                        down_mult: spriceCvrRule.down_mult || 0.99,
+                        up_mult: spriceCvrRule.up_mult || 1.01,
+                        roi_floor_pct: parseFloat(String($('#sprice-cvr-roi-floor-input').val()).replace(',', '.')),
+                        actions: readSpriceCvrActionsFromUi(),
+                        yellow_pct: slabPct.red,
+                        slab_pct: slabPct,
+                        zero_cvr_dil: zeroDil
+                    }, readDilOverridesFromUi());
+                    const pctOk = SPRICE_CVR_SLABS.every(function(slab) {
+                        const p = slabPct[slab];
+                        return p && isFinite(p.down) && isFinite(p.equal) && isFinite(p.up);
+                    });
+                    if (!isFinite(payload.mid_cvr) || !isFinite(payload.high_cvr) ||
+                        !isFinite(payload.roi_floor_pct) || !pctOk) {
+                        $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
+                            .text('Enter valid numbers for all rule % fields');
+                        return;
+                    }
+                    if (!(payload.mid_cvr > payload.low_cvr && payload.high_cvr > payload.mid_cvr)) {
+                        $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
+                            .text('Need Blue≤ > 3.5 and Green≤ > Blue≤');
+                        return;
+                    }
+                    const $btn = $('#sprice-cvr-save-btn');
+                    const btnHtml = $btn.html();
+                    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
+                    $.ajax({
+                        url: SPRICE_CVR_URL,
+                        method: 'POST',
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                            'Accept': 'application/json'
+                        },
+                        data: JSON.stringify(payload),
+                        success: function(resp) {
+                            if (resp && resp.rule) spriceCvrRule = normalizeSpriceCvrRule(resp.rule);
+                            refreshSpriceCvrUi();
+                            refreshSpriceCvrPieChart();
+                            $('#sprice-cvr-modal-status').removeClass('text-danger').addClass('text-success').text('Saved');
+                            if (typeof showToast === 'function') showToast('success', 'Sprice × CVR rule saved');
+                        },
+                        error: function(xhr) {
+                            const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                                || ('Failed to save' + (xhr.status ? ' (' + xhr.status + ')' : ''));
+                            $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger').text(msg);
+                            if (typeof showToast === 'function') showToast('error', msg);
+                        },
+                        complete: function() { $btn.prop('disabled', false).html(btnHtml); }
+                    });
+                } catch (err) {
+                    console.error('saveSpriceCvrRuleFromModal', err);
+                    $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
+                        .text('Save failed: ' + (err && err.message ? err.message : 'JS error'));
+                }
+            }
+
             loadSpriceCvrRule();
-            $('#spriceCvrRuleModal').on('show.bs.modal', function() {
+            const SPRICE_CVR_BADGE_THRESHOLDS = {
+                groi_pct: 80,
+                nroi_pct: 60,
+                gpft_pct: 35,
+                npft_pct: 25
+            };
+            let spriceCvrPrevDayMetrics = null;
+            let spriceCvrPrevDayLoaded = false;
+
+            function parseBadgePct(text) {
+                const m = String(text || '').match(/-?\d+(\.\d+)?/);
+                return m ? parseFloat(m[0]) : NaN;
+            }
+
+            function applySpriceCvrBadgeThreshold($badge, pct) {
+                const metric = $badge.data('metric');
+                const thr = SPRICE_CVR_BADGE_THRESHOLDS[metric];
+                const ok = isFinite(pct) && isFinite(thr) && pct >= thr;
+                $badge.toggleClass('sprice-cvr-badge-ok', ok).toggleClass('sprice-cvr-badge-bad', !ok);
+            }
+
+            function applySpriceCvrTrendDot(metric, currentPct) {
+                const $dot = $('#sprice-cvr-' + metric.replace('_pct', '') + '-trend');
+                // ids: groi/nroi/gpft/npft — map metric keys
+                const idMap = {
+                    groi_pct: '#sprice-cvr-groi-trend',
+                    nroi_pct: '#sprice-cvr-nroi-trend',
+                    gpft_pct: '#sprice-cvr-gpft-trend',
+                    npft_pct: '#sprice-cvr-npft-trend'
+                };
+                const $el = $(idMap[metric] || $dot);
+                if (!$el.length) return;
+                const prev = spriceCvrPrevDayMetrics && spriceCvrPrevDayMetrics[metric];
+                if (!isFinite(currentPct) || prev == null || !isFinite(prev)) {
+                    $el.attr('class', 'sprice-cvr-trend-dot none').attr('title', '');
+                    return;
+                }
+                const diff = currentPct - prev;
+                let cls = 'flat';
+                let tip = 'Unchanged vs previous day (' + Math.round(prev) + '%)';
+                if (diff > 0.05) {
+                    cls = 'up';
+                    tip = 'Up vs previous day (' + Math.round(prev) + '% → ' + Math.round(currentPct) + '%)';
+                } else if (diff < -0.05) {
+                    cls = 'down';
+                    tip = 'Down vs previous day (' + Math.round(prev) + '% → ' + Math.round(currentPct) + '%)';
+                }
+                $el.attr('class', 'sprice-cvr-trend-dot ' + cls).attr('title', tip);
+            }
+
+            function loadSpriceCvrPrevDayMetrics(done) {
+                if (spriceCvrPrevDayLoaded) {
+                    if (typeof done === 'function') done();
+                    return;
+                }
+                $.ajax({
+                    url: '/amazon-badge-prev-day',
+                    method: 'GET',
+                    success: function(resp) {
+                        spriceCvrPrevDayLoaded = true;
+                        spriceCvrPrevDayMetrics = (resp && resp.success && resp.metrics) ? resp.metrics : null;
+                        if (typeof done === 'function') done();
+                    },
+                    error: function() {
+                        spriceCvrPrevDayLoaded = true;
+                        spriceCvrPrevDayMetrics = null;
+                        if (typeof done === 'function') done();
+                    }
+                });
+            }
+
+            function syncSpriceCvrProfitBadges() {
+                // Mirror summary badges (updateSummary); order GROI/NROI then GPFT/NPFT
+                const vals = {
+                    groi_pct: parseBadgePct(($('#groi-percent-badge').text() || '').replace(/^GROI:\s*/i, '')),
+                    nroi_pct: parseBadgePct(($('#nroi-percent-badge').text() || '').replace(/^NROI:\s*/i, '')),
+                    gpft_pct: parseBadgePct(($('#avg-gpft-badge').text() || '').replace(/^GPFT:\s*/i, '')),
+                    npft_pct: parseBadgePct(($('#npft-percent-badge').text() || '').replace(/^NPFT:\s*/i, ''))
+                };
+                const fmt = function(n) { return (isFinite(n) ? Math.round(n) : 0) + '%'; };
+                $('#sprice-cvr-groi-val').text(fmt(vals.groi_pct));
+                $('#sprice-cvr-nroi-val').text(fmt(vals.nroi_pct));
+                $('#sprice-cvr-gpft-val').text(fmt(vals.gpft_pct));
+                $('#sprice-cvr-npft-val').text(fmt(vals.npft_pct));
+
+                ['groi_pct', 'nroi_pct', 'gpft_pct', 'npft_pct'].forEach(function(metric) {
+                    const $badge = $('#sprice-cvr-' + metric.replace('_pct', '') + '-badge');
+                    // gpft/npft ids don't follow replace pattern for gpft_pct → gpft ✓, npft_pct → npft ✓
+                    applySpriceCvrBadgeThreshold($badge, vals[metric]);
+                    applySpriceCvrTrendDot(metric, vals[metric]);
+                });
+
+                loadSpriceCvrPrevDayMetrics(function() {
+                    ['groi_pct', 'nroi_pct', 'gpft_pct', 'npft_pct'].forEach(function(metric) {
+                        applySpriceCvrTrendDot(metric, vals[metric]);
+                    });
+                });
+            }
+
+            $('#spriceCvrRuleModal').on('shown.bs.modal', function() {
                 refreshSpriceCvrUi();
+                refreshSpriceCvrPieChart();
+                syncSpriceCvrProfitBadges();
+                requestAnimationFrame(syncSpriceCvrAllRulePieSizes);
                 $('#sprice-cvr-modal-status').removeClass('text-danger text-success').addClass('text-muted').text('');
+            });
+            $(window).on('resize.spriceCvrModal', function() {
+                if ($('#spriceCvrRuleModal').hasClass('show')) {
+                    syncSpriceCvrAllRulePieSizes();
+                }
+            });
+            $(document).on('click', '.sprice-cvr-metric-history-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const metric = $(this).data('metric');
+                if (!metric || typeof showEbay1MetricChart !== 'function') return;
+                showEbay1MetricChart(metric);
+            });
+            $('#sprice-cvr-low-input, #sprice-cvr-mid-input, #sprice-cvr-high-input').on('input change', function() {
+                refreshSpriceCvrSlabLabels();
+                refreshSpriceCvrPieChart();
+            });
+            $(document).on('input change', '.sprice-cvr-slab-pct-input', function() {
+                spriceCvrRule.slab_pct = readSlabPctFromUi();
+                spriceCvrRule.yellow_pct = spriceCvrRule.slab_pct.red;
+                spriceCvrRule.actions = readSpriceCvrActionsFromUi();
+                refreshSpriceCvrPieChart();
             });
             $('#sprice-cvr-save-btn').on('click', saveSpriceCvrRuleFromModal);
 
             $('#apply-sprice-cvr-btn').on('click', function() {
                 const $btn = $(this);
-                const rule = getSpriceCvrRule();
+                const slabsLive = readSpriceCvrSlabInputs();
+                const zeroDil = readZeroCvrDilFromUi();
+                const slabPct = readSlabPctFromUi();
+                // Keep in-memory rule in sync so post-apply UI refresh does not wipe Blue ±% etc.
+                spriceCvrRule = Object.assign({}, spriceCvrRule, {
+                    low_cvr: slabsLive.low,
+                    mid_cvr: slabsLive.mid,
+                    high_cvr: slabsLive.high,
+                    down_mult: spriceCvrRule.down_mult || 0.99,
+                    up_mult: spriceCvrRule.up_mult || 1.01,
+                    roi_floor_pct: parseFloat(String($('#sprice-cvr-roi-floor-input').val()).replace(',', '.')) || spriceCvrRule.roi_floor_pct,
+                    actions: readSpriceCvrActionsFromUi(),
+                    yellow_pct: slabPct.red,
+                    slab_pct: slabPct,
+                    zero_cvr_dil: zeroDil
+                });
+                const rule = spriceCvrRule;
                 const btnHtml = '<i class="fas fa-percentage"></i> <span id="sprice-cvr-btn-label">' +
                     $('#sprice-cvr-btn-label').text() + '</span>';
                 if (!table) {
@@ -3230,46 +5276,117 @@
                     return;
                 }
 
-                const useSelection = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
+                const effectiveSelected = new Set();
+                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.forEach) {
+                    selectedSkus.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
+                    selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
+                }
+                // Only honor selection when at least one selected SKU is in the active (filtered) set.
+                // Stale selections from a prior filter used to skip all visible Blue rows.
+                let selectedInActive = 0;
+                table.getRows('active').forEach(function(r) {
+                    const rd = r.getData();
+                    if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                    const sku = rd['(Child) sku'];
+                    if (sku && effectiveSelected.has(sku)) selectedInActive++;
+                });
+                const useSelection = selectedInActive > 0;
                 const rowsToProcess = [];
                 const seen = new Set();
+                let zeroCvrCount = 0;
+                let holdSkipCount = 0;
+                const slabHit = { zero: 0, red: 0, blue: 0, green: 0, pink: 0 };
 
                 table.getRows('active').forEach(function(r) {
                     const rd = r.getData();
                     if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
                     const sku = rd['(Child) sku'];
                     if (!sku || seen.has(sku)) return;
-                    if (useSelection && !selectedSkus.has(sku)) return;
+                    if (useSelection && !effectiveSelected.has(sku)) return;
 
-                    const cvr = parseFloat(rd.SCVR) || 0;
-                    let mult = null;
-                    if (cvr <= rule.low_cvr) mult = rule.down_mult;
-                    else if (cvr > rule.high_cvr) mult = rule.up_mult;
-                    else return; // middle band unchanged
+                    const cvr = amazonRowCvrL30(rd);
+                    const trend = amazonCvrTrend(rd, rule.trend_tolerance);
+                    const slabs = resolveSpriceCvrSlabs(rule);
+                    const slabKey = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
+                    const signedPct = resolveSpriceCvrSignedPct(cvr, trend, rule, rd);
+                    if (signedPct == null) {
+                        holdSkipCount++;
+                        return;
+                    }
 
-                    const existing = parseFloat(rd.SPRICE) || 0;
-                    const ebayPrice = parseFloat(rd['eBay Price']) || 0;
-                    const base = existing > 0 ? existing : ebayPrice;
-                    if (base <= 0) return;
+                    // Always % of eBay listing price (not prior SPRICE / not PFT%).
+                    // 0% → SPRICE = eBay price (true hold / no increase — clears stale +% suggestions).
+                    const base = amazonSpriceCvrBasePrice(rd);
+                    const sprice = applySpriceCvrPctToPrice(base, signedPct);
+                    if (sprice == null) {
+                        holdSkipCount++;
+                        return;
+                    }
 
-                    const sprice = +Number(base * mult).toFixed(2);
-                    if (!isFinite(sprice) || sprice <= 0) return;
                     seen.add(sku);
-                    rowsToProcess.push({ row: r, sku: sku, sprice: sprice, cvr: cvr, mult: mult });
+                    if (amazonCvrIsZero(cvr)) zeroCvrCount++;
+                    if (slabHit[slabKey] != null) slabHit[slabKey]++;
+                    rowsToProcess.push({
+                        row: r, sku: sku, sprice: sprice, trend: trend, slab: slabKey,
+                        mult: 1 + signedPct / 100, signed_pct: signedPct
+                    });
                 });
 
                 if (rowsToProcess.length === 0) {
                     showToast('warning', useSelection
-                        ? 'No selected rows with CVR ≤' + rule.low_cvr + '% or >' + rule.high_cvr + '% and a price base'
-                        : 'No visible rows eligible (CVR ≤' + rule.low_cvr + '% or >' + rule.high_cvr + '% with SPRICE/Price)');
+                        ? 'No selected rows match CVR trend rules (' + holdSkipCount + ' skipped).'
+                        : 'No visible rows match CVR trend rules (' + holdSkipCount + ' skipped).');
                     return;
                 }
 
                 const scope = useSelection ? 'selected' : 'visible eligible';
+                const zeroNote = zeroCvrCount > 0
+                    ? ('\n' + zeroCvrCount + ' SKU(s) via CVR=0% trend')
+                    : '';
+                const slabNote = '\nHits: Red0=' + slabHit.zero +
+                    ' Yellow=' + slabHit.red +
+                    ' Blue=' + slabHit.blue +
+                    ' Green=' + slabHit.green +
+                    ' Pink=' + slabHit.pink +
+                    (holdSkipCount ? (' · skipped=' + holdSkipCount) : '');
+                const slabs = resolveSpriceCvrSlabs(rule);
+                const sp = normalizeSlabPct(rule.slab_pct, rule.yellow_pct);
+                const actLabel = function(slab, trend) {
+                    const pct = slabPctForTrend(sp, slab || 'red', trend || 'down');
+                    if (!isFinite(pct)) return 'hold';
+                    if (pct === 0) return '0% hold (= eBay price)';
+                    const s = formatSlabBound(pct);
+                    return (pct > 0 ? '+' : '') + s + '% of eBay price';
+                };
+                const midL = formatSlabBound(slabs.mid);
+                const highL = formatSlabBound(slabs.high);
+                const lowL = formatSlabBound(slabs.low);
+                const blueStart = formatSlabBound(slabs.blue_start != null ? slabs.blue_start : (slabs.low + 0.01));
+                const greenStart = formatSlabBound(slabs.mid + 0.01);
+                const pinkAfter = formatSlabBound(slabs.pink_after);
+                const yellowStart = formatSlabBound(slabs.yellow_start || SPRICE_CVR_YELLOW_START);
+                const yellowBand = yellowStart + '–' + lowL + '%';
                 if (!confirm(
-                    'Adjust SPRICE by CVR for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
-                    'CVR ≤' + rule.low_cvr + '% → ×' + formatCvrMult(rule.down_mult) + '\n' +
-                    'CVR >' + rule.high_cvr + '% → ×' + formatCvrMult(rule.up_mult)
+                    'Adjust SPRICE by % of eBay listing price for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
+                    '(SPRICE = eBay price × (1 + %/100) — of price, not PFT%)\n' +
+                    '1 Red CVR=0%: Down=' + actLabel('zero', 'down') +
+                    ', Same=' + actLabel('zero', 'equal') +
+                    ', Up=' + actLabel('zero', 'up') + '\n' +
+                    '2 Yellow ' + yellowBand + ': Down=' + actLabel('red', 'down') +
+                    ', Same=' + actLabel('red', 'equal') +
+                    ', Up=' + actLabel('red', 'up') + '\n' +
+                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel('blue', 'down') +
+                    ', Same=' + actLabel('blue', 'equal') +
+                    ', Up=' + actLabel('blue', 'up') + '\n' +
+                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel('green', 'down') +
+                    ', Same=' + actLabel('green', 'equal') +
+                    ', Up=' + actLabel('green', 'up') + '\n' +
+                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel('pink', 'down') +
+                    ', Same=' + actLabel('pink', 'equal') +
+                    ', Up=' + actLabel('pink', 'up') +
+                    zeroNote + slabNote
                 )) {
                     return;
                 }
@@ -3287,7 +5404,7 @@
                         data: { sku: item.sku, sprice: item.sprice },
                         success: function(response) {
                             successCount++;
-                            item.row.update({
+                            const updateData = {
                                 SPRICE: item.sprice,
                                 SPFT: response.spft_percent != null ? response.spft_percent : 0,
                                 SROI: response.sroi_percent != null ? response.sroi_percent : 0,
@@ -3295,7 +5412,8 @@
                                 SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
                                 SPRICE_STATUS: 'saved',
                                 has_custom_sprice: true
-                            });
+                            };
+                            item.row.update(updateData);
                             item.row.reformat();
                         },
                         error: function() { errorCount++; },
@@ -3303,21 +5421,28 @@
                             if (successCount + errorCount !== total) return;
                             $btn.prop('disabled', false).html(btnHtml);
                             refreshSpriceCvrUi();
+                            const blueN = slabHit.blue || 0;
                             if (errorCount === 0) {
-                                showToast('success', 'Sprice × CVR saved for ' + successCount + ' SKU(s)');
+                                showToast('success', 'Sprice × CVR saved for ' + successCount +
+                                    ' SKU(s) (Blue ' + blueN + ')');
                             } else {
-                                showToast('error', 'Saved ' + successCount + ' of ' + total + ' (' + errorCount + ' failed)');
+                                showToast('error', 'Saved ' + successCount + ' of ' + total +
+                                    ' (' + errorCount + ' failed; Blue ' + blueN + ')');
                             }
                             if (useSelection) {
-                                selectedSkus.clear();
+                                if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) selectedSkus.clear();
+                                if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.clear) selectedRows.clear();
                                 $('.sku-select-checkbox').prop('checked', false);
+                                $('.row-select-checkbox').prop('checked', false);
                                 $('#select-all-checkbox').prop('checked', false);
+                                $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
                                 if (typeof updateSelectedCount === 'function') updateSelectedCount();
                             }
                         }
                     });
                 });
             });
+
 
             // Badge click handlers for filtering
             $('#zero-sold-count-badge').on('click', function() {
@@ -5123,64 +7248,6 @@
                     },
 
                     {
-                        title: "GPFT %",
-                        field: "GPFT%",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 50
-                    },
-
-
-                    {
-                        title: "NPFT",
-                        field: "PFT %",
-                        hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
-                            return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
-                            // NPFT% = GPFT% − Ads% (channel TACOS)
-                            const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        bottomCalc: function(values, data) {
-                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
-                            let sum = 0, n = 0;
-                            data.forEach(r => { const v = parseFloat(r['GPFT%']); if (!isNaN(v)) { sum += (v - ads); n++; } });
-                            return n ? sum / n : 0;
-                        },
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
-                        },
-                        width: 50
-                    },
-                    {
                         title: "GROI%",
                         field: "ROI%",
                         hozAlign: "center",
@@ -5242,6 +7309,64 @@
                             return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
                         },
                         width: 65
+                    },
+                    {
+                        title: "GPFT %",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
+                    },
+
+
+                    {
+                        title: "NPFT",
+                        field: "PFT %",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
+                            return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
+                            // NPFT% = GPFT% − Ads% (channel TACOS)
+                            const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
+                            let sum = 0, n = 0;
+                            data.forEach(r => { const v = parseFloat(r['GPFT%']); if (!isNaN(v)) { sum += (v - ads); n++; } });
+                            return n ? sum / n : 0;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                        },
+                        width: 50
                     },
 
                     {
@@ -5354,7 +7479,10 @@
                             if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0)
                                 return '';
 
-                            // Always show SPRICE when it has a value — even if it equals the eBay price.
+                            // When SPRICE matches eBay Price, show "-" instead of the same dollar amount
+                            if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                                return '<span style="color:#adb5bd;" title="Same as eBay Price">-</span>';
+                            }
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
                             // If SPRICE is above the LMP (lowest market price), flag it in red.
@@ -5531,34 +7659,6 @@
                         width: 80
                     },
                     {
-                        title: "SNPFT",
-                        field: "SPFT",
-                        visible: false,
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            // SNPFT = S GPFT − Ads% (net of channel ad spend).
-                            const rawGpft = rowData.SGPFT;
-                            if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
-                            const sgpft = parseFloat(rawGpft);
-                            if (isNaN(sgpft)) return '';
-                            const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
-                            const percent = sgpft - ads;
-
-                            let color = '';
-                            // Same as PFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
                         title: "S GROI",
                         field: "SGROI",
                         hozAlign: "center",
@@ -5602,6 +7702,34 @@
                             else if (percent < 75) color = '#ffc107'; // yellow
                             else if (percent < 125) color = '#28a745'; // green
                             else color = '#d63384'; // magenta
+
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "SNPFT",
+                        field: "SPFT",
+                        visible: false,
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            // SNPFT = S GPFT − Ads% (net of channel ad spend).
+                            const rawGpft = rowData.SGPFT;
+                            if (rawGpft === null || rawGpft === undefined || rawGpft === '') return '';
+                            const sgpft = parseFloat(rawGpft);
+                            if (isNaN(sgpft)) return '';
+                            const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
+                            const percent = sgpft - ads;
+
+                            let color = '';
+                            // Same as PFT% color logic
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -5702,11 +7830,11 @@
                             if (pct === null || pct === undefined || pct === '' || !isFinite(parseFloat(pct))) {
                                 return '<span class="text-muted">—</span>';
                             }
-                            const v = parseFloat(pct);
+                            const v = Math.round(parseFloat(pct));
                             const color = v > 0 ? '#28a745' : (v < 0 ? '#a00211' : '#6c757d');
                             const sign = v > 0 ? '+' : '';
                             const tip = `L7 ${Math.round(cur).toLocaleString()} vs prior ${Math.round(prev).toLocaleString()} (same period, days 8–14)`;
-                            return `<span title="${tip}" style="color:${color}; font-weight:700;">${sign}${v.toFixed(1)}%</span>`;
+                            return `<span title="${tip}" style="color:${color}; font-weight:700;">${sign}${v}%</span>`;
                         }
                     },
                     {
@@ -6203,38 +8331,57 @@
                 }
 
                 if (cvrFilter !== 'all') {
+                    // Match Sprice × CVR Rule slabs (same bands as Amazon / gear modal)
+                    const slabs = (typeof resolveSpriceCvrSlabs === 'function')
+                        ? resolveSpriceCvrSlabs(spriceCvrRule || {})
+                        : { low: 3.5, mid: 7, high: 13, yellow_start: 0.01, pink_after: 13.01 };
                     table.addFilter(function(data) {
-                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        // if (isParent) return true;
-                        // Extract CVR from SCVR field
-                        const scvrValue = parseFloat(data['SCVR'] || 0);
-                        const views = parseFloat(data.views || 0);
-                        const l30 = parseFloat(data['eBay L30'] || 0);
-                        const cvr = views > 0 ? (l30 / views) * 100 : 0;
+                        if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
+                            return true;
+                        const cvr = (typeof amazonRowCvrL30 === 'function')
+                            ? amazonRowCvrL30(data)
+                            : (parseFloat(data['SCVR']) || 0);
+                        const isZero = (typeof amazonCvrIsZero === 'function')
+                            ? amazonCvrIsZero(cvr)
+                            : (!isFinite(cvr) || Math.abs(cvr) < 0.005);
 
-                        // Round to 2 decimal places to avoid floating point precision issues
-                        const cvrRounded = Math.round(cvr * 100) / 100;
+                        if (cvrFilter === 'zero' || cvrFilter === '0-0') return isZero;
+                        if (isZero) return false;
 
-                        if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
-                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
-                        if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
-                        if (cvrFilter === '13plus') return cvrRounded > 13;
+                        let key = cvrFilter;
+                        if (key === '0-3') key = 'yellow';
+                        else if (key === '3-7') key = 'blue';
+                        else if (key === '7-13') key = 'green';
+                        else if (key === '13plus') key = 'pink';
+
+                        const slab = (typeof amazonCvrSlab === 'function')
+                            ? amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high)
+                            : (cvr <= slabs.low ? 'red' : (cvr <= slabs.mid ? 'blue' : (cvr <= (slabs.high + 0.01) ? 'green' : 'pink')));
+                        if (key === 'yellow') return slab === 'red';
+                        if (key === 'blue' || key === 'green' || key === 'pink') return slab === key;
                         return true;
                     });
                 }
 
-                // CVR trend filter: CVR 60 vs CVR 30 (same as Amazon)
+                // CVR trend filter: CVR L30 vs prior L31–L60 (same as Amazon — Down / Up / Same)
                 if (cvrTrendFilter !== 'all') {
                     const cvrTrendTol = 0.1;
                     table.addFilter(function(data) {
                         if (data.Parent && String(data.Parent).toUpperCase().startsWith('PARENT'))
-                        return true;
-                        const cvr30 = parseFloat(data['SCVR'] || 0);
-                        const cvr60 = parseFloat(data['CVR_60'] || 0);
-                        if (cvrTrendFilter === 'l60_gt_l30') return cvr60 > cvr30 + cvrTrendTol;
-                        if (cvrTrendFilter === 'l30_gt_l60') return cvr30 > cvr60 + cvrTrendTol;
-                        if (cvrTrendFilter === 'equal') return Math.abs(cvr60 - cvr30) <= cvrTrendTol;
+                            return true;
+                        let trend = null;
+                        if (typeof amazonCvrTrend === 'function') {
+                            trend = amazonCvrTrend(data, cvrTrendTol);
+                        } else {
+                            const cvr30 = parseFloat(data['SCVR'] || 0);
+                            const cvr60 = parseFloat(data['CVR_60'] || 0);
+                            if (cvr30 > cvr60 + cvrTrendTol) trend = 'up';
+                            else if (cvr30 < cvr60 - cvrTrendTol) trend = 'down';
+                            else trend = 'equal';
+                        }
+                        if (cvrTrendFilter === 'down') return trend === 'down';
+                        if (cvrTrendFilter === 'up') return trend === 'up';
+                        if (cvrTrendFilter === 'same' || cvrTrendFilter === 'equal') return trend === 'equal';
                         return true;
                     });
                 }
@@ -6468,20 +8615,34 @@
                 
                 const avgCVR = totalViews > 0 ? (ORDERS_L30_TOTAL_QTY / totalViews * 100) : 0;
 
-                $('#total-sales-amt-badge').text('Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString());
-                $('#avg-gpft-badge').text('GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%');
-                $('#groi-percent-badge').text('GROI: ' + Math.round(ORDERS_L30_GROI) + '%');
+                // Preserve trend dots when updating badge labels
+                function setSummaryBadge($el, label, liveVal) {
+                    const $dot = $el.find('.summary-trend-dot').detach();
+                    $el.text(label);
+                    if ($dot.length) $el.append($dot);
+                    if (liveVal != null && isFinite(liveVal)) {
+                        $el.attr('data-live-value', liveVal);
+                    }
+                }
+
+                setSummaryBadge($('#groi-percent-badge'), 'GROI: ' + Math.round(ORDERS_L30_GROI) + '%', Math.round(ORDERS_L30_GROI));
                 // NPFT% = GPFT% − Ads%. NROI% = (GPFT$ − Ad Spend) / COGS × 100 (Amazon formula).
-                $('#npft-percent-badge').text('NPFT: ' + Math.round(ORDERS_L30_GPFT - EBAY_CHANNEL_ADS_PCT) + '%');
+                const npftBadge = Math.round(ORDERS_L30_GPFT - EBAY_CHANNEL_ADS_PCT);
+                setSummaryBadge($('#npft-percent-badge'), 'NPFT: ' + npftBadge + '%', npftBadge);
                 const nroiBadge = (ORDERS_L30_COGS > 0)
                     ? ((ORDERS_L30_PFT - EBAY_AD_SPEND) / ORDERS_L30_COGS) * 100
                     : ORDERS_L30_NROI;
-                $('#nroi-percent-badge').text('NROI: ' + Math.round(nroiBadge) + '%');
+                setSummaryBadge($('#nroi-percent-badge'), 'NROI: ' + Math.round(nroiBadge) + '%', Math.round(nroiBadge));
+                setSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%', Math.round(ORDERS_L30_GPFT));
+                setSummaryBadge($('#ads-percent-badge'), 'Ads ' + Math.round(EBAY_CHANNEL_ADS_PCT) + '%', Math.round(EBAY_CHANNEL_ADS_PCT));
+                setSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString(), Math.round(ORDERS_L30_TOTAL_SALES));
+                setSummaryBadge($('#qty-sold-badge'), 'Qty: ' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString(), Math.round(ORDERS_L30_TOTAL_QTY));
 
-                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
-                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                $('#avg-l30-views-badge').text('A L30 View: ' + Math.round(totalViews / 30).toLocaleString());
-                $('#avg-l7-views-badge').text('L7: ' + Math.round(avgL7Views).toLocaleString());
+                setSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%', parseFloat(avgCVR.toFixed(1)));
+                setSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString(), totalViews);
+                const avgL30View = Math.round(totalViews / 30);
+                setSummaryBadge($('#avg-l30-views-badge'), 'A L30 View: ' + avgL30View.toLocaleString(), avgL30View);
+                setSummaryBadge($('#avg-l7-views-badge'), 'L7: ' + Math.round(avgL7Views).toLocaleString(), Math.round(avgL7Views));
                 // Always reformat L7 cells so below-avg values show RED (not stale green HTML).
                 if (table) {
                     try {
@@ -6502,8 +8663,8 @@
                 ).length;
                 $('#rows-count-badge').text('Rows: ' + visibleRowCount.toLocaleString());
 
-                $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
-                $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
+                setSummaryBadge($('#zero-sold-count-badge'), '0 Sold: ' + zeroSoldCount.toLocaleString(), zeroSoldCount);
+                setSummaryBadge($('#more-sold-count-badge'), '> 0 Sold: ' + moreSoldCount.toLocaleString(), moreSoldCount);
 
                 let missingLCount = 0;
                 let missingMCount = 0;
@@ -6511,9 +8672,10 @@
                     if (isEbayMissingL(row)) missingLCount++;
                     if (isEbayMissingM(row)) missingMCount++;
                 });
-                $('#missing-l-count-badge').text('M L: ' + missingLCount.toLocaleString());
+                setSummaryBadge($('#missing-l-count-badge'), 'M L: ' + missingLCount.toLocaleString(), missingLCount);
                 $('#missing-m-count-badge').text('M M: ' + missingMCount.toLocaleString());
 
+                syncEbay1SummaryTrendDots();
                 fitSummaryBadges();
             }
 
