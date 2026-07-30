@@ -25,6 +25,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use App\Services\ShopifyOhioLocationResolver;
 
 
 
@@ -875,45 +876,16 @@ class IncomingController extends Controller
             while ($attempt < $maxRetries && !$locationId) {
                 $attempt++;
                 try {
-                    $locationResponse = Http::withHeaders([
-                        'X-Shopify-Access-Token' => $accessToken,
-                    ])
-                    ->timeout(30)
-                    ->retry(3, 2000, function ($exception, $request) {
-                        return $exception instanceof \Illuminate\Http\Client\ConnectionException || 
-                               ($exception->getCode() >= 500 && $exception->getCode() < 600) ||
-                               $exception->getCode() === 429;
-                    })
-                    ->get("https://{$shopifyDomain}/admin/api/2025-01/locations.json");
+                    $locationId = ShopifyOhioLocationResolver::preferredLocationId();
 
-                    if ($locationResponse->successful()) {
-
-                        $locations = $locationResponse->json('locations') ?? [];
-                        
-                        $ohioLocation = collect($locations)->first(function ($loc) {
-                            return stripos($loc['name'] ?? '', 'ohio') !== false;
-                        });
-
-                        if ($ohioLocation) {
-                            $locationId = $ohioLocation['id'];
-                            Log::info("Found Ohio location", ['location_id' => $locationId]);
-                        } else {
-                            Log::warning("No Ohio location found in Shopify");
-                            return response()->json([
-                                'error' => 'Location not found',
-                                'details' => 'No Shopify location found with name containing "Ohio"'
-                            ], 404);
-                        }
+                    if ($locationId) {
+                        Log::info("Found Ohio location", ['location_id' => $locationId]);
                     } else {
-                        Log::warning("Failed to fetch locations", ['attempt' => $attempt, 'status' => $locationResponse->status()]);
-                        if ($attempt < $maxRetries) {
-                            if ($locationResponse->status() === 429) {
-                                sleep(5);
-                            } else {
-                                sleep($attempt);
-                            }
-                            continue;
-                        }
+                        Log::warning("No Ohio location found in Shopify");
+                        return response()->json([
+                            'error' => 'Location not found',
+                            'details' => 'No Shopify location found with name containing "Ohio"'
+                        ], 404);
                     }
                 } catch (\Illuminate\Http\Client\ConnectionException $e) {
                     Log::warning("Connection timeout fetching locations: " . $e->getMessage(), ['attempt' => $attempt]);

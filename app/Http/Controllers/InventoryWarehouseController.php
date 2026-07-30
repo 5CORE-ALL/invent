@@ -310,14 +310,13 @@ class InventoryWarehouseController extends Controller
     }
 
     /**
-     * Resolve the correct Shopify location_id.
-     * Prefers the configured inventory_location_id, then an "Ohio" named location,
-     * then falls back to the first available level — same logic as VerificationAdjustmentController.
+     * Resolve the correct Shopify location_id (Ohio only).
+     * Prefers SHOPIFY_INVENTORY_LOCATION_ID, then an "Ohio" named location.
      */
     private function resolveShopifyLocationId(string $inventoryItemId): ?string
     {
-        $configured = config('services.shopify.inventory_location_id');
-        if (!empty($configured)) {
+        $configured = \App\Services\ShopifyOhioLocationResolver::preferredLocationId();
+        if (! empty($configured)) {
             return (string) $configured;
         }
 
@@ -334,31 +333,7 @@ class InventoryWarehouseController extends Controller
 
         $levels = $response->json('inventory_levels') ?? [];
 
-        if (empty($levels)) {
-            return null;
-        }
-
-        $locationIds = array_column($levels, 'location_id');
-
-        // Try to find the preferred location by name (e.g. "Ohio")
-        if (count($locationIds) > 1) {
-            try {
-                $locResponse = $this->shopifyHttp()->timeout(15)
-                    ->get("https://{$domain}/admin/api/2025-01/locations.json");
-
-                if ($locResponse->successful()) {
-                    foreach ($locResponse->json('locations') ?? [] as $loc) {
-                        if (stripos($loc['name'] ?? '', 'Ohio') !== false && in_array($loc['id'], $locationIds)) {
-                            return (string) $loc['id'];
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Could not resolve preferred Shopify location for transit push', ['error' => $e->getMessage()]);
-            }
-        }
-
-        return isset($levels[0]['location_id']) ? (string) $levels[0]['location_id'] : null;
+        return \App\Services\ShopifyOhioLocationResolver::fromLevels($levels);
     }
 
     /**
@@ -699,10 +674,10 @@ class InventoryWarehouseController extends Controller
                 }
 
                 $levels = $invLevelResponse->json('inventory_levels') ?? [];
-                $locationId = $levels[0]['location_id'] ?? null;
+                $locationId = \App\Services\ShopifyOhioLocationResolver::fromLevels($levels);
 
                 if (!$locationId) {
-                    Log::error("No location found", ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
+                    Log::error("No Ohio location found", ['sku' => $sku, 'inventory_item_id' => $inventoryItemId]);
                     $notFound[] = $sku;
                     continue;
                 }

@@ -4,6 +4,7 @@ namespace App\Services\ListingMirror;
 
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
+use App\Services\ShopifyOhioLocationResolver;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -195,10 +196,9 @@ class ShopifySyncService
             ])->get("https://{$this->shopifyStoreUrl}/admin/api/2025-01/inventory_items/{$inventoryItemId}/inventory_levels.json");
 
             if ($response->successful()) {
-                $data = $response->json();
-                if (!empty($data['inventory_levels'])) {
-                    return $data['inventory_levels'][0]['location_id'] ?? null;
-                }
+                $levels = $response->json('inventory_levels') ?? [];
+                $locationId = ShopifyOhioLocationResolver::fromLevels($levels);
+                return $locationId !== null ? (int) $locationId : null;
             }
 
             return null;

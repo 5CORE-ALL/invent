@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Http;
+use App\Services\ShopifyOhioLocationResolver;
 
 class ShopifyController extends Controller
 {
@@ -188,8 +189,8 @@ class ShopifyController extends Controller
 
         if ($response->failed()) return null;
 
-        $levels = $response->json()['inventory_levels'];
-        return $levels[0]['location_id'] ?? null;
+        $levels = $response->json()['inventory_levels'] ?? [];
+        return ShopifyOhioLocationResolver::fromLevels($levels);
     }
 
     

@@ -65,32 +65,7 @@ class VerificationAdjustmentController extends Controller
      */
     protected function getPreferredShopifyLocationId(): ?string
     {
-        $configured = config('services.shopify.inventory_location_id');
-        if (! empty($configured)) {
-            return (string) $configured;
-        }
-
-        return Cache::remember('shopify_verification_preferred_location_id', 3600, function () {
-            try {
-                $response = $this->shopifyHttp()
-                    ->timeout(30)
-                    ->get("https://{$this->shopifyDomain}/admin/api/2025-01/locations.json");
-
-                if (! $response->successful()) {
-                    return null;
-                }
-
-                foreach ($response->json('locations') ?? [] as $loc) {
-                    if (stripos($loc['name'] ?? '', 'Ohio') !== false) {
-                        return (string) $loc['id'];
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Could not resolve preferred Shopify location', ['error' => $e->getMessage()]);
-            }
-
-            return null;
-        });
+        return \App\Services\ShopifyOhioLocationResolver::preferredLocationId();
     }
 
     /**
@@ -98,25 +73,7 @@ class VerificationAdjustmentController extends Controller
      */
     protected function resolveLocationIdFromLevels(array $levels): ?string
     {
-        if ($levels === []) {
-            return null;
-        }
-
-        $preferredId = $this->getPreferredShopifyLocationId();
-        if ($preferredId !== null && $preferredId !== '') {
-            foreach ($levels as $level) {
-                if (isset($level['location_id']) && (string) $level['location_id'] === (string) $preferredId) {
-                    return (string) $level['location_id'];
-                }
-            }
-
-            Log::warning('Preferred Shopify location not present in inventory levels; using first level', [
-                'preferred_location_id' => $preferredId,
-                'available_location_ids' => array_column($levels, 'location_id'),
-            ]);
-        }
-
-        return isset($levels[0]['location_id']) ? (string) $levels[0]['location_id'] : null;
+        return \App\Services\ShopifyOhioLocationResolver::fromLevels($levels);
     }
 
     /**

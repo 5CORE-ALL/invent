@@ -17,6 +17,7 @@ use App\Http\Controllers\ApiController;
 use App\Models\ShopifySku;
 use App\Models\SkuRelationship;
 use Illuminate\Support\Facades\DB;
+use App\Services\ShopifyOhioLocationResolver;
 
 
 class StockBalanceController extends Controller
@@ -329,42 +330,19 @@ class StockBalanceController extends Controller
                     ];
                 }
 
-                $levels = $levelsResponse->json('inventory_levels');
-                
-                // IMPORTANT: Use the configured primary location if set, otherwise use first location
-                $configuredLocationId = config('services.shopify.inventory_location_id');
-                $locationId = null;
-                $availableQty = 0;
-                
-                if ($configuredLocationId) {
-                    // Find the level for the configured location
-                    foreach ($levels as $level) {
-                        if ($level['location_id'] == $configuredLocationId) {
-                            $locationId = $level['location_id'];
-                            $availableQty = $level['available'] ?? 0;
-                            Log::info("Using configured primary location", [
-                                'sku' => $sku,
-                                'location_id' => $locationId,
-                                'available' => $availableQty
-                            ]);
-                            break;
-                        }
-                    }
-                }
-                
-                // Fallback to first location if configured one not found or not set
-                if (!$locationId && !empty($levels)) {
-                    $locationId = $levels[0]['location_id'] ?? null;
-                    $availableQty = $levels[0]['available'] ?? 0;
-                    
-                    if ($configuredLocationId) {
-                        Log::warning("Configured location not found, using first location", [
-                            'sku' => $sku,
-                            'configured_location' => $configuredLocationId,
-                            'using_location' => $locationId,
-                            'total_locations' => count($levels)
-                        ]);
-                    }
+                $levels = $levelsResponse->json('inventory_levels') ?? [];
+
+                // Always use Ohio (SHOPIFY_INVENTORY_LOCATION_ID / name "Ohio")
+                $ohioLevel = ShopifyOhioLocationResolver::levelFromLevels($levels);
+                $locationId = $ohioLevel['location_id'];
+                $availableQty = $ohioLevel['available'];
+
+                if ($locationId) {
+                    Log::info('Using Ohio Shopify location for stock balance', [
+                        'sku' => $sku,
+                        'location_id' => $locationId,
+                        'available' => $availableQty,
+                    ]);
                 }
 
                 if (!$locationId) {
@@ -699,11 +677,12 @@ class StockBalanceController extends Controller
             if (!$levelsResponse->successful()) {
                 return ['success' => false, 'error' => 'Failed to get inventory level', 'details' => "Error for SKU: {$sku}"];
             }
-            $levels = $levelsResponse->json('inventory_levels');
-            $locationId = $levels[0]['location_id'] ?? null;
-            $available = $levels[0]['available'] ?? 0;
+            $levels = $levelsResponse->json('inventory_levels') ?? [];
+            $ohioLevel = ShopifyOhioLocationResolver::levelFromLevels($levels);
+            $locationId = $ohioLevel['location_id'];
+            $available = $ohioLevel['available'];
             if (!$locationId) {
-                return ['success' => false, 'error' => 'Shopify location not found', 'details' => "Could not determine location for SKU: {$sku}"];
+                return ['success' => false, 'error' => 'Shopify Ohio location not found', 'details' => "Could not determine Ohio location for SKU: {$sku}"];
             }
             return ['success' => true, 'inventory_item_id' => $inventoryItemId, 'location_id' => $locationId, 'available' => $available];
         };

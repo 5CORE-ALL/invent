@@ -21,6 +21,7 @@ use App\Http\Controllers\ApiController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use App\Services\ShopifyOhioLocationResolver;
 
 class OutgoingController extends Controller
 {
@@ -235,15 +236,15 @@ class OutgoingController extends Controller
                 return response()->json(['error' => 'Failed to fetch inventory levels from Shopify (Row ' . ($i + 1) . ')'], 500);
             }
 
-            $levels = $invLevelResponse->json('inventory_levels');
-            $locationId = $levels[0]['location_id'] ?? null;
+            $levels = $invLevelResponse->json('inventory_levels') ?? [];
+            $locationId = ShopifyOhioLocationResolver::fromLevels($levels);
 
             if (!$locationId) {
-                Log::error('Outgoing: Location ID not found', [
+                Log::error('Outgoing: Ohio location ID not found', [
                     'inventory_item_id' => $inventoryItemId,
                     'levels_response' => $levels
                 ]);
-                return response()->json(['error' => 'Shopify location not found for this SKU (Row ' . ($i + 1) . ')'], 404);
+                return response()->json(['error' => 'Shopify Ohio location not found for this SKU (Row ' . ($i + 1) . ')'], 404);
             }
 
             Log::info('Outgoing: Attempting to adjust Shopify inventory', [
@@ -883,10 +884,10 @@ class OutgoingController extends Controller
             if (! $invLevelResp->successful()) {
                 return ['success' => false, 'inventory_id' => null, 'error' => 'Failed to fetch Shopify inventory levels.'];
             }
-            $levels = $invLevelResp->json('inventory_levels');
-            $locationId = $levels[0]['location_id'] ?? null;
+            $levels = $invLevelResp->json('inventory_levels') ?? [];
+            $locationId = ShopifyOhioLocationResolver::fromLevels($levels);
             if (! $locationId) {
-                return ['success' => false, 'inventory_id' => null, 'error' => "Shopify location not found for SKU: {$normalizedSku}"];
+                return ['success' => false, 'inventory_id' => null, 'error' => "Shopify Ohio location not found for SKU: {$normalizedSku}"];
             }
 
             $adjustResp = Http::withBasicAuth($this->shopifyApiKey, $this->shopifyPassword)

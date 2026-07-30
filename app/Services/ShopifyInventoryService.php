@@ -17,7 +17,8 @@ class ShopifyInventoryService
     {
         $this->shopifyDomain = config('services.shopify.store_url');
         $this->accessToken = config('services.shopify.access_token');
-        $this->locationId = config('services.shopify.location_id');
+        // Always push to Ohio (SHOPIFY_INVENTORY_LOCATION_ID)
+        $this->locationId = ShopifyOhioLocationResolver::preferredLocationId();
         $this->apiVersion = '2024-01';
     }
 
@@ -36,7 +37,7 @@ class ShopifyInventoryService
             }
 
             if (!$this->locationId) {
-                throw new Exception('SHOPIFY_LOCATION_ID is missing in .env');
+                throw new Exception('SHOPIFY_INVENTORY_LOCATION_ID (Ohio) is missing in .env');
             }
 
             if (!$inventoryItemId) {
@@ -107,7 +108,7 @@ class ShopifyInventoryService
     {
         try {
             if (!$this->locationId) {
-                throw new Exception('SHOPIFY_LOCATION_ID is missing in .env');
+                throw new Exception('SHOPIFY_INVENTORY_LOCATION_ID (Ohio) is missing in .env');
             }
 
             $url = "https://{$this->shopifyDomain}/admin/api/{$this->apiVersion}/inventory_levels/adjust.json";
@@ -204,7 +205,16 @@ class ShopifyInventoryService
 
             if ($response->successful()) {
                 $levels = $response->json()['inventory_levels'] ?? [];
-                return !empty($levels) ? $levels[0] : null;
+                if (empty($levels)) {
+                    return null;
+                }
+                $resolved = ShopifyOhioLocationResolver::levelFromLevels($levels);
+                foreach ($levels as $level) {
+                    if ((string) ($level['location_id'] ?? '') === (string) $resolved['location_id']) {
+                        return $level;
+                    }
+                }
+                return $levels[0];
             }
 
             return null;

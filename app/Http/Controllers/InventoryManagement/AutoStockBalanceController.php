@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Services\ShopifyOhioLocationResolver;
 
 class AutoStockBalanceController extends Controller
 {
@@ -130,11 +131,11 @@ class AutoStockBalanceController extends Controller
                         'inventory_item_ids' => $inventoryItemId,
                     ]);
 
-                $levels = $invLevelResponse->json('inventory_levels');
-                $locationId = $levels[0]['location_id'] ?? null;
+                $levels = $invLevelResponse->json('inventory_levels') ?? [];
+                $locationId = ShopifyOhioLocationResolver::fromLevels($levels);
 
                 if (!$locationId) {
-                    throw new \Exception("Location ID not found for SKU: $sku");
+                    throw new \Exception("Ohio location ID not found for SKU: $sku");
                 }
 
                 return [

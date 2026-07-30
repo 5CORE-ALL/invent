@@ -16,6 +16,7 @@ use App\Http\Controllers\ApiController;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use App\Services\ShopifyOhioLocationResolver;
 
 class StockAdjustmentController extends Controller
 {
@@ -283,14 +284,15 @@ class StockAdjustmentController extends Controller
                 ], 500);
             }
 
-            $levels = $levelsResponse->json('inventory_levels');
-            $locationId = $levels[0]['location_id'] ?? null;
-            $currentAvailable = $levels[0]['available'] ?? 0;
+            $levels = $levelsResponse->json('inventory_levels') ?? [];
+            $ohioLevel = ShopifyOhioLocationResolver::levelFromLevels($levels);
+            $locationId = $ohioLevel['location_id'];
+            $currentAvailable = $ohioLevel['available'];
 
             if (!$locationId) {
                 return response()->json([
                     'error' => 'Location not found',
-                    'details' => 'Could not find Shopify location for this SKU'
+                    'details' => 'Could not find Shopify Ohio location for this SKU'
                 ], 500);
             }
 

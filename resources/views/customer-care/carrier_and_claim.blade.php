@@ -59,4 +59,6 @@
     // Amt Rec and department.
     'showSearchBar' => true,
     'searchBarPlaceholder' => 'Search SKU, order, tracking, carrier…',
+    // Ord column: clipboard icon only (order # via button title); no hover expand.
+    'orderNumberIconOnly' => true,
 ])->render() !!}

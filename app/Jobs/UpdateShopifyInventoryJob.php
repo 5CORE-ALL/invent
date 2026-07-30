@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\ShopifyInventoryLog;
 use App\Models\ShopifySku;
+use App\Services\ShopifyOhioLocationResolver;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -81,14 +82,16 @@ class UpdateShopifyInventoryJob implements ShouldQueue
                 $log->update(['inventory_item_id' => $inventoryItemId]);
             }
 
-            // Step 2: Get location_id if not already stored
-            if (!$locationId) {
-                $locationId = $this->getLocationId($inventoryItemId);
-                
-                if (!$locationId) {
-                    throw new \Exception("Location not found for inventory item: {$inventoryItemId}");
-                }
-                
+            // Step 2: Always resolve Ohio location (ignore any previously stored non-Ohio id)
+            $ohioLocationId = ShopifyOhioLocationResolver::preferredLocationId()
+                ?: $this->getLocationId($inventoryItemId);
+
+            if (!$ohioLocationId) {
+                throw new \Exception("Ohio location not found for inventory item: {$inventoryItemId}");
+            }
+
+            $locationId = (string) $ohioLocationId;
+            if ((string) ($log->location_id ?? '') !== $locationId) {
                 $log->update(['location_id' => $locationId]);
             }
 
@@ -236,7 +239,7 @@ class UpdateShopifyInventoryJob implements ShouldQueue
         }
 
         $levels = $response->json('inventory_levels') ?? [];
-        return $levels[0]['location_id'] ?? null;
+        return ShopifyOhioLocationResolver::fromLevels($levels);
     }
 
     protected function adjustInventory(string $inventoryItemId, string $locationId, int $adjustment): void

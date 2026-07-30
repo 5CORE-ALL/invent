@@ -720,6 +720,18 @@
             opacity: 1;
         }
 
+        @if ($orderNumberIconOnly ?? false)
+        /* Icon-only Ord: keep clipboard; never reveal order # inline on hover. */
+        .order-num-short {
+            display: none !important;
+        }
+
+        .order-num-cell:hover .order-num-short {
+            max-width: 0;
+            opacity: 0;
+        }
+        @endif
+
         .copy-order-btn {
             color: #0d6efd;
             font-size: 0.8rem;
@@ -4080,16 +4092,26 @@
                             '<td class="order-num-cell">' + (row.order_number ?
                                 '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
                                 '" title="' + escAttr(row.order_number) +
-                                '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
-                                escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                                '"><i class="bi bi-clipboard"></i></button>' +
+                                @if ($orderNumberIconOnly ?? false)
+                                ''
+                                @else
+                                '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
+                                @endif
+                                : '—') + '</td>' +
                             '<td class="orders-hold-loss-cell" title="' + escAttr(lossCellTooltip(row)) + '">' +
                                 lossCellDisplay(row) + '</td>' +
                         @elseif ($showOrderIdField ?? false)
                             '<td class="order-num-cell">' + (row.order_number ?
                                 '<button class="copy-order-btn" data-copy="' + escAttr(row.order_number) +
                                 '" title="' + escAttr(row.order_number) +
-                                '"><i class="bi bi-clipboard"></i></button><span class="order-num-short">' +
-                                escapeHtml(row.order_number) + '</span>' : '—') + '</td>' +
+                                '"><i class="bi bi-clipboard"></i></button>' +
+                                @if ($orderNumberIconOnly ?? false)
+                                ''
+                                @else
+                                '<span class="order-num-short">' + escapeHtml(row.order_number) + '</span>'
+                                @endif
+                                : '—') + '</td>' +
                         @endif
                     '<td>' + (row.order_qty != null && row.order_qty !== '' ? escapeHtml(row.order_qty) : '—') +
                     '</td>' +
@@ -5211,8 +5233,10 @@
                     URL.revokeObjectURL(url);
                 }
 
-                const exportIncludeOrderId = @json((bool) ($showOrderIdField ?? false));
-                const exportOrderIdLabel = @json($orderIdFieldLabel ?? 'Order ID');
+                const exportIncludeOrderId = @json((bool) (($showOrderIdField ?? false) || ($showDispatchExtras ?? false)));
+                const exportOrderIdLabel = @json(
+                    ($showDispatchExtras ?? false) ? 'Order Number' : ($orderIdFieldLabel ?? 'Order ID')
+                );
                 const activeHeaders = ['#', 'SKU'];
                 if (exportIncludeOrderId) {
                     activeHeaders.push(exportOrderIdLabel);
