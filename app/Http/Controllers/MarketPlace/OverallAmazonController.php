@@ -4948,31 +4948,31 @@ class OverallAmazonController extends Controller
         $defs = [
             'zero' => [
                 ['key' => 'down', 'label' => 'CVR % = Down', 'color' => '#c92a2a'],
-                ['key' => 'equal', 'label' => 'CVR % = Equal', 'color' => '#e03131'],
+                ['key' => 'equal', 'label' => 'CVR % = Same', 'color' => '#e03131'],
                 ['key' => 'up', 'label' => 'CVR % = Up', 'color' => '#a00211'],
                 ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
             ],
             'yellow' => [
                 ['key' => 'down', 'label' => 'Down', 'color' => '#e67700'],
-                ['key' => 'equal', 'label' => 'Equal', 'color' => '#f59f00'],
+                ['key' => 'equal', 'label' => 'Same', 'color' => '#f59f00'],
                 ['key' => 'up', 'label' => 'Up', 'color' => '#ffd43b'],
                 ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
             ],
             'blue' => [
                 ['key' => 'down', 'label' => 'Down', 'color' => '#1c7ed6'],
-                ['key' => 'equal', 'label' => 'Equal', 'color' => '#4dabf7'],
+                ['key' => 'equal', 'label' => 'Same', 'color' => '#4dabf7'],
                 ['key' => 'up', 'label' => 'Up', 'color' => '#a5d8ff'],
                 ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
             ],
             'green' => [
                 ['key' => 'down', 'label' => 'Down', 'color' => '#2f9e44'],
-                ['key' => 'equal', 'label' => 'Equal', 'color' => '#51cf66'],
+                ['key' => 'equal', 'label' => 'Same', 'color' => '#51cf66'],
                 ['key' => 'up', 'label' => 'Up', 'color' => '#b2f2bb'],
                 ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
             ],
             'pink' => [
                 ['key' => 'down', 'label' => 'Down', 'color' => '#c2255c'],
-                ['key' => 'equal', 'label' => 'Equal', 'color' => '#f06595'],
+                ['key' => 'equal', 'label' => 'Same', 'color' => '#f06595'],
                 ['key' => 'up', 'label' => 'Up', 'color' => '#fcc2d7'],
                 ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
             ],
@@ -5189,6 +5189,7 @@ class OverallAmazonController extends Controller
 
     /**
      * Small lookup of own-ship for a SKU and its "+" components (used when saving SPRICE).
+     * Ship lives in product_master.Values JSON — there is no ship column.
      *
      * @return array<string, float>
      */
@@ -5209,7 +5210,8 @@ class OverallAmazonController extends Controller
             return $map;
         }
 
-        $componentRows = ProductMaster::whereIn('sku', $components)->get(['sku', 'Values', 'ship']);
+        // Only Values (JSON) — selecting a non-existent `ship` column 500s saves for combo SKUs ("A + B")
+        $componentRows = ProductMaster::whereIn('sku', $components)->get(['sku', 'Values']);
         foreach ($componentRows as $row) {
             $vals = is_array($row->Values)
                 ? $row->Values
@@ -5217,9 +5219,7 @@ class OverallAmazonController extends Controller
             if (! is_array($vals)) {
                 $vals = [];
             }
-            $compShip = isset($vals['ship'])
-                ? floatval($vals['ship'])
-                : (isset($row->ship) ? floatval($row->ship) : 0.0);
+            $compShip = isset($vals['ship']) ? floatval($vals['ship']) : 0.0;
             $key = $this->normalizeSkuKeyForShipLookup($row->sku);
             if ($key !== '') {
                 $map[$key] = $compShip;

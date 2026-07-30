@@ -558,17 +558,7 @@
             padding-bottom: 0.15rem;
             font-size: 0.75rem;
         }
-        /* Dil% override inputs: ≥4 characters visible + % addon */
-        #spriceCvrRuleModal .sprice-cvr-dil-override-group {
-            width: 7.75rem;
-            min-width: 7.75rem;
-            flex: 0 0 auto;
-        }
-        #spriceCvrRuleModal .sprice-cvr-dil-override-input {
-            min-width: 4.25rem;
-            flex: 1 1 4.25rem;
-        }
-        @media (max-width: 1200px) {
+@media (max-width: 1200px) {
             #spriceCvrRuleModal .sprice-cvr-fs-grid {
                 grid-template-columns: 1fr 1fr;
                 grid-template-rows: none;
@@ -653,11 +643,11 @@
 
                     <select id="cvr-trend-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;"
-                        title="CVR L30 vs previous recorded day">
+                        title="CVR L30 vs prior period L31–L60 (CVR L60)">
                         <option value="all">CVR trend</option>
-                        <option value="prev_gt_l30">Prev day &gt; CVR L30</option>
-                        <option value="l30_gt_prev">CVR L30 &gt; Prev day</option>
-                        <option value="equal">CVR L30 = Prev day</option>
+                        <option value="down">Down</option>
+                        <option value="up">Up</option>
+                        <option value="same">Same</option>
                     </select>
 
                     <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
@@ -704,7 +694,7 @@
                         <option value="blank">Blank S PRC only</option>
                     </select>
 
-                    {{-- Sprice×CVR — trend vs prev day + CVR bands; gear edits shared rule --}}
+                    {{-- Sprice×CVR — CVR L30 vs L31–L60 + CVR bands; gear edits shared rule --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
                         id="sprice-cvr-controls"
                         style="background: #ffc107;"
@@ -1115,7 +1105,7 @@
                             NPFT: <span id="sprice-cvr-npft-val">0%</span>
                             <span class="sprice-cvr-trend-dot none" id="sprice-cvr-npft-trend" aria-hidden="true"></span>
                         </span>
-                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 trend + band · shared Amazon + eBay · no decrease when Dil% &gt; 100</span>
+                        <span class="text-muted small d-none d-xl-inline">SPRICE by CVR L30 vs L31–L60 + band · shared Amazon + eBay</span>
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1134,7 +1124,7 @@
                     </div>
 
                     <div class="sprice-cvr-fs-grid">
-                        {{-- Rule 1 Red — same format as Rule 2 (CVR trend + Dil override) --}}
+                        {{-- Rule 1 Red — CVR trend signed % of price --}}
                         <div class="sprice-cvr-cell">
                             <div class="sprice-cvr-rule-pie-row" data-rule-pie="zero">
                                 <div class="sprice-cvr-rule-half">
@@ -1144,59 +1134,29 @@
                                             <span class="fw-bold small">CVR = 0%</span>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Rule 1 Down always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Down: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-zero-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="zero" data-trend="down" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Rule 1 Equal always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Equal: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-zero-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="zero" data-trend="equal" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Rule 1 Up always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Up: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-zero-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="zero" data-trend="up" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1229,59 +1189,29 @@
                                             <span class="fw-bold small" id="sprice-cvr-slab-red-label">0.01 – 3.5%</span>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Yellow Down always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Down: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-yellow-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="red" data-trend="down" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-yellow-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="down" value="-2" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Yellow Equal always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Equal: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-yellow-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="red" data-trend="equal" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-yellow-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Yellow Up always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Up: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-yellow-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="red" data-trend="up" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-yellow-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="red" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1344,59 +1274,29 @@
                                             <span class="fw-bold small" id="sprice-cvr-slab-blue-label">3.51 – 7%</span>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Blue Down always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Down: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-blue-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="blue" data-trend="down" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-blue-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="down" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Blue Equal always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Equal: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-blue-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="blue" data-trend="equal" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-blue-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Blue Up always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Up: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-blue-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="blue" data-trend="up" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-blue-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="blue" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1429,59 +1329,29 @@
                                             <span class="fw-bold small" id="sprice-cvr-slab-green-label">7.01 – 13%</span>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Green Down always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Down: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-green-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="green" data-trend="down" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-green-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Green Equal always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Equal: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-green-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="green" data-trend="equal" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-green-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="equal" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Green Up always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Up: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-green-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="green" data-trend="up" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-green-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="green" data-trend="up" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1514,59 +1384,29 @@
                                             <span class="fw-bold small" id="sprice-cvr-slab-pink-label">&gt; 13.01%</span>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Down</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Pink Down always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Down: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-pink-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="pink" data-trend="down" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-pink-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="down" value="0" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Same</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Pink Equal always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Equal: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-pink-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="pink" data-trend="equal" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-pink-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="equal" value="-1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
+                                            <div class="col-4 text-nowrap"><strong>Up</strong> <span class="text-muted fw-normal">→ price</span></div>
                                             <div class="col-8">
                                                 <div class="input-group input-group-sm">
-                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Of PRICE: +N raise SPRICE N%, −N lower N%, 0 = no suggestion (not PFT%)">
-                                                    <span class="input-group-text">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Pink Up always Increases">
-                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
-                                                <span class="text-muted small">Up: if Dil%</span>
-                                                <span class="fw-semibold">&gt;</span>
-                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
-                                                    <input type="number" id="sprice-cvr-pink-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="pink" data-trend="up" value="100" step="0.1" min="0" max="500">
-                                                    <span class="input-group-text">%</span>
+                                                    <input type="number" id="sprice-cvr-pink-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="pink" data-trend="up" value="1" step="0.1" min="-50" max="50" title="Adjust Amazon price by this %: +N raise, −N lower, 0 = hold at Amazon price (0% change, of price not PFT%)">
+                                                    <span class="input-group-text">% price</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -4219,12 +4059,12 @@
             });
 
             // Sprice × CVR — shared via /ebay/sprice-cvr-rule.
-            // Amazon: CVR_L30 trend vs cvr_prev + band rules + ROI floor.
+            // Amazon: CVR L30 vs prior L31–L60 (CVR L60) + band rules.
             const SPRICE_CVR_DEFAULT_ACTIONS = {
                 // Rule 1 (CVR=0%): same Down/Equal/Up defaults as Yellow
                 zero: { down: 'decrease', equal: 'decrease', up: 'hold' },
                 red: { down: 'decrease', equal: 'decrease', up: 'hold' },
-                blue: { down: 'hold', equal: 'hold', up: 'hold' },
+                blue: { down: 'decrease', equal: 'hold', up: 'increase' },
                 green: { down: 'hold', equal: 'hold', up: 'hold' },
                 pink: { down: 'hold', equal: 'decrease', up: 'increase' }
             };
@@ -4237,12 +4077,15 @@
             /** Signed %: +increase, −decrease, 0=hold (no suggestion) */
             const SPRICE_CVR_DEFAULT_TREND_PCT = { down: 0, equal: 0, up: 0 };
             const SPRICE_CVR_DEFAULT_YELLOW_PCT = { down: -2, equal: -1, up: 0 };
-            const SPRICE_CVR_DEFAULT_ZERO_PCT = { down: -2, equal: -1, up: 0 };
+            /** Rule 1 CVR=0%: Down −1 / Same −1 / Up 0 (% of Amazon price) */
+            const SPRICE_CVR_DEFAULT_ZERO_PCT = { down: -1, equal: -1, up: 0 };
+            /** Blue default: Down −1 / Same 0 / Up +1 (% of Amazon price) */
+            const SPRICE_CVR_DEFAULT_BLUE_PCT = { down: -1, equal: 0, up: 1 };
             const SPRICE_CVR_DEFAULT_PINK_PCT = { down: 0, equal: -1, up: 1 };
             const SPRICE_CVR_DEFAULT_SLAB_PCT = {
                 zero: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ZERO_PCT)),
                 red: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_YELLOW_PCT)),
-                blue: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
+                blue: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_BLUE_PCT)),
                 green: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
                 pink: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_PINK_PCT))
             };
@@ -4255,7 +4098,7 @@
                 roi_mid: 50,
                 roi_high: 60
             };
-            /** Dil overrides: every rule Down/Equal/Up → Increase when Dil% > threshold */
+            /** Stored Dil keys kept for API compat (UI/apply Dil conditions removed) */
             const SPRICE_CVR_DEFAULT_DIL_OVERRIDE = 100;
             const SPRICE_CVR_DEFAULT_ZERO_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
             const SPRICE_CVR_DEFAULT_YELLOW_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
@@ -4337,7 +4180,7 @@
                 return n > 0 ? 'increase' : 'decrease';
             }
 
-            /** Derive legacy actions from signed % inputs (for storage / Dil override titles). */
+            /** Derive legacy actions from signed % inputs (for storage). */
             function readSpriceCvrActionsFromUi() {
                 const sp = readSlabPctFromUi();
                 const out = {};
@@ -4574,15 +4417,25 @@
                 return (aL30 / sess30) * 100;
             }
 
-            /** down | up | equal | null (no previous day) — same tol as CVR L30 arrows */
+            /** Prior period CVR (L31–L60) — same as CVR L60 column: units_ordered_l60 / sessions_l60 */
+            function amazonRowCvrL60(rd) {
+                if (!rd) return 0;
+                const aL60 = parseFloat(rd['units_ordered_l60']) || 0;
+                const sess60 = parseFloat(rd['sessions_l60']) || 0;
+                if (sess60 <= 0) return 0;
+                return (aL60 / sess60) * 100;
+            }
+
+            /**
+             * CVR L30 vs prior L31–L60 (CVR L60).
+             * up = L30 higher · down = L30 lower · equal/same = within tol (±0.1%).
+             */
             function amazonCvrTrend(rd, tol) {
-                const cvr = amazonRowCvrL30(rd);
-                const hasPrev = rd.cvr_prev !== null && rd.cvr_prev !== undefined && rd.cvr_prev !== '';
-                if (!hasPrev) return null;
-                const cvrPrev = parseFloat(rd.cvr_prev) || 0;
+                const cvrL30 = amazonRowCvrL30(rd);
+                const cvrL60 = amazonRowCvrL60(rd);
                 const t = (tol != null && isFinite(tol)) ? tol : 0.1;
-                if (cvr > cvrPrev + t) return 'up';
-                if (cvr < cvrPrev - t) return 'down';
+                if (cvrL30 > cvrL60 + t) return 'up';
+                if (cvrL30 < cvrL60 - t) return 'down';
                 return 'equal';
             }
 
@@ -4617,90 +4470,31 @@
                 return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_GREEN_UP_DIL);
             }
 
-            function dilOverrideKey(slab, trend) {
-                // Yellow band uses internal slab key "red"
-                if (slab === 'red') return 'yellow_' + trend + '_dil';
-                return slab + '_' + trend + '_dil';
-            }
-
-            function dilOverrideThreshold(rule, slab, trend) {
-                const key = dilOverrideKey(slab, trend);
-                if (key === 'zero_up_dil') return normalizeZeroUpDil(rule && rule.zero_up_dil);
-                if (key === 'yellow_up_dil') return normalizeYellowUpDil(rule && rule.yellow_up_dil);
-                if (key === 'blue_up_dil') return normalizeBlueUpDil(rule && rule.blue_up_dil);
-                if (key === 'green_up_dil') return normalizeGreenUpDil(rule && rule.green_up_dil);
-                return normalizeDilOverride(rule && rule[key]);
-            }
-
+            /** Dil override UI removed — keep stored defaults for API compat only. */
             function readDilOverridesFromUi() {
-                return {
-                    zero_down_dil: normalizeDilOverride(String($('#sprice-cvr-zero-down-dil').val()).replace(',', '.')),
-                    zero_equal_dil: normalizeDilOverride(String($('#sprice-cvr-zero-equal-dil').val()).replace(',', '.')),
-                    zero_up_dil: normalizeZeroUpDil(String($('#sprice-cvr-zero-up-dil').val()).replace(',', '.')),
-                    yellow_down_dil: normalizeDilOverride(String($('#sprice-cvr-yellow-down-dil').val()).replace(',', '.')),
-                    yellow_equal_dil: normalizeDilOverride(String($('#sprice-cvr-yellow-equal-dil').val()).replace(',', '.')),
-                    yellow_up_dil: normalizeYellowUpDil(String($('#sprice-cvr-yellow-up-dil').val()).replace(',', '.')),
-                    blue_down_dil: normalizeDilOverride(String($('#sprice-cvr-blue-down-dil').val()).replace(',', '.')),
-                    blue_equal_dil: normalizeDilOverride(String($('#sprice-cvr-blue-equal-dil').val()).replace(',', '.')),
-                    blue_up_dil: normalizeBlueUpDil(String($('#sprice-cvr-blue-up-dil').val()).replace(',', '.')),
-                    green_down_dil: normalizeDilOverride(String($('#sprice-cvr-green-down-dil').val()).replace(',', '.')),
-                    green_equal_dil: normalizeDilOverride(String($('#sprice-cvr-green-equal-dil').val()).replace(',', '.')),
-                    green_up_dil: normalizeGreenUpDil(String($('#sprice-cvr-green-up-dil').val()).replace(',', '.')),
-                    pink_down_dil: normalizeDilOverride(String($('#sprice-cvr-pink-down-dil').val()).replace(',', '.')),
-                    pink_equal_dil: normalizeDilOverride(String($('#sprice-cvr-pink-equal-dil').val()).replace(',', '.')),
-                    pink_up_dil: normalizeDilOverride(String($('#sprice-cvr-pink-up-dil').val()).replace(',', '.'))
-                };
+                return JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_DIL_OVERRIDES));
             }
 
-            function applyDilOverridesToUi(rule) {
-                $('#sprice-cvr-zero-down-dil').val(normalizeDilOverride(rule && rule.zero_down_dil));
-                $('#sprice-cvr-zero-equal-dil').val(normalizeDilOverride(rule && rule.zero_equal_dil));
-                $('#sprice-cvr-zero-up-dil').val(normalizeZeroUpDil(rule && rule.zero_up_dil));
-                $('#sprice-cvr-yellow-down-dil').val(normalizeDilOverride(rule && rule.yellow_down_dil));
-                $('#sprice-cvr-yellow-equal-dil').val(normalizeDilOverride(rule && rule.yellow_equal_dil));
-                $('#sprice-cvr-yellow-up-dil').val(normalizeYellowUpDil(rule && rule.yellow_up_dil));
-                $('#sprice-cvr-blue-down-dil').val(normalizeDilOverride(rule && rule.blue_down_dil));
-                $('#sprice-cvr-blue-equal-dil').val(normalizeDilOverride(rule && rule.blue_equal_dil));
-                $('#sprice-cvr-blue-up-dil').val(normalizeBlueUpDil(rule && rule.blue_up_dil));
-                $('#sprice-cvr-green-down-dil').val(normalizeDilOverride(rule && rule.green_down_dil));
-                $('#sprice-cvr-green-equal-dil').val(normalizeDilOverride(rule && rule.green_equal_dil));
-                $('#sprice-cvr-green-up-dil').val(normalizeGreenUpDil(rule && rule.green_up_dil));
-                $('#sprice-cvr-pink-down-dil').val(normalizeDilOverride(rule && rule.pink_down_dil));
-                $('#sprice-cvr-pink-equal-dil').val(normalizeDilOverride(rule && rule.pink_equal_dil));
-                $('#sprice-cvr-pink-up-dil').val(normalizeDilOverride(rule && rule.pink_up_dil));
-            }
-
-            function dilOverrideApplies(slab, trend) {
-                // All rules: Down / Equal / Up Dil override → force Increase
-                if ((slab === 'zero' || slab === 'red' || slab === 'blue' || slab === 'green' || slab === 'pink') &&
-                    (trend === 'down' || trend === 'equal' || trend === 'up')) {
-                    return true;
-                }
-                return false;
+            function applyDilOverridesToUi() {
+                // no-op: Dil conditions removed from UI
             }
 
             /**
-             * Signed % of PRICE (not PFT/GROI): +N raise price N%, −N lower N%, 0 = no suggestion.
-             * Dil% > threshold → force +|N| (or +1% if N is 0). No decrease when Dil% > 100.
+             * Signed % of PRICE (not PFT/GROI): +N raise, −N lower, 0 = hold at Amazon price (0% change).
+             * Returns null only when trend/rule missing — never silently upgrades 0 to +1.
              */
             function resolveSpriceCvrSignedPct(cvr, trend, rule, rd) {
                 if (!trend || !rule) return null;
                 const slabs = resolveSpriceCvrSlabs(rule);
                 const slab = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
-                const slabPct = normalizeSlabPct(rule.slab_pct, rule.yellow_pct, rule.actions);
-                let signed = slabPctForTrend(slabPct, slab, trend);
-                if (!isFinite(signed)) signed = 0;
-                if (rd && dilOverrideApplies(slab, trend)) {
-                    if (amazonRowDilPct(rd) > dilOverrideThreshold(rule, slab, trend)) {
-                        signed = Math.abs(signed) > 0 ? Math.abs(signed) : 1;
-                    }
-                }
-                if (signed === 0) return null;
-                if (signed < 0 && rd && amazonRowDilPct(rd) > 100) return null;
+                // Use signed % as stored/entered — do not re-interpret via legacy actions / Dil
+                const slabPct = normalizeSlabPct(rule.slab_pct, rule.yellow_pct);
+                const signed = slabPctForTrend(slabPct, slab, trend);
+                if (!isFinite(signed)) return null;
                 return signed;
             }
 
-            /** Price multiplier from signed % of price: price × (1 + pct/100). */
+            /** Price multiplier: listing/base price × (1 + pct/100). Null when hold (0%). */
             function resolveSpriceCvrMult(cvr, trend, rule, rd) {
                 const signed = resolveSpriceCvrSignedPct(cvr, trend, rule, rd);
                 if (signed == null || !isFinite(signed) || signed === 0) return null;
@@ -4708,11 +4502,26 @@
                 return (isFinite(mult) && mult > 0) ? +mult.toFixed(6) : null;
             }
 
-            /** Suggest SPRICE = current price × (1 + signed%/100). Never back-solves from PFT/GROI. */
+            /**
+             * Base Amazon listing price for % adjust (not PFT/GROI back-solve).
+             * Prefer marketplace price; fall back to existing SPRICE only if price missing.
+             */
+            function amazonSpriceCvrBasePrice(rd) {
+                if (!rd) return 0;
+                const amazonPrice = parseFloat(rd.price) || 0;
+                if (amazonPrice > 0) return amazonPrice;
+                return parseFloat(rd.SPRICE) || 0;
+            }
+
+            /**
+             * Suggest SPRICE = Amazon price × (1 + signed%/100). Of price only — never PFT%.
+             * 0% → SPRICE = Amazon price (clears prior wrong increases).
+             */
             function applySpriceCvrPctToPrice(basePrice, signedPct) {
                 const base = parseFloat(basePrice);
                 const pct = parseFloat(signedPct);
-                if (!isFinite(base) || base <= 0 || !isFinite(pct) || pct === 0) return null;
+                if (!isFinite(base) || base <= 0 || !isFinite(pct)) return null;
+                if (pct === 0) return +base.toFixed(2);
                 const sprice = +(base * (1 + pct / 100)).toFixed(2);
                 return (isFinite(sprice) && sprice > 0) ? sprice : null;
             }
@@ -4985,7 +4794,7 @@
                     total === 0
                         ? 'No INV &gt; 0 SKUs with CVR = 0%'
                         : (spriceCvrLegendPart('CVR % = Down', counts.down, total, '#c92a2a') +
-                            ' · ' + spriceCvrLegendPart('CVR % = Equal', counts.equal, total, '#e03131') +
+                            ' · ' + spriceCvrLegendPart('CVR % = Same', counts.equal, total, '#e03131') +
                             ' · ' + spriceCvrLegendPart('CVR % = Up', counts.up, total, '#a00211') +
                             (counts.none
                                 ? (' · ' + spriceCvrLegendPart('No trend', counts.none, total, '#ced4da'))
@@ -4993,7 +4802,7 @@
                             ' <span class="text-muted">(n=' + total + ')</span>')
                 );
                 spriceCvrZeroPieChart = upsertPieChart(spriceCvrZeroPieChart, 'sprice-cvr-zero-pie-chart', {
-                    labels: ['CVR % = Down', 'CVR % = Equal', 'CVR % = Up', 'No trend'],
+                    labels: ['CVR % = Down', 'CVR % = Same', 'CVR % = Up', 'No trend'],
                     datasets: [{
                         data: [counts.down, counts.equal, counts.up, counts.none],
                         backgroundColor: ['#ff8787', '#fa5252', '#a00211', '#ced4da'],
@@ -5039,7 +4848,7 @@
                     total === 0
                         ? ('No INV &gt; 0 SKUs in ' + meta.label)
                         : (spriceCvrLegendPart('CVR % = Down', counts.down, total, c[0]) +
-                            ' · ' + spriceCvrLegendPart('CVR % = Equal', counts.equal, total, c[1]) +
+                            ' · ' + spriceCvrLegendPart('CVR % = Same', counts.equal, total, c[1]) +
                             ' · ' + spriceCvrLegendPart('CVR % = Up', counts.up, total, c[2]) +
                             (counts.none
                                 ? (' · ' + spriceCvrLegendPart('No trend', counts.none, total, c[3] || '#ced4da'))
@@ -5050,7 +4859,7 @@
                     spriceCvrTrendPieCharts[uiKey],
                     'sprice-cvr-' + uiKey + '-pie-chart',
                     {
-                        labels: ['CVR % = Down', 'CVR % = Equal', 'CVR % = Up', 'No trend'],
+                        labels: ['CVR % = Down', 'CVR % = Same', 'CVR % = Up', 'No trend'],
                         datasets: [{
                             data: [counts.down, counts.equal, counts.up, counts.none],
                             backgroundColor: c,
@@ -5333,26 +5142,18 @@
                 if (!r.actions) r.actions = normalizeSpriceCvrActions(null);
                 r.slab_pct = normalizeSlabPct(r.slab_pct, r.yellow_pct, r.actions);
                 r.yellow_pct = r.slab_pct.red;
-                Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).forEach(function(k) {
-                    if (k === 'zero_up_dil') r[k] = normalizeZeroUpDil(r[k]);
-                    else if (k === 'yellow_up_dil') r[k] = normalizeYellowUpDil(r[k]);
-                    else if (k === 'blue_up_dil') r[k] = normalizeBlueUpDil(r[k]);
-                    else if (k === 'green_up_dil') r[k] = normalizeGreenUpDil(r[k]);
-                    else r[k] = normalizeDilOverride(r[k]);
-                });
                 $('#sprice-cvr-btn-label').text('Sprice Rule');
                 $('#sprice-cvr-low-input').val(SPRICE_CVR_YELLOW_END_DEFAULT);
                 $('#sprice-cvr-mid-input').val(r.mid_cvr);
                 $('#sprice-cvr-high-input').val(r.high_cvr);
                 $('#sprice-cvr-roi-floor-input').val(r.roi_floor_pct);
                 applySlabPctToUi(r.slab_pct);
-                applyDilOverridesToUi(r);
                 applyZeroCvrDilToUi(r.zero_cvr_dil);
                 r.actions = readSpriceCvrActionsFromUi();
                 refreshSpriceCvrSlabLabels();
                 const sp = r.slab_pct;
                 $('#apply-sprice-cvr-btn').attr('title',
-                    'Adjust SPRICE by % of price (not PFT%): +inc / −dec / 0=hold · Dil forces +|%| · Z ' +
+                    'SPRICE = Amazon price × (1 + %/100) — not PFT%: +inc / −dec / 0=hold at Amazon price · Z ' +
                     sp.zero.down + '/' + sp.zero.equal + '/' + sp.zero.up +
                     ' · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
                     ' · B ' + sp.blue.down + '/' + sp.blue.equal + '/' + sp.blue.up +
@@ -5403,7 +5204,6 @@
                     const slabs = readSpriceCvrSlabInputs();
                     const zeroDil = readZeroCvrDilFromUi();
                     const slabPct = readSlabPctFromUi();
-                    const dilOverrides = readDilOverridesFromUi();
                     const payload = Object.assign({
                         low_cvr: SPRICE_CVR_YELLOW_END_DEFAULT,
                         mid_cvr: slabs.mid,
@@ -5415,18 +5215,15 @@
                         yellow_pct: slabPct.red,
                         slab_pct: slabPct,
                         zero_cvr_dil: zeroDil
-                    }, dilOverrides);
+                    }, readDilOverridesFromUi());
                     const pctOk = SPRICE_CVR_SLABS.every(function(slab) {
                         const p = slabPct[slab];
                         return p && isFinite(p.down) && isFinite(p.equal) && isFinite(p.up);
                     });
-                    const dilOk = Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).every(function(k) {
-                        return isFinite(dilOverrides[k]);
-                    });
                     if (!isFinite(payload.mid_cvr) || !isFinite(payload.high_cvr) ||
-                        !isFinite(payload.roi_floor_pct) || !dilOk || !pctOk) {
+                        !isFinite(payload.roi_floor_pct) || !pctOk) {
                         $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
-                            .text('Enter valid numbers for all fields (incl. rule %, Dil overrides)');
+                            .text('Enter valid numbers for all rule % fields');
                         return;
                     }
                     if (!(payload.mid_cvr > payload.low_cvr && payload.high_cvr > payload.mid_cvr)) {
@@ -5598,10 +5395,6 @@
                 spriceCvrRule.actions = readSpriceCvrActionsFromUi();
                 refreshSpriceCvrPieChart();
             });
-            $(document).on('input change', '.sprice-cvr-dil-override-input', function() {
-                Object.assign(spriceCvrRule, readDilOverridesFromUi());
-                refreshSpriceCvrPieChart();
-            });
             $('#sprice-cvr-save-btn').on('click', saveSpriceCvrRuleFromModal);
 
             $('#apply-sprice-cvr-btn').on('click', function() {
@@ -5609,8 +5402,8 @@
                 const slabsLive = readSpriceCvrSlabInputs();
                 const zeroDil = readZeroCvrDilFromUi();
                 const slabPct = readSlabPctFromUi();
-                const dilOverrides = readDilOverridesFromUi();
-                const rule = Object.assign({}, spriceCvrRule, {
+                // Keep in-memory rule in sync so post-apply UI refresh does not wipe Blue ±% etc.
+                spriceCvrRule = Object.assign({}, spriceCvrRule, {
                     low_cvr: slabsLive.low,
                     mid_cvr: slabsLive.mid,
                     high_cvr: slabsLive.high,
@@ -5620,9 +5413,9 @@
                     actions: readSpriceCvrActionsFromUi(),
                     yellow_pct: slabPct.red,
                     slab_pct: slabPct,
-                    ...dilOverrides,
                     zero_cvr_dil: zeroDil
                 });
+                const rule = spriceCvrRule;
                 const btnHtml = '<i class="fas fa-percentage"></i> <span id="sprice-cvr-btn-label">' +
                     $('#sprice-cvr-btn-label').text() + '</span>';
                 if (!table) {
@@ -5637,10 +5430,21 @@
                 if (typeof selectedRows !== 'undefined' && selectedRows && selectedRows.forEach) {
                     selectedRows.forEach(function(s) { if (s) effectiveSelected.add(s); });
                 }
-                const useSelection = effectiveSelected.size > 0;
+                // Only honor selection when at least one selected SKU is in the active (filtered) set.
+                // Stale selections from a prior filter used to skip all visible Blue rows.
+                let selectedInActive = 0;
+                table.getRows('active').forEach(function(r) {
+                    const rd = r.getData();
+                    if (!rd || rd.is_parent_summary || rd.is_parent_row) return;
+                    const sku = rd['(Child) sku'];
+                    if (sku && effectiveSelected.has(sku)) selectedInActive++;
+                });
+                const useSelection = selectedInActive > 0;
                 const rowsToProcess = [];
                 const seen = new Set();
                 let zeroCvrCount = 0;
+                let holdSkipCount = 0;
+                const slabHit = { zero: 0, red: 0, blue: 0, green: 0, pink: 0 };
 
                 table.getRows('active').forEach(function(r) {
                     const rd = r.getData();
@@ -5651,28 +5455,36 @@
 
                     const cvr = amazonRowCvrL30(rd);
                     const trend = amazonCvrTrend(rd, rule.trend_tolerance);
+                    const slabs = resolveSpriceCvrSlabs(rule);
+                    const slabKey = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
                     const signedPct = resolveSpriceCvrSignedPct(cvr, trend, rule, rd);
-                    if (signedPct == null) return;
+                    if (signedPct == null) {
+                        holdSkipCount++;
+                        return;
+                    }
 
-                    const existing = parseFloat(rd.SPRICE) || 0;
-                    const amazonPrice = parseFloat(rd.price) || 0;
-                    const base = existing > 0 ? existing : amazonPrice;
-                    // % of PRICE only: SPRICE = base × (1 + pct/100) — not PFT/GROI back-solve
+                    // Always % of Amazon listing price (not prior SPRICE / not PFT%).
+                    // 0% → SPRICE = Amazon price (true hold / no increase — clears stale +% suggestions).
+                    const base = amazonSpriceCvrBasePrice(rd);
                     const sprice = applySpriceCvrPctToPrice(base, signedPct);
-                    if (sprice == null) return;
+                    if (sprice == null) {
+                        holdSkipCount++;
+                        return;
+                    }
 
                     seen.add(sku);
                     if (amazonCvrIsZero(cvr)) zeroCvrCount++;
+                    if (slabHit[slabKey] != null) slabHit[slabKey]++;
                     rowsToProcess.push({
-                        row: r, sku: sku, sprice: sprice, trend: trend,
+                        row: r, sku: sku, sprice: sprice, trend: trend, slab: slabKey,
                         mult: 1 + signedPct / 100, signed_pct: signedPct
                     });
                 });
 
                 if (rowsToProcess.length === 0) {
                     showToast('warning', useSelection
-                        ? 'No selected rows match CVR trend / CVR=0 Dil rules'
-                        : 'No visible rows match CVR trend / CVR=0 Dil rules');
+                        ? 'No selected rows match CVR trend rules (' + holdSkipCount + ' skipped).'
+                        : 'No visible rows match CVR trend rules (' + holdSkipCount + ' skipped).');
                     return;
                 }
 
@@ -5680,13 +5492,20 @@
                 const zeroNote = zeroCvrCount > 0
                     ? ('\n' + zeroCvrCount + ' SKU(s) via CVR=0% trend')
                     : '';
+                const slabNote = '\nHits: Red0=' + slabHit.zero +
+                    ' Yellow=' + slabHit.red +
+                    ' Blue=' + slabHit.blue +
+                    ' Green=' + slabHit.green +
+                    ' Pink=' + slabHit.pink +
+                    (holdSkipCount ? (' · skipped=' + holdSkipCount) : '');
                 const slabs = resolveSpriceCvrSlabs(rule);
-                const sp = normalizeSlabPct(rule.slab_pct, rule.yellow_pct, rule.actions);
+                const sp = normalizeSlabPct(rule.slab_pct, rule.yellow_pct);
                 const actLabel = function(slab, trend) {
                     const pct = slabPctForTrend(sp, slab || 'red', trend || 'down');
-                    if (!isFinite(pct) || pct === 0) return 'hold';
+                    if (!isFinite(pct)) return 'hold';
+                    if (pct === 0) return '0% hold (= Amazon price)';
                     const s = formatSlabBound(pct);
-                    return (pct > 0 ? '+' : '') + s + '% of price';
+                    return (pct > 0 ? '+' : '') + s + '% of Amazon price';
                 };
                 const midL = formatSlabBound(slabs.mid);
                 const highL = formatSlabBound(slabs.high);
@@ -5696,29 +5515,25 @@
                 const pinkAfter = formatSlabBound(slabs.pink_after);
                 const yellowStart = formatSlabBound(slabs.yellow_start || SPRICE_CVR_YELLOW_START);
                 const yellowBand = yellowStart + '–' + lowL + '%';
-                const dilInc = function(slab, trend) {
-                    return ' (Inc if Dil>' + formatSlabBound(dilOverrideThreshold(rule, slab, trend)) + '%)';
-                };
                 if (!confirm(
-                    'Adjust SPRICE by % of current price for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
-                    '(SPRICE = price × (1 + %/100) — not PFT%)\n' +
-                    '1 Red CVR=0%: Down=' + actLabel('zero', 'down') + dilInc('zero', 'down') +
-                    ', Equal=' + actLabel('zero', 'equal') + dilInc('zero', 'equal') +
-                    ', Up=' + actLabel('zero', 'up') + dilInc('zero', 'up') + '\n' +
-                    '2 Yellow ' + yellowBand + ': Down=' + actLabel('red', 'down') + dilInc('red', 'down') +
-                    ', Equal=' + actLabel('red', 'equal') + dilInc('red', 'equal') +
-                    ', Up=' + actLabel('red', 'up') + dilInc('red', 'up') + '\n' +
-                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel('blue', 'down') + dilInc('blue', 'down') +
-                    ', Equal=' + actLabel('blue', 'equal') + dilInc('blue', 'equal') +
-                    ', Up=' + actLabel('blue', 'up') + dilInc('blue', 'up') + '\n' +
-                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel('green', 'down') + dilInc('green', 'down') +
-                    ', Equal=' + actLabel('green', 'equal') + dilInc('green', 'equal') +
-                    ', Up=' + actLabel('green', 'up') + dilInc('green', 'up') + '\n' +
-                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel('pink', 'down') + dilInc('pink', 'down') +
-                    ', Equal=' + actLabel('pink', 'equal') + dilInc('pink', 'equal') +
-                    ', Up=' + actLabel('pink', 'up') + dilInc('pink', 'up') + '\n' +
-                    'No decrease when Dil% > 100' +
-                    zeroNote
+                    'Adjust SPRICE by % of Amazon listing price for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
+                    '(SPRICE = Amazon price × (1 + %/100) — of price, not PFT%)\n' +
+                    '1 Red CVR=0%: Down=' + actLabel('zero', 'down') +
+                    ', Same=' + actLabel('zero', 'equal') +
+                    ', Up=' + actLabel('zero', 'up') + '\n' +
+                    '2 Yellow ' + yellowBand + ': Down=' + actLabel('red', 'down') +
+                    ', Same=' + actLabel('red', 'equal') +
+                    ', Up=' + actLabel('red', 'up') + '\n' +
+                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel('blue', 'down') +
+                    ', Same=' + actLabel('blue', 'equal') +
+                    ', Up=' + actLabel('blue', 'up') + '\n' +
+                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel('green', 'down') +
+                    ', Same=' + actLabel('green', 'equal') +
+                    ', Up=' + actLabel('green', 'up') + '\n' +
+                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel('pink', 'down') +
+                    ', Same=' + actLabel('pink', 'equal') +
+                    ', Up=' + actLabel('pink', 'up') +
+                    zeroNote + slabNote
                 )) {
                     return;
                 }
@@ -5753,10 +5568,13 @@
                             if (successCount + errorCount !== total) return;
                             $btn.prop('disabled', false).html(btnHtml);
                             refreshSpriceCvrUi();
+                            const blueN = slabHit.blue || 0;
                             if (errorCount === 0) {
-                                showToast('success', 'Sprice × CVR saved for ' + successCount + ' SKU(s)');
+                                showToast('success', 'Sprice × CVR saved for ' + successCount +
+                                    ' SKU(s) (Blue ' + blueN + ')');
                             } else {
-                                showToast('error', 'Saved ' + successCount + ' of ' + total + ' (' + errorCount + ' failed)');
+                                showToast('error', 'Saved ' + successCount + ' of ' + total +
+                                    ' (' + errorCount + ' failed; Blue ' + blueN + ')');
                             }
                             if (useSelection) {
                                 if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.clear) selectedSkus.clear();
@@ -6813,34 +6631,27 @@
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
                             const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                            // Arrow/dot = today CVR L30 vs previous recorded day (amazon_sku_daily_data)
-                            const hasPrev = row.cvr_prev !== null && row.cvr_prev !== undefined && row.cvr_prev !== '';
-                            const cvrPrev = hasPrev ? (parseFloat(row.cvr_prev) || 0) : null;
-                            const prevDateLabel = row.cvr_prev_date ? String(row.cvr_prev_date) : 'prev day';
+                            // Arrow/dot = CVR L30 vs prior period L31–L60 (CVR L60)
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
                             const tol = 0.1;
                             let arrowHtml = '';
                             let dotColor = '#6c757d';
                             if (sku && isListed) {
                                 let arrowColor = '#6c757d';
                                 let arrowIcon = 'fa-minus';
-                                let trendTip = hasPrev
-                                    ? `vs ${prevDateLabel}: ${cvrPrev.toFixed(1)}%`
-                                    : 'No previous-day CVR recorded';
-                                if (hasPrev) {
-                                    if (cvrL30 > cvrPrev + tol) {
-                                        // Higher than previous recorded day
-                                        arrowColor = '#28a745';
-                                        arrowIcon = 'fa-arrow-up';
-                                        dotColor = '#28a745';
-                                    } else if (cvrL30 < cvrPrev - tol) {
-                                        // Lower than previous recorded day
-                                        arrowColor = '#a00211';
-                                        arrowIcon = 'fa-arrow-down';
-                                        dotColor = '#a00211';
-                                    } else {
-                                        // Flat vs previous day
-                                        dotColor = '#ffc107';
-                                    }
+                                let trendTip = `vs L31–L60 (CVR L60): ${cvrL60.toFixed(1)}%`;
+                                if (cvrL30 > cvrL60 + tol) {
+                                    arrowColor = '#28a745';
+                                    arrowIcon = 'fa-arrow-up';
+                                    dotColor = '#28a745';
+                                } else if (cvrL30 < cvrL60 - tol) {
+                                    arrowColor = '#a00211';
+                                    arrowIcon = 'fa-arrow-down';
+                                    dotColor = '#a00211';
+                                } else {
+                                    dotColor = '#ffc107';
                                 }
                                 arrowHtml = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${escAttr(sku)}" data-metric="cvr" title="View CVR% chart (${trendTip})" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-right: 2px; vertical-align: middle;"></span><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></button>`;
                             }
@@ -8713,26 +8524,17 @@
                     });
                 }
 
-                // CVR trend filter: CVR L30 vs previous recorded day
+                // CVR trend filter: CVR L30 vs prior L31–L60 (CVR L60)
                 if (cvrTrendFilter !== 'all') {
-                    const cvrTrendTol = 0.1; // treat as equal within 0.1%
+                    const cvrTrendTol = 0.1; // Same within ±0.1%
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        const aL30 = parseFloat(data['A_L30']) || 0;
-                        const sess30 = parseFloat(data['Sess30']) || 0;
-                        const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                        const hasPrev = data.cvr_prev !== null && data.cvr_prev !== undefined && data.cvr_prev !== '';
-                        if (!hasPrev) return false;
-                        const cvrPrev = parseFloat(data.cvr_prev) || 0;
-                        if (cvrTrendFilter === 'prev_gt_l30' || cvrTrendFilter === 'l60_gt_l30') {
-                            return cvrPrev > cvrL30 + cvrTrendTol;
-                        }
-                        if (cvrTrendFilter === 'l30_gt_prev' || cvrTrendFilter === 'l30_gt_l60') {
-                            return cvrL30 > cvrPrev + cvrTrendTol;
-                        }
-                        if (cvrTrendFilter === 'equal') {
-                            return Math.abs(cvrPrev - cvrL30) <= cvrTrendTol;
-                        }
+                        const trend = (typeof amazonCvrTrend === 'function')
+                            ? amazonCvrTrend(data, cvrTrendTol)
+                            : null;
+                        if (cvrTrendFilter === 'down') return trend === 'down';
+                        if (cvrTrendFilter === 'up') return trend === 'up';
+                        if (cvrTrendFilter === 'same' || cvrTrendFilter === 'equal') return trend === 'equal';
                         return true;
                     });
                 }

@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * CVR-trend SPRICE multipliers for Amazon (and shared storage for ebay/temu/shopify UIs).
  *
- * Trend = today CVR vs previous recorded day (same tol as CVR L30 arrows).
+ * Trend = CVR L30 vs prior period L31–L60 (CVR L60 column; same ±0.1% tol as arrows).
  *
  * Five dynamic CVR rules:
  *   1 Red    : CVR = 0% — CVR trend Down/Equal/Up (key: zero; defaults like Yellow)
@@ -17,15 +17,11 @@ use Illuminate\Support\Facades\DB;
  *   4 Green  : mid+0.01 – high (default 7.01–13)
  *   5 Pink   : > high+0.01 (default >13.01)
  * Signed slab_pct is % of PRICE (not PFT/GROI): SPRICE = price × (1 + pct/100).
- *   +N increase price, −N decrease price, 0 = hold (no suggestion).
+ *   +N increase price, −N decrease price, 0 = hold at Amazon price (0% change).
  * Legacy actions (increase|decrease|hold) are derived from the sign of slab_pct.
- * Every rule also has Dil overrides for Down/Equal/Up: if Dil% > *_*_dil (default 100) → Increase.
+ * Dil override thresholds are stored for compat but unused by the UI/apply path.
  *
- * After apply:
- *   - no decrease when Dil% (L30/INV×100) > 100
- *   - does not back-solve from PFT% / GROI%
- *
- * Rule 1 when CVR L30 = 0%: same CVR-trend format as Yellow (actions.zero + zero_*_dil)
+ * Rule 1 when CVR L30 = 0%: same CVR-trend format as Yellow (actions.zero)
  *
  * Stored in ebay_sbid_rules under key ebay_sprice_cvr.
  */
@@ -92,8 +88,9 @@ final class SpriceCvrMultRule
         return match ($slab) {
             'zero' => ['down' => 'decrease', 'equal' => 'decrease', 'up' => 'hold'],
             'red' => ['down' => 'decrease', 'equal' => 'decrease', 'up' => 'hold'],
+            'blue' => ['down' => 'decrease', 'equal' => 'hold', 'up' => 'increase'],
             'pink' => ['down' => 'hold', 'equal' => 'decrease', 'up' => 'increase'],
-            default => ['down' => 'hold', 'equal' => 'hold', 'up' => 'hold'], // blue, green
+            default => ['down' => 'hold', 'equal' => 'hold', 'up' => 'hold'], // green
         };
     }
 
@@ -123,6 +120,16 @@ final class SpriceCvrMultRule
         ];
     }
 
+    /** Blue default: Down −1 / Same 0 / Up +1 (% of price). */
+    public static function defaultBluePct(): array
+    {
+        return [
+            'down' => -1.0,
+            'equal' => 0.0,
+            'up' => 1.0,
+        ];
+    }
+
     public static function defaultPinkPct(): array
     {
         return [
@@ -141,12 +148,22 @@ final class SpriceCvrMultRule
      *   pink: array{down: float, equal: float, up: float}
      * }
      */
+    /** Rule 1 CVR=0%: Down −1 / Same −1 / Up 0 (% of price). */
+    public static function defaultZeroPct(): array
+    {
+        return [
+            'down' => -1.0,
+            'equal' => -1.0,
+            'up' => 0.0,
+        ];
+    }
+
     public static function defaultSlabPct(): array
     {
         return [
-            'zero' => self::defaultYellowPct(),
+            'zero' => self::defaultZeroPct(),
             'red' => self::defaultYellowPct(),
-            'blue' => self::defaultBandPct(),
+            'blue' => self::defaultBluePct(),
             'green' => self::defaultBandPct(),
             'pink' => self::defaultPinkPct(),
         ];
