@@ -83,6 +83,14 @@ class MarketplaceManagerRegistry
                 'enabled' => true,
             ],
             [
+                'slug' => 'shein',
+                'label' => 'Shein',
+                'short' => 'SH',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/Shein.jpg',
+                'enabled' => true,
+            ],
+            [
                 'slug' => 'faire',
                 'label' => 'Faire',
                 'short' => 'FR',

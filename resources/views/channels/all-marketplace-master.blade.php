@@ -1444,7 +1444,7 @@
                     {
                         title: "L60 Orders",
                         field: "L60 Orders",
-                        headerTooltip: "Order count from the previous 30-day period (L60 window). AliExpress/Shein: from L60 sales upload table when populated.",
+                        headerTooltip: "Order count from the previous 30-day period (L60 window). Shein: from API-synced shein_daily_data_l60 when populated.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,

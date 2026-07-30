@@ -1806,4 +1806,244 @@ class SheinApiService
 
         return ['success' => false, 'message' => $lastMessage];
     }
+
+    /**
+     * True when SHEIN open key + secret are present (same as MarketplaceApiConfigService::sheinConfigured).
+     */
+    public function isConfigured(): bool
+    {
+        $openKeyId = config('services.shein.open_key_id') ?: config('services.shein.app_id');
+        $secretKey = config('services.shein.secret_key')
+            ?: config('services.shein.app_secret')
+            ?: config('services.shein.app_s');
+
+        return trim((string) $openKeyId) !== '' && trim((string) $secretKey) !== '';
+    }
+
+    /**
+     * Cheap connection probe — one page of product/query or stock for a known skuCode.
+     *
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.',
+            ];
+        }
+
+        try {
+            $skuCode = null;
+            if ($this->metricsTableExists()) {
+                $skuCode = SheinMetric::query()
+                    ->whereNotNull('shein_sku_code')
+                    ->where('shein_sku_code', '!=', '')
+                    ->value('shein_sku_code');
+            }
+
+            if ($skuCode) {
+                $stock = $this->getStock([(string) $skuCode]);
+
+                return [
+                    'success' => true,
+                    'message' => 'Connected. Shein full-detail (stock) responded for 1 skuCode.',
+                    'sample_count' => count($stock),
+                ];
+            }
+
+            // No cached sku — hit product query page 1.
+            $endpoint = '/open-api/openapi-business-backend/product/query';
+            $timestamp = round(microtime(true) * 1000);
+            $random = Str::random(5);
+            $signature = $this->generateSheinSignature($endpoint, $timestamp, $random);
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders([
+                    'Language' => 'en-us',
+                    'x-lt-openKeyId' => config('services.shein.open_key_id') ?: config('services.shein.app_id'),
+                    'x-lt-timestamp' => (string) $timestamp,
+                    'x-lt-signature' => $signature,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($this->baseUrl.$endpoint, [
+                    'pageNum' => 1,
+                    'pageSize' => 1,
+                    'insertTimeEnd' => '',
+                    'insertTimeStart' => '',
+                    'updateTimeEnd' => '',
+                    'updateTimeStart' => '',
+                ]);
+
+            $json = is_array($response->json()) ? $response->json() : null;
+            if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {
+                $count = count($json['info']['data'] ?? []);
+
+                return [
+                    'success' => true,
+                    'message' => 'Connected. Shein product/query responded.',
+                    'sample_count' => $count,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status()),
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Connection test failed: '.$e->getMessage()];
+        }
+    }
+
+    /**
+     * Push absolute inventory for one seller SKU.
+     * Tries POST /open-api/gsp/goods/change-inventory (needs warehouse + Shein skuCode).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateInventory(string $sellerSku, int $quantity): array
+    {
+        $sellerSku = trim($sellerSku);
+        $quantity = max(0, (int) $quantity);
+
+        if ($sellerSku === '') {
+            return ['success' => false, 'message' => 'Seller SKU is required.'];
+        }
+
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
+        }
+
+        $skuCode = $sellerSku;
+        $metric = $this->safeSheinMetricFindBySku($sellerSku);
+        if ($metric && ! empty($metric->shein_sku_code)) {
+            $skuCode = (string) $metric->shein_sku_code;
+        }
+
+        $warehouse = trim((string) config('services.shein.warehouse_code', env('SHEIN_WAREHOUSE_CODE', '')));
+        $endpoint = (string) config(
+            'services.shein.stock_update_path',
+            '/open-api/gsp/goods/change-inventory'
+        );
+
+        if ($warehouse === '') {
+            Log::warning('Shein updateInventory: SHEIN_WAREHOUSE_CODE not set — inventory write skipped', [
+                'sku' => $sellerSku,
+                'sku_code' => $skuCode,
+                'quantity' => $quantity,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Shein inventory write needs SHEIN_WAREHOUSE_CODE (and verified change-inventory payload). TODO: wire warehouse + confirm absolute vs delta qty.',
+            ];
+        }
+
+        $payload = [
+            'systemName' => 'openapi',
+            'updateSkuInventoryQuantityRequests' => [[
+                'changeInventoryQuantity' => $quantity,
+                'skuCode' => $skuCode,
+                'warehouseCode' => $warehouse,
+            ]],
+        ];
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                ->post($this->baseUrl.$endpoint, $payload);
+
+            $json = is_array($response->json()) ? $response->json() : null;
+            if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {
+                return [
+                    'success' => true,
+                    'message' => "Inventory {$quantity} pushed to Shein for {$sellerSku} (skuCode {$skuCode}).",
+                ];
+            }
+
+            $msg = $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status());
+            Log::warning('Shein updateInventory failed', [
+                'sku' => $sellerSku,
+                'sku_code' => $skuCode,
+                'message' => $msg,
+            ]);
+
+            return ['success' => false, 'message' => $msg];
+        } catch (\Throwable $e) {
+            Log::error('Shein updateInventory exception', ['error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Bulk wrapper used by inventory sync (calls updateInventory per row).
+     *
+     * @param  list<array{seller_part_number?: string, sku?: string, quantity: int|string}>  $items
+     * @return array{ok: bool, pushed: int, failed: int, blocked_by_cloudflare: bool, error_message: ?string, results: list<array<string, mixed>>}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        $results = [];
+        $pushed = 0;
+        $failed = 0;
+        $lastError = null;
+
+        foreach ($items as $i) {
+            $sku = trim((string) ($i['seller_part_number'] ?? $i['sku'] ?? ''));
+            $qty = max(0, (int) ($i['quantity'] ?? 0));
+            $res = $this->updateInventory($sku, $qty);
+            $ok = ! empty($res['success']);
+            if ($ok) {
+                $pushed++;
+            } else {
+                $failed++;
+                $lastError = $res['message'] ?? 'failed';
+            }
+            $results[] = [
+                'seller_part_number' => $sku,
+                'success' => $ok,
+                'status' => $ok ? 200 : 0,
+                'error' => $ok ? null : ($res['message'] ?? 'failed'),
+                'raw' => null,
+            ];
+        }
+
+        return [
+            'ok' => $pushed > 0,
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'blocked_by_cloudflare' => false,
+            'error_message' => $lastError,
+            'results' => $results,
+        ];
+    }
+
+    /**
+     * Tracking / ship stub — wire real seller-fulfill express API when available.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return array{success: bool, message: string}
+     */
+    public function shipOrder(
+        string $orderNumber,
+        string $trackingNumber,
+        string $shipCarrier,
+        string $shipService,
+        array $items
+    ): array {
+        Log::warning('Shein shipOrder: not implemented', [
+            'order' => $orderNumber,
+            'tracking' => $trackingNumber,
+            'carrier' => $shipCarrier,
+        ]);
+
+        return [
+            'success' => false,
+            'message' => 'Shein shipOrder/tracking push not wired yet (TODO: seller-fulfill express API).',
+        ];
+    }
 }
+

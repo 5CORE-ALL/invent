@@ -627,6 +627,9 @@ return [
         'base_url' => env('SHEIN_BASE_URL', 'https://openapi.sheincorp.com'),
         /** Product title update — POST JSON body (skuCode + productName) */
         'product_update_path' => env('SHEIN_PRODUCT_UPDATE_PATH', '/open-api/openapi-business-backend/product/update'),
+        /** Inventory write — POST /open-api/gsp/goods/change-inventory (needs warehouse) */
+        'stock_update_path' => env('SHEIN_STOCK_UPDATE_PATH', '/open-api/gsp/goods/change-inventory'),
+        'warehouse_code' => env('SHEIN_WAREHOUSE_CODE'),
         /** Max characters sent for productName (SHEIN uses short titles; default 80) */
         'title_max_length' => (int) env('SHEIN_TITLE_MAX_LENGTH', 80),
     ],

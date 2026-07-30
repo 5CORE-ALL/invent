@@ -1200,6 +1200,50 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Shein Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToShein)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('shein'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('shein', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncSheinTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncSheinAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('shein:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Faire Marketplace Manager
         $schedule->job(new \App\Jobs\SyncInventoryToFaire)
             ->everyFourHours()
@@ -1342,6 +1386,38 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('doba-metrics')
             ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        /*
+        |--------------------------------------------------------------------------
+        | SHEIN (Open API → shein_metrics / shein_pricing_prices / shein_daily_data)
+        |--------------------------------------------------------------------------
+        */
+        // Products + price/stock → shein_metrics + shein_pricing_prices
+        $ist($schedule->command('shein:fetch sync')
+            ->dailyAt('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-fetch-sync')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // L30 orders → shein_daily_data (/shein-tabulator)
+        $ist($schedule->command('shein:fetch orders --days=30 --target=l30')
+            ->dailyAt('15:10')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-fetch-orders-l30')
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // L60 orders → shein_daily_data_l60
+        $ist($schedule->command('shein:fetch orders --days=60 --target=l60')
+            ->dailyAt('15:20')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-fetch-orders-l60')
+            ->withoutOverlapping(120)
             ->runInBackground()
             ->appendOutputTo($log));
 

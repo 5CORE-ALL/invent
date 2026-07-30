@@ -26,6 +26,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_NEWEGG = 'newegg';
 
+    public const CHANNEL_SHEIN = 'shein';
+
     public const CHANNEL_FAIRE = 'faire';
 
     public static function shopifyQtyFromRow(?ShopifySku $row): ?int
@@ -832,6 +834,9 @@ final class MarketplaceListingStockResolver
             self::hydrateFromPricing($map, $keys, 'newegg');
             self::hydrateFromNeweggPricing($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_newegg');
+        } elseif ($channel === self::CHANNEL_SHEIN) {
+            self::hydrateFromPricing($map, $keys, 'shein');
+            self::hydrateFromMappings($map, $keys, 'inventory_shein');
         } elseif ($channel === self::CHANNEL_FAIRE) {
             self::hydrateFromPricing($map, $keys, 'faire');
             self::hydrateFromMappings($map, $keys, 'inventory_faire');
@@ -918,6 +923,21 @@ final class MarketplaceListingStockResolver
                 ->get(['sku', 'ne_stock'])
                 ->each(function ($row) use (&$map) {
                     self::put($map, (string) $row->sku, (int) $row->ne_stock);
+                });
+
+            return;
+        }
+
+        if ($channel === 'shein') {
+            if (! Schema::hasTable('shein_pricing_prices') || ! Schema::hasColumn('shein_pricing_prices', 'shein_stock')) {
+                return;
+            }
+            \App\Models\SheinPricingPrice::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('shein_stock')
+                ->get(['sku', 'shein_stock'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->shein_stock);
                 });
 
             return;

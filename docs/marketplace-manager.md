@@ -10,6 +10,16 @@ Living doc for channels under `/marketplace-manager` and `/marketplace/{slug}`. 
 | `reverb` | Reverb | Same as AE + sold/draft state rules | Yes (`ReverbLiveListingsService`) | `ReverbListingService` / `ReverbApiService` |
 | `alibaba` | Alibaba | Sync stack without live/state tabs | No | `AlibabaApiService` |
 | `newegg` | Newegg | **Clone of AliExpress** (2026-07-15) | Yes — states `active` / `inactive` from `newegg_pricing` | `NeweggApiService::updateItemInventory*` (Seller Part #) |
+| `shein` | Shein | **Clone of Newegg** (2026-07-31) | Yes — states from `shein_pricing_prices` / `shein_metrics` | `SheinApiService::updateInventory` (`/open-api/gsp/goods/change-inventory`, needs `SHEIN_WAREHOUSE_CODE`) |
+
+### Shein first-run checklist
+
+1. `.env`: `SHEIN_OPEN_KEY_ID`, `SHEIN_SECRET_KEY` (+ optional `SHEIN_WAREHOUSE_CODE` for inventory writes).
+2. `php artisan migrate --path=database/migrations/2026_07_31_001000_create_shein_mm_tables.php` (`shein_metric`, `shein_order_metrics` only — reuses existing `shein_pricing_prices`).
+3. Ensure `shein_metrics` / `shein_pricing_prices` populated (`shein:fetch sync` / existing pricing sync).
+4. Marketplace Manager → Shein → Connect → Test connection.
+5. Listings → Sync link map (seeds `shein_metric` from pricing + product cache `shein_sku_code`).
+6. Settings → turn on `inventory_sync` (+ orders if needed). **Do not** confuse MM model `SheinMmMetric` (`shein_metric`) with product-cache `SheinMetric` (`shein_metrics`).
 
 ### Newegg first-run checklist
 

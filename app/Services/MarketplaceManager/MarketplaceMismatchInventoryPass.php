@@ -8,6 +8,7 @@ use App\Models\FaireMetric;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
+use App\Models\SheinMmMetric;
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -32,7 +33,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'reverb', 'aliexpress', 'alibaba', 'faire'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'reverb', 'aliexpress', 'alibaba', 'faire'], true)) {
             return $empty;
         }
 
@@ -66,6 +67,7 @@ final class MarketplaceMismatchInventoryPass
 
         $result = match ($channel) {
             'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch),
@@ -95,6 +97,7 @@ final class MarketplaceMismatchInventoryPass
     {
         $table = match ($channel) {
             'newegg' => 'newegg_metric',
+            'shein' => 'shein_metric',
             'reverb' => 'reverb_metric',
             'aliexpress' => 'aliexpress_metric',
             'alibaba' => 'alibaba_metric',
@@ -107,6 +110,7 @@ final class MarketplaceMismatchInventoryPass
 
         $query = match ($channel) {
             'newegg' => NeweggMetric::query(),
+            'shein' => SheinMmMetric::query(),
             'reverb' => ReverbMetric::query(),
             'aliexpress' => AliexpressMetric::query(),
             'alibaba' => AlibabaMetric::query(),
@@ -143,6 +147,7 @@ final class MarketplaceMismatchInventoryPass
 
         $resolverChannel = match ($channel) {
             'newegg' => MarketplaceListingStockResolver::CHANNEL_NEWEGG,
+            'shein' => MarketplaceListingStockResolver::CHANNEL_SHEIN,
             'reverb' => MarketplaceListingStockResolver::CHANNEL_REVERB,
             'aliexpress' => MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
             'faire' => MarketplaceListingStockResolver::CHANNEL_FAIRE,
@@ -153,6 +158,7 @@ final class MarketplaceMismatchInventoryPass
 
         $liveRows = match ($channel) {
             'newegg' => app(NeweggLiveListingsService::class)->peekCached(),
+            'shein' => app(SheinLiveListingsService::class)->peekCached(),
             'reverb' => app(ReverbLiveListingsService::class)->peekCached(),
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
             'faire' => app(FaireLiveListingsService::class)->peekCached(),

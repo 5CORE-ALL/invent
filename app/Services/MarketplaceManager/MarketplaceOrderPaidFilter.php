@@ -50,11 +50,35 @@ class MarketplaceOrderPaidFilter
 
         return match ($marketplace) {
             'newegg' => self::isNeweggPaid($order),
+            'shein' => self::isSheinPaid($order),
             'faire' => self::isFairePaid($order),
             'reverb' => self::isReverbPaid($order),
             'aliexpress', 'alibaba' => self::isAliFamilyPaid($order),
             default => true,
         };
+    }
+
+    protected static function isSheinPaid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->status ?? '')));
+        $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];
+        $code = (int) ($raw['orderStatus'] ?? 0);
+
+        // Shein: 1 = Pending (unpaid/processing), 6 = Refund — treat unpaid/refund as not paid.
+        // 2+ (To Be Shipped / Shipped / Received) = paid/importable.
+        if ($code === 1 || str_contains($status, 'PENDING')) {
+            // Pending can mean awaiting seller action after pay — treat as paid for import.
+            return true;
+        }
+        if ($code === 6 || str_contains($status, 'REFUND')) {
+            return false;
+        }
+        if (in_array($status, ['UNPAID', 'PAYMENT_PENDING', 'NOT_PAY', 'PENDING_PAYMENT'], true)) {
+            return false;
+        }
+
+        // processing / paid / to be shipped / shipped / received → paid
+        return true;
     }
 
     protected static function isFairePaid(object $order): bool

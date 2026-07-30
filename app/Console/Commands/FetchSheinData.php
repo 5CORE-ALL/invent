@@ -14,14 +14,15 @@ class FetchSheinData extends Command
         {type : products | spu | sync | product-details | orders}
         {--spu= : SPU name (required for spu)}
         {--sku= : SKU (required for product-details)}
-        {--days=2 : Days of orders to pull (orders type; max 30)}
+        {--days=30 : Days of orders to pull (orders type; L30 max 30, L60 max 60)}
+        {--target=l30 : Order sync target: l30 (shein_daily_data) or l60 (shein_daily_data_l60)}
         {--query-type=1 : Order queryType 1=new 2=updated}
         {--no-details : Skip order-detail calls (list only)}';
 
     /**
      * Command description
      */
-    protected $description = 'Fetch data from Shein API (Products, Price, Inventory, Orders)';
+    protected $description = 'Fetch data from Shein API (Products, Price, Inventory, Orders) → shein_metrics / shein_pricing_prices / shein_daily_data';
 
     protected SheinApiService $sheinService;
 
@@ -113,9 +114,14 @@ class FetchSheinData extends Command
                     break;
 
                 case 'orders':
+                    $target = strtolower((string) $this->option('target')) === 'l60' ? 'l60' : 'l30';
                     $days = (int) $this->option('days');
-                    $this->info("⌛ Syncing Shein orders from API into shein_daily_data (last {$days} day(s))...");
-                    $result = $this->sheinService->syncOrdersToDailyData($days > 0 ? $days : 30, 'l30');
+                    if ($days <= 0) {
+                        $days = $target === 'l60' ? 60 : 30;
+                    }
+                    $table = $target === 'l60' ? 'shein_daily_data_l60' : 'shein_daily_data';
+                    $this->info("⌛ Syncing Shein orders from API into {$table} (last {$days} day(s), {$target})...");
+                    $result = $this->sheinService->syncOrdersToDailyData($days, $target);
                     if (! ($result['success'] ?? false)) {
                         $this->error('❌ '.($result['message'] ?? 'Orders sync failed'));
                         return Command::FAILURE;
