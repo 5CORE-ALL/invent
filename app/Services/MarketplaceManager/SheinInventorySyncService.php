@@ -348,25 +348,33 @@ class SheinInventorySyncService
      */
     protected function pushInventoryRows(array $inventoryRows): array
     {
-        $pushed = 0;
-        $failed = 0;
-        $lastMessage = null;
-
+        $items = [];
         foreach ($inventoryRows as $row) {
             $sku = trim((string) ($row['sku_code'] ?? ''));
-            $qty = (int) ($row['inventory'] ?? 0);
             if ($sku === '') {
-                $failed++;
                 continue;
             }
+            $items[] = [
+                'sku' => $sku,
+                'quantity' => max(0, (int) ($row['inventory'] ?? 0)),
+            ];
+        }
 
-            $result = $this->sheinApi->updateInventory($sku, $qty);
-            if (! empty($result['success'])) {
-                $pushed++;
-            } else {
-                $failed++;
-                $lastMessage = $result['message'] ?? 'Inventory update failed';
-            }
+        if ($items === []) {
+            return [
+                'success' => false,
+                'pushed' => 0,
+                'failed' => 0,
+                'message' => 'No inventory rows to push',
+            ];
+        }
+
+        $bulk = $this->sheinApi->updateItemInventoryBulk($items);
+        $pushed = (int) ($bulk['pushed'] ?? 0);
+        $failed = (int) ($bulk['failed'] ?? 0);
+        $lastMessage = $bulk['error_message'] ?? null;
+        if ($pushed > 0 && ! empty($bulk['warehouse_code'])) {
+            $lastMessage = trim((string) $lastMessage.' (warehouse '.$bulk['warehouse_code'].')');
         }
 
         return [

@@ -1897,8 +1897,157 @@ class SheinApiService
     }
 
     /**
+     * List seller warehouses (GET /open-api/msc/warehouse/list).
+     *
+     * @return list<array{warehouseCode: string, warehouseName: string, saleCountryList?: list<string>, default?: bool}>
+     */
+    public function listWarehouses(): array
+    {
+        $endpoint = '/open-api/msc/warehouse/list';
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout(45)
+                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                ->get($this->baseUrl.$endpoint);
+
+            $json = is_array($response->json()) ? $response->json() : null;
+            if (! $response->successful() || ! $this->sheinResponseIndicatesSuccess($json)) {
+                Log::warning('Shein listWarehouses failed', [
+                    'status' => $response->status(),
+                    'body' => substr((string) $response->body(), 0, 500),
+                ]);
+
+                return [];
+            }
+
+            $list = $json['info']['list'] ?? [];
+            if (! is_array($list)) {
+                return [];
+            }
+
+            $out = [];
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $code = trim((string) ($row['warehouseCode'] ?? ''));
+                if ($code === '') {
+                    continue;
+                }
+                $isDefault = false;
+                foreach (($row['countrySiteDefaultList'] ?? []) as $site) {
+                    if (is_array($site) && (int) ($site['defaultFlag'] ?? 0) === 1) {
+                        $isDefault = true;
+                        break;
+                    }
+                }
+                $out[] = [
+                    'warehouseCode' => $code,
+                    'warehouseName' => (string) ($row['warehouseName'] ?? $code),
+                    'saleCountryList' => is_array($row['saleCountryList'] ?? null) ? $row['saleCountryList'] : [],
+                    'default' => $isDefault,
+                    'raw' => $row,
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::error('Shein listWarehouses exception', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Resolve warehouse for inventory writes.
+     * Prefers SHEIN_WAREHOUSE_CODE, then cached default, then API warehouse list (defaultFlag / first).
+     */
+    public function resolveWarehouseCode(bool $forceRefresh = false): ?string
+    {
+        $configured = trim((string) config('services.shein.warehouse_code', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $cacheKey = 'shein_default_warehouse_code_v1';
+        if (! $forceRefresh) {
+            try {
+                $cached = Cache::get($cacheKey);
+                if (is_string($cached) && trim($cached) !== '') {
+                    return trim($cached);
+                }
+            } catch (\Throwable $e) {
+                // ignore cache
+            }
+        }
+
+        $warehouses = $this->listWarehouses();
+        if ($warehouses === []) {
+            return null;
+        }
+
+        $picked = null;
+        foreach ($warehouses as $wh) {
+            if (! empty($wh['default'])) {
+                $picked = $wh['warehouseCode'];
+                break;
+            }
+        }
+        if ($picked === null) {
+            $picked = $warehouses[0]['warehouseCode'] ?? null;
+        }
+
+        if (is_string($picked) && $picked !== '') {
+            try {
+                Cache::put($cacheKey, $picked, now()->addDay());
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            return $picked;
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve Shein skuCode for a seller SKU (shein_metrics.shein_sku_code / shein_metric.product_id).
+     */
+    public function resolveSheinSkuCode(string $sellerSku): string
+    {
+        $sellerSku = trim($sellerSku);
+        if ($sellerSku === '') {
+            return '';
+        }
+
+        $metric = $this->safeSheinMetricFindBySku($sellerSku);
+        if ($metric && ! empty($metric->shein_sku_code)) {
+            return trim((string) $metric->shein_sku_code);
+        }
+
+        try {
+            if (Schema::hasTable('shein_metric')) {
+                $pid = DB::table('shein_metric')
+                    ->where('sku', $sellerSku)
+                    ->whereNotNull('product_id')
+                    ->where('product_id', '!=', '')
+                    ->whereColumn('sku', '!=', 'product_id')
+                    ->value('product_id');
+                if (is_string($pid) && trim($pid) !== '') {
+                    return trim($pid);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return $sellerSku;
+    }
+
+    /**
      * Push absolute inventory for one seller SKU.
-     * Tries POST /open-api/gsp/goods/change-inventory (needs warehouse + Shein skuCode).
+     * POST /open-api/gsp/goods/change-inventory (warehouse auto-resolved from API if unset).
      *
      * @return array{success: bool, message: string}
      */
@@ -1915,73 +2064,40 @@ class SheinApiService
             return ['success' => false, 'message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.'];
         }
 
-        $skuCode = $sellerSku;
-        $metric = $this->safeSheinMetricFindBySku($sellerSku);
-        if ($metric && ! empty($metric->shein_sku_code)) {
-            $skuCode = (string) $metric->shein_sku_code;
-        }
-
-        $warehouse = trim((string) config('services.shein.warehouse_code', env('SHEIN_WAREHOUSE_CODE', '')));
-        $endpoint = (string) config(
-            'services.shein.stock_update_path',
-            '/open-api/gsp/goods/change-inventory'
-        );
-
-        if ($warehouse === '') {
-            Log::warning('Shein updateInventory: SHEIN_WAREHOUSE_CODE not set — inventory write skipped', [
-                'sku' => $sellerSku,
-                'sku_code' => $skuCode,
-                'quantity' => $quantity,
-            ]);
-
+        $skuCode = $this->resolveSheinSkuCode($sellerSku);
+        $warehouse = $this->resolveWarehouseCode();
+        if ($warehouse === null || $warehouse === '') {
             return [
                 'success' => false,
-                'message' => 'Shein inventory write needs SHEIN_WAREHOUSE_CODE (and verified change-inventory payload). TODO: wire warehouse + confirm absolute vs delta qty.',
+                'message' => 'No Shein warehouse found. Set SHEIN_WAREHOUSE_CODE or ensure /open-api/msc/warehouse/list returns a warehouse.',
             ];
         }
 
-        $payload = [
-            'systemName' => 'openapi',
-            'updateSkuInventoryQuantityRequests' => [[
-                'changeInventoryQuantity' => $quantity,
-                'skuCode' => $skuCode,
-                'warehouseCode' => $warehouse,
-            ]],
-        ];
+        $bulk = $this->updateItemInventoryBulk([[
+            'sku' => $sellerSku,
+            'sku_code' => $skuCode,
+            'quantity' => $quantity,
+            'warehouse_code' => $warehouse,
+        ]]);
 
-        try {
-            $response = Http::withoutVerifying()
-                ->timeout(45)
-                ->withHeaders($this->buildSheinAuthHeaders($endpoint))
-                ->post($this->baseUrl.$endpoint, $payload);
-
-            $json = is_array($response->json()) ? $response->json() : null;
-            if ($response->successful() && $this->sheinResponseIndicatesSuccess($json)) {
-                return [
-                    'success' => true,
-                    'message' => "Inventory {$quantity} pushed to Shein for {$sellerSku} (skuCode {$skuCode}).",
-                ];
-            }
-
-            $msg = $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status());
-            Log::warning('Shein updateInventory failed', [
-                'sku' => $sellerSku,
-                'sku_code' => $skuCode,
-                'message' => $msg,
-            ]);
-
-            return ['success' => false, 'message' => $msg];
-        } catch (\Throwable $e) {
-            Log::error('Shein updateInventory exception', ['error' => $e->getMessage()]);
-
-            return ['success' => false, 'message' => $e->getMessage()];
+        if (($bulk['pushed'] ?? 0) > 0) {
+            return [
+                'success' => true,
+                'message' => "Inventory {$quantity} pushed to Shein for {$sellerSku} (skuCode {$skuCode}, warehouse {$warehouse}).",
+            ];
         }
+
+        return [
+            'success' => false,
+            'message' => (string) ($bulk['error_message'] ?? 'Shein inventory update failed'),
+        ];
     }
 
     /**
-     * Bulk wrapper used by inventory sync (calls updateInventory per row).
+     * Bulk inventory push (up to 100 SKUs per Shein API request).
+     * changeInventoryQuantity is the absolute target qty (not a delta).
      *
-     * @param  list<array{seller_part_number?: string, sku?: string, quantity: int|string}>  $items
+     * @param  list<array{seller_part_number?: string, sku?: string, sku_code?: string, quantity: int|string, warehouse_code?: string}>  $items
      * @return array{ok: bool, pushed: int, failed: int, blocked_by_cloudflare: bool, error_message: ?string, results: list<array<string, mixed>>}
      */
     public function updateItemInventoryBulk(array $items): array
@@ -1991,24 +2107,178 @@ class SheinApiService
         $failed = 0;
         $lastError = null;
 
+        if (! $this->isConfigured()) {
+            return [
+                'ok' => false,
+                'pushed' => 0,
+                'failed' => count($items),
+                'blocked_by_cloudflare' => false,
+                'error_message' => 'Configure SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY in .env.',
+                'results' => [],
+            ];
+        }
+
+        $warehouse = $this->resolveWarehouseCode();
+        if ($warehouse === null || $warehouse === '') {
+            return [
+                'ok' => false,
+                'pushed' => 0,
+                'failed' => count($items),
+                'blocked_by_cloudflare' => false,
+                'error_message' => 'No Shein warehouse found. Set SHEIN_WAREHOUSE_CODE or ensure warehouse/list works.',
+                'results' => [],
+            ];
+        }
+
+        $endpoint = (string) config(
+            'services.shein.stock_update_path',
+            '/open-api/gsp/goods/change-inventory'
+        );
+
+        $normalized = [];
         foreach ($items as $i) {
             $sku = trim((string) ($i['seller_part_number'] ?? $i['sku'] ?? ''));
             $qty = max(0, (int) ($i['quantity'] ?? 0));
-            $res = $this->updateInventory($sku, $qty);
-            $ok = ! empty($res['success']);
-            if ($ok) {
-                $pushed++;
-            } else {
-                $failed++;
-                $lastError = $res['message'] ?? 'failed';
+            $skuCode = trim((string) ($i['sku_code'] ?? ''));
+            if ($skuCode === '' && $sku !== '') {
+                $skuCode = $this->resolveSheinSkuCode($sku);
             }
-            $results[] = [
-                'seller_part_number' => $sku,
-                'success' => $ok,
-                'status' => $ok ? 200 : 0,
-                'error' => $ok ? null : ($res['message'] ?? 'failed'),
-                'raw' => null,
+            $wh = trim((string) ($i['warehouse_code'] ?? '')) ?: $warehouse;
+            if ($sku === '' || $skuCode === '') {
+                $failed++;
+                $lastError = 'Missing seller SKU / skuCode';
+                $results[] = [
+                    'seller_part_number' => $sku,
+                    'success' => false,
+                    'status' => 0,
+                    'error' => $lastError,
+                    'raw' => null,
+                ];
+
+                continue;
+            }
+            $normalized[] = [
+                'sku' => $sku,
+                'sku_code' => $skuCode,
+                'quantity' => $qty,
+                'warehouse_code' => $wh,
             ];
+        }
+
+        foreach (array_chunk($normalized, 100) as $chunk) {
+            $requests = [];
+            foreach ($chunk as $row) {
+                $requests[] = [
+                    'changeInventoryQuantity' => $row['quantity'],
+                    'skuCode' => $row['sku_code'],
+                    'warehouseCode' => $row['warehouse_code'],
+                ];
+            }
+
+            $payload = [
+                'systemName' => 'openapi',
+                'updateSkuInventoryQuantityRequests' => $requests,
+            ];
+
+            try {
+                $response = Http::withoutVerifying()
+                    ->timeout(90)
+                    ->withHeaders($this->buildSheinAuthHeaders($endpoint))
+                    ->post($this->baseUrl.$endpoint, $payload);
+
+                $json = is_array($response->json()) ? $response->json() : null;
+                $successCodes = [];
+                foreach (($json['info']['successList'] ?? []) as $okRow) {
+                    if (is_array($okRow) && ! empty($okRow['skuCode'])) {
+                        $successCodes[trim((string) $okRow['skuCode'])] = true;
+                    }
+                }
+                $failedByCode = [];
+                foreach (($json['info']['failedList'] ?? []) as $failRow) {
+                    if (! is_array($failRow)) {
+                        continue;
+                    }
+                    $c = trim((string) ($failRow['skuCode'] ?? ''));
+                    if ($c !== '') {
+                        $failedByCode[$c] = (string) ($failRow['reason'] ?? $failRow['msg'] ?? $failRow['code'] ?? 'failed');
+                    }
+                }
+
+                $httpOk = $response->successful() && $this->sheinResponseIndicatesSuccess($json);
+                if (! $httpOk && $successCodes === [] && $failedByCode === []) {
+                    $lastError = $this->sheinExtractErrorMessage($json) ?: ('HTTP '.$response->status());
+                    foreach ($chunk as $row) {
+                        $failed++;
+                        $results[] = [
+                            'seller_part_number' => $row['sku'],
+                            'success' => false,
+                            'status' => $response->status(),
+                            'error' => $lastError,
+                            'raw' => $json,
+                        ];
+                    }
+
+                    continue;
+                }
+
+                foreach ($chunk as $row) {
+                    $code = $row['sku_code'];
+                    if (isset($failedByCode[$code])) {
+                        $err = $failedByCode[$code];
+                        $failed++;
+                        $lastError = $err;
+                        $results[] = [
+                            'seller_part_number' => $row['sku'],
+                            'success' => false,
+                            'status' => $response->status(),
+                            'error' => $err,
+                            'raw' => $json,
+                        ];
+
+                        continue;
+                    }
+
+                    // successList hit, or HTTP OK with empty failedList (treat chunk as success)
+                    $okRow = isset($successCodes[$code])
+                        || ($httpOk && $failedByCode === []);
+                    if ($okRow) {
+                        $pushed++;
+                        $results[] = [
+                            'seller_part_number' => $row['sku'],
+                            'success' => true,
+                            'status' => 200,
+                            'error' => null,
+                            'raw' => null,
+                        ];
+
+                        continue;
+                    }
+
+                    $err = $lastError ?: 'Shein inventory update failed';
+                    $failed++;
+                    $lastError = $err;
+                    $results[] = [
+                        'seller_part_number' => $row['sku'],
+                        'success' => false,
+                        'status' => $response->status(),
+                        'error' => $err,
+                        'raw' => $json,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                Log::error('Shein updateItemInventoryBulk exception', ['error' => $lastError]);
+                foreach ($chunk as $row) {
+                    $failed++;
+                    $results[] = [
+                        'seller_part_number' => $row['sku'],
+                        'success' => false,
+                        'status' => 0,
+                        'error' => $lastError,
+                        'raw' => null,
+                    ];
+                }
+            }
         }
 
         return [
@@ -2018,6 +2288,7 @@ class SheinApiService
             'blocked_by_cloudflare' => false,
             'error_message' => $lastError,
             'results' => $results,
+            'warehouse_code' => $warehouse,
         ];
     }
 
