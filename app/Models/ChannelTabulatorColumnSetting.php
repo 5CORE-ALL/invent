@@ -11,9 +11,11 @@ class ChannelTabulatorColumnSetting extends Model
     protected $fillable = [
         'channel_name',
         'visibility',
+        'column_order',
     ];
 
     protected $casts = [
         'visibility' => 'array',
+        'column_order' => 'array',
     ];
 }

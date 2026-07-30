@@ -81,6 +81,55 @@ class ChannelTabulatorColumnController extends Controller
         return $this->persistVisibility($request, $channel);
     }
 
+    /**
+     * GET /tabulator-column-order?channel=your_channel_key
+     * Shared column drag-order for any Tabulator page (same for all users).
+     */
+    public function showOrder(Request $request): JsonResponse
+    {
+        $channel = $this->sanitizeChannelName($request->query('channel'));
+        if ($channel === '') {
+            return response()->json(['message' => 'Query parameter "channel" is required.'], 422);
+        }
+
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel)
+            ->first();
+
+        $order = ($row && is_array($row->column_order)) ? array_values($row->column_order) : [];
+
+        return response()->json([
+            'success' => true,
+            'order' => $this->normalizeColumnOrder($order),
+        ]);
+    }
+
+    /**
+     * POST /tabulator-column-order
+     * Body: { "channel": "your_channel_key", "order": ["field1", "field2", ...] }
+     */
+    public function storeOrder(Request $request): JsonResponse
+    {
+        $channel = $this->sanitizeChannelName($request->input('channel'));
+        if ($channel === '') {
+            return response()->json(['message' => 'Field "channel" is required.'], 422);
+        }
+
+        $validated = $request->validate([
+            'order' => 'required|array',
+            'order.*' => 'string|max:190',
+        ]);
+
+        $normalized = $this->normalizeColumnOrder($validated['order']);
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel],
+            ['column_order' => $normalized]
+        );
+
+        return response()->json(['success' => true, 'order' => $normalized]);
+    }
+
     private function resolveVisibilityResponse(string $channel): JsonResponse
     {
         $row = ChannelTabulatorColumnSetting::query()
@@ -107,6 +156,26 @@ class ChannelTabulatorColumnController extends Controller
         );
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * @param  array<int, mixed>  $order
+     * @return list<string>
+     */
+    private function normalizeColumnOrder(array $order): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($order as $field) {
+            $f = trim((string) $field);
+            if ($f === '' || strlen($f) > 190 || isset($seen[$f])) {
+                continue;
+            }
+            $seen[$f] = true;
+            $out[] = $f;
+        }
+
+        return $out;
     }
 
     /**

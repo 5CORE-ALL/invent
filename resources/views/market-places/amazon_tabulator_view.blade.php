@@ -28,24 +28,96 @@
         }
         #summary-stats .d-flex { gap: 8px !important; }
 
-        /* Column visibility dropdown — show options in multiple columns */
-        .column-dropdown-multicol {
-            min-width: 460px;
-            padding: 6px 4px;
-            column-count: 3;
-            column-gap: 4px;
+        /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
+        #column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
         }
-        .column-dropdown-multicol > li {
-            break-inside: avoid;
-            -webkit-column-break-inside: avoid;
-            page-break-inside: avoid;
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
         }
-        .column-dropdown-multicol .dropdown-item {
-            padding: 3px 10px;
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
         }
         @media (max-width: 768px) {
-            .column-dropdown-multicol { min-width: 320px; column-count: 2; }
+            #column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+            }
         }
 
         /* Image column hover preview */
@@ -57,6 +129,14 @@
 
         .tabulator-col .tabulator-col-sorter {
             display: none !important;
+        }
+        /* Drag to reorder columns (shared for all users) */
+        #amazon-table .tabulator-col {
+            cursor: grab;
+        }
+        #amazon-table .tabulator-col.tabulator-moving {
+            cursor: grabbing;
+            opacity: 0.85;
         }
 
         .parent-row {
@@ -460,6 +540,16 @@
             max-height: 2.6em;
             overflow: hidden;
         }
+        /* Baby rule pies: full legend (counts + %) like summary pies — not clipped */
+        #spriceCvrRuleModal .sprice-cvr-rule-pie-legend {
+            font-size: 0.68rem;
+            line-height: 1.3;
+            max-height: none;
+            overflow: visible;
+            white-space: normal;
+            word-break: break-word;
+            padding: 0 2px;
+        }
         #spriceCvrRuleModal .form-select-sm,
         #spriceCvrRuleModal .form-control-sm,
         #spriceCvrRuleModal .input-group-sm > .form-control,
@@ -477,11 +567,6 @@
         #spriceCvrRuleModal .sprice-cvr-dil-override-input {
             min-width: 4.25rem;
             flex: 1 1 4.25rem;
-        }
-        #spriceCvrRuleModal #sprice-cvr-zero-dil-low,
-        #spriceCvrRuleModal #sprice-cvr-zero-dil-high {
-            width: 4.75rem !important;
-            min-width: 4.75rem;
         }
         @media (max-width: 1200px) {
             #spriceCvrRuleModal .sprice-cvr-fs-grid {
@@ -538,13 +623,14 @@
                         <option value="40plus">Above 40%</option>
                     </select>
                     <select id="cvr-filter" class="form-select form-select-sm"
-                        style="width: auto; display: inline-block;">
+                        style="width: auto; display: inline-block;"
+                        title="CVR% slabs match Sprice × CVR Rule bands">
                         <option value="all">CVR%</option>
-                        <option value="0-0">0%</option>
-                        <option value="0-3">0-3%</option>
-                        <option value="3-7">3-7%</option>
-                        <option value="7-13">7-13%</option>
-                        <option value="13plus">13%+</option>
+                        <option value="zero">0%</option>
+                        <option value="yellow">0.01–3.5%</option>
+                        <option value="blue">3.51–7%</option>
+                        <option value="green">7.01–13%</option>
+                        <option value="pink">&gt;13.01%</option>
                     </select>
 
                     <select id="roi-filter" class="form-select form-select-sm"
@@ -641,15 +727,15 @@
                     {{-- Formula: sprice = (LP × (1 + ROI%/100) + Ship) / 0.80  (same 0.80 take-home as Sroi / GROI%) --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC so the Sroi column equals the target (gross; does not target SNROI)">
+                        title="Target ROI% — sets S PRC so the SGROI column equals the target (gross; does not target SNROI)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 90px;"
-                            title="Target ROI% applied to all selected rows — matches the Sroi column">
+                            title="Target ROI% applied to all selected rows — matches the SGROI column">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-primary" type="button"
-                            title="Compute & save S PRC so Sroi = Target ROI% for every selected row">
+                            title="Compute & save S PRC so SGROI = Target ROI% for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -724,8 +810,8 @@
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Columns">
                             <i class="fas fa-columns"></i>
                         </button>
-                        <ul class="dropdown-menu column-dropdown-multicol" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
-                            <!-- Populated dynamically -->
+                        <ul class="dropdown-menu" id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
+                            <!-- Populated dynamically: Basic / Price / Ads / Other -->
                         </ul>
                     </div>
 
@@ -785,8 +871,8 @@
                         <!-- Ads% (from /all-marketplace-master — Amazon channel) -->
                         <span class="badge fs-6 p-2" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Amazon Ads% (Total Ad Spend / L30 Sales) — from /all-marketplace-master">Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
-                        <span class="badge amz-badge-chart amz-groi-nroi-badge" data-metric="groi_pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer; font-size:2rem; padding:0.5rem 1rem;" title="View GROI% rolling history">GROI: 0%</span>
-                        <span class="badge amz-badge-chart amz-groi-nroi-badge" data-metric="nroi_pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer; font-size:2rem; padding:0.5rem 1rem;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS">NROI: 0%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View GROI% rolling history">GROI: 0%</span>
+                        <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="View NROI% rolling history — Net ROI = (Total PFT − Ad Spend) / COGS">NROI: 0%</span>
                         
                         <!-- Amazon Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Price: $0.00</span>
@@ -1051,7 +1137,7 @@
                     </div>
 
                     <div class="sprice-cvr-fs-grid">
-                        {{-- Rule 1 Red --}}
+                        {{-- Rule 1 Red — same format as Rule 2 (CVR trend + Dil override) --}}
                         <div class="sprice-cvr-cell">
                             <div class="sprice-cvr-rule-pie-row" data-rule-pie="zero">
                                 <div class="sprice-cvr-rule-half">
@@ -1059,41 +1145,81 @@
                                         <div class="d-flex align-items-center gap-2 mb-1">
                                             <span class="badge text-white" style="background:#a00211;">1 · Red</span>
                                             <span class="fw-bold small">CVR = 0%</span>
-                                            <label class="small mb-0 ms-auto d-flex align-items-center gap-1" for="sprice-cvr-zero-enabled">
-                                                <input type="checkbox" id="sprice-cvr-zero-enabled" class="form-check-input m-0" checked>
-                                                Dil→GROI
-                                            </label>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-6">Dil% &lt;
-                                                <input type="number" id="sprice-cvr-zero-dil-low" class="form-control form-control-sm d-inline-block text-end" style="width:3.5rem;" value="25" step="0.1" min="0" max="500">
+                                            <div class="col-4 text-nowrap"><strong>CVR % = Down</strong></div>
+                                            <div class="col-4">
+                                                <select id="sprice-cvr-zero-down" class="form-select form-select-sm sprice-cvr-action-select" data-slab="zero" data-trend="down">
+                                                    <option value="decrease" selected>Decrease</option>
+                                                    <option value="increase">Increase</option>
+                                                    <option value="hold">Hold</option>
+                                                </select>
                                             </div>
-                                            <div class="col-6">
+                                            <div class="col-4">
                                                 <div class="input-group input-group-sm">
-                                                    <span class="input-group-text">GROI</span>
-                                                    <input type="number" id="sprice-cvr-zero-roi-low" class="form-control text-end" value="40" step="0.1" min="0" max="500">
+                                                    <input type="number" id="sprice-cvr-zero-down-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="down" value="2" step="0.1" min="0.1" max="50">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Rule 1 Down always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Down: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-zero-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="zero" data-trend="down" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
-                                            <div class="col-6">Dil% <span id="sprice-cvr-zero-dil-mid-label" class="fw-semibold">25–50</span></div>
-                                            <div class="col-6">
+                                            <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
+                                            <div class="col-4">
+                                                <select id="sprice-cvr-zero-equal" class="form-select form-select-sm sprice-cvr-action-select" data-slab="zero" data-trend="equal">
+                                                    <option value="decrease" selected>Decrease</option>
+                                                    <option value="increase">Increase</option>
+                                                    <option value="hold">Hold</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-4">
                                                 <div class="input-group input-group-sm">
-                                                    <span class="input-group-text">GROI</span>
-                                                    <input type="number" id="sprice-cvr-zero-roi-mid" class="form-control text-end" value="50" step="0.1" min="0" max="500">
+                                                    <input type="number" id="sprice-cvr-zero-equal-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="equal" value="1" step="0.1" min="0.1" max="50">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="row g-1 small align-items-center">
-                                            <div class="col-6">Dil% &gt;
-                                                <input type="number" id="sprice-cvr-zero-dil-high" class="form-control form-control-sm d-inline-block text-end" style="width:3.5rem;" value="50" step="0.1" min="0" max="500">
+                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Rule 1 Equal always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Equal: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-zero-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="zero" data-trend="equal" value="100" step="0.1" min="0" max="500">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
                                             </div>
-                                            <div class="col-6">
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
+                                            <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
+                                            <div class="col-4">
+                                                <select id="sprice-cvr-zero-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="zero" data-trend="up">
+                                                    <option value="decrease">Decrease</option>
+                                                    <option value="increase">Increase</option>
+                                                    <option value="hold" selected>Hold</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-4">
                                                 <div class="input-group input-group-sm">
-                                                    <span class="input-group-text">GROI</span>
-                                                    <input type="number" id="sprice-cvr-zero-roi-high" class="form-control text-end" value="60" step="0.1" min="0" max="500">
+                                                    <input type="number" id="sprice-cvr-zero-up-pct" class="form-control text-end sprice-cvr-slab-pct-input" data-slab="zero" data-trend="up" value="1" step="0.1" min="0.1" max="50">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Rule 1 Up always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Up: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-zero-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="zero" data-trend="up" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
                                             </div>
@@ -1103,12 +1229,12 @@
                                 <div class="sprice-cvr-rule-half">
                                     <div class="border rounded p-1 h-100 sprice-cvr-rule-pie-wrap" style="background:#fff5f5; border-left:4px solid #a00211 !important;">
                                         <div class="d-flex align-items-center justify-content-center gap-1 mb-0">
-                                            <div class="fw-bold small mb-0">Rule 1 · Dil→GROI</div>
+                                            <div class="fw-bold small mb-0">Rule 1 · by trend</div>
                                             <button type="button" class="sprice-cvr-history-btn" data-history-type="rule_zero" title="View rolling history">
                                                 <i class="fas fa-history"></i>
                                             </button>
                                         </div>
-                                        <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-zero-pie-legend">—</div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-zero-pie-legend">—</div>
                                         <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="zero">
                                             <canvas id="sprice-cvr-zero-pie-chart"></canvas>
                                         </div>
@@ -1142,6 +1268,16 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Yellow Down always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Down: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-yellow-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="red" data-trend="down" value="100" step="0.1" min="0" max="500">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-4">
@@ -1158,7 +1294,17 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="row g-1 small align-items-center">
+                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Yellow Equal always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Equal: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-yellow-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="red" data-trend="equal" value="100" step="0.1" min="0" max="500">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Up</strong></div>
                                             <div class="col-4">
                                                 <select id="sprice-cvr-red-up" class="form-select form-select-sm sprice-cvr-action-select" data-slab="red" data-trend="up">
@@ -1174,6 +1320,16 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <div class="row g-1 small align-items-center" title="When Dil% (L30/INV) exceeds this, Yellow Up always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Up: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-yellow-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="red" data-trend="up" value="100" step="0.1" min="0" max="500">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="sprice-cvr-rule-half">
@@ -1184,7 +1340,7 @@
                                                 <i class="fas fa-history"></i>
                                             </button>
                                         </div>
-                                        <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-yellow-pie-legend">—</div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-yellow-pie-legend">—</div>
                                         <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="yellow">
                                             <canvas id="sprice-cvr-yellow-pie-chart"></canvas>
                                         </div>
@@ -1248,6 +1404,16 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Blue Down always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Down: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-blue-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="blue" data-trend="down" value="100" step="0.1" min="0" max="500">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-4">
@@ -1272,8 +1438,6 @@
                                                     <input type="number" id="sprice-cvr-blue-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="blue" data-trend="equal" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
@@ -1300,8 +1464,6 @@
                                                     <input type="number" id="sprice-cvr-blue-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="blue" data-trend="up" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1314,7 +1476,7 @@
                                                 <i class="fas fa-history"></i>
                                             </button>
                                         </div>
-                                        <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-blue-pie-legend">—</div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-blue-pie-legend">—</div>
                                         <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="blue">
                                             <canvas id="sprice-cvr-blue-pie-chart"></canvas>
                                         </div>
@@ -1348,6 +1510,16 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <div class="row g-1 small align-items-center mb-1" title="When Dil% (L30/INV) exceeds this, Green Down always Increases">
+                                            <div class="col-12 d-flex flex-wrap align-items-center gap-1 ps-1">
+                                                <span class="text-muted small">Down: if Dil%</span>
+                                                <span class="fw-semibold">&gt;</span>
+                                                <div class="input-group input-group-sm sprice-cvr-dil-override-group">
+                                                    <input type="number" id="sprice-cvr-green-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="green" data-trend="down" value="100" step="0.1" min="0" max="500">
+                                                    <span class="input-group-text">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div class="row g-1 small align-items-center mb-1">
                                             <div class="col-4 text-nowrap"><strong>CVR % = Equal</strong></div>
                                             <div class="col-4">
@@ -1372,8 +1544,6 @@
                                                     <input type="number" id="sprice-cvr-green-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="green" data-trend="equal" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
@@ -1400,8 +1570,6 @@
                                                     <input type="number" id="sprice-cvr-green-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="green" data-trend="up" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1414,7 +1582,7 @@
                                                 <i class="fas fa-history"></i>
                                             </button>
                                         </div>
-                                        <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-green-pie-legend">—</div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-green-pie-legend">—</div>
                                         <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="green">
                                             <canvas id="sprice-cvr-green-pie-chart"></canvas>
                                         </div>
@@ -1456,8 +1624,6 @@
                                                     <input type="number" id="sprice-cvr-pink-down-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="pink" data-trend="down" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
@@ -1484,8 +1650,6 @@
                                                     <input type="number" id="sprice-cvr-pink-equal-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="pink" data-trend="equal" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                         <div class="row g-1 small align-items-center mb-1">
@@ -1512,8 +1676,6 @@
                                                     <input type="number" id="sprice-cvr-pink-up-dil" class="form-control text-end sprice-cvr-dil-override-input" data-slab="pink" data-trend="up" value="100" step="0.1" min="0" max="500">
                                                     <span class="input-group-text">%</span>
                                                 </div>
-                                                <span class="text-muted">→</span>
-                                                <span class="fw-semibold text-success">Increase</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1526,7 +1688,7 @@
                                                 <i class="fas fa-history"></i>
                                             </button>
                                         </div>
-                                        <div class="text-muted text-center sprice-cvr-compact-legend mb-1" id="sprice-cvr-pink-pie-legend">—</div>
+                                        <div class="text-muted text-center sprice-cvr-rule-pie-legend mb-1" id="sprice-cvr-pink-pie-legend">—</div>
                                         <div class="sprice-cvr-rule-pie-canvas" data-pie-canvas="pink">
                                             <canvas id="sprice-cvr-pink-pie-chart"></canvas>
                                         </div>
@@ -1710,6 +1872,9 @@
         /** Stored in DB table channel_tabulator_column_settings (shared across all users — same pattern as ebay2/ebay3/mfrg tabulators). */
         const TABULATOR_COLUMN_CHANNEL = 'amazon_tabulator';
         const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const TABULATOR_COLUMN_ORDER_URL = '/tabulator-column-order';
+        let amazonApplyingColumnOrder = false;
+        let amazonColumnOrderSaveTimer = null;
         let skuMetricsChart = null;
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, dotColors, labelColors } for ref panel & plugins
         let currentSkuChartMetric = 'price';  // 'price' | 'cvr' - which metric the SKU chart modal shows
@@ -4164,24 +4329,30 @@
             // Sprice × CVR — shared via /ebay/sprice-cvr-rule.
             // Amazon: CVR_L30 trend vs cvr_prev + band rules + ROI floor.
             const SPRICE_CVR_DEFAULT_ACTIONS = {
+                // Rule 1 (CVR=0%): same Down/Equal/Up defaults as Yellow
+                zero: { down: 'decrease', equal: 'decrease', up: 'hold' },
                 red: { down: 'decrease', equal: 'decrease', up: 'hold' },
                 blue: { down: 'hold', equal: 'hold', up: 'hold' },
                 green: { down: 'hold', equal: 'hold', up: 'hold' },
                 pink: { down: 'hold', equal: 'decrease', up: 'increase' }
             };
-            const SPRICE_CVR_SLABS = ['red', 'blue', 'green', 'pink'];
+            /** Includes Rule 1 (zero) + Yellow–Pink (red/blue/green/pink). */
+            const SPRICE_CVR_SLABS = ['zero', 'red', 'blue', 'green', 'pink'];
             /** Yellow band starts at this CVR% (Rule 2: 0.01 – Yellow≤). */
             const SPRICE_CVR_YELLOW_START = 0.01;
             /** Default Yellow≤ / Blue start boundary. */
             const SPRICE_CVR_YELLOW_END_DEFAULT = 3.5;
             const SPRICE_CVR_DEFAULT_TREND_PCT = { down: 1, equal: 1, up: 1 };
             const SPRICE_CVR_DEFAULT_YELLOW_PCT = { down: 2, equal: 1, up: 1 };
+            const SPRICE_CVR_DEFAULT_ZERO_PCT = { down: 2, equal: 1, up: 1 };
             const SPRICE_CVR_DEFAULT_SLAB_PCT = {
+                zero: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ZERO_PCT)),
                 red: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_YELLOW_PCT)),
                 blue: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
                 green: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT)),
                 pink: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_TREND_PCT))
             };
+            /** Rule 1 Dil% band edges: Down < dil_low · Equal mid · Up > dil_high */
             const SPRICE_CVR_DEFAULT_ZERO_CVR_DIL = {
                 enabled: true,
                 dil_low: 25,
@@ -4190,10 +4361,29 @@
                 roi_mid: 50,
                 roi_high: 60
             };
-            /** Rule 3/4 Blue|Green Equal/Up: if Dil% > this → Increase (editable) */
+            /** Dil overrides: every rule Down/Equal/Up → Increase when Dil% > threshold */
             const SPRICE_CVR_DEFAULT_DIL_OVERRIDE = 100;
+            const SPRICE_CVR_DEFAULT_ZERO_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+            const SPRICE_CVR_DEFAULT_YELLOW_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
             const SPRICE_CVR_DEFAULT_BLUE_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
             const SPRICE_CVR_DEFAULT_GREEN_UP_DIL = SPRICE_CVR_DEFAULT_DIL_OVERRIDE;
+            const SPRICE_CVR_DEFAULT_DIL_OVERRIDES = {
+                zero_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                zero_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                zero_up_dil: SPRICE_CVR_DEFAULT_ZERO_UP_DIL,
+                yellow_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                yellow_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                yellow_up_dil: SPRICE_CVR_DEFAULT_YELLOW_UP_DIL,
+                blue_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                blue_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                blue_up_dil: SPRICE_CVR_DEFAULT_BLUE_UP_DIL,
+                green_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                green_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                green_up_dil: SPRICE_CVR_DEFAULT_GREEN_UP_DIL,
+                pink_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                pink_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                pink_up_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE
+            };
             let spriceCvrRule = {
                 low_cvr: 3.5,
                 mid_cvr: 7,
@@ -4205,13 +4395,7 @@
                 actions: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ACTIONS)),
                 yellow_pct: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_YELLOW_PCT)),
                 slab_pct: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_SLAB_PCT)),
-                blue_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
-                blue_up_dil: SPRICE_CVR_DEFAULT_BLUE_UP_DIL,
-                green_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
-                green_up_dil: SPRICE_CVR_DEFAULT_GREEN_UP_DIL,
-                pink_down_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
-                pink_equal_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
-                pink_up_dil: SPRICE_CVR_DEFAULT_DIL_OVERRIDE,
+                ...JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_DIL_OVERRIDES)),
                 zero_cvr_dil: JSON.parse(JSON.stringify(SPRICE_CVR_DEFAULT_ZERO_CVR_DIL))
             };
             const SPRICE_CVR_URL = @json(url('/ebay/sprice-cvr-rule'));
@@ -4319,6 +4503,7 @@
 
             function slabPctInputId(slab, trend) {
                 if (slab === 'red') return '#sprice-cvr-yellow-' + trend + '-pct';
+                if (slab === 'zero') return '#sprice-cvr-zero-' + trend + '-pct';
                 return '#sprice-cvr-' + slab + '-' + trend + '-pct';
             }
 
@@ -4381,33 +4566,16 @@
             }
 
             function readZeroCvrDilFromUi() {
-                return normalizeZeroCvrDil({
-                    enabled: $('#sprice-cvr-zero-enabled').is(':checked'),
-                    dil_low: String($('#sprice-cvr-zero-dil-low').val()).replace(',', '.'),
-                    dil_high: String($('#sprice-cvr-zero-dil-high').val()).replace(',', '.'),
-                    roi_low: String($('#sprice-cvr-zero-roi-low').val()).replace(',', '.'),
-                    roi_mid: String($('#sprice-cvr-zero-roi-mid').val()).replace(',', '.'),
-                    roi_high: String($('#sprice-cvr-zero-roi-high').val()).replace(',', '.')
-                });
+                // Band edges kept in stored rule (no UI); Rule 1 now uses CVR trend like Rule 2
+                return normalizeZeroCvrDil(spriceCvrRule && spriceCvrRule.zero_cvr_dil);
             }
 
             function applyZeroCvrDilToUi(z) {
-                const r = normalizeZeroCvrDil(z);
-                $('#sprice-cvr-zero-enabled').prop('checked', r.enabled !== false);
-                $('#sprice-cvr-zero-dil-low').val(r.dil_low);
-                $('#sprice-cvr-zero-dil-high').val(r.dil_high);
-                $('#sprice-cvr-zero-roi-low').val(r.roi_low);
-                $('#sprice-cvr-zero-roi-mid').val(r.roi_mid);
-                $('#sprice-cvr-zero-roi-high').val(r.roi_high);
-                refreshZeroCvrDilMidLabel();
+                spriceCvrRule.zero_cvr_dil = normalizeZeroCvrDil(z);
             }
 
-            function refreshZeroCvrDilMidLabel() {
-                const low = parseFloat(String($('#sprice-cvr-zero-dil-low').val()).replace(',', '.'));
-                const high = parseFloat(String($('#sprice-cvr-zero-dil-high').val()).replace(',', '.'));
-                const a = isFinite(low) ? formatSlabBound(low) : '25';
-                const b = isFinite(high) ? formatSlabBound(high) : '50';
-                $('#sprice-cvr-zero-dil-mid-label').text(a + '–' + b);
+            function normalizeZeroUpDil(raw) {
+                return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_ZERO_UP_DIL);
             }
 
             function normalizeSpriceCvrRule(resp) {
@@ -4429,8 +4597,16 @@
                     actions: normalizeSpriceCvrActions(resp && resp.actions),
                     yellow_pct: slabPct.red,
                     slab_pct: slabPct,
+                    zero_down_dil: normalizeDilOverride(resp && resp.zero_down_dil),
+                    zero_equal_dil: normalizeDilOverride(resp && resp.zero_equal_dil),
+                    zero_up_dil: normalizeZeroUpDil(resp && resp.zero_up_dil),
+                    yellow_down_dil: normalizeDilOverride(resp && resp.yellow_down_dil),
+                    yellow_equal_dil: normalizeDilOverride(resp && resp.yellow_equal_dil),
+                    yellow_up_dil: normalizeYellowUpDil(resp && resp.yellow_up_dil),
+                    blue_down_dil: normalizeDilOverride(resp && resp.blue_down_dil),
                     blue_equal_dil: normalizeDilOverride(resp && resp.blue_equal_dil),
                     blue_up_dil: normalizeBlueUpDil(resp && resp.blue_up_dil),
+                    green_down_dil: normalizeDilOverride(resp && resp.green_down_dil),
                     green_equal_dil: normalizeDilOverride(resp && resp.green_equal_dil),
                     green_up_dil: normalizeGreenUpDil(resp && resp.green_up_dil),
                     pink_down_dil: normalizeDilOverride(resp && resp.pink_down_dil),
@@ -4440,23 +4616,10 @@
                 };
             }
 
-            /** CVR L30 treated as zero for the Dil→GROI sub-rule */
+            /** CVR L30 treated as zero for Rule 1 (CVR trend + zero actions) */
             function amazonCvrIsZero(cvr) {
                 const v = parseFloat(cvr);
                 return !isFinite(v) || Math.abs(v) < 0.005;
-            }
-
-            /**
-             * Target GROI% from Dil% when CVR = 0 (dynamic bands).
-             * Returns null when sub-rule disabled.
-             */
-            function amazonZeroCvrTargetGroi(rd, zeroRule) {
-                const z = normalizeZeroCvrDil(zeroRule);
-                if (!z.enabled) return null;
-                const dil = amazonRowDilPct(rd);
-                if (dil < z.dil_low) return z.roi_low;
-                if (dil <= z.dil_high) return z.roi_mid;
-                return z.roi_high;
             }
 
             function amazonRowCvrL30(rd) {
@@ -4498,6 +4661,10 @@
                 return normalizeDilOverride(raw != null ? raw : fallback);
             }
 
+            function normalizeYellowUpDil(raw) {
+                return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_YELLOW_UP_DIL);
+            }
+
             function normalizeBlueUpDil(raw) {
                 return normalizeUpDilThreshold(raw, SPRICE_CVR_DEFAULT_BLUE_UP_DIL);
             }
@@ -4507,11 +4674,15 @@
             }
 
             function dilOverrideKey(slab, trend) {
+                // Yellow band uses internal slab key "red"
+                if (slab === 'red') return 'yellow_' + trend + '_dil';
                 return slab + '_' + trend + '_dil';
             }
 
             function dilOverrideThreshold(rule, slab, trend) {
                 const key = dilOverrideKey(slab, trend);
+                if (key === 'zero_up_dil') return normalizeZeroUpDil(rule && rule.zero_up_dil);
+                if (key === 'yellow_up_dil') return normalizeYellowUpDil(rule && rule.yellow_up_dil);
                 if (key === 'blue_up_dil') return normalizeBlueUpDil(rule && rule.blue_up_dil);
                 if (key === 'green_up_dil') return normalizeGreenUpDil(rule && rule.green_up_dil);
                 return normalizeDilOverride(rule && rule[key]);
@@ -4519,8 +4690,16 @@
 
             function readDilOverridesFromUi() {
                 return {
+                    zero_down_dil: normalizeDilOverride(String($('#sprice-cvr-zero-down-dil').val()).replace(',', '.')),
+                    zero_equal_dil: normalizeDilOverride(String($('#sprice-cvr-zero-equal-dil').val()).replace(',', '.')),
+                    zero_up_dil: normalizeZeroUpDil(String($('#sprice-cvr-zero-up-dil').val()).replace(',', '.')),
+                    yellow_down_dil: normalizeDilOverride(String($('#sprice-cvr-yellow-down-dil').val()).replace(',', '.')),
+                    yellow_equal_dil: normalizeDilOverride(String($('#sprice-cvr-yellow-equal-dil').val()).replace(',', '.')),
+                    yellow_up_dil: normalizeYellowUpDil(String($('#sprice-cvr-yellow-up-dil').val()).replace(',', '.')),
+                    blue_down_dil: normalizeDilOverride(String($('#sprice-cvr-blue-down-dil').val()).replace(',', '.')),
                     blue_equal_dil: normalizeDilOverride(String($('#sprice-cvr-blue-equal-dil').val()).replace(',', '.')),
                     blue_up_dil: normalizeBlueUpDil(String($('#sprice-cvr-blue-up-dil').val()).replace(',', '.')),
+                    green_down_dil: normalizeDilOverride(String($('#sprice-cvr-green-down-dil').val()).replace(',', '.')),
                     green_equal_dil: normalizeDilOverride(String($('#sprice-cvr-green-equal-dil').val()).replace(',', '.')),
                     green_up_dil: normalizeGreenUpDil(String($('#sprice-cvr-green-up-dil').val()).replace(',', '.')),
                     pink_down_dil: normalizeDilOverride(String($('#sprice-cvr-pink-down-dil').val()).replace(',', '.')),
@@ -4530,8 +4709,16 @@
             }
 
             function applyDilOverridesToUi(rule) {
+                $('#sprice-cvr-zero-down-dil').val(normalizeDilOverride(rule && rule.zero_down_dil));
+                $('#sprice-cvr-zero-equal-dil').val(normalizeDilOverride(rule && rule.zero_equal_dil));
+                $('#sprice-cvr-zero-up-dil').val(normalizeZeroUpDil(rule && rule.zero_up_dil));
+                $('#sprice-cvr-yellow-down-dil').val(normalizeDilOverride(rule && rule.yellow_down_dil));
+                $('#sprice-cvr-yellow-equal-dil').val(normalizeDilOverride(rule && rule.yellow_equal_dil));
+                $('#sprice-cvr-yellow-up-dil').val(normalizeYellowUpDil(rule && rule.yellow_up_dil));
+                $('#sprice-cvr-blue-down-dil').val(normalizeDilOverride(rule && rule.blue_down_dil));
                 $('#sprice-cvr-blue-equal-dil').val(normalizeDilOverride(rule && rule.blue_equal_dil));
                 $('#sprice-cvr-blue-up-dil').val(normalizeBlueUpDil(rule && rule.blue_up_dil));
+                $('#sprice-cvr-green-down-dil').val(normalizeDilOverride(rule && rule.green_down_dil));
                 $('#sprice-cvr-green-equal-dil').val(normalizeDilOverride(rule && rule.green_equal_dil));
                 $('#sprice-cvr-green-up-dil').val(normalizeGreenUpDil(rule && rule.green_up_dil));
                 $('#sprice-cvr-pink-down-dil').val(normalizeDilOverride(rule && rule.pink_down_dil));
@@ -4540,20 +4727,24 @@
             }
 
             function dilOverrideApplies(slab, trend) {
-                if ((slab === 'blue' || slab === 'green') && (trend === 'equal' || trend === 'up')) return true;
-                if (slab === 'pink' && (trend === 'down' || trend === 'equal' || trend === 'up')) return true;
+                // All rules: Down / Equal / Up Dil override → force Increase
+                if ((slab === 'zero' || slab === 'red' || slab === 'blue' || slab === 'green' || slab === 'pink') &&
+                    (trend === 'down' || trend === 'equal' || trend === 'up')) {
+                    return true;
+                }
                 return false;
             }
 
             /**
              * Resolve multiplier from slab + trend using per-rule % inputs.
              * No decrease when Dil% > 100.
-             * Blue/Green Equal|Up + Pink Down|Equal|Up: Increase when Dil% > threshold.
+             * Rule1/Yellow Up + Blue/Green Equal|Up + Pink Down|Equal|Up: Increase when Dil% > threshold.
              */
             function resolveSpriceCvrMult(cvr, trend, rule, rd) {
                 if (!trend || !rule) return null;
                 const slabs = resolveSpriceCvrSlabs(rule);
-                const slab = amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
+                // Rule 1 Red (CVR=0%): CVR trend + zero actions (same format as Yellow)
+                const slab = amazonCvrIsZero(cvr) ? 'zero' : amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high);
                 const actions = normalizeSpriceCvrActions(rule.actions);
                 let action = (actions[slab] && actions[slab][trend]) || 'hold';
                 // Dil% > threshold → force Increase
@@ -4618,7 +4809,7 @@
             }
 
             /**
-             * 1 Red    : CVR = 0%              (Dil→GROI rule)
+             * 1 Red    : CVR = 0%              (CVR trend + zero actions, like Yellow)
              * 2 Yellow : 0.01 – low            (default 0.01–3.5; internal key: red)
              * 3 Blue   : low+0.01 – mid        (default 3.51–7)
              * 4 Green  : mid+0.01 – high       (default 7.01–13; values through high+0.01 stay green)
@@ -4685,6 +4876,15 @@
                 }, 0);
                 const pct = sum > 0 ? ((v / sum) * 100).toFixed(1) : '0';
                 return ctx.label + ': ' + v + ' (' + pct + '%)';
+            }
+
+            /** Legend fragment: "Label: 12 (34%)" — same clarity as summary pies */
+            function spriceCvrLegendPart(label, count, total, color) {
+                const n = parseInt(count, 10) || 0;
+                const t = parseInt(total, 10) || 0;
+                const pct = t > 0 ? ((n / t) * 100).toFixed(0) : '0';
+                return '<span style="color:' + color + ';font-weight:600;">' +
+                    label + ': ' + n + ' (' + pct + '%)</span>';
             }
 
             function upsertPieChart(existing, canvasId, data, opts) {
@@ -4761,11 +4961,11 @@
                 scheduleSpriceCvrDailySnapshot();
             }
 
-            /** Rule 1: INV>0 SKUs with CVR=0%, split by Dil% → GROI bands */
+            /** Rule 1: INV>0 SKUs with CVR=0%, split by CVR Down / Equal / Up trend (like Rule 2) */
             function countSpriceCvrZeroDilBands() {
-                const counts = { low: 0, mid: 0, high: 0 };
+                const counts = { down: 0, equal: 0, up: 0, none: 0, low: 0, mid: 0, high: 0 };
                 if (!table) return counts;
-                const z = readZeroCvrDilFromUi();
+                const tol = spriceCvrRule.trend_tolerance || 0.1;
                 const seen = new Set();
                 table.getRows().forEach(function(r) {
                     const rd = r.getData();
@@ -4776,10 +4976,11 @@
                     if (inv <= 0) return;
                     if (!amazonCvrIsZero(amazonRowCvrL30(rd))) return;
                     seen.add(sku);
-                    const dil = amazonRowDilPct(rd);
-                    if (dil < z.dil_low) counts.low++;
-                    else if (dil <= z.dil_high) counts.mid++;
-                    else counts.high++;
+                    const trend = amazonCvrTrend(rd, tol);
+                    if (trend === 'down') { counts.down++; counts.low++; }
+                    else if (trend === 'equal') { counts.equal++; counts.mid++; }
+                    else if (trend === 'up') { counts.up++; counts.high++; }
+                    else counts.none++;
                 });
                 return counts;
             }
@@ -4792,7 +4993,7 @@
                 if (!$canvasWrap.length || !pieCard.length) return;
                 const pieH = pieCard.innerHeight() || 0;
                 const headerH = (pieCard.find('.fw-bold').first().outerHeight(true) || 0) +
-                    (pieCard.find('[id$="-pie-legend"]').outerHeight(true) || 0) + 2;
+                    (pieCard.find('.sprice-cvr-rule-pie-legend, [id$="-pie-legend"]').first().outerHeight(true) || 0) + 2;
                 const canvasH = Math.max(36, Math.round((pieH - headerH) * 0.8));
                 $canvasWrap.css('height', canvasH + 'px');
                 if (chart && typeof chart.resize === 'function') chart.resize();
@@ -4825,31 +5026,24 @@
             }
 
             function refreshSpriceCvrZeroPieChart() {
-                const z = readZeroCvrDilFromUi();
                 const counts = countSpriceCvrZeroDilBands();
-                const total = counts.low + counts.mid + counts.high;
-                const dilLow = formatSlabBound(z.dil_low);
-                const dilHigh = formatSlabBound(z.dil_high);
-                const roiLow = formatSlabBound(z.roi_low);
-                const roiMid = formatSlabBound(z.roi_mid);
-                const roiHigh = formatSlabBound(z.roi_high);
-                const labelLow = 'Dil<' + dilLow + '% → GROI ' + roiLow + '%';
-                const labelMid = 'Dil ' + dilLow + '–' + dilHigh + '% → GROI ' + roiMid + '%';
-                const labelHigh = 'Dil>' + dilHigh + '% → GROI ' + roiHigh + '%';
-                const enabledNote = z.enabled === false ? ' <span class="text-danger">(disabled)</span>' : '';
+                const total = counts.down + counts.equal + counts.up + counts.none;
                 $('#sprice-cvr-zero-pie-legend').html(
                     total === 0
-                        ? ('No INV &gt; 0 SKUs with CVR = 0%' + enabledNote)
-                        : ('<span style="color:#c92a2a;font-weight:600;">' + labelLow + ': ' + counts.low + '</span>' +
-                            ' · <span style="color:#e03131;font-weight:600;">' + labelMid + ': ' + counts.mid + '</span>' +
-                            ' · <span style="color:#a00211;font-weight:600;">' + labelHigh + ': ' + counts.high + '</span>' +
-                            ' <span class="text-muted">(n=' + total + ')</span>' + enabledNote)
+                        ? 'No INV &gt; 0 SKUs with CVR = 0%'
+                        : (spriceCvrLegendPart('CVR % = Down', counts.down, total, '#c92a2a') +
+                            ' · ' + spriceCvrLegendPart('CVR % = Equal', counts.equal, total, '#e03131') +
+                            ' · ' + spriceCvrLegendPart('CVR % = Up', counts.up, total, '#a00211') +
+                            (counts.none
+                                ? (' · ' + spriceCvrLegendPart('No trend', counts.none, total, '#ced4da'))
+                                : '') +
+                            ' <span class="text-muted">(n=' + total + ')</span>')
                 );
                 spriceCvrZeroPieChart = upsertPieChart(spriceCvrZeroPieChart, 'sprice-cvr-zero-pie-chart', {
-                    labels: [labelLow, labelMid, labelHigh],
+                    labels: ['CVR % = Down', 'CVR % = Equal', 'CVR % = Up', 'No trend'],
                     datasets: [{
-                        data: [counts.low, counts.mid, counts.high],
-                        backgroundColor: ['#ff8787', '#fa5252', '#a00211'],
+                        data: [counts.down, counts.equal, counts.up, counts.none],
+                        backgroundColor: ['#ff8787', '#fa5252', '#a00211', '#ced4da'],
                         borderWidth: 1,
                         borderColor: '#fff'
                     }]
@@ -4891,17 +5085,19 @@
                 $('#sprice-cvr-' + uiKey + '-pie-legend').html(
                     total === 0
                         ? ('No INV &gt; 0 SKUs in ' + meta.label)
-                        : ('<span style="color:' + c[0] + ';font-weight:600;">↓' + counts.down + '</span>' +
-                            ' · <span style="color:' + c[1] + ';font-weight:600;">=' + counts.equal + '</span>' +
-                            ' · <span style="color:' + c[2] + ';font-weight:600;">↑' + counts.up + '</span>' +
-                            (counts.none ? (' · <span class="text-muted">?' + counts.none + '</span>') : '') +
+                        : (spriceCvrLegendPart('CVR % = Down', counts.down, total, c[0]) +
+                            ' · ' + spriceCvrLegendPart('CVR % = Equal', counts.equal, total, c[1]) +
+                            ' · ' + spriceCvrLegendPart('CVR % = Up', counts.up, total, c[2]) +
+                            (counts.none
+                                ? (' · ' + spriceCvrLegendPart('No trend', counts.none, total, c[3] || '#ced4da'))
+                                : '') +
                             ' <span class="text-muted">(n=' + total + ')</span>')
                 );
                 spriceCvrTrendPieCharts[uiKey] = upsertPieChart(
                     spriceCvrTrendPieCharts[uiKey],
                     'sprice-cvr-' + uiKey + '-pie-chart',
                     {
-                        labels: ['Down', 'Equal', 'Up', 'No trend'],
+                        labels: ['CVR % = Down', 'CVR % = Equal', 'CVR % = Up', 'No trend'],
                         datasets: [{
                             data: [counts.down, counts.equal, counts.up, counts.none],
                             backgroundColor: c,
@@ -4950,23 +5146,6 @@
                     seen.add(sku);
 
                     const cvr = amazonRowCvrL30(rd);
-                    // Rule 1 Red: CVR=0% Dil→GROI — classify vs current price base
-                    if (amazonCvrIsZero(cvr) && zeroDil.enabled) {
-                        const targetRoi = amazonZeroCvrTargetGroi(rd, zeroDil);
-                        const suggested = targetRoi != null ? amazonSpriceRoiFloor(rd, targetRoi) : null;
-                        const existing = parseFloat(rd.SPRICE) || 0;
-                        const amazonPrice = parseFloat(rd.price) || 0;
-                        const base = existing > 0 ? existing : amazonPrice;
-                        if (suggested == null || base <= 0) {
-                            counts.hold++;
-                            return;
-                        }
-                        if (suggested > base + 0.005) counts.increase++;
-                        else if (suggested < base - 0.005) counts.decrease++;
-                        else counts.hold++;
-                        return;
-                    }
-
                     const trend = amazonCvrTrend(rd, rule.trend_tolerance);
                     const mult = resolveSpriceCvrMult(cvr, trend, rule, rd);
                     if (mult == null || !isFinite(mult) || mult === 1) {
@@ -5052,7 +5231,7 @@
             const SPRICE_CVR_HISTORY_TITLES = {
                 slab: 'Amazon — Sprice × CVR Slab History',
                 action: 'Amazon — Sprice × CVR Action History',
-                rule_zero: 'Amazon — Rule 1 Dil→GROI History',
+                rule_zero: 'Amazon — Rule 1 Trend History',
                 rule_yellow: 'Amazon — Rule 2 Yellow Trend History',
                 rule_blue: 'Amazon — Rule 3 Blue Trend History',
                 rule_green: 'Amazon — Rule 4 Green Trend History',
@@ -5201,13 +5380,13 @@
                 if (!r.actions) r.actions = normalizeSpriceCvrActions(null);
                 r.slab_pct = normalizeSlabPct(r.slab_pct, r.yellow_pct);
                 r.yellow_pct = r.slab_pct.red;
-                r.blue_equal_dil = normalizeDilOverride(r.blue_equal_dil);
-                r.blue_up_dil = normalizeBlueUpDil(r.blue_up_dil);
-                r.green_equal_dil = normalizeDilOverride(r.green_equal_dil);
-                r.green_up_dil = normalizeGreenUpDil(r.green_up_dil);
-                r.pink_down_dil = normalizeDilOverride(r.pink_down_dil);
-                r.pink_equal_dil = normalizeDilOverride(r.pink_equal_dil);
-                r.pink_up_dil = normalizeDilOverride(r.pink_up_dil);
+                Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).forEach(function(k) {
+                    if (k === 'zero_up_dil') r[k] = normalizeZeroUpDil(r[k]);
+                    else if (k === 'yellow_up_dil') r[k] = normalizeYellowUpDil(r[k]);
+                    else if (k === 'blue_up_dil') r[k] = normalizeBlueUpDil(r[k]);
+                    else if (k === 'green_up_dil') r[k] = normalizeGreenUpDil(r[k]);
+                    else r[k] = normalizeDilOverride(r[k]);
+                });
                 $('#sprice-cvr-btn-label').text('Sprice Rule');
                 $('#sprice-cvr-low-input').val(SPRICE_CVR_YELLOW_END_DEFAULT);
                 $('#sprice-cvr-mid-input').val(r.mid_cvr);
@@ -5219,16 +5398,36 @@
                 applyZeroCvrDilToUi(r.zero_cvr_dil);
                 refreshSpriceCvrSlabLabels();
                 const sp = r.slab_pct;
+                const zActs = normalizeSpriceCvrActions(r.actions).zero;
                 $('#apply-sprice-cvr-btn').attr('title',
-                    'Per-rule % · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
+                    'Per-rule % · Dil override on all Down/Equal/Up · Z ' +
+                    sp.zero.down + '/' + sp.zero.equal + '/' + sp.zero.up +
+                    ' (' + zActs.down + '/' + zActs.equal + '/' + zActs.up + ')' +
+                    ' · Y ' + sp.red.down + '/' + sp.red.equal + '/' + sp.red.up +
                     ' · B ' + sp.blue.down + '/' + sp.blue.equal + '/' + sp.blue.up +
-                    ' · Blue =/↑ Increase if Dil>' + r.blue_equal_dil + '%/' + r.blue_up_dil + '%' +
                     ' · G ' + sp.green.down + '/' + sp.green.equal + '/' + sp.green.up +
-                    ' · Green =/↑ Increase if Dil>' + r.green_equal_dil + '%/' + r.green_up_dil + '%' +
                     ' · P ' + sp.pink.down + '/' + sp.pink.equal + '/' + sp.pink.up +
-                    ' · Pink ↓/=/↑ Increase if Dil>' + r.pink_down_dil + '%/' + r.pink_equal_dil + '%/' + r.pink_up_dil + '%' +
-                    ' · ROI floor ' + r.roi_floor_pct + '%' +
-                    (r.zero_cvr_dil && r.zero_cvr_dil.enabled !== false ? ' · 1 Red CVR0 Dil→GROI' : ''));
+                    ' · ROI floor ' + r.roi_floor_pct + '%');
+                syncCvrFilterSlabOptions();
+            }
+
+            /** Keep toolbar CVR% filter labels in sync with Sprice × CVR Rule slabs */
+            function syncCvrFilterSlabOptions() {
+                const $sel = $('#cvr-filter');
+                if (!$sel.length) return;
+                const s = resolveSpriceCvrSlabs(spriceCvrRule || {});
+                const yellowStart = formatSlabBound(s.yellow_start || SPRICE_CVR_YELLOW_START);
+                const low = formatSlabBound(s.low);
+                const mid = formatSlabBound(s.mid);
+                const high = formatSlabBound(s.high);
+                const blueStart = formatSlabBound(s.blue_start != null ? s.blue_start : (s.low + 0.01));
+                const greenStart = formatSlabBound(s.mid + 0.01);
+                const pinkAfter = formatSlabBound(s.pink_after != null ? s.pink_after : (s.high + 0.01));
+                $sel.find('option[value="zero"]').text('0%');
+                $sel.find('option[value="yellow"]').text(yellowStart + '–' + low + '%');
+                $sel.find('option[value="blue"]').text(blueStart + '–' + mid + '%');
+                $sel.find('option[value="green"]').text(greenStart + '–' + high + '%');
+                $sel.find('option[value="pink"]').html('&gt;' + pinkAfter + '%');
             }
 
             function loadSpriceCvrRule() {
@@ -5240,8 +5439,12 @@
                             spriceCvrRule = normalizeSpriceCvrRule(resp);
                         }
                         refreshSpriceCvrUi();
+                        syncCvrFilterSlabOptions();
                     },
-                    error: function() { refreshSpriceCvrUi(); }
+                    error: function() {
+                        refreshSpriceCvrUi();
+                        syncCvrFilterSlabOptions();
+                    }
                 });
             }
 
@@ -5250,7 +5453,7 @@
                 const zeroDil = readZeroCvrDilFromUi();
                 const slabPct = readSlabPctFromUi();
                 const dilOverrides = readDilOverridesFromUi();
-                const payload = {
+                const payload = Object.assign({
                     low_cvr: SPRICE_CVR_YELLOW_END_DEFAULT,
                     mid_cvr: slabs.mid,
                     high_cvr: slabs.high,
@@ -5260,29 +5463,19 @@
                     actions: readSpriceCvrActionsFromUi(),
                     yellow_pct: slabPct.red,
                     slab_pct: slabPct,
-                    blue_equal_dil: dilOverrides.blue_equal_dil,
-                    blue_up_dil: dilOverrides.blue_up_dil,
-                    green_equal_dil: dilOverrides.green_equal_dil,
-                    green_up_dil: dilOverrides.green_up_dil,
-                    pink_down_dil: dilOverrides.pink_down_dil,
-                    pink_equal_dil: dilOverrides.pink_equal_dil,
-                    pink_up_dil: dilOverrides.pink_up_dil,
                     zero_cvr_dil: zeroDil
-                };
+                }, dilOverrides);
                 const pctOk = SPRICE_CVR_SLABS.every(function(slab) {
                     const p = slabPct[slab];
                     return p && isFinite(p.down) && isFinite(p.equal) && isFinite(p.up);
                 });
-                const dilOk = isFinite(dilOverrides.blue_equal_dil) && isFinite(dilOverrides.blue_up_dil) &&
-                    isFinite(dilOverrides.green_equal_dil) && isFinite(dilOverrides.green_up_dil) &&
-                    isFinite(dilOverrides.pink_down_dil) && isFinite(dilOverrides.pink_equal_dil) &&
-                    isFinite(dilOverrides.pink_up_dil);
+                const dilOk = Object.keys(SPRICE_CVR_DEFAULT_DIL_OVERRIDES).every(function(k) {
+                    return isFinite(dilOverrides[k]);
+                });
                 if (!isFinite(payload.mid_cvr) || !isFinite(payload.high_cvr) ||
-                    !isFinite(payload.roi_floor_pct) || !dilOk || !pctOk ||
-                    !isFinite(zeroDil.dil_low) || !isFinite(zeroDil.dil_high) ||
-                    !isFinite(zeroDil.roi_low) || !isFinite(zeroDil.roi_mid) || !isFinite(zeroDil.roi_high)) {
+                    !isFinite(payload.roi_floor_pct) || !dilOk || !pctOk) {
                     $('#sprice-cvr-modal-status').removeClass('text-success').addClass('text-danger')
-                        .text('Enter valid numbers for all fields (incl. rule %, Blue/Green Dil, CVR=0 Dil/GROI)');
+                        .text('Enter valid numbers for all fields (incl. rule %, Dil overrides)');
                     return;
                 }
                 if (!(payload.mid_cvr > payload.low_cvr && payload.high_cvr > payload.mid_cvr)) {
@@ -5437,13 +5630,6 @@
                 refreshSpriceCvrSlabLabels();
                 refreshSpriceCvrPieChart();
             });
-            $('#sprice-cvr-zero-dil-low, #sprice-cvr-zero-dil-high').on('input change', function() {
-                refreshZeroCvrDilMidLabel();
-                refreshSpriceCvrPieChart();
-            });
-            $('#sprice-cvr-zero-enabled, #sprice-cvr-zero-roi-low, #sprice-cvr-zero-roi-mid, #sprice-cvr-zero-roi-high').on('change input', function() {
-                refreshSpriceCvrPieChart();
-            });
             $(document).on('change', '.sprice-cvr-action-select', function() {
                 spriceCvrRule.actions = readSpriceCvrActionsFromUi();
                 refreshSpriceCvrPieChart();
@@ -5475,13 +5661,7 @@
                     actions: readSpriceCvrActionsFromUi(),
                     yellow_pct: slabPct.red,
                     slab_pct: slabPct,
-                    blue_equal_dil: dilOverrides.blue_equal_dil,
-                    blue_up_dil: dilOverrides.blue_up_dil,
-                    green_equal_dil: dilOverrides.green_equal_dil,
-                    green_up_dil: dilOverrides.green_up_dil,
-                    pink_down_dil: dilOverrides.pink_down_dil,
-                    pink_equal_dil: dilOverrides.pink_equal_dil,
-                    pink_up_dil: dilOverrides.pink_up_dil,
+                    ...dilOverrides,
                     zero_cvr_dil: zeroDil
                 });
                 const btnHtml = '<i class="fas fa-percentage"></i> <span id="sprice-cvr-btn-label">' +
@@ -5512,22 +5692,6 @@
                     if (useSelection && !effectiveSelected.has(sku)) return;
 
                     const cvr = amazonRowCvrL30(rd);
-
-                    // Rule 1 Red: CVR = 0% → set SPRICE to Dil-band GROI target
-                    if (amazonCvrIsZero(cvr) && zeroDil.enabled) {
-                        const targetRoi = amazonZeroCvrTargetGroi(rd, zeroDil);
-                        const sprice = targetRoi != null ? amazonSpriceRoiFloor(rd, targetRoi) : null;
-                        if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
-
-                        seen.add(sku);
-                        zeroCvrCount++;
-                        rowsToProcess.push({
-                            row: r, sku: sku, sprice: sprice,
-                            trend: 'zero_cvr', mult: null, target_groi: targetRoi
-                        });
-                        return;
-                    }
-
                     const trend = amazonCvrTrend(rd, rule.trend_tolerance);
                     const mult = resolveSpriceCvrMult(cvr, trend, rule, rd);
                     if (mult == null) return;
@@ -5547,6 +5711,7 @@
                     }
 
                     seen.add(sku);
+                    if (amazonCvrIsZero(cvr)) zeroCvrCount++;
                     rowsToProcess.push({ row: r, sku: sku, sprice: sprice, trend: trend, mult: mult });
                 });
 
@@ -5562,10 +5727,7 @@
                     ? ('\n' + flooredCount + ' SKU(s) capped at ' + rule.roi_floor_pct + '% ROI floor')
                     : '';
                 const zeroNote = zeroCvrCount > 0
-                    ? ('\n' + zeroCvrCount + ' SKU(s) via CVR=0% Dil→GROI (' +
-                        'Dil<' + formatSlabBound(zeroDil.dil_low) + '→' + formatSlabBound(zeroDil.roi_low) + '%; ' +
-                        formatSlabBound(zeroDil.dil_low) + '–' + formatSlabBound(zeroDil.dil_high) + '→' + formatSlabBound(zeroDil.roi_mid) + '%; ' +
-                        '>' + formatSlabBound(zeroDil.dil_high) + '→' + formatSlabBound(zeroDil.roi_high) + '%)')
+                    ? ('\n' + zeroCvrCount + ' SKU(s) via CVR=0% trend')
                     : '';
                 const slabs = resolveSpriceCvrSlabs(rule);
                 const acts = normalizeSpriceCvrActions(rule.actions);
@@ -5585,33 +5747,27 @@
                 const pinkAfter = formatSlabBound(slabs.pink_after);
                 const yellowStart = formatSlabBound(slabs.yellow_start || SPRICE_CVR_YELLOW_START);
                 const yellowBand = yellowStart + '–' + lowL + '%';
+                const dilInc = function(slab, trend) {
+                    return ' (Inc if Dil>' + formatSlabBound(dilOverrideThreshold(rule, slab, trend)) + '%)';
+                };
                 if (!confirm(
                     'Adjust SPRICE by CVR trend for ' + rowsToProcess.length + ' ' + scope + ' SKU(s)?\n' +
-                    (zeroDil.enabled
-                        ? ('1 Red CVR=0% Dil→GROI: <' + formatSlabBound(zeroDil.dil_low) + '→' + formatSlabBound(zeroDil.roi_low) +
-                            '% · ' + formatSlabBound(zeroDil.dil_low) + '–' + formatSlabBound(zeroDil.dil_high) + '→' + formatSlabBound(zeroDil.roi_mid) +
-                            '% · >' + formatSlabBound(zeroDil.dil_high) + '→' + formatSlabBound(zeroDil.roi_high) + '%\n')
-                        : '') +
-                    '2 Yellow ' + yellowBand + ': Down=' + actLabel(acts.red.down, 'red', 'down') +
-                    ', Equal=' + actLabel(acts.red.equal, 'red', 'equal') +
-                    ', Up=' + actLabel(acts.red.up, 'red', 'up') + '\n' +
-                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel(acts.blue.down, 'blue', 'down') +
-                    ', Equal=' + actLabel(acts.blue.equal, 'blue', 'equal') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeDilOverride(rule.blue_equal_dil)) + '%)' +
-                    ', Up=' + actLabel(acts.blue.up, 'blue', 'up') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeBlueUpDil(rule.blue_up_dil)) + '%)\n' +
-                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel(acts.green.down, 'green', 'down') +
-                    ', Equal=' + actLabel(acts.green.equal, 'green', 'equal') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeDilOverride(rule.green_equal_dil)) + '%)' +
-                    ', Up=' + actLabel(acts.green.up, 'green', 'up') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeGreenUpDil(rule.green_up_dil)) + '%)\n' +
-                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel(acts.pink.down, 'pink', 'down') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeDilOverride(rule.pink_down_dil)) + '%)' +
-                    ', Equal=' + actLabel(acts.pink.equal, 'pink', 'equal') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeDilOverride(rule.pink_equal_dil)) + '%)' +
-                    ', Up=' + actLabel(acts.pink.up, 'pink', 'up') +
-                    ' (Inc if Dil>' + formatSlabBound(normalizeDilOverride(rule.pink_up_dil)) + '%)\n' +
-                    'Floor: Sroi ≥ ' + rule.roi_floor_pct + '%' +
+                    '1 Red CVR=0%: Down=' + actLabel(acts.zero.down, 'zero', 'down') + dilInc('zero', 'down') +
+                    ', Equal=' + actLabel(acts.zero.equal, 'zero', 'equal') + dilInc('zero', 'equal') +
+                    ', Up=' + actLabel(acts.zero.up, 'zero', 'up') + dilInc('zero', 'up') + '\n' +
+                    '2 Yellow ' + yellowBand + ': Down=' + actLabel(acts.red.down, 'red', 'down') + dilInc('red', 'down') +
+                    ', Equal=' + actLabel(acts.red.equal, 'red', 'equal') + dilInc('red', 'equal') +
+                    ', Up=' + actLabel(acts.red.up, 'red', 'up') + dilInc('red', 'up') + '\n' +
+                    '3 Blue ' + blueStart + '–' + midL + '%: Down=' + actLabel(acts.blue.down, 'blue', 'down') + dilInc('blue', 'down') +
+                    ', Equal=' + actLabel(acts.blue.equal, 'blue', 'equal') + dilInc('blue', 'equal') +
+                    ', Up=' + actLabel(acts.blue.up, 'blue', 'up') + dilInc('blue', 'up') + '\n' +
+                    '4 Green ' + greenStart + '–' + highL + '%: Down=' + actLabel(acts.green.down, 'green', 'down') + dilInc('green', 'down') +
+                    ', Equal=' + actLabel(acts.green.equal, 'green', 'equal') + dilInc('green', 'equal') +
+                    ', Up=' + actLabel(acts.green.up, 'green', 'up') + dilInc('green', 'up') + '\n' +
+                    '5 Pink >' + pinkAfter + '%: Down=' + actLabel(acts.pink.down, 'pink', 'down') + dilInc('pink', 'down') +
+                    ', Equal=' + actLabel(acts.pink.equal, 'pink', 'equal') + dilInc('pink', 'equal') +
+                    ', Up=' + actLabel(acts.pink.up, 'pink', 'up') + dilInc('pink', 'up') + '\n' +
+                    'Floor: SGROI ≥ ' + rule.roi_floor_pct + '%' +
                     '\nNo decrease when Dil% > 100' +
                     floorNote + zeroNote
                 )) {
@@ -5732,7 +5888,7 @@
                     return;
                 }
 
-                const confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so Sroi = ${targetRoiPct}%?\n\n(sprice = (LP \u00d7 (1 + Target/100) + Ship) / 0.80)`;
+                const confirmMsg = `Compute & save S PRC for ${rowsToProcess.length} selected SKU(s) so SGROI = ${targetRoiPct}%?\n\n(sprice = (LP \u00d7 (1 + Target/100) + Ship) / 0.80)`;
                 if (!confirm(confirmMsg)) {
                     return;
                 }
@@ -5770,7 +5926,7 @@
                             if (successCount + errorCount === total) {
                                 $btn.prop('disabled', false).html('<i class="fas fa-calculator"></i>');
                                 if (errorCount === 0) {
-                                    showToast('success', `S PRC saved for ${successCount} SKU(s) — Sroi = ${targetRoiPct}%`);
+                                    showToast('success', `S PRC saved for ${successCount} SKU(s) — SGROI = ${targetRoiPct}%`);
                                 } else {
                                     showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
                                 }
@@ -6477,6 +6633,7 @@
                 },
                 ajaxSorting: false,
                 layout: "fitDataStretch",
+                movableColumns: true,
                 pagination: true,
                 paginationSize: 100,
                 columnCalcs: "both",
@@ -6523,7 +6680,7 @@
                 columns: [
                     // Row selection checkbox column
                     {
-                        title: "<div style='transform: rotate(0deg) !important; display: flex; justify-content: center; align-items: center;'><input type='checkbox' id='select-all-rows' title='Select All' style='transform: rotate(0deg) !important; width: 16px; height: 16px; cursor: pointer;'></div>",
+                        title: "<div style='transform: rotate(0deg) !important; display: flex; justify-content: center; align-items: center;'><input type='checkbox' id='select-all-rows' title='Select all filtered rows (all pages)' style='transform: rotate(0deg) !important; width: 16px; height: 16px; cursor: pointer;'></div>",
                         field: "row_select",
                         hozAlign: "center",
                         headerSort: false,
@@ -8020,29 +8177,7 @@
                         width: 100
                     },
                     {
-                        title: "S GPFT",
-                        field: "SGPFT",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            // Same as GPFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "Sroi",
+                        title: "SGROI",
                         field: "SGROI",
                         hozAlign: "center",
                         // Same formula as GROI%: ((SPRICE × 0.80 − ship − lp) / lp) × 100
@@ -8066,6 +8201,28 @@
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 65
+                    },
+                    {
+                        title: "S GPFT",
+                        field: "SGPFT",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as GPFT% color logic
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
                     },
                     {
                         title: "SNPFT",
@@ -8573,18 +8730,36 @@
                 }
 
                 if (cvrFilter !== 'all') {
+                    // Same bands as Sprice × CVR Rule (Red/Yellow/Blue/Green/Pink)
+                    const slabs = (typeof resolveSpriceCvrSlabs === 'function')
+                        ? resolveSpriceCvrSlabs(spriceCvrRule || {})
+                        : { low: 3.5, mid: 7, high: 13, yellow_start: 0.01, pink_after: 13.01 };
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
-                        const aL30 = parseFloat(data['A_L30']) || 0;
-                        const sess30 = parseFloat(data['Sess30']) || 0;
-                        const cvr = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
-                        const cvrRounded = Math.round(cvr * 100) / 100;
+                        const cvr = (typeof amazonRowCvrL30 === 'function')
+                            ? amazonRowCvrL30(data)
+                            : ((parseFloat(data['Sess30']) || 0) <= 0 ? 0
+                                : ((parseFloat(data['A_L30']) || 0) / (parseFloat(data['Sess30']) || 1)) * 100);
+                        const isZero = (typeof amazonCvrIsZero === 'function')
+                            ? amazonCvrIsZero(cvr)
+                            : (!isFinite(cvr) || Math.abs(cvr) < 0.005);
 
-                        if (cvrFilter === '0-0') return cvrRounded === 0;
-                        if (cvrFilter === '0-3') return cvrRounded > 0 && cvrRounded <= 3;
-                        if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
-                        if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
-                        if (cvrFilter === '13plus') return cvrRounded > 13;
+                        if (cvrFilter === 'zero' || cvrFilter === '0-0') return isZero;
+                        if (isZero) return false;
+
+                        // Legacy option values → new slab keys
+                        let key = cvrFilter;
+                        if (key === '0-3') key = 'yellow';
+                        else if (key === '3-7') key = 'blue';
+                        else if (key === '7-13') key = 'green';
+                        else if (key === '13plus') key = 'pink';
+
+                        const slab = (typeof amazonCvrSlab === 'function')
+                            ? amazonCvrSlab(cvr, slabs.low, slabs.mid, slabs.high)
+                            : (cvr <= slabs.low ? 'red' : (cvr <= slabs.mid ? 'blue' : (cvr <= (slabs.high + 0.01) ? 'green' : 'pink')));
+                        // Yellow band uses internal key "red" in amazonCvrSlab
+                        if (key === 'yellow') return slab === 'red';
+                        if (key === 'blue' || key === 'green' || key === 'pink') return slab === key;
                         return true;
                     });
                 }
@@ -9144,11 +9319,86 @@
             }
 
             /*
-             * Column visibility (every column for this page) persists in the shared DB table
-             * `channel_tabulator_column_settings` under channel = 'amazon_tabulator'. We hit the
-             * same /tabulator-column-visibility endpoint used by the ebay2/ebay3/mfrg tabulators
-             * so a single row owns the show/hide map for everyone on this view.
+             * Column visibility — 4 groups (Basic / Price / Ads / Other).
+             * Persists in channel_tabulator_column_settings (channel = amazon_tabulator).
+             * Every column with a field is listed; none are removed.
              */
+            const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'ads', 'other'];
+            const COL_VIS_CATEGORY_LABELS = {
+                basic: 'Basic',
+                price: 'Price',
+                ads: 'Ads',
+                other: 'Other'
+            };
+
+            function amazonColVisPlainTitle(def) {
+                const field = def && def.field ? String(def.field) : '';
+                if (field === 'row_select') return 'Row Select';
+                if (field === '_select') return 'Select';
+                if (field === '_accept') return 'Push Prices';
+                const raw = (def && def.title != null) ? def.title : field;
+                const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                return t || field;
+            }
+
+            function classifyAmazonColumn(field, title) {
+                const f = String(field || '');
+                const t = String(title || field || '').toLowerCase();
+                const fl = f.toLowerCase();
+
+                // Ads — ad spend / campaign / ROAS style metrics (if present)
+                if (
+                    /^(nra|kw_spend|hl_spend|pt_spend|total_spend|acos|roas|ads_percent|ad_spend)$/i.test(f) ||
+                    /\b(ads?|acos|roas|spend|campaign|tacos)\b/i.test(t)
+                ) {
+                    return 'ads';
+                }
+
+                // Price — selling price, LMP, SPRICE, profit/ROI %
+                if (
+                    /^(price|fba_price|ship_productmaster|gpft%|groi%|pft%|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|_select|sprice|s_status|pls_status|_accept|sgpft|sgroi|spft%|sroi|tpft)$/i.test(f) ||
+                    /\b(price|prc|ship|gpft|groi|pft|sp\b|lmp|s\s*prc|s\s*st|pls|push|sgpft|sroi|snpft|snroi|tpft|diff)\b/i.test(t)
+                ) {
+                    return 'price';
+                }
+
+                // Basic — identity, CVR, inventory, listing links, dil/views
+                if (
+                    /^(row_select|parent|image_path|\(child\) sku|cvr_l60|cvr_l45|cvr_l30|nr|nrp|is_missing|inv_map|amz_avg_rating|asin|seller_asin_link|inv|inv_amz|fba_quantity|l30|e dil%|a_l30|a dil %|nrl|sess30)$/i.test(f) ||
+                    /\b(parent|image|sku|cvr|nr\/?rl|nrp|miss|reviews?|buyer|seller|inv|fba|ov\s*l30|dil|a\s*l30|nrl|view)\b/i.test(t)
+                ) {
+                    return 'basic';
+                }
+
+                // Other — review/issue/action notes and anything unmatched
+                if (
+                    /^(review_issue|issue_found|action_taken)$/i.test(f) ||
+                    /\b(issue|action)\b/i.test(t)
+                ) {
+                    return 'other';
+                }
+
+                // Fallback by field list so nothing is dropped
+                if (fl.includes('cvr') || fl.includes('inv') || fl.includes('sku') || fl.includes('parent') || fl.includes('dil') || fl.includes('nr')) {
+                    return 'basic';
+                }
+                if (fl.includes('price') || fl.includes('lmp') || fl.includes('sprice') || fl.includes('gpft') || fl.includes('groi') || fl.includes('roi') || fl.includes('pft')) {
+                    return 'price';
+                }
+                return 'other';
+            }
+
+            function syncAmazonGroupHeaderCheckbox(groupEl) {
+                if (!groupEl) return;
+                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                if (!headerCb || !itemCbs.length) return;
+                let checked = 0;
+                itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-menu");
                 if (!menu) return;
@@ -9164,19 +9414,75 @@
                     .then(res => res.json())
                     .then(savedVisibility => {
                         const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+
+                        const groupsLi = document.createElement("li");
+                        groupsLi.className = "col-vis-full";
+                        const groupsWrap = document.createElement("div");
+                        groupsWrap.className = "col-vis-groups";
+
+                        const lists = {};
+                        const groupEls = {};
+                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                            const group = document.createElement("div");
+                            group.className = "col-vis-group";
+                            group.dataset.category = cat;
+
+                            const titleEl = document.createElement("label");
+                            titleEl.className = "col-vis-group-title";
+                            const groupCb = document.createElement("input");
+                            groupCb.type = "checkbox";
+                            groupCb.className = "col-vis-group-toggle";
+                            groupCb.dataset.group = cat;
+                            groupCb.title = "Select / deselect all in " + COL_VIS_CATEGORY_LABELS[cat];
+                            titleEl.appendChild(groupCb);
+                            titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                            group.appendChild(titleEl);
+
+                            const list = document.createElement("ul");
+                            list.className = "col-vis-group-list";
+                            list.dataset.category = cat;
+                            group.appendChild(list);
+                            groupsWrap.appendChild(group);
+                            lists[cat] = list;
+                            groupEls[cat] = group;
+                        });
+
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             const field = def.field;
                             if (!field) return;
 
-                            // Prefer the saved value; fall back to the column's current visibility.
-                            // Anything explicitly set to false in the table = hidden.
+                            const title = amazonColVisPlainTitle(def);
+                            const cat = classifyAmazonColumn(field, title);
                             const isVisible = map.hasOwnProperty(field) ? (map[field] !== false) : col.isVisible();
+
                             const li = document.createElement("li");
-                            li.innerHTML =
-                                `<label class="dropdown-item"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${def.title}</label>`;
-                            menu.appendChild(li);
+                            li.className = "col-vis-item";
+                            li.dataset.field = field;
+                            li.dataset.group = cat;
+
+                            const label = document.createElement("label");
+                            const checkbox = document.createElement("input");
+                            checkbox.type = "checkbox";
+                            checkbox.value = field;
+                            checkbox.setAttribute('data-field', field);
+                            checkbox.className = "col-vis-field-toggle";
+                            checkbox.dataset.group = cat;
+                            checkbox.checked = isVisible;
+
+                            label.appendChild(checkbox);
+                            label.appendChild(document.createTextNode(' ' + title));
+                            label.title = title;
+                            li.appendChild(label);
+                            lists[cat].appendChild(li);
                         });
+
+                        COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                            syncAmazonGroupHeaderCheckbox(groupEls[cat]);
+                        });
+
+                        groupsLi.appendChild(groupsWrap);
+                        menu.appendChild(groupsLi);
                     })
                     .catch(err => console.error('Error loading column visibility:', err));
             }
@@ -9204,7 +9510,7 @@
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                return fetch(TABULATOR_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -9228,14 +9534,110 @@
                     .catch(err => console.error('Error applying column visibility:', err));
             }
 
+            function currentAmazonColumnOrder() {
+                if (!table) return [];
+                return table.getColumns()
+                    .map(function(col) { return col.getField(); })
+                    .filter(function(f) { return !!f; });
+            }
+
+            function saveAmazonColumnOrderToServer() {
+                if (!table || amazonApplyingColumnOrder) return;
+                const order = currentAmazonColumnOrder();
+                if (!order.length) return;
+                fetch(TABULATOR_COLUMN_ORDER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    body: JSON.stringify({
+                        channel: TABULATOR_COLUMN_CHANNEL,
+                        order: order
+                    })
+                }).catch(err => console.error('Error saving column order:', err));
+            }
+
+            function scheduleAmazonColumnOrderSave() {
+                if (amazonColumnOrderSaveTimer) clearTimeout(amazonColumnOrderSaveTimer);
+                amazonColumnOrderSaveTimer = setTimeout(saveAmazonColumnOrderToServer, 350);
+            }
+
+            function applyAmazonColumnOrder(order) {
+                if (!table || !Array.isArray(order) || !order.length) return;
+                const existing = currentAmazonColumnOrder();
+                if (!existing.length) return;
+
+                const valid = [];
+                const seen = {};
+                order.forEach(function(f) {
+                    if (!f || seen[f] || existing.indexOf(f) === -1) return;
+                    seen[f] = true;
+                    valid.push(f);
+                });
+                existing.forEach(function(f) {
+                    if (!seen[f]) valid.push(f);
+                });
+
+                amazonApplyingColumnOrder = true;
+                try {
+                    for (let i = 0; i < valid.length; i++) {
+                        const field = valid[i];
+                        const cols = table.getColumns().filter(function(c) { return !!c.getField(); });
+                        const currentIdx = cols.findIndex(function(c) { return c.getField() === field; });
+                        if (currentIdx === i || currentIdx < 0) continue;
+                        if (i === 0) {
+                            const firstField = cols[0].getField();
+                            if (firstField && firstField !== field) {
+                                table.moveColumn(field, firstField, false);
+                            }
+                        } else {
+                            const prevField = valid[i - 1];
+                            if (prevField) table.moveColumn(field, prevField, true);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error applying column order:', err);
+                } finally {
+                    amazonApplyingColumnOrder = false;
+                }
+            }
+
+            function applyColumnOrderFromServer() {
+                return fetch(TABULATOR_COLUMN_ORDER_URL + '?channel=' + encodeURIComponent(TABULATOR_COLUMN_CHANNEL), {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        }
+                    })
+                    .then(res => res.json())
+                    .then(resp => {
+                        if (resp && resp.success && Array.isArray(resp.order) && resp.order.length) {
+                            applyAmazonColumnOrder(resp.order);
+                        }
+                    })
+                    .catch(err => console.error('Error loading column order:', err));
+            }
+
             // Wait for table to be built - applyFilters first for fast visible result, then defer heavy work
             table.on('tableBuilt', function() {
                 applyFilters();
                 requestAnimationFrame(function() {
-                    applyColumnVisibilityFromServer();
-                    buildColumnDropdown();
-                    updateApplyAllButton();
+                    Promise.resolve(applyColumnVisibilityFromServer())
+                        .then(function() { return applyColumnOrderFromServer(); })
+                        .finally(function() {
+                            buildColumnDropdown();
+                            updateApplyAllButton();
+                        });
                 });
+            });
+
+            table.on('columnMoved', function() {
+                if (amazonApplyingColumnOrder) return;
+                scheduleAmazonColumnOrderSave();
+                // Keep Columns dropdown labels in sync with new order
+                buildColumnDropdown();
             });
 
             table.on('dataLoaded', function() {
@@ -9302,33 +9704,27 @@
             // Row selection - track selected rows
             var selectedRows = new Set();
 
-            // Select all rows checkbox handler - only select rows on current page
+            // Select all rows — all filtered data across every page (not just current 100)
             $(document).on('change', '#select-all-rows', function() {
                 var isChecked = $(this).prop('checked');
-                
-                // Get rows on current page using Tabulator's getPageData or getRows
-                var currentPageRows = table.getRows('active');
-                var pageSize = table.getPageSize();
-                var currentPage = table.getPage();
-                var startIndex = (currentPage - 1) * pageSize;
-                var endIndex = startIndex + pageSize;
-                
-                // Get only rows for current page
-                var pageRows = currentPageRows.slice(startIndex, endIndex);
-                
-                pageRows.forEach(function(row) {
-                    var sku = row.getData()['(Child) sku'] || '';
-                    if (sku) {
-                        if (isChecked) {
-                            selectedRows.add(sku);
-                        } else {
-                            selectedRows.delete(sku);
-                        }
-                    }
+                if (!table) return;
+
+                var filteredRows = table.getRows('active') || [];
+                filteredRows.forEach(function(row) {
+                    var rd = row.getData() || {};
+                    if (rd.is_parent_summary) return;
+                    var sku = rd['(Child) sku'] || '';
+                    if (!sku) return;
+                    if (isChecked) selectedRows.add(sku);
+                    else selectedRows.delete(sku);
                 });
-                
-                // Update all visible checkboxes on current page
-                $('.row-select-checkbox').prop('checked', isChecked);
+
+                // Sync visible page checkboxes from the full selection set
+                $('.row-select-checkbox').each(function() {
+                    var sku = $(this).data('sku');
+                    $(this).prop('checked', selectedRows.has(sku));
+                });
+                $(this).prop('indeterminate', false);
                 updateSelectedCount();
             });
 
@@ -9344,23 +9740,36 @@
                 updateSelectedCount();
             });
 
-            // Update select all checkbox state based on individual checkboxes
+            // Header checkbox reflects selection across all filtered pages
             function updateRowSelectAllCheckbox() {
-                var allCheckboxes = $('.row-select-checkbox');
-                var checkedCheckboxes = $('.row-select-checkbox:checked');
-                
-                if (allCheckboxes.length === 0) {
-                    $('#select-all-rows').prop('checked', false);
-                    $('#select-all-rows').prop('indeterminate', false);
-                } else if (checkedCheckboxes.length === 0) {
-                    $('#select-all-rows').prop('checked', false);
-                    $('#select-all-rows').prop('indeterminate', false);
-                } else if (checkedCheckboxes.length === allCheckboxes.length) {
-                    $('#select-all-rows').prop('checked', true);
-                    $('#select-all-rows').prop('indeterminate', false);
+                if (!table) {
+                    $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                    return;
+                }
+                var filteredSkus = [];
+                (table.getRows('active') || []).forEach(function(row) {
+                    var rd = row.getData() || {};
+                    if (rd.is_parent_summary) return;
+                    var sku = rd['(Child) sku'] || '';
+                    if (sku) filteredSkus.push(sku);
+                });
+
+                if (filteredSkus.length === 0) {
+                    $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                    return;
+                }
+
+                var selectedCount = 0;
+                filteredSkus.forEach(function(sku) {
+                    if (selectedRows.has(sku)) selectedCount++;
+                });
+
+                if (selectedCount === 0) {
+                    $('#select-all-rows').prop('checked', false).prop('indeterminate', false);
+                } else if (selectedCount === filteredSkus.length) {
+                    $('#select-all-rows').prop('checked', true).prop('indeterminate', false);
                 } else {
-                    $('#select-all-rows').prop('checked', false);
-                    $('#select-all-rows').prop('indeterminate', true);
+                    $('#select-all-rows').prop('checked', false).prop('indeterminate', true);
                 }
             }
 
@@ -9652,17 +10061,44 @@
                 updateSelectedCount();
             }
 
-            // Toggle column from dropdown
+            // Toggle column / group from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type === 'checkbox') {
-                    const field = e.target.getAttribute('data-field');
-                    const col = table.getColumn(field);
-                    if (e.target.checked) {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
+                if (e.target.type !== 'checkbox') return;
+
+                // Group header: select / deselect entire category
+                if (e.target.classList.contains('col-vis-group-toggle')) {
+                    const checked = e.target.checked;
+                    const groupEl = e.target.closest('.col-vis-group');
+                    const itemCbs = groupEl
+                        ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                        : [];
+                    itemCbs.forEach(function(cb) {
+                        const field = cb.getAttribute('data-field') || cb.value;
+                        cb.checked = checked;
+                        const col = table.getColumn(field);
+                        if (!col) return;
+                        if (checked) col.show();
+                        else col.hide();
+                    });
+                    e.target.indeterminate = false;
                     saveColumnVisibilityToServer();
+                    return;
+                }
+
+                const field = e.target.getAttribute('data-field') || e.target.value;
+                const col = table.getColumn(field);
+                if (!col) return;
+                if (e.target.checked) col.show();
+                else col.hide();
+                const groupEl = e.target.closest('.col-vis-group');
+                syncAmazonGroupHeaderCheckbox(groupEl);
+                saveColumnVisibilityToServer();
+            });
+
+            // Keep dropdown open when clicking checkboxes / labels
+            document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
+                if (e.target.closest('label') || e.target.type === 'checkbox') {
+                    e.stopPropagation();
                 }
             });
 

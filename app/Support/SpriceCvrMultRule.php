@@ -10,27 +10,21 @@ use Illuminate\Support\Facades\DB;
  * Trend = today CVR vs previous recorded day (same tol as CVR L30 arrows).
  *
  * Five dynamic CVR rules:
- *   1 Red    : CVR = 0% → Dil% bands → target GROI%
+ *   1 Red    : CVR = 0% — CVR trend Down/Equal/Up (key: zero; defaults like Yellow)
  *   2 Yellow : 0.01 – 3.5 (fixed; stored action key: red / low_cvr=3.5)
  *              Per-rule Down/Equal/Up % via slab_pct (Yellow defaults 2/1/1; others 1/1/1)
  *   3 Blue   : 3.51 – mid_cvr (default 3.51–7)
- *              Equal/Up: if Dil% > blue_*_dil (default 100) → Increase
  *   4 Green  : mid+0.01 – high (default 7.01–13)
- *              Equal/Up: if Dil% > green_*_dil (default 100) → Increase
  *   5 Pink   : > high+0.01 (default >13.01)
- *              Down/Equal/Up: if Dil% > pink_*_dil (default 100) → Increase
- * Per Yellow/Blue/Green/Pink, Down / Equal / Up actions are configurable: increase | decrease | hold.
+ * Per Zero/Yellow/Blue/Green/Pink, Down / Equal / Up actions are configurable: increase | decrease | hold.
+ * Every rule also has Dil overrides for Down/Equal/Up: if Dil% > *_*_dil (default 100) → Increase.
  *
  * After multiply:
  *   - floor so Sroi (gross) ≥ roi_floor_pct:
  *       floor = (LP × (1 + roi_floor_pct/100) + Ship) / 0.80
  *   - no decrease when Dil% (L30/INV×100) > 100
  *
- * Rule 1 when CVR L30 = 0%:
- *   - Dil% < dil_low      → suggest SPRICE at roi_low GROI%
- *   - Dil% dil_low–dil_high → suggest SPRICE at roi_mid GROI%
- *   - Dil% > dil_high     → suggest SPRICE at roi_high GROI%
- *   (SPRICE = (LP × (1 + GROI%/100) + Ship) / 0.80)
+ * Rule 1 when CVR L30 = 0%: same CVR-trend format as Yellow (actions.zero + zero_*_dil)
  *
  * Stored in ebay_sbid_rules under key ebay_sprice_cvr.
  */
@@ -52,8 +46,12 @@ final class SpriceCvrMultRule
 
     public const DEFAULT_TREND_TOLERANCE = 0.1;
 
-    /** Rule 3/4 Blue|Green Equal/Up: Increase when Dil% (L30/INV×100) exceeds this */
+    /** Dil overrides: all rules Down/Equal/Up → Increase when Dil% exceeds this */
     public const DEFAULT_DIL_OVERRIDE = 100.0;
+
+    public const DEFAULT_ZERO_UP_DIL = self::DEFAULT_DIL_OVERRIDE;
+
+    public const DEFAULT_YELLOW_UP_DIL = self::DEFAULT_DIL_OVERRIDE;
 
     public const DEFAULT_BLUE_UP_DIL = self::DEFAULT_DIL_OVERRIDE;
 
@@ -93,6 +91,7 @@ final class SpriceCvrMultRule
     public static function defaultSlabActions(string $slab): array
     {
         return match ($slab) {
+            'zero' => ['down' => 'decrease', 'equal' => 'decrease', 'up' => 'hold'],
             'red' => ['down' => 'decrease', 'equal' => 'decrease', 'up' => 'hold'],
             'pink' => ['down' => 'hold', 'equal' => 'decrease', 'up' => 'increase'],
             default => ['down' => 'hold', 'equal' => 'hold', 'up' => 'hold'], // blue, green
@@ -127,6 +126,7 @@ final class SpriceCvrMultRule
 
     /**
      * @return array{
+     *   zero: array{down: float, equal: float, up: float},
      *   red: array{down: float, equal: float, up: float},
      *   blue: array{down: float, equal: float, up: float},
      *   green: array{down: float, equal: float, up: float},
@@ -136,6 +136,7 @@ final class SpriceCvrMultRule
     public static function defaultSlabPct(): array
     {
         return [
+            'zero' => self::defaultYellowPct(),
             'red' => self::defaultYellowPct(),
             'blue' => self::defaultBandPct(),
             'green' => self::defaultBandPct(),
@@ -184,6 +185,7 @@ final class SpriceCvrMultRule
      * @param  array<string, mixed>  $in
      * @param  array{down: float, equal: float, up: float}|null  $yellowLegacy
      * @return array{
+     *   zero: array{down: float, equal: float, up: float},
      *   red: array{down: float, equal: float, up: float},
      *   blue: array{down: float, equal: float, up: float},
      *   green: array{down: float, equal: float, up: float},
@@ -194,7 +196,7 @@ final class SpriceCvrMultRule
     {
         $def = self::defaultSlabPct();
         $out = [];
-        foreach (['red', 'blue', 'green', 'pink'] as $slab) {
+        foreach (['zero', 'red', 'blue', 'green', 'pink'] as $slab) {
             $row = isset($in[$slab]) && is_array($in[$slab]) ? $in[$slab] : [];
             if ($slab === 'red' && $row === [] && $yellowLegacy !== null) {
                 $row = $yellowLegacy;
@@ -207,6 +209,7 @@ final class SpriceCvrMultRule
 
     /**
      * @return array{
+     *   zero: array{down: string, equal: string, up: string},
      *   red: array{down: string, equal: string, up: string},
      *   blue: array{down: string, equal: string, up: string},
      *   green: array{down: string, equal: string, up: string},
@@ -216,6 +219,7 @@ final class SpriceCvrMultRule
     public static function defaultActions(): array
     {
         return [
+            'zero' => self::defaultSlabActions('zero'),
             'red' => self::defaultSlabActions('red'),
             'blue' => self::defaultSlabActions('blue'),
             'green' => self::defaultSlabActions('green'),
@@ -258,8 +262,16 @@ final class SpriceCvrMultRule
             'actions' => self::defaultActions(),
             'yellow_pct' => self::defaultYellowPct(),
             'slab_pct' => self::defaultSlabPct(),
+            'zero_down_dil' => self::DEFAULT_DIL_OVERRIDE,
+            'zero_equal_dil' => self::DEFAULT_DIL_OVERRIDE,
+            'zero_up_dil' => self::DEFAULT_ZERO_UP_DIL,
+            'yellow_down_dil' => self::DEFAULT_DIL_OVERRIDE,
+            'yellow_equal_dil' => self::DEFAULT_DIL_OVERRIDE,
+            'yellow_up_dil' => self::DEFAULT_YELLOW_UP_DIL,
+            'blue_down_dil' => self::DEFAULT_DIL_OVERRIDE,
             'blue_equal_dil' => self::DEFAULT_DIL_OVERRIDE,
             'blue_up_dil' => self::DEFAULT_BLUE_UP_DIL,
+            'green_down_dil' => self::DEFAULT_DIL_OVERRIDE,
             'green_equal_dil' => self::DEFAULT_DIL_OVERRIDE,
             'green_up_dil' => self::DEFAULT_GREEN_UP_DIL,
             'pink_down_dil' => self::DEFAULT_DIL_OVERRIDE,
@@ -282,6 +294,16 @@ final class SpriceCvrMultRule
     public static function sanitizeDilOverride(mixed $in): float
     {
         return self::sanitizeUpDilThreshold($in, self::DEFAULT_DIL_OVERRIDE);
+    }
+
+    public static function sanitizeZeroUpDil(mixed $in): float
+    {
+        return self::sanitizeUpDilThreshold($in, self::DEFAULT_ZERO_UP_DIL);
+    }
+
+    public static function sanitizeYellowUpDil(mixed $in): float
+    {
+        return self::sanitizeUpDilThreshold($in, self::DEFAULT_YELLOW_UP_DIL);
     }
 
     public static function sanitizeBlueUpDil(mixed $in): float
@@ -437,6 +459,10 @@ final class SpriceCvrMultRule
 
         $actionsIn = isset($in['actions']) && is_array($in['actions']) ? $in['actions'] : [];
         $actions = [
+            'zero' => self::sanitizeSlabActions(
+                is_array($actionsIn['zero'] ?? null) ? $actionsIn['zero'] : [],
+                'zero'
+            ),
             'red' => self::sanitizeSlabActions(
                 is_array($actionsIn['red'] ?? null) ? $actionsIn['red'] : [],
                 'red'
@@ -489,7 +515,7 @@ final class SpriceCvrMultRule
         if (isset($in['slab_pct']) && is_array($in['slab_pct'])) {
             $slabIn = $in['slab_pct'];
         } else {
-            foreach (['red', 'blue', 'green', 'pink'] as $slab) {
+            foreach (['zero', 'red', 'blue', 'green', 'pink'] as $slab) {
                 foreach (['down', 'equal', 'up'] as $k) {
                     $flat = 'slab_pct_'.$slab.'_'.$k;
                     if (array_key_exists($flat, $in)) {
@@ -513,8 +539,16 @@ final class SpriceCvrMultRule
             'actions' => $actions,
             'yellow_pct' => $slabPct['red'],
             'slab_pct' => $slabPct,
+            'zero_down_dil' => self::sanitizeDilOverride($in['zero_down_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
+            'zero_equal_dil' => self::sanitizeDilOverride($in['zero_equal_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
+            'zero_up_dil' => self::sanitizeZeroUpDil($in['zero_up_dil'] ?? self::DEFAULT_ZERO_UP_DIL),
+            'yellow_down_dil' => self::sanitizeDilOverride($in['yellow_down_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
+            'yellow_equal_dil' => self::sanitizeDilOverride($in['yellow_equal_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
+            'yellow_up_dil' => self::sanitizeYellowUpDil($in['yellow_up_dil'] ?? self::DEFAULT_YELLOW_UP_DIL),
+            'blue_down_dil' => self::sanitizeDilOverride($in['blue_down_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
             'blue_equal_dil' => self::sanitizeDilOverride($in['blue_equal_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
             'blue_up_dil' => self::sanitizeBlueUpDil($in['blue_up_dil'] ?? self::DEFAULT_BLUE_UP_DIL),
+            'green_down_dil' => self::sanitizeDilOverride($in['green_down_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
             'green_equal_dil' => self::sanitizeDilOverride($in['green_equal_dil'] ?? self::DEFAULT_DIL_OVERRIDE),
             'green_up_dil' => self::sanitizeGreenUpDil($in['green_up_dil'] ?? self::DEFAULT_GREEN_UP_DIL),
             'pink_down_dil' => self::sanitizeDilOverride($in['pink_down_dil'] ?? self::DEFAULT_DIL_OVERRIDE),

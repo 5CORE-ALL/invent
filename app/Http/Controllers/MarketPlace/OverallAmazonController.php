@@ -4947,9 +4947,10 @@ class OverallAmazonController extends Controller
     {
         $defs = [
             'zero' => [
-                ['key' => 'low', 'label' => 'Dil low → GROI', 'color' => '#ff8787'],
-                ['key' => 'mid', 'label' => 'Dil mid → GROI', 'color' => '#fa5252'],
-                ['key' => 'high', 'label' => 'Dil high → GROI', 'color' => '#a00211'],
+                ['key' => 'down', 'label' => 'CVR % = Down', 'color' => '#c92a2a'],
+                ['key' => 'equal', 'label' => 'CVR % = Equal', 'color' => '#e03131'],
+                ['key' => 'up', 'label' => 'CVR % = Up', 'color' => '#a00211'],
+                ['key' => 'none', 'label' => 'No trend', 'color' => '#ced4da'],
             ],
             'yellow' => [
                 ['key' => 'down', 'label' => 'Down', 'color' => '#e67700'],
@@ -4987,8 +4988,19 @@ class OverallAmazonController extends Controller
                 'data' => $rows->map(function ($r) use ($ruleKey, $seg) {
                     $pies = is_array($r->rule_pies) ? $r->rule_pies : [];
                     $rule = is_array($pies[$ruleKey] ?? null) ? $pies[$ruleKey] : [];
+                    if (array_key_exists($seg['key'], $rule)) {
+                        return (int) $rule[$seg['key']];
+                    }
+                    // Legacy Rule 1 Dil-band keys → CVR trend keys
+                    if ($ruleKey === 'zero') {
+                        $legacy = ['down' => 'low', 'equal' => 'mid', 'up' => 'high'];
+                        $legacyKey = $legacy[$seg['key']] ?? null;
+                        if ($legacyKey !== null) {
+                            return (int) ($rule[$legacyKey] ?? 0);
+                        }
+                    }
 
-                    return (int) ($rule[$seg['key']] ?? 0);
+                    return 0;
                 })->values()->all(),
             ];
         }, $segments);
