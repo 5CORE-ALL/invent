@@ -2438,10 +2438,6 @@
                         </li>
 
                         <li>
-                            <a href="{{ url('ads-pricing-master') }}">Advertisment Master</a>
-                        </li>
-
-                        <li>
                             <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
                         </li>
 

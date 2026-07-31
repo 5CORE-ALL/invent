@@ -2,25 +2,56 @@
 
 @section('css')
 <style>
+    .dashboard-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.25rem;
+        margin-bottom: 0.75rem;
+        align-items: stretch;
+    }
+    .dashboard-cards-grid > .dashboard-badge-panel {
+        margin: 0 !important;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        height: 100%;
+        padding: 0.65rem 0.75rem !important;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    /* Wide metric boards span full row when many badges */
+    .dashboard-cards-grid > #advertisement-card,
+    .dashboard-cards-grid > #all-marketplace-master-card,
+    .dashboard-cards-grid > #forecast-analysis-card {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
     .dashboard-badge-panel {
-        width: fit-content;
+        width: 100%;
         max-width: 100%;
         display: flex;
         align-items: stretch;
-        gap: 0.875rem;
+        gap: 0.65rem;
     }
     .dashboard-badge-panel__icon {
-        flex: 0 0 52px;
-        width: 52px;
-        min-height: 52px;
-        align-self: center;
+        flex: 0 0 40px;
+        width: 40px;
+        height: 40px;
+        min-height: 40px;
+        align-self: flex-start;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 14px;
+        border-radius: 10px;
         background: linear-gradient(145deg, #dbeafe, #eff6ff);
-        font-size: 1.75rem;
+        font-size: 1.25rem;
         line-height: 1;
+        overflow: hidden;
     }
     .dashboard-badge-panel__icon-emoji {
         display: block;
@@ -28,52 +59,79 @@
         line-height: 1;
     }
     .dashboard-badge-panel__icon .ri-store-2-line {
-        font-size: 1.5rem;
+        font-size: 1.15rem;
         color: #475569;
         line-height: 1;
     }
     .dashboard-badge-panel__body {
-        flex: 0 1 auto;
+        flex: 1 1 auto;
         width: auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
     }
     .dashboard-badge-panel__badges {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
-        width: fit-content;
+        gap: 0.3rem;
+        width: 100%;
         max-width: 100%;
     }
     .dashboard-badge-panel__badges .badge {
         white-space: nowrap;
+        font-size: 0.72rem !important;
+        padding: 0.28rem 0.45rem !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
     }
     .dashboard-badge-panel__header {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.35rem 0.75rem;
-        margin-bottom: 0.5rem;
-        width: fit-content;
+        gap: 0.2rem 0.5rem;
+        margin-bottom: 0 !important;
+        width: 100%;
         max-width: 100%;
     }
+    .dashboard-badge-panel__header h6 {
+        font-size: 0.9rem;
+        font-weight: 700;
+        margin: 0;
+    }
     .dashboard-badge-panel__updated {
-        font-size: 0.8125rem;
+        font-size: 0.7rem;
         color: #6b7280;
         white-space: nowrap;
     }
     .dashboard-badge-panel__icon-img {
-        width: 48px;
-        height: 48px;
+        width: 40px;
+        height: 40px;
         object-fit: contain;
         border-radius: 50%;
         display: block;
     }
+    .dashboard-badge-panel__icon-img--tile {
+        object-fit: cover;
+        border-radius: 10px;
+    }
     .dashboard-badge-panel__badges .lc-score-badge {
-        border-radius: 0.35rem !important;
-        font-size: 1.05rem !important;
-        padding: 0.65rem 1rem !important;
+        border-radius: 0.3rem !important;
+        font-size: 0.78rem !important;
+        padding: 0.35rem 0.55rem !important;
         font-weight: 700 !important;
         cursor: pointer;
         user-select: none;
+    }
+    @media (max-width: 767.98px) {
+        .dashboard-cards-grid {
+            grid-template-columns: 1fr;
+        }
+        .dashboard-cards-grid > #advertisement-card,
+        .dashboard-cards-grid > #all-marketplace-master-card,
+        .dashboard-cards-grid > #forecast-analysis-card {
+            flex-direction: column;
+        }
     }
     #lcMetricChartModal.modal {
         --tz-modal-width: 100%;
@@ -181,10 +239,16 @@
         // ignore snapshot failures on dashboard render
     }
     $lcUpdatedAt = now('America/Los_Angeles');
+
+    $amzAdsMissingCount = \App\Http\Controllers\AmazonAdsMissingController::missingTotalCount();
+    $adm = \App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController::dashboardBadgeTotals();
+    $fmtAdmDollar = static fn ($value): string => '$'.number_format((int) round((float) $value));
+    $fmtAdmInt = static fn ($value): string => number_format((int) round((float) $value));
 @endphp
 
+<div class="dashboard-cards-grid">
 <!-- All Marketplace Master — badges_data (page_name: all-marketplace-master) -->
-<div id="all-marketplace-master-card" class="mt-2 mb-3 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="all-marketplace-master-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true">
         <i class="ri-store-2-line" title="Store"></i>
     </div>
@@ -205,30 +269,579 @@
             <span class="badge bg-success text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Sum of Sales column">Sales: {{ $fmtAmmDollar($amm['l30_sales']) }}</span>
             <span class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Yesterday's sales">Y Sales: {{ $ammYSalesLabel }}</span>
             <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Sum of Orders column">Orders: {{ $fmtAmmInt($amm['l30_orders']) }}</span>
-            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Blended Gprofit%">GPFT: {{ number_format((float) ($amm['gprofit_pct'] ?? 0), 1) }}%</span>
-            <span class="badge bg-danger text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="G ROI">G ROI: {{ number_format((int) round((float) ($amm['g_roi'] ?? 0))) }}%</span>
             <span class="badge bg-secondary text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Total ad spend">Spend: {{ $fmtAmmDollar($amm['ad_spend']) }}</span>
             <span class="badge fs-6 p-2" style="background-color: #6610f2; color: white; font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="TACOS %">TACOS: {{ number_format((float) ($amm['ads_pct'] ?? 0), 1) }}%</span>
             <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Total views">views: {{ $fmtAmmInt($amm['total_views']) }}</span>
             <span class="badge bg-primary text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Listing CVR">CVR: {{ $ammCvrLabel }}</span>
-            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Net profit $">NPFT: {{ $fmtAmmDollar($amm['net_profit']) }}</span>
-            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Net profit %">NPFT: {{ number_format((float) ($amm['npft_pct'] ?? 0), 1) }}%</span>
-            <span class="badge bg-primary text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="N ROI">NROI: {{ number_format((int) round((float) ($amm['n_roi'] ?? 0))) }}%</span>
             <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Total clicks">Clicks: {{ $fmtAmmInt($amm['clicks']) }}</span>
             <span class="badge fs-6 p-2" style="background-color: #198754; color: #fff; font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Sum of Map column">Map: {{ $fmtAmmInt($amm['map']) }}</span>
             <span class="badge fs-6 p-2" style="background-color: #a71d2a; color: #fff; font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Sum of N Map column">N Map: {{ $fmtAmmInt($amm['nmap']) }}</span>
             <span class="badge bg-danger text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Missing listings">Missing L: {{ $fmtAmmInt($amm['missing_l']) }}</span>
-            <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Inventory × Amazon Price">inv: {{ $fmtAmmDollar($amm['inventory_value_amazon']) }}</span>
-            <span class="badge bg-warning text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Shopify inv × LP">Inv@LP: {{ $fmtAmmDollar($amm['inv_at_lp']) }}</span>
-            <span class="badge bg-secondary text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="inv ÷ Sales">TAT: {{ ((float) ($amm['tat'] ?? 0)) > 0 ? number_format((float) $amm['tat'], 2) : '0' }}</span>
             <span class="badge bg-info text-dark fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Weighted avg rating">Reviews: {{ number_format((float) ($amm['avg_rating'] ?? 0), 1) }} ★ | {{ $fmtAmmInt($amm['total_reviews']) }}</span>
             <span class="badge bg-dark text-white fs-6 p-2" style="font-weight: bold;" onclick="window.location.href='{{ route('all.marketplace.master') }}'" role="button" title="Seller reviews">Seller review: {{ number_format((float) ($amm['seller_avg_rating'] ?? 0), 1) }} ★ | {{ $fmtAmmInt($amm['seller_total_reviews']) }}</span>
         </div>
     </div>
 </div>
 
+<!-- Advertisement — all /advertisement-master header badges -->
+<div id="advertisement-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fecaca, #fff1f2); padding: 0; overflow: hidden;">
+        <a href="{{ route('advertisement.master') }}" title="Open Advertisement Master">
+            <img
+                src="{{ asset('assets/images/advertising-wordcloud.png') }}"
+                alt="Advertising"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Advertisement
+                <a href="{{ route('advertisement.master') }}" class="ms-2 small text-decoration-none" title="Open Advertisement Master">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+            @if (! empty($adm['updated_at']))
+                <small class="dashboard-badge-panel__updated">Updated {{ $adm['updated_at']->format('M j, g:i A') }}</small>
+            @elseif (! empty($adm['snapshot_date']))
+                <small class="dashboard-badge-panel__updated">Snapshot {{ \Carbon\Carbon::parse($adm['snapshot_date'])->format('M j') }}</small>
+            @endif
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span class="badge fs-6 p-2" style="background-color:#059669;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="Active campaigns">ACTIVE: {{ $fmtAdmInt($adm['active']) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#ef4444;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="Ad spend">SPEND: {{ $fmtAdmDollar($adm['spend']) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#4c7ed8;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="Clicks">CLICKS: {{ $fmtAdmInt($adm['clicks']) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#f59e0b;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="Sold">SOLD: {{ $fmtAdmInt($adm['sold']) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#16a34a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="Ads sales">ADS SALES: {{ $fmtAdmDollar($adm['sales']) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#db2777;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="CVR = Sold / Clicks">CVR: {{ number_format((float) $adm['cvr'], 1) }}%</span>
+            <span class="badge fs-6 p-2" style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="ACOS = Spend / Ads Sales">ACOS: {{ (int) $adm['acos'] }}%</span>
+            <span class="badge fs-6 p-2" style="background-color:#7c3aed;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="TCOS = Spend / Total Sales">TCOS: {{ (int) $adm['tcos'] }}%</span>
+            <span class="badge fs-6 p-2" style="background-color:#0d9488;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('advertisement.master') }}'" role="button" title="Combined store L30 sales">TOTAL SALES: {{ $fmtAdmDollar($adm['ssales']) }}</span>
+            <span class="badge fs-6 p-2" style="background-color:#a71d2a;color:#fff;font-weight:bold;cursor:pointer;" onclick="window.location.href='{{ route('amazon.ads.missing') }}'" role="button" title="Ads Missing Amz">Ads Missing: {{ number_format((int) $amzAdsMissingCount) }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Video — same card layout / icon size as On Sea Transit -->
+<div id="video-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #bae6fd, #eff6ff); padding: 0; overflow: hidden;">
+        <a href="{{ route('video.master') }}" title="Open Video Master">
+            <img
+                src="{{ asset('assets/images/video-wordcloud.png') }}"
+                alt="Video"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Video
+                <a href="{{ route('video.master') }}" class="ms-2 small text-decoration-none" title="Open Video Master">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('video.master') }}'"
+                role="button"
+                title="Open Video Master"
+            >Video Master</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('videos.master') }}'"
+                role="button"
+                title="Open Videos"
+            >Videos</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#0ea5e9;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('video.ads.master') }}'"
+                role="button"
+                title="Open Video Request & Check"
+            >Video Request & Check</span>
+        </div>
+    </div>
+</div>
+
+<!-- Pricing — user-provided PRICE image -->
+<div id="pricing-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fef08a, #fefce8); padding: 0; overflow: hidden;">
+        <a href="{{ route('pricing.master.cvr') }}" title="Open Pricing Master CVR">
+            <img
+                src="{{ asset('assets/images/pricing-dashboard-icon.png') }}"
+                alt="Pricing"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Pricing
+                <a href="{{ route('pricing.master.cvr') }}" class="ms-2 small text-decoration-none" title="Open Pricing Master CVR">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#eab308;color:#212529;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('pricing.master.cvr') }}'"
+                role="button"
+                title="Open Pricing Master CVR"
+            >Pricing Master CVR</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('pricing.analysis') }}'"
+                role="button"
+                title="Open Pricing Analysis"
+            >Pricing Analysis</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#f59e0b;color:#212529;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('pricing.container') }}'"
+                role="button"
+                title="Open Pricing Container"
+            >Pricing Container</span>
+            <span
+                class="badge bg-warning text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="Blended Gprofit%"
+            >GPFT: {{ number_format((float) ($amm['gprofit_pct'] ?? 0), 1) }}%</span>
+            <span
+                class="badge bg-danger text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="G ROI"
+            >G ROI: {{ number_format((int) round((float) ($amm['g_roi'] ?? 0))) }}%</span>
+            <span
+                class="badge bg-warning text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="Net profit $"
+            >NPFT: {{ $fmtAmmDollar($amm['net_profit']) }}</span>
+            <span
+                class="badge bg-warning text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="Net profit %"
+            >NPFT: {{ number_format((float) ($amm['npft_pct'] ?? 0), 1) }}%</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="N ROI"
+            >NROI: {{ number_format((int) round((float) ($amm['n_roi'] ?? 0))) }}%</span>
+        </div>
+    </div>
+</div>
+
+<!-- Customer Care — user-provided headset image -->
+<div id="customer-care-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #ddd6fe, #f5f3ff); padding: 0; overflow: hidden;">
+        <a href="{{ route('customer.care') }}" title="Open Customer Care Overview">
+            <img
+                src="{{ asset('assets/images/customer-care-dashboard-icon.png') }}"
+                alt="Customer Care"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Customer Care
+                <a href="{{ route('customer.care') }}" class="ms-2 small text-decoration-none" title="Open Customer Care Overview">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#7c3aed;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care') }}'"
+                role="button"
+                title="Open Customer Care Overview"
+            >Overview</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.cc.messages.returns') }}'"
+                role="button"
+                title="Open CC Message"
+            >CC Message</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.refunds') }}'"
+                role="button"
+                title="Open Refunds"
+            >Refunds</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#0d9488;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.followups') }}'"
+                role="button"
+                title="Open Follow Up CC"
+            >Follow Up CC</span>
+            <span
+                class="badge bg-danger text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.dispatch.issues') }}'"
+                role="button"
+                title="Open All Issues"
+            >All Issues</span>
+        </div>
+    </div>
+</div>
+
+<!-- Fulfillment — user-provided label printer image -->
+<div id="fulfillment-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #e5e7eb, #f9fafb); padding: 0; overflow: hidden;">
+        <a href="{{ route('fullfillment.rate') }}" title="Open Fulfillment Rate">
+            <img
+                src="{{ asset('assets/images/fulfillment-dashboard-icon.png') }}"
+                alt="Fulfillment"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Fulfillment
+                <a href="{{ route('fullfillment.rate') }}" class="ms-2 small text-decoration-none" title="Open Fulfillment Rate">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#374151;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('fullfillment.rate') }}'"
+                role="button"
+                title="Open Fulfillment Rate"
+            >Fulfillment Rate</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('shipping.master') }}'"
+                role="button"
+                title="Open Shipping Master"
+            >Shipping Master</span>
+            <span
+                class="badge bg-warning text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.qc.and.packing') }}'"
+                role="button"
+                title="Open QC PKG issues"
+            >QC PKG Issues</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.label.issues') }}'"
+                role="button"
+                title="Open Label Issues"
+            >Label Issues</span>
+            <span
+                class="badge bg-danger text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.dispatch.issues.only') }}'"
+                role="button"
+                title="Open Dispatch Issues"
+            >Dispatch Issues</span>
+        </div>
+    </div>
+</div>
+
+<!-- Dispatch — user-provided DISPATCH letters image -->
+<div id="dispatch-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #bfdbfe, #eff6ff); padding: 0; overflow: hidden;">
+        <a href="{{ route('customer.care.dispatch.issues.only') }}" title="Open Dispatch Issues">
+            <img
+                src="{{ asset('assets/images/dispatch-dashboard-icon.png') }}"
+                alt="Dispatch"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Dispatch
+                <a href="{{ route('customer.care.dispatch.issues.only') }}" class="ms-2 small text-decoration-none" title="Open Dispatch Issues">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge bg-danger text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.dispatch.issues.only') }}'"
+                role="button"
+                title="Open Dispatch Issues"
+            >Dispatch Issues</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.dispatch.carrier.and.claim') }}'"
+                role="button"
+                title="Open Carrier Claims"
+            >Carrier Claims</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.dispatch.carrier.issue') }}'"
+                role="button"
+                title="Open Carrier Scan Issues"
+            >Carrier Scan Issues</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.dispatch.chargeback.issues') }}'"
+                role="button"
+                title="Open Chargeback Issues"
+            >Chargeback Issues</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#2563eb;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ url('fba-dispatch-page') }}'"
+                role="button"
+                title="Open FBA Dispatch"
+            >FBA Dispatch</span>
+        </div>
+    </div>
+</div>
+
+<!-- Purchases — user-provided China shipping image -->
+<div id="purchases-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fecaca, #fff1f2); padding: 0; overflow: hidden;">
+        <a href="{{ route('purchase.index') }}" title="Open Purchase">
+            <img
+                src="{{ asset('assets/images/purchases-dashboard-icon.png') }}"
+                alt="Purchases"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Purchases
+                <a href="{{ route('purchase.index') }}" class="ms-2 small text-decoration-none" title="Open Purchase">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#dc2626;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('purchase.index') }}'"
+                role="button"
+                title="Open Purchase"
+            >Purchase</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('to.order.analysis') }}'"
+                role="button"
+                title="Open Order"
+            >Order</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('forecast.analysis') }}'"
+                role="button"
+                title="Open Forecast Analysis"
+            >Forecast Analysis</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#0d9488;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('on.sea.transit') }}'"
+                role="button"
+                title="Open On Sea Transit"
+            >On Sea Transit</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('list-all-purchase-orders') }}'"
+                role="button"
+                title="Open Purchase Contract"
+            >Purchase Contract</span>
+        </div>
+    </div>
+</div>
+
+<!-- Inventory — user-provided INVENTORY image -->
+<div id="inventory-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fed7aa, #fff7ed); padding: 0; overflow: hidden;">
+        <a href="{{ route('view-inventory-data') }}" title="Open Inventory Main">
+            <img
+                src="{{ asset('assets/images/inventory-dashboard-icon.png') }}"
+                alt="Inventory"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Inventory
+                <a href="{{ route('view-inventory-data') }}" class="ms-2 small text-decoration-none" title="Open Inventory Main">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#ea580c;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('view-inventory-data') }}'"
+                role="button"
+                title="Open Inventory Main"
+            >Inventory Main</span>
+            <span
+                class="badge bg-success text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('incoming.view') }}'"
+                role="button"
+                title="Open Incoming"
+            >Incoming</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('outgoing.view') }}'"
+                role="button"
+                title="Open Outgoing"
+            >Outgoing</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('stock.balance.view') }}'"
+                role="button"
+                title="Open Stock Balance / TRF"
+            >Stock Balance</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#7c3aed;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('verify-adjust') }}'"
+                role="button"
+                title="Open Verification & Adjustment"
+            >Verify / Adjust</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="Inventory × Amazon Price"
+            >inv: {{ $fmtAmmDollar($amm['inventory_value_amazon']) }}</span>
+            <span
+                class="badge bg-warning text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="Shopify inv × LP"
+            >Inv@LP: {{ $fmtAmmDollar($amm['inv_at_lp']) }}</span>
+            <span
+                class="badge bg-secondary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('all.marketplace.master') }}'"
+                role="button"
+                title="inv ÷ Sales"
+            >TAT: {{ ((float) ($amm['tat'] ?? 0)) > 0 ? number_format((float) $amm['tat'], 2) : '0' }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- Account Health — user-provided health-e commerce image -->
+<div id="account-health-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #a5f3fc, #ecfeff); padding: 0; overflow: hidden;">
+        <a href="{{ route('account.health.master.channel.dashboard') }}" title="Open Dashboard Account Health" target="_blank" rel="noopener">
+            <img
+                src="{{ asset('assets/images/account-health-dashboard-icon.png') }}"
+                alt="Account Health"
+                class="dashboard-badge-panel__icon-img dashboard-badge-panel__icon-img--tile"
+                loading="lazy"
+            >
+        </a>
+    </div>
+    <div class="dashboard-badge-panel__body">
+        <div class="dashboard-badge-panel__header">
+            <h6 class="mb-0">
+                Account Health
+                <a href="{{ route('account.health.master.channel.dashboard') }}" class="ms-2 small text-decoration-none" title="Open Dashboard Account Health" target="_blank" rel="noopener">
+                    <i class="mdi mdi-open-in-new"></i>
+                </a>
+            </h6>
+        </div>
+        <div class="dashboard-badge-panel__badges">
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#0d9488;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.open('{{ route('account.health.master.channel.dashboard') }}', '_blank')"
+                role="button"
+                title="Open Dashboard Account Health"
+            >Dashboard Account Health</span>
+            <span
+                class="badge bg-primary text-white fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('account.health.master.tabulator') }}'"
+                role="button"
+                title="Open CC Message Health"
+            >CC Message Health</span>
+            <span
+                class="badge bg-info text-dark fs-6 p-2"
+                style="font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('customer.care.health.tabulator') }}'"
+                role="button"
+                title="Open Customer Care Health"
+            >Customer Care Health</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#2563eb;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('shipping.health.overview.tabulator') }}'"
+                role="button"
+                title="Open Shipping Health"
+            >Shipping Health</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#374151;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('fullfillment.rate') }}'"
+                role="button"
+                title="Open Fulfillment Rate"
+            >Fulfillment Rate</span>
+        </div>
+    </div>
+</div>
+
 <!-- On Sea Transit — badges_data (page_name: on-sea-transit) -->
-<div id="on-sea-transit-card" class="mt-2 mb-3 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="on-sea-transit-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true">
         <span class="dashboard-badge-panel__icon-emoji">🚢</span>
     </div>
@@ -257,7 +870,7 @@
 </div>
 
 <!-- Forecast Analysis — badges_data (page_name: forecast-analysis) -->
-<div id="forecast-analysis-card" class="mt-2 mb-3 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="forecast-analysis-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true">
         <span class="dashboard-badge-panel__icon-emoji">📊</span>
     </div>
@@ -290,7 +903,7 @@
 </div>
 
 <!-- Listing Catalogue — Missing L / N Map / Variations Verify scores + rolling history -->
-<div id="listing-catalogue-card" class="mt-2 mb-3 p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
+<div id="listing-catalogue-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
     <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fef3c7, #fffbeb);">
         <img src="{{ asset('assets/images/listing-catalogue-icon.png') }}" alt="Listing Catalogue" class="dashboard-badge-panel__icon-img">
     </div>
@@ -342,6 +955,8 @@
             >Mismatch: {{ number_format((int) $lcVariationsMismatch) }}</span>
         </div>
     </div>
+</div>
+
 </div>
 
 {{-- Listing Catalogue rolling history modal --}}

@@ -41,6 +41,117 @@ class AdvertisementMasterController extends Controller
         ]);
     }
 
+    /**
+     * Home Dashboard badges — same rollup as /advertisement-master header badges
+     * (parent channels only; CVR / ACOS / TCOS / TOTAL SALES derived).
+     * Reads the latest Pacific-day snapshot so the dashboard stays fast.
+     *
+     * @return array{
+     *     active: int,
+     *     spend: float,
+     *     clicks: float,
+     *     sold: float,
+     *     sales: float,
+     *     cvr: float,
+     *     acos: int,
+     *     tcos: int,
+     *     ssales: float,
+     *     snapshot_date: string|null,
+     *     updated_at: \Carbon\Carbon|null
+     * }
+     */
+    public static function dashboardBadgeTotals(): array
+    {
+        $empty = [
+            'active' => 0,
+            'spend' => 0.0,
+            'clicks' => 0.0,
+            'sold' => 0.0,
+            'sales' => 0.0,
+            'cvr' => 0.0,
+            'acos' => 0,
+            'tcos' => 0,
+            'ssales' => 0.0,
+            'snapshot_date' => null,
+            'updated_at' => null,
+        ];
+
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable('advertisement_master_metric_snapshots')) {
+                return $empty;
+            }
+
+            $latestDate = DB::table('advertisement_master_metric_snapshots')->max('snapshot_date');
+            if (! $latestDate) {
+                return $empty;
+            }
+
+            $rows = DB::table('advertisement_master_metric_snapshots')
+                ->where('snapshot_date', $latestDate)
+                ->get(['channel', 'spend', 'clicks', 'sold', 'sales', 'active', 'updated_at']);
+
+            $spend = 0.0;
+            $clicks = 0.0;
+            $sold = 0.0;
+            $sales = 0.0;
+            $active = 0.0;
+            $ssales = 0.0;
+            $updatedAt = null;
+
+            foreach ($rows as $r) {
+                $ch = (string) ($r->channel ?? '');
+                if ($r->updated_at) {
+                    $ts = Carbon::parse($r->updated_at);
+                    if ($updatedAt === null || $ts->gt($updatedAt)) {
+                        $updatedAt = $ts;
+                    }
+                }
+
+                if ($ch === self::SSALES_CHANNEL) {
+                    $ssales = (float) ($r->sales ?? 0);
+                    continue;
+                }
+
+                // Sub-rows are slices of a parent — skip to avoid double-count.
+                if ($ch === '' || str_contains($ch, self::SUBROW_SEPARATOR)) {
+                    continue;
+                }
+
+                $spend += (float) ($r->spend ?? 0);
+                $clicks += (float) ($r->clicks ?? 0);
+                $sold += (float) ($r->sold ?? 0);
+                $sales += (float) ($r->sales ?? 0);
+                $active += (float) ($r->active ?? 0);
+            }
+
+            $cvr = $clicks > 0 ? ($sold / $clicks) * 100 : 0.0;
+            $acos = $sales > 0
+                ? (int) round(($spend / $sales) * 100)
+                : ($spend > 0 ? 100 : 0);
+            $tcos = $ssales > 0
+                ? (int) round(($spend / $ssales) * 100)
+                : ($spend > 0 ? 100 : 0);
+
+            return [
+                'active' => (int) round($active),
+                'spend' => round($spend, 2),
+                'clicks' => round($clicks, 0),
+                'sold' => round($sold, 0),
+                'sales' => round($sales, 2),
+                'cvr' => round($cvr, 1),
+                'acos' => $acos,
+                'tcos' => $tcos,
+                'ssales' => round($ssales, 2),
+                'snapshot_date' => (string) $latestDate,
+                'updated_at' => $updatedAt,
+            ];
+        } catch (\Throwable $e) {
+            \Log::warning('Advertisement Master dashboard badges failed: '.$e->getMessage());
+
+            return $empty;
+        }
+    }
+
     public function data(
         AmazonAdsController $amazonAds,
         EbayCampaignAdsController $ebayCampaignAds,
