@@ -7550,6 +7550,36 @@
                         width: 78
                     },
                     {
+                        title: " ",
+                        field: "_ovl30_analytics",
+                        hozAlign: "center",
+                        headerSort: false,
+                        headerHozAlign: "center",
+                        width: 36,
+                        titleFormatter: function() {
+                            return '<i class="fas fa-search" title="Price analytics"></i>';
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary || rowData.is_parent_row) return '';
+                            const sku = rowData['(Child) sku'];
+                            if (!sku) return '';
+                            const skuAttr = escapeHtmlAttr(sku);
+                            const inv = parseFloat(rowData.INV) || 0;
+                            const ovL30 = parseFloat(rowData['L30']) || 0;
+                            const dil = inv > 0 ? (ovL30 / inv) * 100 : 0;
+                            const imageAttr = escapeHtmlAttr(rowData.image_path || rowData.Image || rowData.image || '');
+                            return `<i class="fas fa-search text-info ovl30-analytics-icon"`
+                                + ` style="cursor:pointer;font-size:12px;"`
+                                + ` data-sku="${skuAttr}"`
+                                + ` data-inv="${inv}"`
+                                + ` data-l30="${ovL30}"`
+                                + ` data-dil="${dil.toFixed(2)}"`
+                                + ` data-image="${imageAttr}"`
+                                + ` title="Price analytics (same as /pricing-master-cvr)"></i>`;
+                        }
+                    },
+                    {
                         title: "Sku Link LMP",
                         field: "linked_lmp_skus",
                         hozAlign: "left",
@@ -9971,6 +10001,27 @@
             }
             renderLmpModalStats(sku);
             loadEbayCompetitorsModal(sku, linkedSkus);
+        });
+
+        // Magnifying glass after LMP → same price-analytics modal as /pricing-master-cvr
+        $(document).on('click', '.ovl30-analytics-icon', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $icon = $(this);
+            const sku = String($icon.data('sku') || '').trim();
+            if (!sku) return;
+            const inv = parseInt($icon.data('inv'), 10) || 0;
+            const l30 = parseInt($icon.data('l30'), 10) || 0;
+            const dil = parseFloat($icon.data('dil')) || 0;
+            const image = $icon.data('image') || '';
+            const params = new URLSearchParams({
+                sku: sku,
+                inv: String(inv),
+                l30: String(l30),
+                dil: String(dil)
+            });
+            if (image) params.set('image', image);
+            window.open('/pricing-master-cvr?' + params.toString(), '_blank');
         });
 
         // Show the SKU's CVR / Price / Views / Sold in the LMP competitors modal.

@@ -1980,6 +1980,32 @@
             });
         }
 
+        // Deep-link from /ebay-tabulator-view LMP magnifying glass (and others):
+        // /pricing-master-cvr?sku=XXX&inv=&l30=&dil= → open same analytics modal.
+        (function openSkuBreakdownFromQuery() {
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                const sku = String(params.get('sku') || params.get('openSku') || '').trim();
+                if (!sku) return;
+                const inv = parseInt(params.get('inv'), 10) || 0;
+                const l30 = parseInt(params.get('l30'), 10) || 0;
+                const dil = parseFloat(params.get('dil')) || 0;
+                const image = params.get('image') || '';
+                $(function() {
+                    loadMarketplaceBreakdown(sku, image, inv, l30, dil);
+                    if (window.history && window.history.replaceState) {
+                        const url = new URL(window.location.href);
+                        ['sku', 'openSku', 'inv', 'l30', 'dil', 'image'].forEach(function(k) {
+                            url.searchParams.delete(k);
+                        });
+                        window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
+                    }
+                });
+            } catch (err) {
+                console.warn('openSkuBreakdownFromQuery failed', err);
+            }
+        })();
+
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
