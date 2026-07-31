@@ -831,6 +831,180 @@
                 amzVvLoadIssuesChart();
             });
 
+            function amzVvStripTypeSuffix(name) {
+                return String(name || '')
+                    .trim()
+                    .replace(/\s+/g, ' ')
+                    .replace(/\s+PT\.?$/i, '')
+                    .replace(/\s+KW\.?$/i, '')
+                    .trim();
+            }
+
+            function amzVvRebuildAdLabel(d, type) {
+                const existing = parseInt(d[type + '_existing'], 10) || 0;
+                const required = parseInt(d[type + '_required'], 10) || 0;
+                const missing = parseInt(d[type + '_missing'], 10) || 0;
+                const over = parseInt(d[type + '_over'], 10) || 0;
+                const extra = parseInt(d[type + '_extra'], 10) || 0;
+                const archivedExtra = parseInt(d[type + '_archived_extra'], 10) || 0;
+
+                if (required === 0) {
+                    d[type + '_ad_status'] = null;
+                    d[type + '_ad_label'] = '—';
+                    return;
+                }
+
+                const parts = [];
+                if (missing > 0) parts.push(missing + ' missing');
+                if (over > 0) parts.push(over + ' over');
+                if (extra > 0) parts.push(extra + ' extra');
+                if (archivedExtra > 0) parts.push(archivedExtra + ' archived');
+
+                d[type + '_ad_label'] = (existing + '/' + required)
+                    + (parts.length ? ' · ' + parts.join(' · ') : '');
+
+                let status = 'ok';
+                if (missing > 0) status = 'missing';
+                else if (extra > 0) status = 'extra';
+                else if (archivedExtra > 0) status = 'archived_extra';
+                else if (over > 0) status = 'over';
+
+                const ok = missing === 0 && over === 0 && extra === 0
+                    && archivedExtra === 0 && existing === required;
+                d[type + '_ad_status'] = ok ? 'ok' : status;
+            }
+
+            /** Move archived Extra bases into Archived chips without a full table reload. */
+            function amzVvApplyLocalArchive(bases, typeFilter) {
+                if (!amzVvTable || !bases || !bases.length) return 0;
+
+                const baseSet = {};
+                bases.forEach(function (b) {
+                    const k = String(b || '').trim().toUpperCase();
+                    if (k) baseSet[k] = true;
+                });
+                const types = typeFilter
+                    ? [String(typeFilter).toLowerCase()]
+                    : ['kw', 'pt'];
+
+                let touched = 0;
+                amzVvTable.getRows().forEach(function (row) {
+                    const d = row.getData();
+                    if (!d || !d.is_parent) return;
+
+                    let changed = false;
+                    types.forEach(function (type) {
+                        const extras = Array.isArray(d[type + '_extra_skus'])
+                            ? d[type + '_extra_skus'].slice() : [];
+                        const archived = Array.isArray(d[type + '_archived_extra_skus'])
+                            ? d[type + '_archived_extra_skus'].slice() : [];
+                        const keep = [];
+                        let typeChanged = false;
+
+                        extras.forEach(function (es) {
+                            const key = String(es || '').trim().toUpperCase();
+                            if (key && baseSet[key]) {
+                                const already = archived.some(function (a) {
+                                    return String(a || '').trim().toUpperCase() === key;
+                                });
+                                if (!already) archived.push(es);
+                                typeChanged = true;
+                            } else if (es) {
+                                keep.push(es);
+                            }
+                        });
+
+                        if (!typeChanged) return;
+
+                        d[type + '_extra_skus'] = keep;
+                        d[type + '_archived_extra_skus'] = archived;
+                        d[type + '_extra'] = keep.length;
+                        d[type + '_archived_extra'] = archived.length;
+
+                        if (Array.isArray(d[type + '_extra_campaigns'])) {
+                            d[type + '_extra_campaigns'] = d[type + '_extra_campaigns'].map(function (c) {
+                                if (!c) return c;
+                                const b = String(c.base || amzVvStripTypeSuffix(c.campaign_name || ''))
+                                    .trim().toUpperCase();
+                                if (b && baseSet[b]) {
+                                    return Object.assign({}, c, { campaign_status: 'ARCHIVED' });
+                                }
+                                return c;
+                            });
+                        }
+
+                        amzVvRebuildAdLabel(d, type);
+                        changed = true;
+                    });
+
+                    if (!changed) return;
+
+                    const kwE = parseInt(d.kw_extra, 10) || 0;
+                    const ptE = parseInt(d.pt_extra, 10) || 0;
+                    const kwA = parseInt(d.kw_archived_extra, 10) || 0;
+                    const ptA = parseInt(d.pt_archived_extra, 10) || 0;
+                    d.has_extra = (kwE + ptE) > 0;
+                    d.has_archived_extra = (kwA + ptA) > 0;
+                    d.extra_sku_count = kwE + ptE;
+                    d.archived_extra_sku_count = kwA + ptA;
+                    row.update(d);
+                    touched++;
+                });
+
+                amzVvRefreshBadgeCountsFromTable();
+                return touched;
+            }
+
+            function amzVvRefreshBadgeCountsFromTable() {
+                if (!amzVvTable) return;
+
+                const extraUnion = {};
+                const archUnion = {};
+                let issues = 0;
+
+                amzVvTable.getData().forEach(function (d) {
+                    if (!d || !d.is_parent) return;
+                    const hasMiss = (parseInt(d.kw_missing, 10) || 0) > 0
+                        || (parseInt(d.pt_missing, 10) || 0) > 0;
+                    const hasExtra = (parseInt(d.kw_extra, 10) || 0) > 0
+                        || (parseInt(d.pt_extra, 10) || 0) > 0;
+                    if (hasMiss || hasExtra) issues++;
+
+                    ['kw', 'pt'].forEach(function (t) {
+                        (Array.isArray(d[t + '_extra_skus']) ? d[t + '_extra_skus'] : []).forEach(function (s) {
+                            const k = String(s || '').trim().toUpperCase();
+                            if (k) extraUnion[k] = true;
+                        });
+                        (Array.isArray(d[t + '_archived_extra_skus']) ? d[t + '_archived_extra_skus'] : []).forEach(function (s) {
+                            const k = String(s || '').trim().toUpperCase();
+                            if (k) archUnion[k] = true;
+                        });
+                    });
+                });
+
+                $('#amz-vv-badge-extra').text(Object.keys(extraUnion).length.toLocaleString());
+                $('#amz-vv-badge-archived-extra').text(Object.keys(archUnion).length.toLocaleString());
+                $('#amz-vv-badge-issues').text(issues.toLocaleString());
+                amzVvIssuesLiveCount = issues;
+                amzVvApplyIssuesTrendDot();
+                amzVvApplyFilters();
+            }
+
+            function amzVvBasesFromArchiveResult(items, fallbackExtras) {
+                const bases = {};
+                (items || []).forEach(function (item) {
+                    const base = amzVvStripTypeSuffix(item && item.campaign_name ? item.campaign_name : '');
+                    if (base) bases[base] = true;
+                });
+                if (Object.keys(bases).length === 0) {
+                    (fallbackExtras || []).forEach(function (e) {
+                        const b = String(e || '').trim();
+                        if (b) bases[b] = true;
+                    });
+                }
+                return Object.keys(bases);
+            }
+
             function amzVvCollectExtraPayload(scope) {
                 // scope: 'visible' (filtered table) | row data object
                 const extras = new Set();
@@ -904,6 +1078,16 @@
                         const archived = (res && Array.isArray(res.archived)) ? res.archived : [];
                         const skipped = (res && Array.isArray(res.skipped)) ? res.skipped : [];
                         const failed = (res && Array.isArray(res.failed)) ? res.failed : [];
+
+                        // Patch rows in place — avoid full table reload / Loading overlay.
+                        if (archived.length || skipped.length) {
+                            const bases = amzVvBasesFromArchiveResult(
+                                archived.concat(skipped),
+                                extras
+                            );
+                            amzVvApplyLocalArchive(bases, payload.type || '');
+                        }
+
                         let msg = (res && res.message) ? res.message : 'Archive finished.';
                         if (archived.length) {
                             msg += '\n\nArchived:\n' + archived.map(function (a) {
@@ -922,9 +1106,6 @@
                         }
                         $('#amz-vv-status-line').text((res && res.message) ? res.message : 'Archive finished.');
                         alert(msg);
-                        if (amzVvTable) {
-                            amzVvTable.setData('{{ route("amz.variation.verify.data") }}');
-                        }
                     },
                     error: function (xhr) {
                         const msg = (xhr.responseJSON && xhr.responseJSON.message)
