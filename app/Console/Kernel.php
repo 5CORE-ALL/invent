@@ -78,6 +78,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\EbaySpriceCvrAutoPushCommand::class,
+        \App\Console\Commands\AssignAmzListingVariationVerifyDailyTask::class,
+        \App\Console\Commands\AssignMissingMappingDailyTask::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
@@ -265,6 +267,24 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(2)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // Amz Listing Variation Verify — daily MISMATCH badge task → ecomm6@5core.com
+        $ist($schedule->command('tasks:assign-amz-lvv-mismatch-daily')
+            ->dailyAt('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amz-lvv-mismatch-daily-task')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+        // Missing Mapping (/map-issues) — daily badge count task → tech-support@5core.com
+        $ist($schedule->command('tasks:assign-missing-mapping-daily')
+            ->dailyAt('15:00')
+            ->timezone('Asia/Kolkata')
+            ->name('missing-mapping-daily-task')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
 
        
         $schedule->call(function () {

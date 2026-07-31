@@ -207,6 +207,22 @@
             if (meta.last_pulled_at) parts.push('Listings · ' + meta.last_pulled_at);
             $('#amz-lvv-status-line').text(parts.join(' · '));
             $('#amz-lvv-source-label').text(meta.has_listings_cache ? 'CP Master + Listings' : 'CP Master');
+
+            // Keep sidebar badge in sync with page MISMATCH count.
+            const $nav = $('a.amz-lvv-mismatch-nav');
+            if ($nav.length) {
+                const count = parseInt(meta.mismatch_count, 10) || 0;
+                let $badge = $nav.children('.badge');
+                if (count > 0) {
+                    if ($badge.length) {
+                        $badge.text(count);
+                    } else {
+                        $nav.append('<span class="badge bg-danger rounded-pill">' + count + '</span>');
+                    }
+                } else {
+                    $badge.remove();
+                }
+            }
         }
 
         function amzLvvUpdateRowCount() {

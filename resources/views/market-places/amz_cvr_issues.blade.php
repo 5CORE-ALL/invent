@@ -12,12 +12,17 @@
             font-size: 12px;
             overflow-x: hidden !important;
         }
-        /* Remove horizontal scrollbar under the table */
+        /* No inner under-scroll — page scrolls; tableholder does not */
         #amz_cvr_issues_wrap .tabulator .tabulator-tableholder {
-            overflow-x: hidden !important;
+            overflow: hidden !important;
         }
         #amz_cvr_issues_wrap .tabulator .tabulator-header {
-            overflow-x: hidden !important;
+            overflow: hidden !important;
+        }
+        #amz_cvr_issues_wrap .tabulator .tabulator-tableholder::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
         }
 
         /* Hide sort arrows; clicking header still sorts */
@@ -71,19 +76,73 @@
             cursor: zoom-in;
         }
 
-        /* Audit modal: full width, pinned to top (grows downward) */
-        #amzCvrAuditModal .amz-cvr-audit-modal-dialog {
-            width: 100%;
-            max-width: 100%;
-            margin: 0;
-            max-height: 100vh;
-        }
-        #amzCvrAuditModal .amz-cvr-audit-modal-dialog .modal-content {
-            border-radius: 0;
-            max-height: 100vh;
-        }
+        /* Audit modal: full width, top-aligned; ~20vh initially, grows with issues */
         #amzCvrAuditModal.modal {
-            padding-right: 0 !important;
+            padding: 0 !important;
+            z-index: 2100 !important;
+        }
+        #amzCvrAuditModal .modal-dialog,
+        #amzCvrAuditModal .amz-cvr-audit-modal-dialog {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            height: auto !important;
+            min-height: 20vh !important;
+            max-height: 100vh !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transform: none !important;
+        }
+        #amzCvrAuditModal .modal-content {
+            width: 100% !important;
+            max-width: 100% !important;
+            height: auto !important;
+            min-height: 20vh !important;
+            max-height: 100vh !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        #amzCvrAuditModal .modal-body {
+            flex: 1 1 auto !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow-y: visible !important;
+        }
+        /* When many issues push past viewport, scroll body only */
+        #amzCvrAuditModal.amz-cvr-audit-tall .modal-dialog {
+            height: 100vh !important;
+            max-height: 100vh !important;
+        }
+        #amzCvrAuditModal.amz-cvr-audit-tall .modal-content {
+            height: 100vh !important;
+            max-height: 100vh !important;
+        }
+        #amzCvrAuditModal.amz-cvr-audit-tall .modal-body {
+            overflow-y: auto !important;
+            max-height: calc(100vh - 110px) !important;
+        }
+
+        /* LMP: our product row (same pattern as ebay-tabulator-view) */
+        #amzCvrLmpModal .lmp-five-core-row,
+        #amzCvrLmpModal .lmp-five-core-row > td {
+            background-color: #dbeafe !important;
+            color: #1e3a8a;
+            --bs-table-bg-type: #dbeafe;
+            --bs-table-striped-bg: #dbeafe;
+            --bs-table-hover-bg: #bfdbfe;
+            font-weight: 600;
+        }
+        #amzCvrLmpModal .lmp-five-core-row:hover > td {
+            background-color: #bfdbfe !important;
+        }
+        #amzCvrLmpModal .lmp-five-core-row .lmp-five-core-price {
+            font-size: 14px;
+            font-weight: 700;
         }
 
         #amz_cvr_issues_wrap .amz-cvr-audit-btn {
@@ -260,7 +319,7 @@
 
     {{-- Audit Modal --}}
     <div class="modal fade" id="amzCvrAuditModal" tabindex="-1" aria-labelledby="amzCvrAuditModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-scrollable amz-cvr-audit-modal-dialog">
+        <div class="modal-dialog amz-cvr-audit-modal-dialog">
             <div class="modal-content">
                 <div class="modal-header bg-dark text-white py-2">
                     <h5 class="modal-title mb-0" id="amzCvrAuditModalLabel">
@@ -444,7 +503,7 @@
     <div class="modal fade" id="amzCvrLmpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header bg-primary text-white flex-wrap gap-2 py-2">
                     <h5 class="modal-title mb-0">
                         <i class="fa fa-shopping-cart me-1"></i>
                         Competitors for SKU: <span id="amzCvrLmpSku"></span>
@@ -838,20 +897,17 @@
             })
                 .then(function(r) { return r.json(); })
                 .then(function(res) {
-                    if (res.success && Array.isArray(res.competitors) && res.competitors.length > 0) {
-                        renderAmzCvrCompetitors(res.competitors, res.lowest_price);
-                        if (refresh && res.lowest_price != null && amz_cvr_issues) {
-                            amz_cvr_issues.getRows().forEach(function(row) {
-                                if (row.getData()['(Child) sku'] === sku) {
-                                    row.update({
-                                        lmp_price: res.lowest_price,
-                                        lmp_entries_total: res.competitors.length
-                                    });
-                                }
-                            });
-                        }
-                    } else {
-                        listEl.innerHTML = '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found yet. Add one above.</div>';
+                    const comps = (res.success && Array.isArray(res.competitors)) ? res.competitors : [];
+                    renderAmzCvrCompetitors(comps, res.lowest_price);
+                    if (refresh && res.success && res.lowest_price != null && amz_cvr_issues) {
+                        amz_cvr_issues.getRows().forEach(function(row) {
+                            if (row.getData()['(Child) sku'] === sku) {
+                                row.update({
+                                    lmp_price: res.lowest_price,
+                                    lmp_entries_total: comps.length
+                                });
+                            }
+                        });
                     }
                 })
                 .catch(function() {
@@ -866,15 +922,86 @@
                 });
         }
 
+        function getAmzCvrLmpOurListing(sku) {
+            let row = null;
+            if (amz_cvr_issues && sku) {
+                const match = amz_cvr_issues.getRows().find(function(r) {
+                    return (r.getData()['(Child) sku'] || '') === sku;
+                });
+                row = match ? match.getData() : null;
+            }
+            if (!row) {
+                return { price: 0, sku: '', image: '', title: '', link: '', sold: 0, rating: null, reviews: null };
+            }
+            const asin = row.asin ? String(row.asin).trim() : '';
+            return {
+                price: parseFloat(row.price) || 0,
+                asin: asin,
+                image: row.image_path || '',
+                title: '5 Core — ' + (sku || row['(Child) sku'] || ''),
+                link: asin ? ('https://www.amazon.com/dp/' + asin) : '',
+                sold: Math.round(parseFloat(row.A_L30) || 0),
+                rating: row.amz_avg_rating != null ? parseFloat(row.amz_avg_rating) : null,
+                reviews: row.amz_review_count != null ? parseInt(row.amz_review_count, 10) || 0 : null,
+            };
+        }
+
+        function buildAmzCvrLmpFiveCoreRowHtml(our) {
+            const price = parseFloat(our.price) || 0;
+            if (price <= 0) return '';
+            const img = our.image
+                ? '<img src="' + amzCvrEsc(our.image) + '" alt="" style="width:40px;height:40px;object-fit:contain;border-radius:4px;" loading="lazy">'
+                : '<span class="text-muted"><i class="fas fa-store"></i></span>';
+            const linkBtn = our.link
+                ? '<a href="' + amzCvrEsc(our.link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-primary" title="Open our Amazon listing"><i class="fa fa-external-link"></i></a>'
+                : '<span class="text-muted small">—</span>';
+            const rating = (our.rating != null && our.rating > 0)
+                ? '<span style="color:#ffc107;">' + our.rating.toFixed(1) + ' <i class="fa fa-star"></i></span>'
+                : '<span class="text-muted">—</span>';
+            const reviews = (our.reviews != null)
+                ? Number(our.reviews).toLocaleString()
+                : '<span class="text-muted">—</span>';
+            const sold = '<span style="color:#007bff;font-weight:600;">' + (our.sold || 0).toLocaleString() + '</span>';
+
+            return ''
+                + '<tr class="lmp-five-core-row" title="Our 5 Core listing — sorted by price to show market level">'
+                +   '<td class="text-center"><span class="badge bg-primary">★</span></td>'
+                +   '<td class="text-center">' + img + '</td>'
+                +   '<td><span class="text-primary fw-semibold" style="font-size:11px;">' + amzCvrEsc(our.asin || '—') + '</span></td>'
+                +   '<td style="font-size:11px;" title="' + amzCvrEsc(our.title) + '">' + amzCvrEsc(our.title) + '</td>'
+                +   '<td><span class="badge bg-primary">Ours</span></td>'
+                +   '<td>'
+                +     '<strong class="lmp-five-core-price">$' + price.toFixed(2) + '</strong>'
+                +     ' <span class="badge bg-primary ms-1">5 CORE</span>'
+                +   '</td>'
+                +   '<td class="text-center">' + sold + '</td>'
+                +   '<td class="text-center">' + rating + '</td>'
+                +   '<td class="text-center">' + reviews + '</td>'
+                +   '<td class="text-center"><span class="badge bg-info text-dark">Ours</span></td>'
+                +   '<td class="text-center">' + linkBtn + '</td>'
+                +   '<td class="text-center text-muted small">—</td>'
+                + '</tr>';
+        }
+
         function renderAmzCvrCompetitors(competitors, lowestPrice) {
+            competitors = Array.isArray(competitors) ? competitors : [];
             const lowest = parseFloat(lowestPrice) || 0;
+            const our = getAmzCvrLmpOurListing(amzCvrLmpCurrentSku);
+            const fiveCoreHtml = buildAmzCvrLmpFiveCoreRowHtml(our);
+
+            if (!competitors.length && !fiveCoreHtml) {
+                document.getElementById('amzCvrLmpDataList').innerHTML =
+                    '<div class="alert alert-warning mb-0"><i class="fa fa-info-circle"></i> No competitors found yet. Add one above.</div>';
+                return;
+            }
+
             let html = '<div class="table-responsive"><table class="table table-hover table-bordered table-sm mb-0">';
-            html += '<thead class="table-light"><tr>'
+            html += '<thead class="table-dark"><tr>'
                 + '<th>#</th><th>Image</th><th>ASIN</th><th>Title</th><th>Seller</th>'
-                + '<th>Price</th><th>Rating</th><th>Reviews</th><th>Delivery</th><th>Link</th><th></th>'
+                + '<th>Price</th><th title="Competitor monthly units sold">L30</th><th>Rating</th><th>Reviews</th><th>Delivery</th><th>Link</th><th></th>'
                 + '</tr></thead><tbody>';
 
-            competitors.forEach(function(item, index) {
+            const rows = competitors.map(function(item, index) {
                 const price = parseFloat(item.price) || 0;
                 const isLowest = lowest > 0 && Math.abs(price - lowest) < 0.01;
                 const rowClass = isLowest ? 'table-success' : '';
@@ -889,30 +1016,67 @@
                 const reviews = item.reviews != null
                     ? Number(item.reviews).toLocaleString()
                     : '<span class="text-muted">—</span>';
-                const delivery = item.delivery
-                    ? amzCvrEsc(String(item.delivery).substring(0, 40))
+                const soldQty = item.monthly_units_sold != null && item.monthly_units_sold !== ''
+                    ? parseInt(item.monthly_units_sold, 10)
+                    : null;
+                const sold = (soldQty != null && !isNaN(soldQty))
+                    ? '<span style="color:#007bff;font-weight:600;" title="Competitor monthly units sold">'
+                        + soldQty.toLocaleString() + '</span>'
                     : '<span class="text-muted">—</span>';
+                let delivery = '<span class="text-muted">—</span>';
+                if (item.delivery) {
+                    const delText = String(item.delivery);
+                    if (/\bfree\b/i.test(delText)) {
+                        delivery = '<span class="badge bg-info text-dark" title="'
+                            + amzCvrEsc(delText) + '">FREE</span>';
+                    } else {
+                        delivery = '<span title="' + amzCvrEsc(delText) + '">'
+                            + amzCvrEsc(delText.substring(0, 40))
+                            + (delText.length > 40 ? '…' : '')
+                            + '</span>';
+                    }
+                }
                 const priceBadge = isLowest
-                    ? '<span class="badge bg-success">$' + price.toFixed(2) + ' <i class="fa fa-trophy"></i></span>'
+                    ? '<strong>$' + price.toFixed(2) + '</strong> <span class="badge bg-success ms-1">L1</span>'
                     : '<strong>$' + price.toFixed(2) + '</strong>';
 
-                html += '<tr class="' + rowClass + '">'
-                    + '<td class="text-center">' + (index + 1) + '</td>'
-                    + '<td class="text-center">' + img + '</td>'
-                    + '<td><span class="text-primary fw-semibold" style="font-size:11px;">' + amzCvrEsc(item.asin || 'N/A') + '</span></td>'
-                    + '<td style="font-size:11px;" title="' + amzCvrEsc(title) + '">' + amzCvrEsc(title.substring(0, 60)) + (title.length > 60 ? '…' : '') + '</td>'
-                    + '<td style="font-size:11px;">' + amzCvrEsc(item.seller_name || '—') + '</td>'
-                    + '<td>' + priceBadge + '</td>'
-                    + '<td class="text-center">' + rating + '</td>'
-                    + '<td class="text-center">' + reviews + '</td>'
-                    + '<td class="text-center" style="font-size:11px;">' + delivery + '</td>'
-                    + '<td class="text-center"><a href="' + amzCvrEsc(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info"><i class="fa fa-external-link"></i></a></td>'
-                    + '<td class="text-center"><button type="button" class="btn btn-sm btn-danger amz-cvr-del-lmp" data-id="'
-                    + amzCvrEsc(item.id) + '" title="Delete"><i class="fa fa-trash"></i></button></td>'
+                const rowHtml = ''
+                    + '<tr class="' + rowClass + '">'
+                    +   '<td class="text-center">' + (index + 1) + '</td>'
+                    +   '<td class="text-center">' + img + '</td>'
+                    +   '<td><span class="text-primary fw-semibold" style="font-size:11px;">' + amzCvrEsc(item.asin || 'N/A') + '</span></td>'
+                    +   '<td style="font-size:11px;" title="' + amzCvrEsc(title) + '">' + amzCvrEsc(title.substring(0, 60)) + (title.length > 60 ? '…' : '') + '</td>'
+                    +   '<td style="font-size:11px;">' + amzCvrEsc(item.seller_name || '—') + '</td>'
+                    +   '<td>' + priceBadge + '</td>'
+                    +   '<td class="text-center">' + sold + '</td>'
+                    +   '<td class="text-center">' + rating + '</td>'
+                    +   '<td class="text-center">' + reviews + '</td>'
+                    +   '<td class="text-center" style="font-size:11px;">' + delivery + '</td>'
+                    +   '<td class="text-center"><a href="' + amzCvrEsc(link) + '" target="_blank" rel="noopener" class="btn btn-sm btn-info"><i class="fa fa-external-link"></i></a></td>'
+                    +   '<td class="text-center"><button type="button" class="btn btn-sm btn-danger amz-cvr-del-lmp" data-id="'
+                    +     amzCvrEsc(item.id) + '" title="Delete"><i class="fa fa-trash"></i></button></td>'
                     + '</tr>';
+                return { price: price, html: rowHtml };
             });
 
+            // Insert 5 Core / Ours row at our price position (same as ebay-tabulator-view)
+            let fiveCoreInserted = false;
+            rows.forEach(function(row) {
+                if (!fiveCoreInserted && fiveCoreHtml && our.price > 0 && row.price >= our.price) {
+                    html += fiveCoreHtml;
+                    fiveCoreInserted = true;
+                }
+                html += row.html;
+            });
+            if (!fiveCoreInserted && fiveCoreHtml) {
+                html += fiveCoreHtml;
+            }
+
             html += '</tbody></table></div>';
+            if (lowest > 0) {
+                html = '<div class="mb-2 small text-muted">L1 (lowest): <strong>$'
+                    + lowest.toFixed(2) + '</strong></div>' + html;
+            }
             document.getElementById('amzCvrLmpDataList').innerHTML = html;
         }
 
@@ -1319,13 +1483,14 @@
                     },
                     cellClick: function(e, cell) {
                         const link = e.target.closest('.amz-cvr-view-lmp');
+                        const rowData = cell.getRow().getData() || {};
                         const sku = link
                             ? (link.getAttribute('data-sku') || '')
-                            : (cell.getRow().getData()['(Child) sku'] || '');
+                            : (rowData['(Child) sku'] || '');
                         if (!sku) return;
                         e.preventDefault();
                         e.stopPropagation();
-                        openAmzCvrLmpModal(sku);
+                        openAmzCvrLmpModal(sku, { row: rowData });
                     }
                 },
                 {
@@ -1837,6 +2002,19 @@
             syncAmzCvrIssueUi();
         }
 
+        function syncAmzCvrAuditModalHeight() {
+            const modalEl = document.getElementById('amzCvrAuditModal');
+            if (!modalEl) return;
+            modalEl.classList.remove('amz-cvr-audit-tall');
+            const dialog = modalEl.querySelector('.modal-dialog');
+            if (!dialog) return;
+            // Grow with content; only cap/scroll once content exceeds the viewport
+            requestAnimationFrame(function() {
+                const needsScroll = dialog.scrollHeight > (window.innerHeight - 2);
+                modalEl.classList.toggle('amz-cvr-audit-tall', needsScroll);
+            });
+        }
+
         function syncAmzCvrIssueUi() {
             const otherCb = document.getElementById('amzCvrIssueOther');
             const otherWrap = document.getElementById('amzCvrAuditIssueOtherWrap');
@@ -1845,6 +2023,7 @@
                 otherWrap.classList.toggle('d-none', !otherChecked);
             }
             renderAmzCvrTaskRows();
+            syncAmzCvrAuditModalHeight();
         }
 
         function getAmzCvrSelectedIssueKeys() {
@@ -2018,18 +2197,29 @@
             resetAmzCvrIssueOptions();
 
             const modalEl = document.getElementById('amzCvrAuditModal');
-            bootstrap.Modal.getOrCreateInstance(modalEl).show();
-            setTimeout(syncAmzCvrAuditBulkUi, 0);
+            // Keep modal on <body> so sidenav/content wrappers cannot clip width
+            if (modalEl && modalEl.parentElement !== document.body) {
+                document.body.appendChild(modalEl);
+            }
+            bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: true, focus: true }).show();
+            setTimeout(function() {
+                syncAmzCvrAuditBulkUi();
+                syncAmzCvrAuditModalHeight();
+            }, 0);
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            const auditModalEl = document.getElementById('amzCvrAuditModal');
+            if (auditModalEl && auditModalEl.parentElement !== document.body) {
+                document.body.appendChild(auditModalEl);
+            }
+
             amz_cvr_issues = new Tabulator('#amz_cvr_issues', {
                 ajaxURL: @json(route('amz.cvr.issues.data')),
                 ajaxResponse: function(url, params, response) {
                     return (response && response.data) ? response.data : (response || []);
                 },
                 layout: 'fitDataStretch',
-                height: 'calc(100vh - 240px)',
                 pagination: true,
                 paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200, 500],

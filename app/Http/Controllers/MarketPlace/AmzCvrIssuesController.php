@@ -451,6 +451,7 @@ class AmzCvrIssuesController extends Controller
                 'Parent' => trim((string) ($pm->parent ?? '')),
                 'image_path' => $pm->main_image ?: null,
                 '(Child) sku' => $sku,
+                'asin' => $amazonSheet ? ($amazonSheet->asin ?? null) : null,
                 'price' => $price,
                 'lmp_price' => $lmpPrice,
                 'lmp_entries_total' => $lmpEntriesTotal,

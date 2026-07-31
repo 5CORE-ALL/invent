@@ -8,13 +8,55 @@ use App\Models\AmazonListingRaw;
 use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class AmzListingVariationVerifyController extends Controller
 {
+    /** Shared with VariationsVerifyMasterController::fetchMismatchCount (route amz.listing.variation.verify). */
+    public const SIDEBAR_MISMATCH_CACHE_KEY = 'variations_verify_masters.mismatch.amz.listing.variation.verify';
+
     public function index()
     {
         return view('market-places.amz_listing_variation_verify');
+    }
+
+    /**
+     * Sidebar badge — Amz LVV mismatch_count (same as page MISMATCH badge).
+     * Populated when this page's data() or Variations Verify Masters runs.
+     */
+    public static function mismatchCountForSidebar(): int
+    {
+        try {
+            $cached = Cache::get(self::SIDEBAR_MISMATCH_CACHE_KEY);
+            if ($cached !== null) {
+                return (int) $cached;
+            }
+        } catch (\Throwable $e) {
+            // File cache dirs may be missing mid-request after optimize:clear.
+        }
+
+        return 0;
+    }
+
+    /**
+     * Live MISMATCH count (same as page badge). Refreshes sidebar cache.
+     */
+    public static function freshMismatchCount(): int
+    {
+        try {
+            $controller = app(self::class);
+            $response = $controller->data(Request::create('/', 'GET'));
+            $payload = $response instanceof \Illuminate\Http\JsonResponse
+                ? $response->getData(true)
+                : [];
+
+            return (int) ($payload['meta']['mismatch_count'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Amz LVV freshMismatchCount failed: '.$e->getMessage());
+
+            return self::mismatchCountForSidebar();
+        }
     }
 
     /**
@@ -96,6 +138,14 @@ class AmzListingVariationVerifyController extends Controller
             ];
         }
 
+        $mismatchCount = count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false));
+
+        try {
+            Cache::put(self::SIDEBAR_MISMATCH_CACHE_KEY, $mismatchCount, now()->addDay());
+        } catch (\Throwable $e) {
+            // ignore cache write failures
+        }
+
         return response()->json([
             'data' => $formattedData,
             'meta' => [
@@ -104,7 +154,7 @@ class AmzListingVariationVerifyController extends Controller
                 'has_listings_cache' => AmazonListingRaw::query()->exists()
                     || AmazonDatasheet::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
-                'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
+                'mismatch_count' => $mismatchCount,
                 'required_child_count' => count($childRows),
                 'required_refreshed_at' => now()->toDateTimeString(),
             ],

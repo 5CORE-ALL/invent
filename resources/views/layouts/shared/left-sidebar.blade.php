@@ -1171,7 +1171,13 @@
                                         <a href="{{ route('amz.titles') }}">Amz Titles</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('amz.listing.variation.verify') }}">Amz Listing Variation Verify</a>
+                                        <a href="{{ route('amz.listing.variation.verify') }}" class="amz-lvv-mismatch-nav">
+                                            Amz Listing Variation Verify
+                                            @php $amzLvvMismatchCount = \App\Http\Controllers\MarketPlace\AmzListingVariationVerifyController::mismatchCountForSidebar(); @endphp
+                                            @if($amzLvvMismatchCount > 0)
+                                                <span class="badge bg-danger rounded-pill">{{ $amzLvvMismatchCount }}</span>
+                                            @endif
+                                        </a>
                                     </li>
                                     <li>
 
@@ -3012,6 +3018,20 @@
         padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
     }
     .side-nav a.amz-ads-missing-nav > .badge {
+        position: static !important;
+        display: inline-block;
+        vertical-align: middle;
+        margin: 0 0 0 0.35rem !important;
+        top: auto !important;
+        right: auto !important;
+        transform: none !important;
+    }
+
+    /* Amz Listing Variation Verify — mismatch count beside label. */
+    .side-nav a.amz-lvv-mismatch-nav {
+        padding-right: calc(var(--tz-menu-item-padding-x, 0.75rem) * 1.5) !important;
+    }
+    .side-nav a.amz-lvv-mismatch-nav > .badge {
         position: static !important;
         display: inline-block;
         vertical-align: middle;

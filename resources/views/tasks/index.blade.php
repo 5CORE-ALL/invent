@@ -3887,6 +3887,15 @@
                             title = title.replace(/\s*\[Auto:\s*\d{1,2}-[A-Za-z]{3}-\d{2}\]\s*$/i, '');
 
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                            // Highlight badge counts in red (Missing Mapping / MISMATCH auto tasks)
+                            htmlTitle = htmlTitle.replace(
+                                /(Missing Mapping:\s*)([\d,]+)/i,
+                                '$1<span style="color:#a71d2a;font-weight:700;">$2</span>'
+                            );
+                            htmlTitle = htmlTitle.replace(
+                                /(\(MISMATCH:\s*)([\d,]+)(\))/i,
+                                '$1<span style="color:#a71d2a;font-weight:700;">$2</span>$3'
+                            );
                             var subtaskBadge = rowData.parent_task_id
                                 ? '<span class="badge bg-secondary ms-1" style="font-size:9px; vertical-align:middle;">Subtask</span>'
                                 : '';
