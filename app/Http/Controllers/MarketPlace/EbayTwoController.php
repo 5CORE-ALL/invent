@@ -237,19 +237,31 @@ class EbayTwoController extends Controller
             }
         }
         
-        // Add OPEN BOX and USED items from ebay2_metrics to processing list
+        // Add OPEN BOX and USED items from ebay2_metrics to processing list.
+        // Always keep ebay2_metrics.sku casing (original listing SKU); never the uppercase keyBy key.
+        $pmKeyByNorm = [];
+        foreach ($productMasters->keys() as $pmKey) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $pmKey);
+            if ($norm !== '' && ! isset($pmKeyByNorm[$norm])) {
+                $pmKeyByNorm[$norm] = (string) $pmKey;
+            }
+        }
         foreach ($ebayMetrics as $metric) {
-            $sku = $metric->sku;
-            
-            // Skip if already in product masters
-            if (isset($productMasters[$sku])) {
+            $sku = (string) ($metric->sku ?? '');
+            if ($sku === '') {
                 continue;
             }
-            
+
+            $skuNorm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            // Skip if already in product masters (case-insensitive)
+            if ($skuNorm !== '' && isset($pmKeyByNorm[$skuNorm])) {
+                continue;
+            }
+
             // Check if this is OPEN BOX or USED item
             $isOpenBox = stripos($sku, 'OPEN BOX') !== false;
             $isUsed = stripos($sku, 'USED') !== false;
-            
+
             if ($isOpenBox || $isUsed) {
                 // Extract base SKU
                 $baseSku = $sku;
@@ -258,14 +270,22 @@ class EbayTwoController extends Controller
                 } elseif ($isUsed) {
                     $baseSku = trim(str_ireplace('USED', '', $baseSku));
                 }
-                
+
+                $baseNorm = ShopifySku::normalizeSkuForShopifyLookup($baseSku);
+                $basePmKey = ($baseNorm !== '' && isset($pmKeyByNorm[$baseNorm]))
+                    ? $pmKeyByNorm[$baseNorm]
+                    : null;
+
                 // Check if base SKU exists in product masters
-                if (isset($productMasters[$baseSku])) {
+                if ($basePmKey !== null) {
                     // Create a pseudo product master entry for this OPEN BOX/USED item
-                    $baseProduct = $productMasters[$baseSku];
+                    $baseProduct = $productMasters[$basePmKey];
                     $pseudoProduct = clone $baseProduct;
                     $pseudoProduct->sku = $sku;
                     $productMasters[$sku] = $pseudoProduct;
+                    if ($skuNorm !== '') {
+                        $pmKeyByNorm[$skuNorm] = $sku;
+                    }
                 }
             }
         }
@@ -872,18 +892,36 @@ class EbayTwoController extends Controller
             $result[] = (object) $row;
         }
 
-        // Add Open Box and other items from ebay2_metrics that don't exist in product_masters
-        $processedSkus = collect($result)->pluck('(Child) sku')->toArray();
-        foreach ($ebayMetrics as $metricSku => $metric) {
-            if (!in_array($metricSku, $processedSkus)) {
+        // Add Open Box and other items from ebay2_metrics that don't exist in product_masters.
+        // $ebayMetrics is keyed by uppercase-normalized SKU — never expose that key as (Child) sku.
+        // Compare case-insensitively so "… WoB OPEN BOX" already in $result is not re-added as "… WOB OPEN BOX".
+        $processedSkusNorm = [];
+        foreach ($result as $existingRow) {
+            $existingSku = is_object($existingRow)
+                ? ($existingRow->{'(Child) sku'} ?? '')
+                : ($existingRow['(Child) sku'] ?? '');
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $existingSku);
+            if ($norm !== '') {
+                $processedSkusNorm[$norm] = true;
+            }
+        }
+        foreach ($ebayMetrics as $metricNormKey => $metric) {
+            $originalSku = trim((string) ($metric->sku ?? ''));
+            $displaySku = $originalSku !== '' ? $originalSku : (string) $metricNormKey;
+            $normKey = ShopifySku::normalizeSkuForShopifyLookup($displaySku);
+            if ($normKey === '' || isset($processedSkusNorm[$normKey])) {
+                continue;
+            }
+            $processedSkusNorm[$normKey] = true;
+
                 // This SKU exists in ebay2_metrics but not in product_masters (e.g., Open Box items)
                 $row = [];
                 $row["Parent"] = "";
-                $row["(Child) sku"] = $metricSku;
+                $row["(Child) sku"] = $displaySku;
                 $row['base_sku'] = '';
                 $row['base_inv'] = 0;
-                if (stripos((string) $metricSku, 'OPEN BOX') !== false) {
-                    $baseCandidate = trim(str_ireplace('OPEN BOX', '', (string) $metricSku));
+                if (stripos($displaySku, 'OPEN BOX') !== false) {
+                    $baseCandidate = trim(str_ireplace('OPEN BOX', '', $displaySku));
                     if ($baseCandidate !== '') {
                         $pmKey = $resolveProductMasterKey($baseCandidate);
                         if ($pmKey !== null) {
@@ -910,14 +948,14 @@ class EbayTwoController extends Controller
                 $row['E Stock'] = $metric->ebay_stock ?? 0;
 
                 // Temu Price for OPEN BOX / USED rows: fall back to the base SKU since temu_pricing keys on the original listing SKU.
-                $temuLookupSku = $row['base_sku'] !== '' ? $row['base_sku'] : $metricSku;
+                $temuLookupSku = $row['base_sku'] !== '' ? $row['base_sku'] : $displaySku;
                 $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($temuLookupSku)] ?? 0;
 
                 EbaySkuCompetitor::applyLinkedGroupToRow(
                     $row,
-                    (string) $metricSku,
+                    $displaySku,
                     $lmpDetailsLookup,
-                    $resolveLinkedLmpSkus((string) $metricSku),
+                    $resolveLinkedLmpSkus($displaySku),
                     $row['base_sku'] ?: null
                 );
 
@@ -1006,7 +1044,7 @@ class EbayTwoController extends Controller
                 $row['APlus'] = null;
                 $row["image_path"] = null;
 
-                $faRecNrpOb = $forecastNrpBySku[$normalizeSkuFa($metricSku)] ?? null;
+                $faRecNrpOb = $forecastNrpBySku[$normalizeSkuFa($displaySku)] ?? null;
                 $nrpOutOb = '';
                 if ($faRecNrpOb && $faRecNrpOb->nr !== null && trim((string) $faRecNrpOb->nr) !== '') {
                     $nrpOutOb = strtoupper(trim((string) $faRecNrpOb->nr));
@@ -1016,7 +1054,7 @@ class EbayTwoController extends Controller
                 }
                 $row['nrp'] = $nrpOutOb;
 
-                $dvKeyOrphan = strtoupper(trim((string) $metricSku));
+                $dvKeyOrphan = $normKey;
                 if ($nrValues->has($dvKeyOrphan)) {
                     $rawOb = $nrValues->get($dvKeyOrphan);
                     if (! is_array($rawOb)) {
@@ -1041,9 +1079,8 @@ class EbayTwoController extends Controller
                 $row['nr_req'] = \App\Support\Marketplace\EbayTwoListingCounts::nrReqFromDataView(
                     $nrValues->has($dvKeyOrphan) ? $nrValues->get($dvKeyOrphan) : null
                 );
-                
+
                 $result[] = (object) $row;
-            }
         }
 
         // AD% = channel-level Ads% (same as /all-marketplace-master), every row identical
@@ -1138,14 +1175,14 @@ class EbayTwoController extends Controller
     // Save NR value for a SKU
     public function saveNrToDatabase(Request $request)
     {
-        $sku = $request->input('sku');
+        $sku = $this->resolveCanonicalEbayTwoSku((string) $request->input('sku'));
         $nr = $request->input('nr');
 
-        if (!$sku || $nr === null) {
+        if ($sku === '' || $nr === null) {
             return response()->json(['error' => 'SKU and nr are required.'], 400);
         }
 
-        $dataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+        $dataView = $this->findOrNewEbayTwoDataView($sku);
         $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?: []);
         $value['NR'] = $nr;
         $dataView->value = $value;
@@ -1282,9 +1319,75 @@ class EbayTwoController extends Controller
         return ProductMaster::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($base)])->first();
     }
 
+    /**
+     * Canonical listing SKU casing from ebay_2_metrics (source of truth from eBay),
+     * falling back to an existing data-view row, then the request SKU as typed.
+     */
+    private function resolveCanonicalEbayTwoSku(string $sku): string
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return '';
+        }
+
+        $metric = Ebay2Metric::where('sku', $sku)->first();
+        if ($metric && trim((string) $metric->sku) !== '') {
+            return (string) $metric->sku;
+        }
+
+        $metric = Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        if ($metric && trim((string) $metric->sku) !== '') {
+            return (string) $metric->sku;
+        }
+
+        $dataView = EbayTwoDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+        if ($dataView && trim((string) $dataView->sku) !== '') {
+            return (string) $dataView->sku;
+        }
+
+        return $sku;
+    }
+
+    /**
+     * Load/create EbayTwoDataView using eBay-original SKU casing (never force uppercase).
+     */
+    private function findOrNewEbayTwoDataView(string $sku): EbayTwoDataView
+    {
+        $canonical = $this->resolveCanonicalEbayTwoSku($sku);
+        if ($canonical === '') {
+            $dataView = new EbayTwoDataView();
+            $dataView->sku = '';
+
+            return $dataView;
+        }
+
+        $dataView = EbayTwoDataView::where('sku', $canonical)->first();
+        if (! $dataView) {
+            $dataView = EbayTwoDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($canonical)])->first();
+        }
+
+        if ($dataView) {
+            // MySQL CI collations treat WoB == WOB; force binary update so eBay casing sticks.
+            if ((string) $dataView->sku !== $canonical) {
+                DB::update(
+                    'UPDATE ebay_two_data_views SET sku = ?, updated_at = ? WHERE id = ? AND BINARY sku != ?',
+                    [$canonical, now(), $dataView->id, $canonical]
+                );
+                $dataView->sku = $canonical;
+            }
+
+            return $dataView;
+        }
+
+        $dataView = new EbayTwoDataView();
+        $dataView->sku = $canonical;
+
+        return $dataView;
+    }
+
     public function saveSpriceToDatabase(Request $request)
     {
-        $sku = strtoupper(trim((string) $request->input('sku')));
+        $sku = $this->resolveCanonicalEbayTwoSku((string) $request->input('sku'));
 
         if ($sku === '') {
             return response()->json(['error' => 'SKU is required.'], 400);
@@ -1350,7 +1453,7 @@ class EbayTwoController extends Controller
             'sroi' => $sroi,
         ]);
 
-        $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+        $ebayDataView = $this->findOrNewEbayTwoDataView($sku);
 
         // Decode value column safely
         $existing = is_array($ebayDataView->value)
@@ -1814,10 +1917,10 @@ class EbayTwoController extends Controller
 
     public function pushEbay2Price(Request $request)
     {
-        $sku   = strtoupper(trim($request->input('sku')));
+        $sku   = $this->resolveCanonicalEbayTwoSku((string) $request->input('sku'));
         $price = $request->input('price');
 
-        if (empty($sku)) {
+        if ($sku === '') {
             $this->saveSpriceStatus($sku, 'failed');
             return response()->json(['success' => false, 'message' => 'SKU is required'], 400);
         }
@@ -1837,6 +1940,9 @@ class EbayTwoController extends Controller
 
         try {
             $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
+            if (! $ebayMetric) {
+                $ebayMetric = Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+            }
 
             if (!$ebayMetric || !$ebayMetric->item_id) {
                 $this->saveSpriceStatus($sku, 'failed');
@@ -1898,8 +2004,11 @@ class EbayTwoController extends Controller
     private function saveSpriceStatus($sku, $status)
     {
         try {
-            $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
-            
+            $ebayDataView = $this->findOrNewEbayTwoDataView((string) $sku);
+            if (trim((string) $ebayDataView->sku) === '') {
+                return;
+            }
+
             $value = is_array($ebayDataView->value)
                 ? $ebayDataView->value
                 : (is_string($ebayDataView->value) ? json_decode($ebayDataView->value, true) : []);

@@ -4956,9 +4956,9 @@ class AmazonSpApiService
     }
 
     /**
-     * Update Amazon listing's minimum price (business price rule)
-     * Uses the same endpoint as regular price update but adds business_price section
-     * 
+     * Update Amazon listing's minimum seller allowed price (price floor).
+     * Uses Listings Items PATCH merge on purchasable_offer per Amazon SP-API docs.
+     *
      * @param string $sku The seller SKU
      * @param float $minPrice Minimum price to set
      * @return array Response data
@@ -4978,17 +4978,15 @@ class AmazonSpApiService
         }
 
         // Validate price
-        if ($minPrice !== null) {
-            $minPrice = is_numeric($minPrice) ? round((float) $minPrice, 2) : null;
-            if ($minPrice === null || $minPrice < 0) {
-                Log::error("Amazon Min Price Update: Invalid min price", ['sku' => $sku, 'min_price' => $minPrice]);
-                return [
-                    'errors' => [[
-                        'code' => 'InvalidInput',
-                        'message' => 'Minimum price must be a valid number.'
-                    ]]
-                ];
-            }
+        $minPrice = is_numeric($minPrice) ? round((float) $minPrice, 2) : null;
+        if ($minPrice === null || $minPrice < 0) {
+            Log::error("Amazon Min Price Update: Invalid min price", ['sku' => $sku, 'min_price' => $minPrice]);
+            return [
+                'errors' => [[
+                    'code' => 'InvalidInput',
+                    'message' => 'Minimum price must be a valid number.'
+                ]]
+            ];
         }
 
         $sellerId = config('services.amazon_sp.seller_id');
@@ -5002,8 +5000,10 @@ class AmazonSpApiService
             ];
         }
 
+        // Align with updateAmazonPriceUS — US marketplace listings
+        $marketplaceId = 'ATVPDKIKX0DER';
+
         try {
-            // Get access token
             $accessToken = $this->getAccessToken();
             if (!$accessToken) {
                 return [
@@ -5014,103 +5014,134 @@ class AmazonSpApiService
                 ];
             }
 
-            // Use the Listings Items API to update minimum seller allowed price
-            $url = $this->endpoint . '/listings/2021-08-01/items/' . rawurlencode($sellerId) . '/' . rawurlencode($sku);
-            $url .= '?marketplaceIds=' . rawurlencode($this->marketplaceId);
-            
+            // Resolve Seller Central MSKU (same as regular price push)
+            $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, $marketplaceId);
+            if (empty($amazonSku)) {
+                Log::error("Amazon Min Price Update: SKU not found in Amazon", ['sku' => $sku]);
+                return [
+                    'errors' => [[
+                        'code' => 'InvalidInput',
+                        'message' => 'Listings API could not find this offer (US) for minimum price update.',
+                    ]]
+                ];
+            }
+
+            // Amazon docs: merge + selectors (marketplace_id, currency, audience)
+            // https://developer-docs.amazon.com/sp-api/docs/manage-purchasable-offer
+            $url = $this->endpoint . '/listings/2021-08-01/items/'
+                . rawurlencode($sellerId) . '/' . rawurlencode($amazonSku)
+                . '?marketplaceIds=' . rawurlencode($marketplaceId);
+
             $payload = [
                 'productType' => 'PRODUCT',
                 'patches' => [
                     [
-                        'op' => 'replace',
+                        'op' => 'merge',
                         'path' => '/attributes/purchasable_offer',
                         'value' => [
                             [
-                                'marketplace_id' => $this->marketplaceId,
+                                'marketplace_id' => $marketplaceId,
                                 'currency' => 'USD',
-                                'our_price' => [
-                                    [
-                                        'schedule' => [
-                                            [
-                                                'value_with_tax' => $minPrice
-                                            ]
-                                        ]
-                                    ]
-                                ],
+                                'audience' => 'ALL',
                                 'minimum_seller_allowed_price' => [
                                     [
                                         'schedule' => [
                                             [
-                                                'value_with_tax' => $minPrice
-                                            ]
-                                        ]
-                                    ]
-                                ]
-                            ]
-                        ]
-                    ]
-                ]
+                                                'value_with_tax' => $minPrice,
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
             ];
 
             Log::info('Amazon Min Price Update Request', [
-                'sku' => $sku,
+                'original_sku' => $sku,
+                'amazon_sku' => $amazonSku,
                 'min_price' => $minPrice,
                 'url' => $url,
-                'payload' => $payload
+                'payload' => $payload,
             ]);
 
-            $response = Http::withoutVerifying()
+            $response = Http::withToken($accessToken)
                 ->withHeaders([
                     'x-amz-access-token' => $accessToken,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
+                    'content-type' => 'application/json',
+                    'accept' => 'application/json',
                 ])
                 ->timeout(60)
                 ->connectTimeout(25)
                 ->patch($url, $payload);
 
             $responseData = $response->json();
+            if (!is_array($responseData)) {
+                $responseData = [];
+            }
 
-            if ($response->successful()) {
-                Log::info('Amazon Min Price Update Success', [
-                    'sku' => $sku,
-                    'min_price' => $minPrice,
-                    'response' => $responseData
-                ]);
-
-                return [
-                    'success' => true,
-                    'message' => 'Minimum price updated successfully',
-                    'sku' => $sku,
-                    'min_price' => $minPrice
-                ];
-            } else {
+            if ($response->failed()) {
                 Log::error('Amazon Min Price Update Failed', [
-                    'sku' => $sku,
+                    'original_sku' => $sku,
+                    'amazon_sku' => $amazonSku,
                     'status' => $response->status(),
-                    'response' => $responseData
+                    'response' => $responseData,
                 ]);
 
                 return [
                     'errors' => $responseData['errors'] ?? [[
                         'code' => 'APIError',
-                        'message' => 'Failed to update minimum price: ' . ($response->body() ?: 'Unknown error')
-                    ]]
+                        'message' => 'Failed to update minimum price: ' . ($response->body() ?: 'Unknown error'),
+                    ]],
                 ];
             }
 
+            if (isset($responseData['errors']) && !empty($responseData['errors'])) {
+                Log::error('Amazon Min Price Update: API returned errors', [
+                    'original_sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'errors' => $responseData['errors'],
+                ]);
+                return $responseData;
+            }
+
+            $patchFailure = $this->listingsPatchFailureFromResponseBody($responseData);
+            if ($patchFailure !== null) {
+                Log::error('Amazon Min Price Update: listing patch not accepted', [
+                    'original_sku' => $sku,
+                    'amazon_sku' => $amazonSku,
+                    'min_price' => $minPrice,
+                    'response' => $responseData,
+                ]);
+                return $patchFailure;
+            }
+
+            Log::info('Amazon Min Price Update Success', [
+                'original_sku' => $sku,
+                'amazon_sku' => $amazonSku,
+                'min_price' => $minPrice,
+                'response' => $responseData,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Minimum price updated successfully',
+                'sku' => $amazonSku,
+                'min_price' => $minPrice,
+            ];
         } catch (\Exception $e) {
             Log::error('Amazon Min Price Update Exception', [
                 'sku' => $sku,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return [
                 'errors' => [[
                     'code' => 'Exception',
-                    'message' => $e->getMessage()
-                ]]
+                    'message' => $e->getMessage(),
+                ]],
             ];
         }
     }

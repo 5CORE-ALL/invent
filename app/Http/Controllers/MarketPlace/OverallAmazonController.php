@@ -1691,40 +1691,57 @@ class OverallAmazonController extends Controller
                 return response()->json($result);
             }
 
-            // Check if we should also update Amazon's minimum price constraint
-            $updateMinPriceConstraint = $request->input('update_amazon_min_price', false);
-            
+            // Also update Amazon's minimum seller allowed price (price floor) when requested
+            $updateMinPriceConstraint = $request->boolean('update_amazon_min_price');
+            $minPriceResult = null;
+
             Log::info('Checking Amazon min price update parameter', [
                 'update_amazon_min_price_param' => $updateMinPriceConstraint,
-                'request_all' => $request->all()
+                'raw_param' => $request->input('update_amazon_min_price'),
+                'sku' => $skuForAmazon,
+                'price' => $priceFloat,
             ]);
-            
+
             if ($updateMinPriceConstraint) {
                 Log::info('Updating Amazon minimum price constraint', [
                     'sku' => $skuForAmazon,
-                    'min_price' => $priceFloat
+                    'min_price' => $priceFloat,
                 ]);
-                
+
                 try {
                     $constraintResult = $service->updateCompetitivePriceConstraints($skuForAmazon, $priceFloat);
-                    
+
                     if (isset($constraintResult['errors']) && !empty($constraintResult['errors'])) {
                         Log::warning('Amazon minimum price constraint update failed (non-blocking)', [
                             'sku' => $skuForAmazon,
-                            'errors' => $constraintResult['errors']
+                            'errors' => $constraintResult['errors'],
                         ]);
-                        // Don't fail the whole operation, just log the warning
+                        $minPriceResult = [
+                            'ok' => false,
+                            'errors' => $constraintResult['errors'],
+                        ];
                     } else {
                         Log::info('Amazon minimum price constraint updated successfully', [
                             'sku' => $skuForAmazon,
-                            'min_price' => $priceFloat
+                            'min_price' => $priceFloat,
                         ]);
+                        $minPriceResult = [
+                            'ok' => true,
+                            'min_price' => $priceFloat,
+                        ];
                     }
                 } catch (\Exception $e) {
                     Log::error('Amazon minimum price constraint update exception (non-blocking)', [
                         'sku' => $skuForAmazon,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
+                    $minPriceResult = [
+                        'ok' => false,
+                        'errors' => [[
+                            'code' => 'Exception',
+                            'message' => $e->getMessage(),
+                        ]],
+                    ];
                 }
             }
 
@@ -1735,7 +1752,11 @@ class OverallAmazonController extends Controller
                 'amazon_api_sku' => $skuForAmazon,
                 'asin_used' => $asinParam !== '' ? strtoupper(str_replace([' ', "\xc2\xa0"], '', $asinParam)) : null,
             ]);
-            
+
+            if ($minPriceResult !== null) {
+                $responseData['min_price_push'] = $minPriceResult;
+            }
+
             if ($pushShopify) {
                 // Match Pricing Master CVR Shopify B2C behavior exactly by routing through
                 // CvrMasterController::pushPriceToAmazon(marketplace=shopifyb2c).

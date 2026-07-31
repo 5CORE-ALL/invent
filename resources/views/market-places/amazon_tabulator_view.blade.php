@@ -3470,7 +3470,13 @@
                     
                     function attemptApply() {
                         attempt++;
-                        const post = { sku: sku, price: price, push_shopify: pushShopify };
+                        // Always push minimum seller allowed price with the listing price
+                        const post = {
+                            sku: sku,
+                            price: price,
+                            push_shopify: pushShopify,
+                            update_amazon_min_price: true
+                        };
                         if (asin) {
                             post.asin = asin;
                         }
@@ -3682,7 +3688,13 @@
                         .then((result) => {
                             successCount++;
                             const resp = result && result.response ? result.response : null;
-                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                            const minPush = resp && resp.min_price_push;
+                            if (minPush && minPush.ok === false) {
+                                const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
+                                showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                            } else {
+                                showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                            }
                             
                             // Update row data with pushed status instantly
                             if (row) {
@@ -5889,7 +5901,14 @@
                 applyPriceWithRetry(sku, price, null, 5, 5000, asinBtn || null, false)
                     .then(function(result) {
                         $btn.prop('disabled', false);
-                        showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                        const resp = result && result.response ? result.response : null;
+                        const minPush = resp && resp.min_price_push;
+                        if (minPush && minPush.ok === false) {
+                            const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
+                            showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                        } else {
+                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                        }
                         $btn.removeClass('btn-success').addClass('btn-secondary');
                         $btn.html('<i class="fas fa-check-circle"></i> Applied');
                         setTimeout(function() {
@@ -5937,7 +5956,8 @@
                         sku: sku,
                         price: price,
                         asin: asinModal || null,
-                        push_shopify: false
+                        push_shopify: false,
+                        update_amazon_min_price: true
                     },
                     success: function(response) {
                         if (response.errors && response.errors.length > 0) {
@@ -5960,7 +5980,13 @@
                                 tabRow.update(rowData);
                             }
                         }
-                        showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                        const minPush = response.min_price_push;
+                        if (minPush && minPush.ok === false) {
+                            const minErr = (minPush.errors && minPush.errors[0] && minPush.errors[0].message) || 'Unknown error';
+                            showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                        } else {
+                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                        }
                         const pk = $('#parentPricingBreakdownModal').data('amazonParentKey');
                         if (pk) {
                             showParentPricingBreakdownModal(pk);
@@ -7711,7 +7737,14 @@
                                         
                                         $btn.prop('disabled', false);
                                         $btn.html('<i class="fas fa-check-circle" style="color: #28a745;"></i>');
-                                        showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+
+                                        const minPush = response.min_price_push;
+                                        if (minPush && minPush.ok === false) {
+                                            const minErr = minPush.errors?.[0]?.message || 'Unknown error';
+                                            showToast('warning', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}, but min price failed: ${minErr}`);
+                                        } else {
+                                            showToast('success', `Amazon: Price $${Number(price).toFixed(2)} pushed for SKU: ${sku}`);
+                                        }
                                     },
                                     error: function(xhr) {
                                         const row = cell.getRow();
