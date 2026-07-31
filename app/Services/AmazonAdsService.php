@@ -390,7 +390,8 @@ class AmazonAdsService
     }
 
     /**
-     * Update Sponsored Products campaigns (v3) — budget, state (ENABLED/PAUSED/ARCHIVED), etc.
+     * Update Sponsored Products campaigns (v3) — budget, state (ENABLED/PROPOSED/PAUSED), etc.
+     * Note: ARCHIVED is not accepted here; use deleteCampaigns() / archiveCampaign().
      *
      * @param  list<array<string, mixed>>  $campaigns
      * @return array<string, mixed>
@@ -399,6 +400,30 @@ class AmazonAdsService
     {
         return $this->put('/sp/campaigns', [
             'campaigns' => array_values($campaigns),
+        ], [
+            'Content-Type' => 'application/vnd.spCampaign.v3+json',
+            'Accept' => 'application/vnd.spCampaign.v3+json',
+        ]);
+    }
+
+    /**
+     * Delete (archive) Sponsored Products campaigns (v3).
+     * Amazon permanently moves them to ARCHIVED via POST /sp/campaigns/delete.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, mixed>
+     */
+    public function deleteCampaigns(array $campaignIds): array
+    {
+        $ids = array_values(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $campaignIds
+        ), static fn ($id) => $id !== ''));
+
+        return $this->post('/sp/campaigns/delete', [
+            'campaignIdFilter' => [
+                'include' => $ids,
+            ],
         ], [
             'Content-Type' => 'application/vnd.spCampaign.v3+json',
             'Accept' => 'application/vnd.spCampaign.v3+json',
@@ -466,7 +491,9 @@ class AmazonAdsService
     }
 
     /**
-     * Archive a Sponsored Products campaign (Amazon has no hard delete — use ARCHIVED).
+     * Archive a Sponsored Products campaign.
+     * PUT /sp/campaigns rejects state=ARCHIVED (only ENABLED/PROPOSED/PAUSED);
+     * archiving is done via POST /sp/campaigns/delete.
      *
      * @return array{success: bool, message?: string, response?: array}
      */
@@ -478,18 +505,22 @@ class AmazonAdsService
         }
 
         try {
-            $response = $this->updateCampaigns([
-                [
-                    'campaignId' => $campaignId,
-                    'state' => 'ARCHIVED',
-                ],
-            ]);
+            $response = $this->deleteCampaigns([$campaignId]);
 
             $errors = data_get($response, 'campaigns.error', []);
             if (is_array($errors) && $errors !== []) {
                 $msg = $this->formatAmazonMultiStatusError($errors);
 
                 return ['success' => false, 'message' => $msg !== '' ? $msg : 'Amazon rejected campaign archive.', 'response' => $response];
+            }
+
+            $success = data_get($response, 'campaigns.success', []);
+            if (! is_array($success) || $success === []) {
+                return [
+                    'success' => false,
+                    'message' => 'Amazon did not confirm campaign archive.',
+                    'response' => $response,
+                ];
             }
 
             return ['success' => true, 'response' => $response];

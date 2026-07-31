@@ -1049,9 +1049,8 @@ class AmazonAdsController extends Controller
         $hasAdType = in_array('ad_type', $dbColumns, true);
         $q = DB::table($table.' as s30')
             ->whereIn('s30.campaign_id', $cidList)
-            ->whereRaw('CHAR_LENGTH(TRIM(s30.report_date_range)) >= 10')
-            ->whereRaw("LEFT(TRIM(s30.report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
-            ->whereRaw('LEFT(TRIM(s30.report_date_range), 10) BETWEEN ? AND ?', [$from, $anchor]);
+            ->whereRaw('CHAR_LENGTH(s30.report_date_range) = 10')
+            ->whereBetween('s30.report_date_range', [$from, $anchor]);
         if ($hasAdType) {
             $q->selectRaw('s30.campaign_id AS cid, s30.ad_type AS ad, SUM('.$rowExpr.') AS spend_l30')
                 ->groupBy('s30.campaign_id', 's30.ad_type');
@@ -1151,7 +1150,7 @@ class AmazonAdsController extends Controller
         }
         $hasAdType = in_array('ad_type', $dbColumns, true);
         $sub = DB::table($table)
-            ->whereRaw("UPPER(TRIM(report_date_range)) = 'L30'")
+            ->where('report_date_range', 'L30')
             ->whereIn('campaign_id', $cidList);
         if ($hasAdType) {
             $sub->selectRaw('campaign_id AS cid, ad_type AS ad, MAX(id) AS max_id')
@@ -1241,9 +1240,27 @@ class AmazonAdsController extends Controller
             || in_array('sbgt', $columns, true);
         // Always fetch the L30 slice: badge totals (Spend / Sold / Sales / Clicks) all read distinct-campaign L30 values from it.
         $l30SliceMap = self::fetchL30SummarySliceMap($table, $dbColumns, $stubRows);
-        $l30SpendMap = $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))
-            ? self::fetchL30DailySpendSumMap($table, $dbColumns, $stubRows)
-            : [];
+        $l30SpendMap = [];
+        if ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))) {
+            $needDailyFallback = $l30SliceMap === [];
+            if (! $needDailyFallback) {
+                foreach ($stubRows as $stub) {
+                    $cid = isset($stub->campaign_id) ? trim((string) $stub->campaign_id) : '';
+                    if ($cid === '') {
+                        continue;
+                    }
+                    $ad = $hasAd ? trim((string) ($stub->ad_type ?? '')) : '';
+                    $lk = $cid."\0".$ad;
+                    if (! isset($l30SliceMap[$lk]) || $l30SliceMap[$lk]['spend'] === null) {
+                        $needDailyFallback = true;
+                        break;
+                    }
+                }
+            }
+            if ($needDailyFallback) {
+                $l30SpendMap = self::fetchL30DailySpendSumMap($table, $dbColumns, $stubRows);
+            }
+        }
         $rawByKey = [];
         $rawSalesByKey = [];
         $rawPurchByKey = [];
@@ -1560,21 +1577,28 @@ class AmazonAdsController extends Controller
     /**
      * Latest calendar day stored in `report_date_range` (YYYY-MM-DD prefix only).
      */
+    /** @var array<string, string|null> */
+    private static array $latestDailyReportYmdCache = [];
+
     private static function latestDailyReportYmdInTable(string $table): ?string
     {
-        if (! Schema::hasTable($table)) {
-            return null;
+        if (array_key_exists($table, self::$latestDailyReportYmdCache)) {
+            return self::$latestDailyReportYmdCache[$table];
         }
+        if (! Schema::hasTable($table)) {
+            return self::$latestDailyReportYmdCache[$table] = null;
+        }
+        // Exact YYYY-MM-DD daily rows (indexed); avoid LEFT/TRIM/REGEXP full scans.
         $max = DB::table($table)
-            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
-            ->max(DB::raw('LEFT(TRIM(report_date_range), 10)'));
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->max('report_date_range');
 
         if ($max === null || $max === '') {
-            return null;
+            return self::$latestDailyReportYmdCache[$table] = null;
         }
 
-        return (string) $max;
+        return self::$latestDailyReportYmdCache[$table] = (string) $max;
     }
 
     /**
@@ -1633,7 +1657,7 @@ class AmazonAdsController extends Controller
         $summaryRows = DB::table($table)
             ->select($select)
             ->whereIn('campaign_id', $cidList)
-            ->whereRaw('UPPER(TRIM(report_date_range)) IN (?, ?)', ['L7', 'L1'])
+            ->whereIn('report_date_range', ['L7', 'L1'])
             ->orderBy('id', 'desc')
             ->get();
 
@@ -1668,9 +1692,7 @@ class AmazonAdsController extends Controller
         $dailyL2 = DB::table($table)
             ->select($select)
             ->whereIn('campaign_id', $cidList)
-            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) = ?", [$l2Day])
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->where('report_date_range', $l2Day)
             ->orderBy('id', 'desc')
             ->get();
 
@@ -1895,6 +1917,125 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Prefetch CPC2/CPC3 for a page of rows in one query (avoids N+1 per-row day lookups).
+     *
+     * Cache key matches {@see fetchCostPerClickOnReportDay}: campaign_id + ad + YYYY-MM-DD.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  iterable<int, object>  $pageRows
+     * @return array<string, float|null>
+     */
+    private static function prefetchCostPerClickForPageRows(
+        string $table,
+        array $dbColumns,
+        iterable $pageRows,
+        bool $needCpc2,
+        bool $needCpc3
+    ): array {
+        if ((! $needCpc2 && ! $needCpc3) || ! in_array('campaign_id', $dbColumns, true) || ! in_array('report_date_range', $dbColumns, true)) {
+            return [];
+        }
+        $hasAdType = in_array('ad_type', $dbColumns, true);
+        $useSpCpc = in_array('costPerClick', $dbColumns, true);
+        $useSbHl = $table === 'amazon_sb_campaign_reports'
+            && in_array('cost', $dbColumns, true)
+            && in_array('clicks', $dbColumns, true);
+        if (! $useSpCpc && ! $useSbHl) {
+            return [];
+        }
+
+        $cids = [];
+        $days = [];
+        $needed = [];
+        foreach ($pageRows as $row) {
+            $rowArr = (array) $row;
+            $cid = isset($rowArr['campaign_id']) ? trim((string) $rowArr['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $adType = $hasAdType ? ($rowArr['ad_type'] ?? null) : null;
+            $adTypeStr = is_string($adType) ? $adType : null;
+            $adKey = ($adTypeStr !== null && $adTypeStr !== '') ? $adTypeStr : '-';
+            $offsets = [];
+            if ($needCpc2) {
+                $offsets[] = 1;
+            }
+            if ($needCpc3) {
+                $offsets[] = 2;
+            }
+            foreach ($offsets as $daysBefore) {
+                $day = self::calendarDayOffsetFromCpc1Anchor($rowArr, $dbColumns, $table, $daysBefore);
+                if ($day === null || $day === '') {
+                    continue;
+                }
+                $cids[$cid] = true;
+                $days[$day] = true;
+                $needed[$cid."\0".$adKey."\0".$day] = true;
+            }
+        }
+        $cidList = array_keys($cids);
+        $dayList = array_keys($days);
+        if ($cidList === [] || $dayList === []) {
+            return [];
+        }
+
+        $select = ['campaign_id', 'report_date_range', 'id'];
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+        if ($useSpCpc) {
+            $select[] = 'costPerClick';
+        } else {
+            $select[] = 'cost';
+            $select[] = 'clicks';
+            if (in_array('spend', $dbColumns, true)) {
+                $select[] = 'spend';
+            }
+        }
+
+        $foundRows = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->whereIn('report_date_range', $dayList)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $cache = [];
+        foreach ($needed as $k => $_) {
+            $cache[$k] = null;
+        }
+        foreach ($foundRows as $fr) {
+            $r = (array) $fr;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $day = isset($r['report_date_range']) ? trim((string) $r['report_date_range']) : '';
+            if ($day === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $adKey = $ad !== '' ? $ad : '-';
+            $key = $cid."\0".$adKey."\0".$day;
+            if (! array_key_exists($key, $cache) || $cache[$key] !== null) {
+                continue;
+            }
+            if ($useSpCpc) {
+                $cpc = null;
+                if (isset($r['costPerClick'])) {
+                    $n = (float) $r['costPerClick'];
+                    $cpc = is_finite($n) && $n > 0 ? round($n, 4) : null;
+                }
+                $cache[$key] = $cpc;
+            } else {
+                $cache[$key] = self::hlStyleCpcFromReportRowArray($r);
+            }
+        }
+
+        return $cache;
+    }
+
+    /**
      * CPC for one calendar `report_date_range` day: `costPerClick` on SP/SD; SB uses {@see hlStyleCpcFromReportRowArray}.
      *
      * @param  array<int, string>  $dbColumns
@@ -1913,10 +2054,9 @@ class AmazonAdsController extends Controller
             return $cache[$key];
         }
 
+        // Prefer exact indexed match (daily rows are YYYY-MM-DD).
         $q = DB::table($table)->where('campaign_id', $campaignId)
-            ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) = ?", [$reportDayYmd])
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+            ->where('report_date_range', $reportDayYmd);
         if ($adType !== null && $adType !== '' && in_array('ad_type', $dbColumns, true)) {
             $q->where('ad_type', $adType);
         }
@@ -2145,13 +2285,20 @@ class AmazonAdsController extends Controller
         if ($from === null && $to === null) {
             return;
         }
-        $query->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
-            ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+        // Daily rows store exact YYYY-MM-DD (len 10). Prefer the indexed column so calendar filters
+        // and COUNT/DISTINCT badge queries can use amazon_*_report_date_range_index.
+        // L1/L7/L30 labels are short and lexicographically outside any ISO date range.
+        if ($from !== null && $to !== null && $from === $to) {
+            $query->where('report_date_range', $from);
+
+            return;
+        }
+        $query->whereRaw('CHAR_LENGTH(report_date_range) = 10');
         if ($from !== null) {
-            $query->whereRaw('LEFT(TRIM(report_date_range), 10) >= ?', [$from]);
+            $query->where('report_date_range', '>=', $from);
         }
         if ($to !== null) {
-            $query->whereRaw('LEFT(TRIM(report_date_range), 10) <= ?', [$to]);
+            $query->where('report_date_range', '<=', $to);
         }
     }
 
@@ -2471,18 +2618,8 @@ class AmazonAdsController extends Controller
         $best = null;
         try {
             if (in_array('report_date_range', $cols, true)) {
-                $row = DB::table($table)
-                    ->whereRaw('CHAR_LENGTH(TRIM(report_date_range)) >= 10')
-                    ->whereRaw("LEFT(TRIM(report_date_range), 10) REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
-                    ->selectRaw('MAX(LEFT(TRIM(report_date_range), 10)) AS d')
-                    ->first();
-                $d = $row->d ?? null;
-                if (is_string($d) && $d !== '') {
-                    $s = substr($d, 0, 10);
-                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) {
-                        $best = $s;
-                    }
-                }
+                // Reuse the cached/indexed daily max (same source as grid CPC anchors).
+                $best = self::latestDailyReportYmdInTable($table);
 
                 return self::clampReportDayToTodayOrNull($best);
             }
@@ -2993,14 +3130,35 @@ class AmazonAdsController extends Controller
         $needL30ForAcosSbgt = in_array('cost', $columns, true)
             || in_array('ACOS', $columns, true)
             || in_array('sbgt', $columns, true);
-        $l30SpendMap = $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true))
-            ? self::fetchL30DailySpendSumMap($table, $dbColumns, $rows)
-            : [];
         $needL30Slice = ($needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true)))
             || (in_array('Prchase', $columns, true) && (in_array('purchases30d', $dbColumns, true) || in_array('purchases', $dbColumns, true)))
             || (in_array('sales30d', $columns, true) && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)))
             || (($needL30ForAcosSbgt) && in_array('sales30d', $dbColumns, true));
         $l30SliceMap = $needL30Slice ? self::fetchL30SummarySliceMap($table, $dbColumns, $rows) : [];
+        // Daily L30 sum is only a fallback when the L30 summary slice has no spend.
+        $l30SpendMap = [];
+        $canDailyL30 = $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true));
+        if ($canDailyL30) {
+            $needDailyFallback = $l30SliceMap === [];
+            if (! $needDailyFallback) {
+                foreach ($rows as $row) {
+                    $r = (array) $row;
+                    $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+                    if ($cid === '') {
+                        continue;
+                    }
+                    $ad = in_array('ad_type', $dbColumns, true) ? trim((string) ($r['ad_type'] ?? '')) : '';
+                    $lk = $cid."\0".$ad;
+                    if (! isset($l30SliceMap[$lk]) || $l30SliceMap[$lk]['spend'] === null) {
+                        $needDailyFallback = true;
+                        break;
+                    }
+                }
+            }
+            if ($needDailyFallback) {
+                $l30SpendMap = self::fetchL30DailySpendSumMap($table, $dbColumns, $rows);
+            }
+        }
 
         $hasCpc2 = in_array('CPC2', $columns, true);
         $hasCpc3 = in_array('CPC3', $columns, true);
@@ -3017,7 +3175,9 @@ class AmazonAdsController extends Controller
             );
         $l1ClicksCostMap = $needSbL1Cpc ? self::fetchL1SummaryClicksCostMap($table, $dbColumns, $rows) : [];
         $empty = array_fill_keys($columns, null);
-        $cpcDayCache = [];
+        $cpcDayCache = ($hasCpc2 || $hasCpc3)
+            ? self::prefetchCostPerClickForPageRows($table, $dbColumns, $rows, $hasCpc2, $hasCpc3)
+            : [];
         $data = [];
         foreach ($rows as $row) {
             $rowArr = (array) $row;

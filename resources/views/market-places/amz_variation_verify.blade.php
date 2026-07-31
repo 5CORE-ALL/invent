@@ -88,6 +88,14 @@
         .amz-stat-badge--campaigns { background: #ea580c; }
         .amz-stat-badge--issues { background: #dc2626; cursor: pointer; }
         .amz-stat-badge--issues.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
+        .amz-stat-badge--missing { background: #dc2626; cursor: pointer; }
+        .amz-stat-badge--missing.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
+        .amz-stat-badge--missing-inv { background: #b91c1c; cursor: pointer; }
+        .amz-stat-badge--missing-inv.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #b91c1c; }
+        .amz-stat-badge--extra { background: #2563eb; cursor: pointer; }
+        .amz-stat-badge--extra.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2563eb; }
+        .amz-stat-badge--archived-extra { background: #6b7280; cursor: pointer; }
+        .amz-stat-badge--archived-extra.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #6b7280; }
         .amz-stat-badge--issues .amz-vv-trend-dot {
             display: inline-block; width: 10px; height: 10px; border-radius: 50%;
             margin-left: 8px; vertical-align: middle; cursor: pointer; flex-shrink: 0;
@@ -132,6 +140,18 @@
         .amz-vv-ad-missing { color: #dc2626; font-weight: 700; }
         .amz-vv-ad-over { color: #ea580c; font-weight: 700; }
         .amz-vv-ad-na { color: #94a3b8; }
+        .amz-vv-ad-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; line-height: 1.25; }
+        .amz-vv-ad-skus {
+            display: inline-block; font-size: 10px; font-weight: 700; max-width: 240px;
+            white-space: normal; word-break: break-word; padding: 2px 6px; border-radius: 4px;
+            line-height: 1.35; text-align: left;
+        }
+        .amz-vv-ad-skus--missing { color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5; }
+        .amz-vv-ad-skus--over { color: #9a3412; background: #ffedd5; border: 1px solid #fdba74; }
+        .amz-vv-ad-skus--extra { color: #1e3a8a; background: #dbeafe; border: 1px solid #93c5fd; }
+        .amz-vv-ad-skus--archived { color: #374151; background: #e5e7eb; border: 1px solid #9ca3af; }
+        .amz-vv-ad-extra { color: #2563eb; font-weight: 700; }
+        .amz-vv-ad-archived { color: #6b7280; font-weight: 700; }
     </style>
 @endsection
 
@@ -152,9 +172,21 @@
                             <span class="amz-stat-badge amz-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="amz-vv-badge-children">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--listed" title="Amazon listings cache">LISTED:<span id="amz-vv-badge-listed">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 campaigns">CAMPAIGNS:<span id="amz-vv-badge-campaigns">0</span></span>
-                            <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-issues-wrap" title="Parents with KW/PT ads missing — click badge to filter. Click dot for rolling history.">
+                            <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-issues-wrap" title="Parents with KW/PT missing or extra ads — click badge to filter. Click dot for rolling history.">
                                 VARIATIONS ISSUES:<span id="amz-vv-badge-issues">0</span>
                                 <span class="amz-vv-trend-dot none" id="amz-vv-issues-trend-dot" title="Rolling history" role="button" tabindex="0"></span>
+                            </span>
+                            <span class="amz-stat-badge amz-stat-badge--missing" id="amz-vv-badge-missing-wrap" title="All missing SKUs (KW or PT) — click to filter" role="button" tabindex="0">
+                                MISSING:<span id="amz-vv-badge-missing">0</span>
+                            </span>
+                            <span class="amz-stat-badge amz-stat-badge--missing-inv" id="amz-vv-badge-missing-inv-wrap" title="Missing SKUs with INV &gt; 0 — click to filter" role="button" tabindex="0">
+                                MISSING INV&gt;0:<span id="amz-vv-badge-missing-inv">0</span>
+                            </span>
+                            <span class="amz-stat-badge amz-stat-badge--extra" id="amz-vv-badge-extra-wrap" title="Extra ad SKUs not in CP Master (not archived) — click to filter" role="button" tabindex="0">
+                                EXTRA:<span id="amz-vv-badge-extra">0</span>
+                            </span>
+                            <span class="amz-stat-badge amz-stat-badge--archived-extra" id="amz-vv-badge-archived-extra-wrap" title="Extra ads already ARCHIVED — click to filter" role="button" tabindex="0">
+                                ARCHIVED:<span id="amz-vv-badge-archived-extra">0</span>
                             </span>
                         </div>
                         <span id="amz-vv-total" class="badge bg-secondary">Total: —</span>
@@ -164,6 +196,9 @@
                         </button>
                         <button type="button" id="amz-vv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Pull Amazon listings (SP-API)">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
+                        </button>
+                        <button type="button" id="amz-vv-archive-extra-btn" class="btn btn-sm btn-outline-danger" title="Archive Extra ads campaigns that are not already ARCHIVED">
+                            <i class="fas fa-archive me-1"></i> Archive Extras
                         </button>
                         <span class="text-muted small" id="amz-vv-status-line"></span>
                     </div>
@@ -251,7 +286,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         let amzVvTable = null;
-        let amzVvIssuesFilterActive = false;
+        /** null | 'issues' | 'missing' | 'missing_inv' | 'extra' | 'archived_extra' */
+        let amzVvActiveFilter = null;
         let amzVvIssuesLiveCount = 0;
         let amzVvIssuesPrevDay = null;
         let amzVvChartInstance = null;
@@ -325,6 +361,10 @@
             $('#amz-vv-badge-listed').text(listed.toLocaleString());
             $('#amz-vv-badge-campaigns').text(campaigns.toLocaleString());
             $('#amz-vv-badge-issues').text(issues.toLocaleString());
+            $('#amz-vv-badge-missing').text((meta.missing_sku_count || 0).toLocaleString());
+            $('#amz-vv-badge-missing-inv').text((meta.missing_inv_gt0_count || 0).toLocaleString());
+            $('#amz-vv-badge-extra').text((meta.extra_sku_count || 0).toLocaleString());
+            $('#amz-vv-badge-archived-extra').text((meta.archived_extra_sku_count || 0).toLocaleString());
             amzVvApplyIssuesTrendDot();
 
             const parts = [];
@@ -508,6 +548,11 @@
             }
         }
 
+        function amzVvSetActiveFilter(mode) {
+            amzVvActiveFilter = (amzVvActiveFilter === mode) ? null : mode;
+            amzVvApplyFilters();
+        }
+
         function amzVvApplyFilters() {
             if (!amzVvTable) return;
             amzVvTable.clearFilter();
@@ -520,15 +565,76 @@
                 });
             }
 
-            if (amzVvIssuesFilterActive) {
+            if (amzVvActiveFilter === 'issues') {
                 amzVvTable.addFilter(function (data) {
                     return (parseInt(data.kw_missing, 10) || 0) > 0
+                        || (parseInt(data.pt_missing, 10) || 0) > 0
+                        || (parseInt(data.kw_extra, 10) || 0) > 0
+                        || (parseInt(data.pt_extra, 10) || 0) > 0;
+                });
+            } else if (amzVvActiveFilter === 'missing') {
+                amzVvTable.addFilter(function (data) {
+                    return !!data.has_missing
+                        || (parseInt(data.kw_missing, 10) || 0) > 0
                         || (parseInt(data.pt_missing, 10) || 0) > 0;
+                });
+            } else if (amzVvActiveFilter === 'missing_inv') {
+                amzVvTable.addFilter(function (data) {
+                    return !!data.has_missing_inv_gt0
+                        || (parseInt(data.missing_inv_gt0_count, 10) || 0) > 0;
+                });
+            } else if (amzVvActiveFilter === 'extra') {
+                amzVvTable.addFilter(function (data) {
+                    return (parseInt(data.kw_extra, 10) || 0) > 0
+                        || (parseInt(data.pt_extra, 10) || 0) > 0
+                        || (parseInt(data.extra_sku_count, 10) || 0) > 0;
+                });
+            } else if (amzVvActiveFilter === 'archived_extra') {
+                amzVvTable.addFilter(function (data) {
+                    return !!data.has_archived_extra
+                        || (parseInt(data.kw_archived_extra, 10) || 0) > 0
+                        || (parseInt(data.pt_archived_extra, 10) || 0) > 0
+                        || (parseInt(data.archived_extra_sku_count, 10) || 0) > 0;
                 });
             }
 
-            $('#amz-vv-badge-issues-wrap').toggleClass('is-active', amzVvIssuesFilterActive);
+            $('#amz-vv-badge-issues-wrap').toggleClass('is-active', amzVvActiveFilter === 'issues');
+            $('#amz-vv-badge-missing-wrap').toggleClass('is-active', amzVvActiveFilter === 'missing');
+            $('#amz-vv-badge-missing-inv-wrap').toggleClass('is-active', amzVvActiveFilter === 'missing_inv');
+            $('#amz-vv-badge-extra-wrap').toggleClass('is-active', amzVvActiveFilter === 'extra');
+            $('#amz-vv-badge-archived-extra-wrap').toggleClass('is-active', amzVvActiveFilter === 'archived_extra');
             amzVvUpdateRowCount();
+        }
+
+        function amzVvAdHoverTitle(type, d) {
+            const addedCampaigns = Array.isArray(d[type + '_added_campaigns']) ? d[type + '_added_campaigns'] : [];
+            const addedSkus = Array.isArray(d[type + '_added_skus']) ? d[type + '_added_skus'] : [];
+            const missingSkus = Array.isArray(d[type + '_missing_skus']) ? d[type + '_missing_skus'] : [];
+            const overSkus = Array.isArray(d[type + '_over_skus']) ? d[type + '_over_skus'] : [];
+            const extraSkus = Array.isArray(d[type + '_extra_skus']) ? d[type + '_extra_skus'] : [];
+            const archivedExtras = Array.isArray(d[type + '_archived_extra_skus']) ? d[type + '_archived_extra_skus'] : [];
+            const parts = [];
+            if (addedCampaigns.length > 0) {
+                parts.push('Added campaigns (' + addedCampaigns.length + '): ' + addedCampaigns.join(', '));
+            } else if (addedSkus.length > 0) {
+                parts.push('Added SKUs (' + addedSkus.length + '): ' + addedSkus.join(', '));
+            }
+            if (missingSkus.length > 0) {
+                parts.push('Missing: ' + missingSkus.join(', '));
+            }
+            if (overSkus.length > 0) {
+                parts.push('Over: ' + overSkus.join(', '));
+            }
+            if (extraSkus.length > 0) {
+                parts.push('Extra: ' + extraSkus.join(', '));
+            }
+            if (archivedExtras.length > 0) {
+                parts.push('Archived: ' + archivedExtras.join(', '));
+            }
+            if (parts.length === 0) {
+                return type.toUpperCase() + ' siblings OK';
+            }
+            return type.toUpperCase() + ' — ' + parts.join(' | ');
         }
 
         function amzVvFormatAdSibling(type) {
@@ -537,29 +643,64 @@
                 const status = d[type + '_ad_status'];
                 const label = d[type + '_ad_label'] || '';
                 const missing = parseInt(d[type + '_missing'], 10) || 0;
+                const extra = parseInt(d[type + '_extra'], 10) || 0;
+                const archivedExtra = parseInt(d[type + '_archived_extra'], 10) || 0;
+                const missingSkus = Array.isArray(d[type + '_missing_skus']) ? d[type + '_missing_skus'] : [];
+                const overSkus = Array.isArray(d[type + '_over_skus']) ? d[type + '_over_skus'] : [];
+                const extraSkus = Array.isArray(d[type + '_extra_skus']) ? d[type + '_extra_skus'] : [];
+                const archivedExtraSkus = Array.isArray(d[type + '_archived_extra_skus']) ? d[type + '_archived_extra_skus'] : [];
 
                 if (status === null || status === undefined || !label || label === '—') {
                     return amzVvDash(null);
                 }
 
                 if (d.is_parent) {
+                    const tip = amzVvEscapeHtml(amzVvAdHoverTitle(type, d));
+                    let mainCls = 'amz-vv-ad-missing';
+                    let mainHtml = amzVvEscapeHtml(label);
                     if (status === 'ok') {
-                        return `<span class="amz-vv-ad-added" title="${type.toUpperCase()} siblings OK"><i class="fas fa-check"></i> ${amzVvEscapeHtml(label)}</span>`;
+                        mainCls = 'amz-vv-ad-added';
+                        mainHtml = `<i class="fas fa-check"></i> ${mainHtml}`;
+                    } else if (status === 'extra' && missing === 0) {
+                        mainCls = 'amz-vv-ad-extra';
+                    } else if (status === 'archived_extra' && missing === 0 && extra === 0) {
+                        mainCls = 'amz-vv-ad-archived';
+                    } else if (status === 'over' && missing === 0 && extra === 0 && archivedExtra === 0) {
+                        mainCls = 'amz-vv-ad-over';
                     }
-                    if (status === 'over' && missing === 0) {
-                        return `<span class="amz-vv-ad-over" title="${type.toUpperCase()}: in campaign but not listed">${amzVvEscapeHtml(label)}</span>`;
+
+                    let skuLines = '';
+                    if (missingSkus.length > 0) {
+                        skuLines += `<span class="amz-vv-ad-skus amz-vv-ad-skus--missing">Missing: ${amzVvEscapeHtml(missingSkus.join(', '))}</span>`;
                     }
-                    return `<span class="amz-vv-ad-missing" title="${type.toUpperCase()} missing / over">${amzVvEscapeHtml(label)}</span>`;
+                    if (overSkus.length > 0) {
+                        skuLines += `<span class="amz-vv-ad-skus amz-vv-ad-skus--over">Over: ${amzVvEscapeHtml(overSkus.join(', '))}</span>`;
+                    }
+                    if (extraSkus.length > 0) {
+                        const parentAttr = amzVvEscapeHtml(d.parent || '');
+                        const extrasAttr = amzVvEscapeHtml(extraSkus.join('|'));
+                        skuLines += `<span class="amz-vv-ad-skus amz-vv-ad-skus--extra">Extra: ${amzVvEscapeHtml(extraSkus.join(', '))}`
+                            + ` <button type="button" class="btn btn-link btn-sm p-0 ms-1 amz-vv-archive-extra-row" data-type="${type}" data-parent="${parentAttr}" data-extras="${extrasAttr}" title="Archive these Extra ads (skip if already ARCHIVED)" style="font-size:10px;font-weight:700;vertical-align:baseline;">Archive</button>`
+                            + `</span>`;
+                    }
+                    if (archivedExtraSkus.length > 0) {
+                        skuLines += `<span class="amz-vv-ad-skus amz-vv-ad-skus--archived">Archived: ${amzVvEscapeHtml(archivedExtraSkus.join(', '))}</span>`;
+                    }
+
+                    return `<span class="amz-vv-ad-wrap" title="${tip}">`
+                        + `<span class="${mainCls}">${mainHtml}</span>`
+                        + skuLines
+                        + `</span>`;
                 }
 
                 if (status === 'over') {
                     return '<span class="amz-vv-ad-over" title="In campaign but not in active listed records">Over</span>';
                 }
                 if (status === 'added') {
-                    return '<span class="amz-vv-ad-added" title="Ads existing (in campaign + inv ≥ 0)">Added</span>';
+                    return '<span class="amz-vv-ad-added" title="Ads existing (in campaign)">Added</span>';
                 }
                 if (status === 'missing') {
-                    return '<span class="amz-vv-ad-missing" title="Eligible inv but no campaign">Missing</span>';
+                    return '<span class="amz-vv-ad-missing" title="No matching campaign">Missing</span>';
                 }
                 return amzVvDash(null);
             };
@@ -653,8 +794,19 @@
             // Badge body → filter; trend dot → rolling history
             $('#amz-vv-badge-issues-wrap').on('click', function (e) {
                 if ($(e.target).closest('.amz-vv-trend-dot').length) return;
-                amzVvIssuesFilterActive = !amzVvIssuesFilterActive;
-                amzVvApplyFilters();
+                amzVvSetActiveFilter('issues');
+            });
+            $('#amz-vv-badge-missing-wrap').on('click', function () {
+                amzVvSetActiveFilter('missing');
+            });
+            $('#amz-vv-badge-missing-inv-wrap').on('click', function () {
+                amzVvSetActiveFilter('missing_inv');
+            });
+            $('#amz-vv-badge-extra-wrap').on('click', function () {
+                amzVvSetActiveFilter('extra');
+            });
+            $('#amz-vv-badge-archived-extra-wrap').on('click', function () {
+                amzVvSetActiveFilter('archived_extra');
             });
             $('#amz-vv-issues-trend-dot').on('click', function (e) {
                 e.preventDefault();
@@ -677,6 +829,134 @@
                     + (amzVvChartDays === 0 ? ' (Lifetime)' : ' (L' + amzVvChartDays + ')')
                 );
                 amzVvLoadIssuesChart();
+            });
+
+            function amzVvCollectExtraPayload(scope) {
+                // scope: 'visible' (filtered table) | row data object
+                const extras = new Set();
+                const names = new Set();
+                let parent = '';
+
+                function absorb(row) {
+                    if (!row) return;
+                    ['kw', 'pt'].forEach(function (t) {
+                        (Array.isArray(row[t + '_extra_skus']) ? row[t + '_extra_skus'] : []).forEach(function (s) {
+                            if (s) extras.add(String(s));
+                        });
+                        (Array.isArray(row[t + '_extra_campaigns']) ? row[t + '_extra_campaigns'] : []).forEach(function (c) {
+                            if (c && c.campaign_name) names.add(String(c.campaign_name));
+                        });
+                    });
+                }
+
+                if (scope && typeof scope === 'object' && !Array.isArray(scope) && scope.parent !== undefined) {
+                    parent = String(scope.parent || '');
+                    absorb(scope);
+                } else if (amzVvTable) {
+                    amzVvTable.getData('active').forEach(absorb);
+                }
+
+                return {
+                    parent: parent,
+                    extra_skus: Array.from(extras),
+                    campaign_names: Array.from(names)
+                };
+            }
+
+            function amzVvArchiveExtras(payload, $btn) {
+                const extras = payload.extra_skus || [];
+                const names = payload.campaign_names || [];
+                if (extras.length === 0 && names.length === 0) {
+                    alert('No Extra ads to archive.');
+                    return;
+                }
+
+                const typeLabel = payload.type ? String(payload.type).toUpperCase() + ' ' : '';
+                const label = names.length
+                    ? (names.length + ' campaign(s)')
+                    : (extras.length + ' extra ' + typeLabel + 'SKU base(s)');
+                if (!confirm('Archive Extra ' + typeLabel + 'ads in Amazon Ads (' + label + ')?')) {
+                    return;
+                }
+
+                const $target = $btn || $('#amz-vv-archive-extra-btn');
+                const prevHtml = $target.html();
+                $target.prop('disabled', true)
+                    .html('<span class="spinner-border spinner-border-sm me-1"></span> Archiving…');
+                $('#amz-vv-status-line').text('Archiving Extra ads…');
+
+                $.ajax({
+                    url: '{{ route("amz.variation.verify.archive.extra") }}',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Accept': 'application/json'
+                    },
+                    data: JSON.stringify({
+                        parent: payload.parent || '',
+                        type: payload.type || '',
+                        extra_skus: extras,
+                        campaign_names: names
+                    }),
+                    success: function (res) {
+                        const archived = (res && Array.isArray(res.archived)) ? res.archived : [];
+                        const skipped = (res && Array.isArray(res.skipped)) ? res.skipped : [];
+                        const failed = (res && Array.isArray(res.failed)) ? res.failed : [];
+                        let msg = (res && res.message) ? res.message : 'Archive finished.';
+                        if (archived.length) {
+                            msg += '\n\nArchived:\n' + archived.map(function (a) {
+                                return '• ' + (a.campaign_name || a.campaign_id || '?');
+                            }).join('\n');
+                        }
+                        if (skipped.length) {
+                            msg += '\n\nSkipped (already archived):\n' + skipped.map(function (s) {
+                                return '• ' + (s.campaign_name || s.campaign_id || '?');
+                            }).join('\n');
+                        }
+                        if (failed.length) {
+                            msg += '\n\nFailed:\n' + failed.map(function (f) {
+                                return '• ' + (f.campaign_name || f.campaign_id || '?') + ': ' + (f.message || '');
+                            }).join('\n');
+                        }
+                        $('#amz-vv-status-line').text((res && res.message) ? res.message : 'Archive finished.');
+                        alert(msg);
+                        if (amzVvTable) {
+                            amzVvTable.setData('{{ route("amz.variation.verify.data") }}');
+                        }
+                    },
+                    error: function (xhr) {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                            ? xhr.responseJSON.message
+                            : ('Archive failed (' + (xhr.status || 'network') + ')');
+                        alert(msg);
+                        $('#amz-vv-status-line').text(msg);
+                    },
+                    complete: function () {
+                        $target.prop('disabled', false).html(prevHtml);
+                    }
+                });
+            }
+
+            $('#amz-vv-archive-extra-btn').on('click', function () {
+                const payload = amzVvCollectExtraPayload('visible');
+                amzVvArchiveExtras(payload, $(this));
+            });
+
+            $(document).on('click', '.amz-vv-archive-extra-row', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn = $(this);
+                const parent = $btn.data('parent') || '';
+                const type = String($btn.data('type') || '').toUpperCase();
+                const extras = String($btn.data('extras') || '').split('|').map(function (s) { return s.trim(); }).filter(Boolean);
+                amzVvArchiveExtras({
+                    parent: parent,
+                    type: type,
+                    extra_skus: extras,
+                    campaign_names: []
+                }, $btn);
             });
 
             $('#amz-vv-refresh-btn').on('click', function () {
