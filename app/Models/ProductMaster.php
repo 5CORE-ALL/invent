@@ -110,14 +110,20 @@ class ProductMaster extends Model
 
     public function setTemuShipAttribute($value)
     {
-        $values = $this->Values ?? [];
-        $values['ship'] = $value;
+        $values = is_array($this->Values)
+            ? $this->Values
+            : (is_string($this->Values) ? (json_decode($this->Values, true) ?: []) : []);
+        $values['temu_ship'] = $value;
         $this->attributes['Values'] = json_encode($values);
     }
 
     public function getTemuShipAttribute()
     {
-        return $this->Values['ship'] ?? null;
+        $values = is_array($this->Values)
+            ? $this->Values
+            : (is_string($this->Values) ? (json_decode($this->Values, true) ?: []) : []);
+
+        return $values['temu_ship'] ?? null;
     }
 
     /**

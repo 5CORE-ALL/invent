@@ -1628,13 +1628,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('sync:sync-temu-sip')
-            ->everyMinute()
-            ->name('sync-temu-sip')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
         $ist($schedule->command('sync:walmart-metrics-data')
             ->everyMinute()
             ->name('sync-walmart-metrics')

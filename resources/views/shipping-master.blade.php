@@ -1335,51 +1335,51 @@
                         <div class="row mb-1">
                             <div class="col-12">
                                 <small class="text-secondary fw-semibold">Marketplace ship (Product Master)</small>
-                                <div class="text-muted small">Leave a field blank when saving to keep its current value for each SKU.</div>
+                                <div class="text-muted small">Read-only here — change rates only from <strong>Slab Rates</strong> (by weight LB), so a slab stays uniform.</div>
                             </div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-3">
                                 <label for="editShip" class="form-label fw-bold">Ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editShip" name="ship" placeholder="Ship">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editShip" name="ship" placeholder="Ship" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editShipBb" class="form-label fw-bold">Ship BB</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editShipBb" name="ship_bb" placeholder="Ship BB">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editShipBb" name="ship_bb" placeholder="Ship BB" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editTtShip" class="form-label fw-bold">TT 1 Ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editTtShip" name="tt_ship" placeholder="TT 1 Ship">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTtShip" name="tt_ship" placeholder="TT 1 Ship" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuShip" class="form-label fw-bold">Temu ship</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuShip" name="temu_ship" placeholder="Temu ship">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTemuShip" name="temu_ship" placeholder="Temu ship" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editTemuGofo" class="form-label fw-bold">Temu GOFO</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editTemuGofo" name="temu_gofo" placeholder="Temu GOFO" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-3">
                                 <label for="editGofo" class="form-label fw-bold">GOFO</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editGofo" name="gofo" placeholder="GOFO">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editGofo" name="gofo" placeholder="GOFO" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editFedex" class="form-label fw-bold">Fedex</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editFedex" name="fedex" placeholder="Fedex">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editFedex" name="fedex" placeholder="Fedex" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editUps" class="form-label fw-bold">UPS</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editUps" name="ups" placeholder="UPS">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editUps" name="ups" placeholder="UPS" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editUsps" class="form-label fw-bold">USPS</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editUsps" name="usps" placeholder="USPS">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editUsps" name="usps" placeholder="USPS" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                             <div class="col-md-3">
                                 <label for="editUni" class="form-label fw-bold">UNI</label>
-                                <input type="number" step="0.01" class="form-control fw-bold" id="editUni" name="uni" placeholder="UNI">
+                                <input type="number" step="0.01" class="form-control fw-bold bg-light" id="editUni" name="uni" placeholder="UNI" readonly tabindex="-1" title="Edit via Slab Rates only">
                             </div>
                         </div>
 
@@ -1582,8 +1582,9 @@
                             <span class="badge bg-light text-dark border me-1" style="background-color: #f8fafc;">5.49</span>
                             <span class="me-2">= filled SKUs in the slab share this value (missing ones can still be filled).</span>
                             <span class="badge bg-warning-subtle text-dark border me-1" style="background-color: #fffbeb;">mixed</span>
-                            <span class="me-2">= filled SKUs have different values; type a number to override.</span>
-                            <strong>Auto Ship</strong> = for each weight slab, take the <em>Ship</em> price you entered in that row and write it to every SKU in that LB slab.
+                            <span class="me-2">= SKUs in that LB have different rates (shows majority; type a rate + Apply to overwrite).</span>
+                            Example: type <strong>6</strong> in a slab’s Ship cell → Apply → <strong>all</strong> SKUs in that LB get <code>ship=6</code>.
+                            <strong>Apply</strong> only saves columns you type in (Ship → <code>ship</code>, Temu → <code>temu_ship</code>).
                         </div>
                         <div class="text-muted mt-1">
                             Slabs use <strong>Item WT ACT (LB)</strong> &mdash; same bands as the column filter.
@@ -1608,9 +1609,6 @@
                                 </select>
                                 <button type="button" class="btn btn-sm btn-outline-primary" id="slabRatesFillRowBtn" title="Copy the value into every empty carrier cell of the selected slab">Fill</button>
                             </div>
-                            <button type="button" class="btn btn-sm btn-success" id="slabRatesAutoShipBtn" title="Apply the Ship price you typed in each LB row to every SKU in that slab">
-                                <i class="fas fa-magic me-1"></i> Auto Ship
-                            </button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="slabRatesClearBtn" title="Clear all rate inputs">
                                 <i class="fas fa-eraser me-1"></i> Clear inputs
                             </button>
@@ -2447,7 +2445,17 @@
              *  of opening the editor. */
             const SHIPPING_READONLY_FIELDS = {
                 inv:     'INV comes from Shopify and is not editable here. Update inventory in Shopify (or in the Inventory Master).',
-                fba_sku: 'FBA SKU lives in the FBA calculation table. Update it from the FBA module.'
+                fba_sku: 'FBA SKU lives in the FBA calculation table. Update it from the FBA module.',
+                ship:       'Ship rates are edited only from Slab Rates (by weight LB), not per SKU.',
+                ship_bb:    'Ship BB is edited only from Slab Rates (by weight LB), not per SKU.',
+                tt_ship:    'TT 1 Ship is edited only from Slab Rates (by weight LB), not per SKU.',
+                temu_ship:  'Temu ship is edited only from Slab Rates (by weight LB), not per SKU.',
+                temu_gofo:  'Temu GOFO is edited only from Slab Rates (by weight LB), not per SKU.',
+                gofo:       'GOFO is edited only from Slab Rates (by weight LB), not per SKU.',
+                fedex:      'Fedex is edited only from Slab Rates (by weight LB), not per SKU.',
+                ups:        'UPS is edited only from Slab Rates (by weight LB), not per SKU.',
+                usps:       'USPS is edited only from Slab Rates (by weight LB), not per SKU.',
+                uni:        'UNI is edited only from Slab Rates (by weight LB), not per SKU.'
             };
 
             /** Markup for the red "M" missing-data badge — identical look to
@@ -2625,6 +2633,11 @@
 
                 if (!sku || !field) {
                     errEl.textContent = 'SKU or field is missing — please close and try again.';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                if (SHIPPING_READONLY_FIELDS[field]) {
+                    errEl.textContent = SHIPPING_READONLY_FIELDS[field];
                     errEl.style.display = 'block';
                     return;
                 }
@@ -4687,16 +4700,7 @@
                     };
                     addNumericIfPresent('editLabelQty', 'label_qty');
                     baseFormData.label_type = normalizeLabelType(document.getElementById('editLabelType').value);
-                    addNumericIfPresent('editShip', 'ship');
-                    addNumericIfPresent('editShipBb', 'ship_bb');
-                    addNumericIfPresent('editTtShip', 'tt_ship');
-                    addNumericIfPresent('editTemuShip', 'temu_ship');
-                    addNumericIfPresent('editGofo', 'gofo');
-                    addNumericIfPresent('editTemuGofo', 'temu_gofo');
-                    addNumericIfPresent('editFedex', 'fedex');
-                    addNumericIfPresent('editUps', 'ups');
-                    addNumericIfPresent('editUsps', 'usps');
-                    addNumericIfPresent('editUni', 'uni');
+                    // Marketplace ship fields are read-only in Edit — only Slab Rates may change them.
 
                     const fbaShipStr = document.getElementById('editFbaShip').value.trim();
                     const fbaManualStr = document.getElementById('editFbaManualShip').value.trim();
@@ -5191,12 +5195,14 @@
                             inp.classList.add('slab-rate-prefilled');
                             if (summary.missing > 0) {
                                 inp.setAttribute('data-needs-missing-fill', '1');
-                                inp.title = `${baseInfo}\nFilled SKUs all have ${c.label} = $${formatted} (${summary.filled} filled, ${summary.missing} missing).\nUse Auto Ship / Apply with scope "Only missing" to fill the rest.`;
+                                inp.title = `${baseInfo}\nFilled SKUs all have ${c.label} = $${formatted} (${summary.filled} filled, ${summary.missing} missing).\nUse Apply with scope "Only missing" to fill the rest.`;
                             } else {
                                 inp.title = `${baseInfo}\nAll ${total} SKU(s) currently have ${c.label} = $${formatted}.\nEdit the value to overwrite; leave as-is to skip.`;
                             }
                         } else if (summary.distinctValues.length > 0) {
                             // Mixed: at least two different filled values.
+                            // Prefill majority so Apply can overwrite outliers
+                            // (e.g. 44×$7 + 1×$8 → show 7; set 6 → every SKU becomes 6).
                             const sample = summary.distinctValues
                                 .slice(0, 6)
                                 .map(v => '$' + formatSlabRate(v))
@@ -5206,10 +5212,14 @@
                             const maj = summary.majorityValue !== null ? formatSlabRate(summary.majorityValue) : '';
                             inp.placeholder = 'mixed';
                             inp.classList.add('slab-rate-mixed');
+                            inp.setAttribute('data-is-mixed', '1');
                             inp.setAttribute('data-original', '');
-                            inp.title = `${baseInfo}\nCurrent values: ${sample}${more}\n${summary.filled} filled, ${summary.missing} missing.`
-                                + (maj ? `\nMajority: $${maj}.` : '')
-                                + `\nType your Ship price here, then Auto Ship applies that price to every SKU in this LB slab.`;
+                            if (maj !== '') {
+                                inp.value = maj;
+                            }
+                            inp.title = `${baseInfo}\nMIXED values: ${sample}${more}\n${summary.filled} filled, ${summary.missing} missing.`
+                                + (maj ? `\nShowing majority $${maj}.` : '')
+                                + `\nType the rate you want (e.g. 6), then Apply — every SKU in this LB slab gets that rate, including outliers.`;
                         } else {
                             inp.setAttribute('data-original', '');
                             inp.title = baseInfo;
@@ -5217,12 +5227,13 @@
 
                         if (total === 0) inp.disabled = true;
 
-                        // Remove "prefilled" hint as soon as the user actually
-                        // edits the cell so they can see their input is recognised.
+                        // Mark only cells the user actually typed in. Apply must
+                        // not touch other carrier columns (Ship vs Temu, etc.).
                         inp.addEventListener('input', function () {
                             inp.classList.remove('slab-rate-prefilled');
                             inp.classList.remove('slab-rate-mixed');
                             inp.removeAttribute('data-needs-missing-fill');
+                            inp.setAttribute('data-user-edited', '1');
                         });
 
                         td.appendChild(inp);
@@ -5263,6 +5274,10 @@
                 const slabsTouched = new Set();
 
                 inputs.forEach(inp => {
+                    // Only columns the user typed/filled — never silently write
+                    // an untouched Ship cell when they only edited Temu (etc.).
+                    if (inp.getAttribute('data-user-edited') !== '1') return;
+
                     const raw = String(inp.value || '').trim();
                     if (raw === '') return;
                     const rate = parseFloat(raw);
@@ -5271,22 +5286,9 @@
                     const carrierKey = inp.getAttribute('data-carrier-key');
                     if (!slabKey || !carrierKey) return;
 
-                    // Skip untouched prefilled cells when every SKU already has
-                    // that value. If some SKUs are still missing, keep going and
-                    // only write to the missing ones (even when scope is "all").
-                    const original = inp.getAttribute('data-original') || '';
-                    const needsMissingFill = inp.getAttribute('data-needs-missing-fill') === '1';
-                    const origNum = original !== '' ? parseFloat(original) : NaN;
-                    const rateMatchesOriginal = Number.isFinite(origNum)
-                        && normalizeSlabRate(origNum) === normalizeSlabRate(rate)
-                        && !inp.classList.contains('slab-rate-mixed');
-
-                    if (rateMatchesOriginal && !needsMissingFill) {
-                        return;
-                    }
-
+                    // scope "all" = every SKU in the slab (outliers overwritten).
                     let items = getNonParentItemsInSlab(slabKey);
-                    if (scope === 'missing' || (rateMatchesOriginal && needsMissingFill)) {
+                    if (scope === 'missing') {
                         items = items.filter(it => isCarrierValueMissing(it, carrierKey));
                     }
                     if (items.length === 0) return;
@@ -5304,7 +5306,7 @@
                 });
 
                 if (perSku.size === 0) {
-                    showToast('warning', 'Nothing to apply. Type a new rate (or change a prefilled one) in at least one (slab × carrier) cell that has matching SKUs.');
+                    showToast('warning', 'Nothing to apply. Type a rate in the carrier column you want (Ship, Temu, …) — only edited columns are saved.');
                     return;
                 }
 
@@ -5404,141 +5406,14 @@
                     if (inp.disabled) return;
                     if (String(inp.value || '').trim() === '') {
                         inp.value = String(n);
+                        inp.classList.remove('slab-rate-prefilled');
+                        inp.classList.remove('slab-rate-mixed');
+                        inp.removeAttribute('data-needs-missing-fill');
+                        inp.setAttribute('data-user-edited', '1');
                         filled++;
                     }
                 });
                 if (filled === 0) showToast('info', 'No empty carrier cells were filled (all already had values).');
-            }
-
-            /**
-             * Auto Ship: for each weight slab, take the Ship price currently in
-             * that row's Ship cell (what you typed / set for that LB) and write
-             * it to every SKU in that slab. Empty Ship cells are skipped.
-             */
-            async function autoFillShipFromSlabs() {
-                if (!Array.isArray(tableData) || tableData.length === 0) {
-                    showToast('warning', 'Data is still loading. Please try again in a moment.');
-                    return;
-                }
-
-                // Ensure the matrix exists so we can read typed Ship prices.
-                if (!document.querySelector('#slabRatesBody .slab-rate-input')) {
-                    buildSlabRatesTable();
-                }
-
-                const perSku = new Map();
-                const slabsUsed = [];
-                let totalUpdates = 0;
-
-                document.querySelectorAll('#slabRatesBody .slab-rate-input[data-carrier-key="ship"]').forEach(inp => {
-                    if (inp.disabled) return;
-                    const slabKey = inp.getAttribute('data-slab-key');
-                    if (!slabKey) return;
-
-                    const raw = String(inp.value || '').trim();
-                    if (raw === '') return; // you didn't set a Ship price for this LB — skip
-                    const rate = parseFloat(raw);
-                    if (!Number.isFinite(rate) || rate < 0) return;
-
-                    const items = getNonParentItemsInSlab(slabKey);
-                    if (items.length === 0) return;
-
-                    const targets = items.filter(it => {
-                        if (isCarrierValueMissing(it, 'ship')) return true;
-                        const n = parseFloat(it.ship);
-                        return !Number.isFinite(n) || normalizeSlabRate(n) !== normalizeSlabRate(rate);
-                    });
-                    if (targets.length === 0) return;
-
-                    const slabDef = getSlabDefinitions().find(s => s.key === slabKey);
-                    const label = slabDef ? slabDef.label : slabKey;
-                    slabsUsed.push({ label, rate, count: targets.length, total: items.length });
-                    totalUpdates += targets.length;
-                    targets.forEach(item => {
-                        const id = String(item.id);
-                        if (!perSku.has(id)) perSku.set(id, { item, fields: {} });
-                        perSku.get(id).fields.ship = rate;
-                    });
-                });
-
-                if (perSku.size === 0) {
-                    showToast('info', 'Nothing to apply. Type a Ship price in each LB row you want, then click Auto Ship.');
-                    return;
-                }
-
-                const preview = slabsUsed.slice(0, 8).map(s =>
-                    `${s.label}: $${formatSlabRate(s.rate)} → ${s.count}/${s.total} SKU(s)`
-                ).join('\n');
-                const more = slabsUsed.length > 8 ? `\n… +${slabsUsed.length - 8} more slab(s)` : '';
-                const confirmMsg =
-                    `Auto Ship: apply your Ship prices to ${totalUpdates} SKU(s) across ${slabsUsed.length} LB slab(s)?\n\n` +
-                    `Uses the Ship value you entered in each weight-slab row.\n\n` +
-                    preview + more;
-                if (!confirm(confirmMsg)) return;
-
-                const scopeEl = document.getElementById('slabRatesScope');
-                if (scopeEl) scopeEl.value = 'all';
-
-                const autoBtn = document.getElementById('slabRatesAutoShipBtn');
-                const applyBtn = document.getElementById('slabRatesApplyBtn');
-                const progressWrap = document.getElementById('slabRatesProgress');
-                const progressBar = progressWrap ? progressWrap.querySelector('.progress-bar') : null;
-                const progressCount = document.getElementById('slabRatesProgressCount');
-                const progressLabel = document.getElementById('slabRatesProgressLabel');
-                const originalAuto = autoBtn ? autoBtn.innerHTML : '';
-                const originalApply = applyBtn ? applyBtn.innerHTML : '';
-
-                if (autoBtn) { autoBtn.disabled = true; autoBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Auto Ship…'; }
-                if (applyBtn) applyBtn.disabled = true;
-                if (progressWrap) progressWrap.style.display = 'block';
-                if (progressLabel) progressLabel.textContent = 'Applying your Ship prices by LB slab…';
-
-                const entries = Array.from(perSku.values());
-                let success = 0;
-                let failed = 0;
-
-                for (let i = 0; i < entries.length; i++) {
-                    const { item, fields } = entries[i];
-                    const payload = {
-                        product_id: item.id,
-                        sku: item.SKU,
-                        parent: item.Parent || '',
-                        ...fields
-                    };
-                    try {
-                        const response = await fetch('/dim-wt-master/update', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': csrfToken
-                            },
-                            body: JSON.stringify(payload)
-                        });
-                        if (response.ok) success++; else failed++;
-                    } catch (e) {
-                        failed++;
-                    }
-
-                    const done = i + 1;
-                    const pct = Math.round((done / entries.length) * 100);
-                    if (progressBar) progressBar.style.width = pct + '%';
-                    if (progressCount) progressCount.textContent = `${done} / ${entries.length}`;
-                }
-
-                if (autoBtn) { autoBtn.disabled = false; autoBtn.innerHTML = originalAuto; }
-                if (applyBtn) { applyBtn.disabled = false; applyBtn.innerHTML = originalApply; }
-
-                if (failed === 0) {
-                    showToast('success', `Auto Ship applied your prices to ${success} SKU(s) across ${slabsUsed.length} slab(s).`);
-                } else {
-                    showToast('warning', `Auto Ship: ${success} updated, ${failed} failed.`);
-                }
-
-                const modalEl = document.getElementById('slabRatesModal');
-                const modal = bootstrap.Modal.getInstance(modalEl);
-                if (modal) modal.hide();
-
-                loadData();
             }
 
             function setupSlabRates() {
@@ -5555,9 +5430,6 @@
 
                 const fillBtn = document.getElementById('slabRatesFillRowBtn');
                 if (fillBtn) fillBtn.addEventListener('click', fillSlabRow);
-
-                const autoShipBtn = document.getElementById('slabRatesAutoShipBtn');
-                if (autoShipBtn) autoShipBtn.addEventListener('click', autoFillShipFromSlabs);
             }
         });
     </script>
