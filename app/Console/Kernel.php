@@ -600,6 +600,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Clear SPRICE → Apply % Sprice×CVR → Push to Amazon (2:00 PM IST)
+        $ist($schedule->command('amazon:sprice-cvr-auto-push')
+            ->dailyAt('14:00')
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sprice-cvr-auto-push')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         
         $ist($schedule->command('app:fetch-ebay-table-data')
             ->dailyAt('19:25')

@@ -86,6 +86,32 @@
         .amz-stat-badge--children { background: #8b5cf6; }
         .amz-stat-badge--listed { background: #16a34a; }
         .amz-stat-badge--campaigns { background: #ea580c; }
+        .amz-stat-badge--issues { background: #dc2626; cursor: pointer; }
+        .amz-stat-badge--issues.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #dc2626; }
+        .amz-stat-badge--issues .amz-vv-trend-dot {
+            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+            margin-left: 8px; vertical-align: middle; cursor: pointer; flex-shrink: 0;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.65);
+            background: rgba(255,255,255,0.35);
+        }
+        .amz-stat-badge--issues .amz-vv-trend-dot.up { background: #ff6b6b; }   /* more issues → red */
+        .amz-stat-badge--issues .amz-vv-trend-dot.down { background: #00ff88; } /* fewer issues → green */
+        .amz-stat-badge--issues .amz-vv-trend-dot.flat { background: #adb5bd; } /* same → gray */
+        .amz-stat-badge--issues .amz-vv-trend-dot.none { background: rgba(255,255,255,0.35); }
+        #amzVvHistoryTableWrap {
+            max-height: 28vh; overflow: auto; margin-top: 8px;
+            border: 1px solid #e9ecef; border-radius: 6px;
+        }
+        #amzVvHistoryTable th, #amzVvHistoryTable td {
+            font-size: 12px; padding: 4px 8px; white-space: nowrap;
+        }
+        #amzVvHistoryTable .hist-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 4px; vertical-align: middle;
+        }
+        #amzVvHistoryTable .hist-dot.up { background: #dc3545; }
+        #amzVvHistoryTable .hist-dot.down { background: #28a745; }
+        #amzVvHistoryTable .hist-dot.flat { background: #adb5bd; }
         .amz-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .amz-raw-icon-btn > i { font-size: 14px; }
 
@@ -126,6 +152,10 @@
                             <span class="amz-stat-badge amz-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="amz-vv-badge-children">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--listed" title="Amazon listings cache">LISTED:<span id="amz-vv-badge-listed">0</span></span>
                             <span class="amz-stat-badge amz-stat-badge--campaigns" title="SP L30 campaigns">CAMPAIGNS:<span id="amz-vv-badge-campaigns">0</span></span>
+                            <span class="amz-stat-badge amz-stat-badge--issues" id="amz-vv-badge-issues-wrap" title="Parents with KW/PT ads missing — click badge to filter. Click dot for rolling history.">
+                                VARIATIONS ISSUES:<span id="amz-vv-badge-issues">0</span>
+                                <span class="amz-vv-trend-dot none" id="amz-vv-issues-trend-dot" title="Rolling history" role="button" tabindex="0"></span>
+                            </span>
                         </div>
                         <span id="amz-vv-total" class="badge bg-secondary">Total: —</span>
                         <span id="amz-vv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -150,12 +180,83 @@
             </div>
         </div>
     </div>
+
+    {{-- VARIATIONS ISSUES rolling history (red / green / gray dots) --}}
+    <div class="modal fade p-0" id="amzVvIssuesChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="amzVvChartModalTitle">Variations Issues — Rolling History</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="amzVvChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="amzVvChartContainer" style="height: 22vh; display: none; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="amzVvIssuesChart"></canvas>
+                        </div>
+                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; color: #dc3545;">Highest</div>
+                                <div id="amzVvChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; color: #6c757d;">Median</div>
+                                <div id="amzVvChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; color: #198754;">Lowest</div>
+                                <div id="amzVvChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="amzVvChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="amzVvChartNoData" class="text-center py-3" style="display: none;">
+                        <p class="text-muted small mb-0">No daily snapshots yet. Open this page on separate days to build history.</p>
+                    </div>
+                    <div id="amzVvHistoryTableWrap" style="display: none;">
+                        <table class="table table-sm table-striped table-hover mb-0" id="amzVvHistoryTable">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="text-end">Value</th>
+                                    <th class="text-end">Δ vs prior</th>
+                                </tr>
+                            </thead>
+                            <tbody id="amzVvHistoryTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         let amzVvTable = null;
+        let amzVvIssuesFilterActive = false;
+        let amzVvIssuesLiveCount = 0;
+        let amzVvIssuesPrevDay = null;
+        let amzVvChartInstance = null;
+        let amzVvChartAjax = null;
+        let amzVvChartDays = 30;
 
         function amzVvEscapeHtml(str) {
             return String(str ?? '')
@@ -172,17 +273,59 @@
             return val;
         }
 
+        function amzVvFmtNum(v) {
+            const n = Number(v);
+            if (!isFinite(n)) return '—';
+            return Math.round(n).toLocaleString('en-US');
+        }
+
+        /** Lower is better: up=red, down=green, flat=gray */
+        function amzVvTrendClass(curr, prev) {
+            if (!isFinite(curr) || !isFinite(prev)) return 'none';
+            const diff = curr - prev;
+            if (diff > 0.05) return 'up';
+            if (diff < -0.05) return 'down';
+            return 'flat';
+        }
+
+        function amzVvApplyIssuesTrendDot() {
+            const $dot = $('#amz-vv-issues-trend-dot');
+            if (!$dot.length) return;
+            const curr = amzVvIssuesLiveCount;
+            const prev = amzVvIssuesPrevDay;
+            if (!isFinite(curr) || prev == null || !isFinite(prev)) {
+                $dot.attr('class', 'amz-vv-trend-dot none')
+                    .attr('title', 'Click for rolling history (no prior day yet)');
+                return;
+            }
+            const cls = amzVvTrendClass(curr, prev);
+            const tip = (cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : 'Same'))
+                + ' vs prior day (' + amzVvFmtNum(prev) + ' → ' + amzVvFmtNum(curr)
+                + '). Click for rolling history. Lower is better.';
+            $dot.attr('class', 'amz-vv-trend-dot ' + cls).attr('title', tip);
+        }
+
         function amzVvUpdateMeta(meta) {
             if (!meta) return;
             const parents = meta.required_parent_count || 0;
             const children = meta.required_child_count || 0;
             const listed = meta.listings_count || 0;
             const campaigns = meta.ads_count || 0;
+            const issues = meta.variations_issues_count || 0;
+
+            amzVvIssuesLiveCount = issues;
+            amzVvIssuesPrevDay = (meta.variations_issues_prev_day !== null
+                && meta.variations_issues_prev_day !== undefined
+                && meta.variations_issues_prev_day !== '')
+                ? Number(meta.variations_issues_prev_day)
+                : null;
 
             $('#amz-vv-badge-parents').text(parents.toLocaleString());
             $('#amz-vv-badge-children').text(children.toLocaleString());
             $('#amz-vv-badge-listed').text(listed.toLocaleString());
             $('#amz-vv-badge-campaigns').text(campaigns.toLocaleString());
+            $('#amz-vv-badge-issues').text(issues.toLocaleString());
+            amzVvApplyIssuesTrendDot();
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -190,6 +333,165 @@
             if (meta.ads_source) parts.push(meta.ads_source);
             $('#amz-vv-status-line').text(parts.join(' · '));
             $('#amz-vv-source-label').text(meta.has_listings_cache ? 'CP Master + Listings' : 'CP Master');
+        }
+
+        function amzVvOpenIssuesChart() {
+            amzVvChartDays = parseInt($('#amzVvChartRangeSelect').val(), 10);
+            if (!isFinite(amzVvChartDays)) amzVvChartDays = 30;
+            $('#amzVvChartModalTitle').text(
+                'Variations Issues — Rolling History'
+                + (amzVvChartDays === 0 ? ' (Lifetime)' : ' (L' + amzVvChartDays + ')')
+            );
+            const modalEl = document.getElementById('amzVvIssuesChartModal');
+            if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } else {
+                $(modalEl).modal('show');
+            }
+            amzVvLoadIssuesChart();
+        }
+
+        function amzVvRenderHistoryTable(data) {
+            const $wrap = $('#amzVvHistoryTableWrap');
+            const $tbody = $('#amzVvHistoryTableBody');
+            $tbody.empty();
+            if (!data || !data.length) {
+                $wrap.hide();
+                return;
+            }
+            const rows = data.slice().reverse();
+            rows.forEach(function (row, idx) {
+                const older = rows[idx + 1];
+                const curr = parseFloat(row.value);
+                const prev = older ? parseFloat(older.value) : NaN;
+                let deltaHtml = '<span class="text-muted">—</span>';
+                if (isFinite(curr) && isFinite(prev)) {
+                    const d = curr - prev;
+                    const cls = amzVvTrendClass(curr, prev);
+                    const sign = d > 0 ? '+' : '';
+                    deltaHtml = '<span class="hist-dot ' + cls + '"></span>'
+                        + '<span style="font-weight:600;">' + sign + Math.round(d).toLocaleString('en-US') + '</span>';
+                }
+                $tbody.append(
+                    '<tr><td>' + (row.full_date || row.date || '') + '</td>'
+                    + '<td class="text-end fw-semibold">' + amzVvFmtNum(curr) + '</td>'
+                    + '<td class="text-end">' + deltaHtml + '</td></tr>'
+                );
+            });
+            $wrap.show();
+        }
+
+        function amzVvRenderIssuesChart(data) {
+            const ctx = document.getElementById('amzVvIssuesChart').getContext('2d');
+            if (amzVvChartInstance) amzVvChartInstance.destroy();
+
+            const labels = data.map(function (d) { return d.date; });
+            const values = data.map(function (d) { return Number(d.value || 0); });
+            const dataMin = Math.min.apply(null, values);
+            const dataMax = Math.max.apply(null, values);
+            const sorted = values.slice().sort(function (a, b) { return a - b; });
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = dataMax - dataMin || 1;
+            const yMin = Math.max(0, dataMin - range * 0.1);
+            const yMax = dataMax + range * 0.1;
+
+            $('#amzVvChartHighest').text(amzVvFmtNum(dataMax)).css('color', dataMax === 0 ? '#198754' : '#dc3545');
+            $('#amzVvChartMedian').text(amzVvFmtNum(median));
+            $('#amzVvChartLowest').text(amzVvFmtNum(dataMin)).css('color', '#198754');
+
+            // Lower is better: up=red, down=green, flat=gray
+            const dotColors = values.map(function (v, i) {
+                if (i === 0) return '#6c757d';
+                if (v > values[i - 1]) return '#dc3545';
+                if (v < values[i - 1]) return '#28a745';
+                return '#6c757d';
+            });
+
+            amzVvChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Variations Issues',
+                        data: values,
+                        backgroundColor: 'rgba(220,38,38,0.08)',
+                        borderColor: '#adb5bd',
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointBorderWidth: 1.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const idx = context.dataIndex;
+                                    const parts = ['Issues: ' + amzVvFmtNum(context.raw)];
+                                    if (idx > 0) {
+                                        const diff = context.raw - values[idx - 1];
+                                        const sign = diff > 0 ? '+' : '';
+                                        parts.push('Δ: ' + sign + Math.round(diff).toLocaleString('en-US'));
+                                    }
+                                    return parts;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: yMin,
+                            max: yMax,
+                            ticks: { callback: function (v) { return amzVvFmtNum(v); }, font: { size: 9 } }
+                        },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } }
+                    }
+                }
+            });
+        }
+
+        function amzVvLoadIssuesChart() {
+            if (amzVvChartAjax) amzVvChartAjax.abort();
+            $('#amzVvChartNoData').hide();
+            $('#amzVvChartContainer').hide();
+            $('#amzVvHistoryTableWrap').hide();
+            $('#amzVvChartLoading').show();
+
+            amzVvChartAjax = $.ajax({
+                url: '{{ route("amz.variation.verify.chart") }}',
+                method: 'GET',
+                data: {
+                    days: amzVvChartDays,
+                    badge_value: amzVvIssuesLiveCount
+                },
+                success: function (resp) {
+                    amzVvChartAjax = null;
+                    $('#amzVvChartLoading').hide();
+                    if (resp && resp.success !== false && resp.data && resp.data.length > 0) {
+                        $('#amzVvChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                        amzVvRenderIssuesChart(resp.data);
+                        amzVvRenderHistoryTable(resp.data);
+                    } else {
+                        $('#amzVvChartNoData').show();
+                    }
+                },
+                error: function (xhr, status) {
+                    amzVvChartAjax = null;
+                    if (status === 'abort') return;
+                    $('#amzVvChartLoading').hide();
+                    $('#amzVvChartNoData').show();
+                }
+            });
         }
 
         function amzVvUpdateRowCount() {
@@ -218,6 +520,14 @@
                 });
             }
 
+            if (amzVvIssuesFilterActive) {
+                amzVvTable.addFilter(function (data) {
+                    return (parseInt(data.kw_missing, 10) || 0) > 0
+                        || (parseInt(data.pt_missing, 10) || 0) > 0;
+                });
+            }
+
+            $('#amz-vv-badge-issues-wrap').toggleClass('is-active', amzVvIssuesFilterActive);
             amzVvUpdateRowCount();
         }
 
@@ -338,6 +648,35 @@
             $('#amz-vv-search').on('keyup search', function () {
                 clearTimeout(searchTimer);
                 searchTimer = setTimeout(amzVvApplyFilters, 200);
+            });
+
+            // Badge body → filter; trend dot → rolling history
+            $('#amz-vv-badge-issues-wrap').on('click', function (e) {
+                if ($(e.target).closest('.amz-vv-trend-dot').length) return;
+                amzVvIssuesFilterActive = !amzVvIssuesFilterActive;
+                amzVvApplyFilters();
+            });
+            $('#amz-vv-issues-trend-dot').on('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                amzVvOpenIssuesChart();
+            });
+            $('#amz-vv-issues-trend-dot').on('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    amzVvOpenIssuesChart();
+                }
+            });
+            $('#amzVvChartRangeSelect').on('change', function () {
+                const days = parseInt(this.value, 10);
+                if (days === amzVvChartDays) return;
+                amzVvChartDays = days;
+                $('#amzVvChartModalTitle').text(
+                    'Variations Issues — Rolling History'
+                    + (amzVvChartDays === 0 ? ' (Lifetime)' : ' (L' + amzVvChartDays + ')')
+                );
+                amzVvLoadIssuesChart();
             });
 
             $('#amz-vv-refresh-btn').on('click', function () {

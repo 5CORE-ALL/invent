@@ -62,6 +62,7 @@
                         <span id="amz-bb-total" class="badge bg-secondary">Total: —</span>
                         <span id="amz-bb-selected" class="badge bg-primary">Selected: 0</span>
                         <span id="amz-bb-cached" class="badge bg-info text-dark">Cached: —</span>
+                        <span id="amz-bb-pull-count" class="badge bg-warning text-dark d-none">Fetched: —</span>
                         <button type="button" id="amz-bb-refresh-btn" class="btn btn-sm btn-outline-primary" title="Reload table">
                             <i class="fa fa-refresh"></i>
                         </button>
@@ -461,14 +462,36 @@
             function amzBbApplyPullStatus(st) {
                 if (!st) return;
                 const msg = st.message || '';
+                const done = Number(st.done || 0);
+                const total = Number(st.total || 0);
+                const ok = Number(st.ok || 0);
+                const fail = Number(st.fail || 0);
+                const lotIndex = st.lot_index || 0;
+                const lots = st.lots || '?';
+                const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+                const countLabel = total > 0
+                    ? (done.toLocaleString() + ' / ' + total.toLocaleString())
+                    : String(done);
+
                 if (st.running) {
-                    const done = st.done || 0;
-                    const total = st.total || 0;
-                    const lot = st.lot_index ? ('Lot ' + st.lot_index + '/' + (st.lots || '?') + ' · ') : '';
-                    $('#amz-bb-status-line').text(lot + (msg || ('Pulling… ' + done + '/' + total)));
+                    $('#amz-bb-pull-count')
+                        .removeClass('d-none')
+                        .text('Fetched: ' + countLabel + ' (' + pct + '%) · ok ' + ok + ' · fail ' + fail);
+                    const lot = lotIndex ? ('Lot ' + lotIndex + '/' + lots + ' · ') : '';
+                    $('#amz-bb-status-line').text(
+                        lot + 'Fetched ' + countLabel + ' · ok ' + ok + ' · fail ' + fail
+                        + (msg ? ' · ' + msg : '')
+                    );
                     $('#amz-bb-pull-btn').prop('disabled', true)
-                        .html('<i class="fa fa-spinner fa-spin me-1"></i> Pulling…');
+                        .html('<i class="fa fa-spinner fa-spin me-1"></i> Pulling… ' + countLabel);
                 } else {
+                    if (total > 0 || done > 0) {
+                        $('#amz-bb-pull-count')
+                            .removeClass('d-none')
+                            .text('Last pull: ' + countLabel + ' · ok ' + ok + ' · fail ' + fail);
+                    } else {
+                        $('#amz-bb-pull-count').addClass('d-none').text('Fetched: —');
+                    }
                     $('#amz-bb-status-line').text(msg || 'Pull idle');
                     $('#amz-bb-pull-btn').prop('disabled', false)
                         .html('<i class="fas fa-cloud-download-alt me-1"></i> Pull Buy Box');

@@ -7,15 +7,21 @@ use App\Models\ADVMastersData;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonListingRaw;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\ChannelMasterSummary;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Services\AmazonSpApiService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class AmzVariationVerifyController extends Controller
 {
+    private const TZ = 'America/Los_Angeles';
+
+    public const CHANNEL_KEY = 'amzvariationverify';
+
     public function index()
     {
         return view('market-places.amz_variation_verify');
@@ -117,6 +123,15 @@ class AmzVariationVerifyController extends Controller
         $listingsCount = AmazonListingRaw::query()->count();
         $campaignCount = $adLookup['campaign_count'] ?? 0;
 
+        // Variations Issues = parents with KW and/or PT ads missing (eligible inv, not in campaign)
+        $variationsIssuesCount = count(array_filter(
+            $formattedData,
+            fn ($r) => ((int) ($r['kw_missing'] ?? 0) > 0) || ((int) ($r['pt_missing'] ?? 0) > 0)
+        ));
+
+        $this->persistVariationsIssuesSnapshot($variationsIssuesCount);
+        $prevDayCount = $this->previousDayVariationsIssuesCount();
+
         return response()->json([
             'data' => $formattedData,
             'meta' => [
@@ -125,6 +140,8 @@ class AmzVariationVerifyController extends Controller
                 'has_listings_cache' => $listingsCount > 0,
                 'required_parent_count' => count($parentGroups),
                 'required_child_count' => count($childRows),
+                'variations_issues_count' => $variationsIssuesCount,
+                'variations_issues_prev_day' => $prevDayCount,
                 'required_refreshed_at' => now()->toDateTimeString(),
                 'ads_count' => $campaignCount,
                 'ads_pulled_at' => null,
@@ -132,6 +149,152 @@ class AmzVariationVerifyController extends Controller
                 'ads_source' => 'amazon_sp_campaign_reports (L30 KW/PT)',
             ],
         ]);
+    }
+
+    /**
+     * Rolling history for VARIATIONS ISSUES badge (California dates).
+     * Lower is better → chart dots: up=red, down=green, flat=gray.
+     */
+    public function chartData(Request $request)
+    {
+        try {
+            $days = (int) $request->input('days', 30);
+            $badgeValue = $request->input('badge_value');
+            $live = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
+                ? (float) $badgeValue
+                : null;
+
+            if ($live !== null) {
+                $this->persistVariationsIssuesSnapshot((int) $live);
+            }
+
+            if (! Schema::hasTable('channel_master_daily_data')) {
+                $todayVal = $live ?? 0;
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [[
+                        'date' => now(self::TZ)->format('M d'),
+                        'full_date' => now(self::TZ)->toDateString(),
+                        'value' => round($todayVal, 2),
+                    ]],
+                ]);
+            }
+
+            $query = ChannelMasterSummary::query()
+                ->where('channel', self::CHANNEL_KEY)
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $start = now(self::TZ)->subDays(max($days - 1, 0))->toDateString();
+                $query->whereDate('snapshot_date', '>=', $start);
+            }
+
+            $rows = $query->get(['snapshot_date', 'summary_data']);
+            $chartData = [];
+            foreach ($rows as $row) {
+                $dateKey = Carbon::parse($row->snapshot_date)->timezone(self::TZ)->toDateString();
+                $sd = is_array($row->summary_data) ? $row->summary_data : [];
+                $chartData[] = [
+                    'date' => Carbon::parse($dateKey, self::TZ)->format('M d'),
+                    'full_date' => $dateKey,
+                    'date_key' => $dateKey,
+                    'value' => round((float) ($sd['variations_issues_count'] ?? 0), 2),
+                ];
+            }
+
+            if ($live !== null) {
+                $todayKey = now(self::TZ)->toDateString();
+                $todayLabel = now(self::TZ)->format('M d');
+                $replaced = false;
+                foreach ($chartData as &$point) {
+                    if (($point['date_key'] ?? '') === $todayKey) {
+                        $point['value'] = round($live, 2);
+                        $replaced = true;
+                    }
+                }
+                unset($point);
+
+                if (! $replaced) {
+                    $chartData[] = [
+                        'date' => $todayLabel,
+                        'full_date' => $todayKey,
+                        'date_key' => $todayKey,
+                        'value' => round($live, 2),
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => array_values(array_map(fn ($p) => [
+                    'date' => $p['date'],
+                    'full_date' => $p['full_date'] ?? $p['date_key'] ?? '',
+                    'value' => $p['value'],
+                ], $chartData)),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('AmzVariationVerify chartData failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => []], 500);
+        }
+    }
+
+    /**
+     * Persist today's California VARIATIONS ISSUES count.
+     */
+    private function persistVariationsIssuesSnapshot(int $count): void
+    {
+        if (! Schema::hasTable('channel_master_daily_data')) {
+            return;
+        }
+
+        try {
+            $today = now(self::TZ)->toDateString();
+            $existing = ChannelMasterSummary::where('channel', self::CHANNEL_KEY)
+                ->whereDate('snapshot_date', $today)
+                ->first();
+            $sd = is_array($existing?->summary_data) ? $existing->summary_data : [];
+            $sd['variations_issues_count'] = $count;
+            $sd['captured_at'] = now(self::TZ)->toDateTimeString();
+
+            ChannelMasterSummary::updateOrCreate(
+                ['channel' => self::CHANNEL_KEY, 'snapshot_date' => $today],
+                ['summary_data' => $sd, 'notes' => 'Amz Ads Variation Verify — Variations Issues (California)']
+            );
+        } catch (\Throwable $e) {
+            Log::warning('AmzVariationVerify persistVariationsIssuesSnapshot failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Prior California-day snapshot count (for red/green/gray trend dot).
+     */
+    private function previousDayVariationsIssuesCount(): ?float
+    {
+        if (! Schema::hasTable('channel_master_daily_data')) {
+            return null;
+        }
+
+        try {
+            $today = now(self::TZ)->toDateString();
+            $row = ChannelMasterSummary::where('channel', self::CHANNEL_KEY)
+                ->where('snapshot_date', '<', $today)
+                ->orderBy('snapshot_date', 'desc')
+                ->first();
+
+            if (! $row) {
+                return null;
+            }
+
+            $sd = is_array($row->summary_data) ? $row->summary_data : [];
+
+            return isset($sd['variations_issues_count'])
+                ? (float) $sd['variations_issues_count']
+                : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**

@@ -128,6 +128,7 @@ use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
 use App\Http\Controllers\MarketPlace\EbayLowVisibilityController;
+use App\Http\Controllers\MarketPlace\AmazonSpriceCvrAutoPushController;
 use App\Http\Controllers\MarketPlace\EbaySpriceCvrAutoPushController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
@@ -185,6 +186,7 @@ use App\Http\Controllers\MarketPlace\AmzListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\AmzVariationVerifyController;
 use App\Http\Controllers\MarketPlace\AmzBuyboxController;
 use App\Http\Controllers\MarketPlace\AmzReviewsController;
+use App\Http\Controllers\MarketPlace\AmzCvrIssuesController;
 use App\Http\Controllers\MarketPlace\AmzTitlesController;
 use App\Http\Controllers\MarketPlace\EbayListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\Ebay2ListingVariationVerifyController;
@@ -4028,9 +4030,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
 
+    // Amazon Sprice×CVR auto push (Clear → Apply → Push) — cron 14:00 IST
+    Route::get('/amazon-sprice-cvr-auto-push', [AmazonSpriceCvrAutoPushController::class, 'index'])
+        ->name('amazon.sprice-cvr-auto');
+    Route::post('/amazon-sprice-cvr-auto-push/run', [AmazonSpriceCvrAutoPushController::class, 'run'])
+        ->name('amazon.sprice-cvr-auto.run');
+
     // Amazon Ads Variation Verification
     Route::get('/amz-variation-verify', [AmzVariationVerifyController::class, 'index'])->name('amz.variation.verify');
     Route::get('/amz-variation-verify/data', [AmzVariationVerifyController::class, 'data'])->name('amz.variation.verify.data');
+    Route::get('/amz-variation-verify/chart-data', [AmzVariationVerifyController::class, 'chartData'])->name('amz.variation.verify.chart');
     Route::post('/amz-variation-verify/pull-listings', [AmzVariationVerifyController::class, 'pullListings'])->name('amz.variation.verify.pull');
 
     Route::get('/amz-buybox', [AmzBuyboxController::class, 'index'])->name('amz.buybox');
@@ -4040,6 +4049,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/amz-reviews', [AmzReviewsController::class, 'index'])->name('amz.reviews');
     Route::get('/amz-reviews/data', [AmzReviewsController::class, 'data'])->name('amz.reviews.data');
+
+    Route::get('/amz-cvr-issues', [AmzCvrIssuesController::class, 'index'])->name('amz.cvr.issues');
+    Route::get('/amz-cvr-issues/data', [AmzCvrIssuesController::class, 'data'])->name('amz.cvr.issues.data');
+    Route::get('/amz-cvr-issues/issue-types', [AmzCvrIssuesController::class, 'issueTypes'])->name('amz.cvr.issues.types');
+    Route::post('/amz-cvr-issues/issue-types', [AmzCvrIssuesController::class, 'storeIssueType'])->name('amz.cvr.issues.types.store');
+    Route::delete('/amz-cvr-issues/issue-types/{id}', [AmzCvrIssuesController::class, 'destroyIssueType'])->name('amz.cvr.issues.types.destroy');
+    Route::post('/amz-cvr-issues/audit-history', [AmzCvrIssuesController::class, 'storeAuditHistory'])->name('amz.cvr.issues.history.store');
 
     Route::get('/amz-titles', [AmzTitlesController::class, 'index'])->name('amz.titles');
     Route::get('/amz-titles/data', [AmzTitlesController::class, 'data'])->name('amz.titles.data');

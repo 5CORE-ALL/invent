@@ -1165,6 +1165,9 @@
                                         <a href="{{ route('amz.reviews') }}">Amz Reviews</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('amz.cvr.issues') }}">Amz CVR Issues</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('amz.titles') }}">Amz Titles</a>
                                     </li>
                                     <li>
