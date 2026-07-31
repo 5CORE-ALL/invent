@@ -616,10 +616,10 @@
         /* Summary badge 3-color trend dots (click → rolling history) */
         #summary-stats .summary-trend-dot {
             display: inline-block;
-            width: 10px;
-            height: 10px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            margin-left: 6px;
+            margin-left: 4px;
             vertical-align: middle;
             cursor: pointer;
             box-shadow: 0 0 0 1px rgba(255,255,255,0.65);
@@ -891,11 +891,11 @@
                     <div class="d-inline-flex align-items-center gap-1 pricing-filter-item p-1 border rounded"
                         id="lmp-mult-controls"
                         style="background: #ffc107;"
-                        title="Set SPRICE = LMP × factor for selected rows (or all visible Price &gt; LMP). Click gear to edit factor (shared setting).">
+                        title="Set SPRICE = LMP × factor when Dil &gt; 99% and eBay L30 &gt; 0. Skips missing LMP (triangle in S PRC). Click gear to edit factor.">
                         <button type="button" id="apply-lmp98-sprice-btn"
                             class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
                             style="background: transparent;">
-                            <i class="fas fa-percentage"></i> <span id="lmp-mult-btn-label">LMP×0.98</span>
+                            <span id="lmp-mult-btn-label">&gt; 99% Dil Rule</span>
                         </button>
                         <button type="button" id="open-lmp-mult-modal-btn"
                             class="btn btn-sm border-0 py-0 px-1 text-dark"
@@ -1661,11 +1661,11 @@
 
     {{-- LMP × factor Modal — shared setting (ebay_sbid_rules.key = ebay1_lmp_mult) --}}
     <div class="modal fade" id="lmpMultRuleModal" tabindex="-1" aria-labelledby="lmpMultRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header py-2" style="background:#ffc107;">
-                    <h5 class="modal-title text-dark" id="lmpMultRuleModalLabel">
-                        <i class="fas fa-percentage me-2"></i>LMP × Factor
+                    <h5 class="modal-title text-dark" id="lmpMultRuleModalLabel" style="font-size:1rem;">
+                        <i class="fas fa-percentage me-2"></i>LMP × Factor — Dil &gt; 99% &amp; eBay Movement
                     </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1673,6 +1673,10 @@
                     <p class="text-muted small mb-3 mb-md-2">
                         Used for <strong>SPRICE = LMP × factor</strong> (Apply button). Saved for all users.
                     </p>
+                    <ul class="small text-muted mb-3 ps-3">
+                        <li>Apply only if <strong>Dil &gt; 99%</strong> and <strong>eBay L30 &gt; 0</strong> (movement).</li>
+                        <li>Skip if no LMP — shows a <i class="fas fa-exclamation-triangle text-warning"></i> alert in S PRC.</li>
+                    </ul>
                     <label class="form-label fw-bold" for="lmp-mult-modal-input">Multiplier</label>
                     <div class="input-group input-group-sm">
                         <span class="input-group-text">LMP ×</span>
@@ -3148,20 +3152,26 @@
                     const dataset = chart.data.datasets[0];
                     const meta = chart.getDatasetMeta(0);
                     const c = chart.ctx;
-                    c.save();
-                    c.font = 'bold 6px Inter, system-ui, sans-serif';
-                    c.textAlign = 'center';
-                    c.textBaseline = 'bottom';
-                    const seriesColor = dataset.borderColor || '#6c757d';
                     const valueFmt = (skuChartFirstSeriesStats && skuChartFirstSeriesStats.valueFmt) ? skuChartFirstSeriesStats.valueFmt : skuChartFmtVal;
+                    const angle = -40 * Math.PI / 180; // diagonal so labels don't collide
                     meta.data.forEach((point, i) => {
                         const val = dataset.data[i];
                         if (val == null || !point) return;
-                        const offsetY = (i % 2 === 0) ? -6 : -10;
-                        c.fillStyle = seriesColor;
-                        c.fillText(valueFmt(val), point.x, point.y + offsetY);
+                        const txt = String(valueFmt(val));
+                        c.save();
+                        c.font = 'bold 11px Inter, system-ui, sans-serif';
+                        c.fillStyle = '#000000';
+                        c.strokeStyle = 'rgba(255,255,255,0.95)';
+                        c.lineWidth = 3;
+                        c.lineJoin = 'round';
+                        c.textAlign = 'left';
+                        c.textBaseline = 'middle';
+                        c.translate(point.x + 2, point.y - 10);
+                        c.rotate(angle);
+                        c.strokeText(txt, 0, 0);
+                        c.fillText(txt, 0, 0);
+                        c.restore();
                     });
-                    c.restore();
                 }
             };
 
@@ -3186,7 +3196,7 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    layout: { padding: { top: 36, left: 4, right: 14, bottom: 2 } },
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: false },
@@ -3740,14 +3750,26 @@
 
             function refreshLmpMultUi() {
                 const m = getLmpMult();
-                const label = 'LMP×' + formatLmpMult(m);
-                $('#lmp-mult-btn-label').text(label);
+                $('#lmp-mult-btn-label').text('> 99% Dil Rule');
                 $('#lmp-mult-modal-input').val(formatLmpMult(m));
                 $('#apply-lmp98-sprice-btn').attr('title',
-                    'Set SPRICE = LMP × ' + formatLmpMult(m) + ' for selected rows (or all visible Price > LMP rows if none selected)');
+                    'Set SPRICE = LMP × ' + formatLmpMult(m) + ' only when Dil > 99% and eBay L30 > 0. Missing LMP → skip + triangle in S PRC.');
                 if (typeof window.updateSpriceLmpMultLabels === 'function') {
                     window.updateSpriceLmpMultLabels(m);
                 }
+            }
+
+            /** Dil% as shown in Dil column: (OV L30 / INV) × 100 */
+            function getRowDilPercent(rd) {
+                const inv = parseFloat(rd && rd.INV) || 0;
+                const ovL30 = parseFloat(rd && rd['L30']) || 0;
+                if (inv <= 0) return 0;
+                return (ovL30 / inv) * 100;
+            }
+
+            /** Movement on eBay 1: eBay L30 units sold > 0 */
+            function rowHasEbay1Movement(rd) {
+                return (parseFloat(rd && rd['eBay L30']) || 0) > 0;
             }
 
             function loadLmpMultRule() {
@@ -3820,7 +3842,7 @@
                 const $btn = $(this);
                 const mult = getLmpMult();
                 const multLabel = formatLmpMult(mult);
-                const btnHtml = '<i class="fas fa-percentage"></i> <span id="lmp-mult-btn-label">LMP×' + multLabel + '</span>';
+                const btnHtml = '<span id="lmp-mult-btn-label">&gt; 99% Dil Rule</span>';
                 if (!table) {
                     showToast('error', 'Table not ready');
                     return;
@@ -3828,6 +3850,7 @@
 
                 const useSelection = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
                 const rowsToProcess = [];
+                const noLmpAlertRows = [];
                 const seen = new Set();
 
                 table.getRows('active').forEach(function(r) {
@@ -3837,8 +3860,18 @@
                     if (!sku || seen.has(sku)) return;
                     if (useSelection && !selectedSkus.has(sku)) return;
 
+                    // Apply only if Dil > 99% and eBay 1 movement (eBay L30 > 0)
+                    if (!(getRowDilPercent(rd) > 99) || !rowHasEbay1Movement(rd)) {
+                        return;
+                    }
+
                     const lmp = parseFloat(rd.lmp_price) || 0;
-                    if (lmp <= 0) return;
+                    if (lmp <= 0) {
+                        // Skip missing LMP — flag triangle alert in S PRC
+                        seen.add(sku);
+                        noLmpAlertRows.push({ row: r, sku: sku });
+                        return;
+                    }
 
                     if (!useSelection) {
                         const price = parseFloat(rd['eBay Price']) || 0;
@@ -3851,15 +3884,29 @@
                     rowsToProcess.push({ row: r, sku: sku, sprice: sprice, lmp: lmp });
                 });
 
+                // Persist triangle alert on rows that qualify (Dil/movement) but have no LMP
+                noLmpAlertRows.forEach(function(item) {
+                    item.row.update({ lmp_mult_no_lmp_alert: true });
+                    item.row.reformat();
+                });
+
                 if (rowsToProcess.length === 0) {
-                    showToast('warning', useSelection
-                        ? 'No selected rows have an LMP > 0'
-                        : 'No visible rows with Price > LMP and LMP > 0. Select SKUs or filter Red (Price > LMP).');
+                    if (noLmpAlertRows.length > 0) {
+                        showToast('warning',
+                            `Skipped ${noLmpAlertRows.length} SKU(s) with no LMP (triangle in S PRC). No rows to apply.`);
+                    } else {
+                        showToast('warning', useSelection
+                            ? 'No selected rows with Dil > 99%, eBay L30 > 0, and LMP > 0'
+                            : 'No visible rows with Dil > 99%, eBay L30 > 0, Price > LMP, and LMP > 0');
+                    }
                     return;
                 }
 
                 const scope = useSelection ? 'selected' : 'visible Price > LMP';
-                if (!confirm(`Set SPRICE = LMP × ${multLabel} for ${rowsToProcess.length} ${scope} SKU(s)?`)) {
+                const alertNote = noLmpAlertRows.length
+                    ? `\n(${noLmpAlertRows.length} skipped — no LMP, triangle shown in S PRC)`
+                    : '';
+                if (!confirm(`Set SPRICE = LMP × ${multLabel} for ${rowsToProcess.length} ${scope} SKU(s) (Dil > 99% + eBay L30 > 0)?${alertNote}`)) {
                     return;
                 }
 
@@ -3883,7 +3930,8 @@
                                 SGROI: response.sgroi_percent != null ? response.sgroi_percent : 0,
                                 SGPFT: response.sgpft_percent != null ? response.sgpft_percent : 0,
                                 SPRICE_STATUS: 'saved',
-                                has_custom_sprice: true
+                                has_custom_sprice: true,
+                                lmp_mult_no_lmp_alert: false
                             });
                             item.row.reformat();
                         },
@@ -3892,11 +3940,16 @@
                             if (successCount + errorCount !== total) return;
                             $btn.prop('disabled', false).html(btnHtml);
                             refreshLmpMultUi();
+                            let msg;
                             if (errorCount === 0) {
-                                showToast('success', `SPRICE = LMP × ${multLabel} saved for ${successCount} SKU(s)`);
+                                msg = `SPRICE = LMP × ${multLabel} saved for ${successCount} SKU(s)`;
                             } else {
-                                showToast('error', `Saved ${successCount} of ${total} (${errorCount} failed)`);
+                                msg = `Saved ${successCount} of ${total} (${errorCount} failed)`;
                             }
+                            if (noLmpAlertRows.length > 0) {
+                                msg += `; ${noLmpAlertRows.length} skipped (no LMP)`;
+                            }
+                            showToast(errorCount === 0 ? 'success' : 'error', msg);
                             if (useSelection) {
                                 selectedSkus.clear();
                                 $('.sku-select-checkbox').prop('checked', false);
@@ -6828,15 +6881,65 @@
                         title: "INV",
                         field: "INV",
                         hozAlign: "center",
-                        width: 50,
-                        sorter: "number"
+                        width: 60,
+                        sorter: "number",
+                        headerTooltip: "INV vs prior day (PT): green = up, red = down, gray = same / no prior.",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const yesterday = parseFloat(rowData.inv_yesterday);
+                            const hasYesterday = isFinite(yesterday);
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as prior day (' + Math.round(yesterday) + ')')
+                                : 'No prior-day INV yet';
+                            if (hasYesterday) {
+                                if (value > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs prior day (' + Math.round(yesterday) + ')';
+                                } else if (value < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs prior day (' + Math.round(yesterday) + ')';
+                                }
+                            }
+                            const dot = !isParent
+                                ? `<span title="${dotTip}" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-left: 3px; vertical-align: middle;"></span>`
+                                : '';
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center;">${Math.round(value)}${dot}</span>`;
+                        }
                     },
                     {
                         title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
-                        width: 50,
-                        sorter: "number"
+                        width: 65,
+                        sorter: "number",
+                        headerTooltip: "OV L30 vs prior day (PT): green = up, red = down, gray = same / no prior.",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const yesterday = parseFloat(rowData.l30_yesterday);
+                            const hasYesterday = isFinite(yesterday);
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as prior day (' + Math.round(yesterday) + ')')
+                                : 'No prior-day OV L30 yet';
+                            if (hasYesterday) {
+                                if (value > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs prior day (' + Math.round(yesterday) + ')';
+                                } else if (value < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs prior day (' + Math.round(yesterday) + ')';
+                                }
+                            }
+                            const dot = !isParent
+                                ? `<span title="${dotTip}" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-left: 3px; vertical-align: middle;"></span>`
+                                : '';
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center;">${Math.round(value)}${dot}</span>`;
+                        }
                     },
 
                     {
@@ -7219,16 +7322,37 @@
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Price vs yesterday (PT): green = up, red = down, gray = same / no yesterday. Click price or dot for chart.",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
                             const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const yesterday = parseFloat(rowData.price_yesterday);
+                            const hasYesterday = isFinite(yesterday) && yesterday > 0;
+
+                            // Green if price > yesterday, red if <, gray otherwise (same / missing)
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as yesterday ($' + yesterday.toFixed(2) + ')')
+                                : 'No yesterday price yet';
+                            if (hasYesterday && value > 0) {
+                                if (value > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs yesterday ($' + yesterday.toFixed(2) + ')';
+                                } else if (value < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs yesterday ($' + yesterday.toFixed(2) + ')';
+                                }
+                            }
+                            const dotBtn = (sku && !isParent)
+                                ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="price" title="${dotTip} — click for Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`
+                                : '';
 
                             if (value === 0) {
                                 if (sku && !isParent) {
-                                    return `<span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: #a00211; font-weight: 600; cursor: pointer;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                                    return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: #a00211; font-weight: 600; cursor: pointer;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>${dotBtn}</span>`;
                                 }
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
@@ -7237,14 +7361,14 @@
                             const priceColor = (lmpPrice > 0 && value > lmpPrice) ? '#dc3545' : 'inherit';
                             const priceWeight = (lmpPrice > 0 && value > lmpPrice) ? '600' : 'normal';
                             if (sku && !isParent) {
-                                return `<span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>`;
+                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>${dotBtn}</span>`;
                             }
                             if (lmpPrice > 0 && value > lmpPrice) {
                                 return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
                             }
                             return priceFormatted;
                         },
-                        width: 70
+                        width: 80
                     },
 
                     {
@@ -7474,26 +7598,31 @@
                             const spriceNum = (value != null && value !== '') ? parseFloat(value) :
                                 NaN;
                             const sprice = isNaN(spriceNum) ? 0 : spriceNum;
+                            const noLmpAlert = !!rowData.lmp_mult_no_lmp_alert;
+                            const alertIcon = noLmpAlert
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107; margin-left:2px;" title="Skipped LMP×Factor — no LMP"></i>'
+                                : '';
 
                             // Blank only when SPRICE is missing or zero (no override)
-                            if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0)
-                                return '';
+                            if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) {
+                                return alertIcon || '';
+                            }
 
                             // When SPRICE matches eBay Price, show "-" instead of the same dollar amount
                             if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
-                                return '<span style="color:#adb5bd;" title="Same as eBay Price">-</span>';
+                                return `<span style="color:#adb5bd;" title="Same as eBay Price">-</span>${alertIcon}`;
                             }
 
                             const formattedValue = `$${Number(sprice).toFixed(2)}`;
                             // If SPRICE is above the LMP (lowest market price), flag it in red.
                             const lmp = parseFloat(rowData.lmp_price) || 0;
                             if (lmp > 0 && sprice > lmp) {
-                                return `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>`;
+                                return `<span style="color: #dc3545; font-weight: 600;">${formattedValue}</span>${alertIcon}`;
                             }
                             if (hasCustomSprice === false) {
-                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>`;
+                                return `<span style="color: #0d6efd; font-weight: 500;">${formattedValue}</span>${alertIcon}`;
                             }
-                            return formattedValue;
+                            return formattedValue + alertIcon;
                         },
                         width: 80
                     },
@@ -9562,6 +9691,7 @@
                 : '<span class="text-muted small">—</span>';
             return `
                 <tr class="lmp-five-core-row" title="Our 5 Core listing — sorted by price to show market level">
+                    <td class="text-center text-muted small">—</td>
                     <td>${imageCell}</td>
                     <td><span class="lmp-five-core-price">$${price.toFixed(2)}</span></td>
                     <td><span class="badge bg-primary">Ours</span></td>
@@ -9576,6 +9706,82 @@
                     <td>${linkBtn}</td>
                 </tr>
             `;
+        }
+
+        function updateLmpBulkDeleteUi() {
+            const $cbs = $('#lmpModal .lmp-row-cb');
+            const $checked = $cbs.filter(':checked');
+            const total = $cbs.length;
+            const selected = $checked.length;
+            const $all = $('#lmp-select-all-cb');
+            if ($all.length) {
+                $all.prop('checked', total > 0 && selected === total);
+                $all.prop('indeterminate', selected > 0 && selected < total);
+            }
+            const $btn = $('#lmp-bulk-delete-btn');
+            if ($btn.length) {
+                $btn.prop('disabled', selected === 0)
+                    .html(selected > 0
+                        ? `<i class="fa fa-trash"></i> Delete Selected (${selected})`
+                        : `<i class="fa fa-trash"></i> Delete Selected`);
+            }
+        }
+
+        function deleteEbayLmpById(id) {
+            return $.ajax({
+                url: '/ebay-lmp-delete',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { id: id }
+            });
+        }
+
+        function deleteEbayLmpIds(ids, opts) {
+            opts = opts || {};
+            const list = (ids || []).map(String).filter(Boolean);
+            if (!list.length) return;
+
+            const label = opts.confirmLabel || (list.length === 1
+                ? 'Delete this competitor?'
+                : `Delete ${list.length} selected competitors?`);
+            if (!confirm(label)) return;
+
+            const $bulkBtn = $('#lmp-bulk-delete-btn');
+            const bulkHtml = $bulkBtn.html();
+            $bulkBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Deleting...');
+            $('#lmpModal .delete-ebay-lmp-btn, #lmpModal .lmp-row-cb, #lmp-select-all-cb').prop('disabled', true);
+
+            let success = 0;
+            let failed = 0;
+            let i = 0;
+
+            function next() {
+                if (i >= list.length) {
+                    $bulkBtn.prop('disabled', false).html(bulkHtml);
+                    if (failed === 0) {
+                        showToast(success === 1
+                            ? 'Competitor deleted successfully'
+                            : `${success} competitors deleted successfully`, 'success');
+                    } else {
+                        showToast(`Deleted ${success} of ${list.length} (${failed} failed)`, 'error');
+                    }
+                    const sku = currentLmpData.sku;
+                    loadEbayCompetitorsModal(sku, currentLmpData.linkedLmpSkus);
+                    if (table && typeof table.replaceData === 'function') {
+                        table.replaceData();
+                    }
+                    return;
+                }
+                const id = list[i++];
+                deleteEbayLmpById(id)
+                    .done(function(response) {
+                        if (response && response.success) success++;
+                        else failed++;
+                    })
+                    .fail(function() { failed++; })
+                    .always(next);
+            }
+            next();
         }
 
         // Render Competitors List Function (Ignore = same as Temu: excluded from L1)
@@ -9609,6 +9815,9 @@
             html += `
                 <thead class="table-dark">
                     <tr>
+                        <th class="text-center" style="width:36px;" title="Select for bulk delete">
+                            <input type="checkbox" class="form-check-input" id="lmp-select-all-cb" title="Select all">
+                        </th>
                         <th>Image</th>
                         <th>Price</th>
                         <th>Shipping</th>
@@ -9635,9 +9844,12 @@
                 const ignoreCb = `<input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"`
                     + (ignored ? ' checked' : '')
                     + ` data-id="${item.id}" data-marketplace="ebay" data-sku="${skuEsc}">`;
+                const selectCb = `<input type="checkbox" class="form-check-input lmp-row-cb" title="Select for delete"`
+                    + ` data-id="${item.id}" data-item-id="${item.item_id || ''}" data-price="${total}">`;
 
                 const rowHtml = `
                     <tr class="${rowClass}">
+                        <td class="text-center align-middle">${selectCb}</td>
                         <td>${imageCell}</td>
                         <td>$${parseFloat(item.price).toFixed(2)}</td>
                         <td>${parseFloat(item.shipping_cost) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
@@ -9680,10 +9892,19 @@
             }
 
             html += '</tbody></table></div>';
-            if (l1Price !== null) {
-                html = `<div class="mb-2 small text-muted">L1 (lowest non-ignored): <strong>$${Number(l1Price).toFixed(2)}</strong></div>` + html;
+            let toolbar = `<div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">`;
+            toolbar += l1Price !== null
+                ? `<div class="small text-muted mb-0">L1 (lowest non-ignored): <strong>$${Number(l1Price).toFixed(2)}</strong></div>`
+                : `<div></div>`;
+            if (competitors.length > 0) {
+                toolbar += `<button type="button" class="btn btn-sm btn-danger" id="lmp-bulk-delete-btn" disabled>
+                    <i class="fa fa-trash"></i> Delete Selected
+                </button>`;
             }
+            toolbar += `</div>`;
+            html = toolbar + html;
             $('#lmpDataList').html(html);
+            updateLmpBulkDeleteUi();
         }
 
         // Toggle LMP ignore (same endpoint / behavior as Temu & CVR master)
@@ -9838,50 +10059,56 @@
             });
         });
 
-        // Delete Competitor Button Click
+        // Bulk select — select all / row checkbox
+        $(document).on('change', '#lmp-select-all-cb', function() {
+            const checked = $(this).is(':checked');
+            $('#lmpModal .lmp-row-cb').prop('checked', checked);
+            updateLmpBulkDeleteUi();
+        });
+        $(document).on('change', '#lmpModal .lmp-row-cb', function() {
+            updateLmpBulkDeleteUi();
+        });
+
+        // Bulk delete selected competitors
+        $(document).on('click', '#lmp-bulk-delete-btn', function() {
+            const ids = $('#lmpModal .lmp-row-cb:checked').map(function() {
+                return $(this).attr('data-id') || $(this).data('id');
+            }).get().filter(Boolean);
+            if (!ids.length) {
+                showToast('Select at least one competitor to delete', 'warning');
+                return;
+            }
+            deleteEbayLmpIds(ids, {
+                confirmLabel: ids.length === 1
+                    ? 'Delete the selected competitor?'
+                    : `Delete ${ids.length} selected competitors?`
+            });
+        });
+
+        // Delete Competitor Button Click — if multiple are selected, delete all selected
         $(document).on('click', '.delete-ebay-lmp-btn', function() {
             const $btn = $(this);
             const id = $btn.data('id');
             const itemId = $btn.data('item-id');
             const price = $btn.data('price');
 
-            if (!confirm(`Delete competitor ${itemId} ($${price})?`)) {
+            const selectedIds = $('#lmpModal .lmp-row-cb:checked').map(function() {
+                return $(this).attr('data-id') || $(this).data('id');
+            }).get().filter(Boolean);
+
+            if (selectedIds.length > 1) {
+                // Ensure the clicked row is included
+                if (id && selectedIds.indexOf(String(id)) === -1 && selectedIds.indexOf(id) === -1) {
+                    selectedIds.push(id);
+                }
+                deleteEbayLmpIds(selectedIds, {
+                    confirmLabel: `Delete ${selectedIds.length} selected competitors?`
+                });
                 return;
             }
 
-            const originalHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
-
-            $.ajax({
-                url: '/ebay-lmp-delete',
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                },
-                data: {
-                    id: id
-                },
-                success: function(response) {
-                    if (response.success) {
-                        showToast('Competitor deleted successfully', 'success');
-
-                        // Reload competitors list
-                        const sku = currentLmpData.sku;
-                        loadEbayCompetitorsModal(sku, currentLmpData.linkedLmpSkus);
-
-                        // Reload main table data
-                        table.replaceData();
-                    } else {
-                        showToast(response.error || 'Failed to delete competitor', 'error');
-                    }
-                },
-                error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.error || 'Failed to delete competitor';
-                    showToast(errorMsg, 'error');
-                },
-                complete: function() {
-                    $btn.prop('disabled', false).html(originalHtml);
-                }
+            deleteEbayLmpIds([id], {
+                confirmLabel: `Delete competitor ${itemId} ($${price})?`
             });
         });
 

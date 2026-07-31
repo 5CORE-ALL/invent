@@ -1218,6 +1218,72 @@ class SheinApiService
     }
 
     /**
+     * Export receive address — POST /open-api/order/export-address (one orderNo per call).
+     * Order-detail alone often returns a partial/masked receiveMsg; this is the dedicated
+     * address API (same role as AliExpress receiptinfo.get).
+     *
+     * handleType: 1 = export address only; 2 = export + move status 1→2 (new orders).
+     *
+     * @return array{success: bool, message?: string, data?: array<string, mixed>, raw?: array<string, mixed>}
+     */
+    public function getOrderAddress(string $orderNo, int $handleType = 1): array
+    {
+        $orderNo = trim($orderNo);
+        if ($orderNo === '') {
+            return ['success' => false, 'message' => 'Order number is required.'];
+        }
+
+        $handleType = $handleType === 2 ? 2 : 1;
+        $endpoint = '/open-api/order/export-address';
+
+        try {
+            $json = $this->sheinApiPost($endpoint, [
+                'orderNo' => $orderNo,
+                'handleType' => $handleType,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Shein getOrderAddress failed', [
+                'order_no' => $orderNo,
+                'handle_type' => $handleType,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $info = is_array($json['info'] ?? null) ? $json['info'] : [];
+        $list = $info['receiveMsgList'] ?? [];
+        if (! is_array($list)) {
+            $list = [];
+        }
+
+        $receive = null;
+        foreach ($list as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            if (trim((string) ($row['orderNo'] ?? '')) === $orderNo || count($list) === 1) {
+                $receive = $row;
+                break;
+            }
+        }
+
+        if ($receive === null) {
+            return [
+                'success' => false,
+                'message' => 'Shein export-address returned no receiveMsgList entry.',
+                'raw' => $json,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'data' => $receive,
+            'raw' => $json,
+        ];
+    }
+
+    /**
      * Fetch orders raw data from Shein API (list + detail).
      * Walks backward in <=47h windows (Shein 48h limit).
      *

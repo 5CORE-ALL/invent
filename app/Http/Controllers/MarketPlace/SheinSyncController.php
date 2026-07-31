@@ -682,41 +682,10 @@ class SheinSyncController extends Controller
         $line = SheinOrderMetric::query()->findOrFail($id);
         $result = app(SheinOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->order_id);
 
-        if (empty($result['success'])) {
-            return response()->json([
-                'success' => false,
-                'message' => $result['message'] ?? 'Failed to pull order details.',
-            ]);
-        }
-
-        $line->refresh();
-        $message = $result['message'] ?? 'Order details updated from Shein.';
-        $shopifySynced = null;
-
-        // Already-imported orders were often created without ShipTo; push address on pull.
-        if (! empty($line->shopify_order_id)) {
-            $sync = app(SheinOrderPushService::class)->syncShippingAddressToShopify($line);
-            $shopifySynced = ! empty($sync['success']);
-
-            if ($shopifySynced) {
-                $message = 'Pulled from Shein and updated shipping address on Shopify.';
-            } elseif (! empty($sync['skipped'])) {
-                $message = 'Pulled from Shein. '.($sync['message'] ?? 'Shopify address not updated.');
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'pulled' => true,
-                    'shopify_synced' => false,
-                    'message' => 'Pulled from Shein, but Shopify address update failed: '.($sync['message'] ?? 'unknown error'),
-                ], 422);
-            }
-        }
-
+        // Persist only — Shopify address fill matches AliExpress / Reverb (SyncSheinAddressJob).
         return response()->json([
-            'success' => true,
-            'pulled' => true,
-            'shopify_synced' => $shopifySynced,
-            'message' => $message,
+            'success' => ! empty($result['success']),
+            'message' => $result['message'] ?? ($result['success'] ? 'Order details updated from Shein.' : 'Failed to pull order details.'),
         ]);
     }
 

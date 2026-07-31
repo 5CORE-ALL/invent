@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\NeweggOrderMetric;
 use App\Services\NeweggApiService;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Order detail helpers for MM Newegg order show / Shopify push.
@@ -82,14 +83,33 @@ class NeweggOrderDetailService
             $order
         );
 
-        NeweggOrderMetric::query()
-            ->where('order_id', $orderId)
-            ->update([
-                'raw_payload' => $order,
-                'status' => (string) ($order['OrderStatus'] ?? $order['OrderStatusDescription'] ?? ''),
-            ]);
+        $status = (string) ($order['OrderStatus'] ?? $order['OrderStatusDescription'] ?? '');
 
-        return ['success' => true, 'message' => 'Order details updated from Newegg.'];
+        // Same persistence shape as AliExpress / Reverb: wrap under raw['order'].
+        $lines = NeweggOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->get();
+
+        if ($lines->isEmpty()) {
+            return ['success' => false, 'message' => 'Order not found in local database.'];
+        }
+
+        foreach ($lines as $line) {
+            $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+            $raw['order'] = $order;
+            $raw['order_detail_fetched_at'] = now()->toIso8601String();
+            $line->update([
+                'raw_payload' => $raw,
+                'status' => $status,
+            ]);
+        }
+
+        Log::info('NeweggOrderDetailService: persisted order detail', [
+            'order_id' => $orderId,
+            'lines' => $lines->count(),
+        ]);
+
+        return ['success' => true, 'order' => $order, 'message' => 'Order details updated from Newegg.'];
     }
 
     /**
@@ -256,6 +276,10 @@ class NeweggOrderDetailService
      */
     protected function mergePreservedShipTo(array $existing, array $incoming): array
     {
+        // Cached raw_payload may nest under "order" (same shape as AE/Reverb).
+        if (is_array($existing['order'] ?? null)) {
+            $existing = $existing['order'];
+        }
         $existing = $this->unwrapOrderInfoNode($existing);
         if (! $this->looksLikeOrderInfo($existing)) {
             return $incoming;

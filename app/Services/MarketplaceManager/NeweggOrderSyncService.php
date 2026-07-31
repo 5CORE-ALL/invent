@@ -88,16 +88,7 @@ class NeweggOrderSyncService
             $this->dispatchImportsForNewOrders();
         }
 
-        // After order fetch, backfill missing Shopify addresses from Newegg ShipTo.
-        if (NeweggOrderPushService::canAutoSyncAddress()) {
-            try {
-                \App\Jobs\SyncNeweggAddressJob::dispatch(false, 25);
-            } catch (\Throwable $e) {
-                Log::warning('NeweggOrderSyncService: could not queue address sync', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        // Address sync is queued by SyncMarketplaceOrdersJob (same as AliExpress / Reverb).
 
         return [
             'success' => true,
@@ -205,7 +196,8 @@ class NeweggOrderSyncService
                     'order_date' => $orderDate ? Carbon::parse($orderDate) : null,
                     'status' => $status,
                     'quantity' => 1,
-                    'raw_payload' => $order,
+                    // Match AliExpress / Reverb wrapper shape.
+                    'raw_payload' => ['order' => $order],
                     'import_status' => 'ready',
                 ]
             );
@@ -235,7 +227,8 @@ class NeweggOrderSyncService
                     'display_title' => (string) ($item['Description'] ?? $item['Title'] ?? ''),
                     'quantity' => max(1, $qty),
                     'amount' => $amount,
-                    'raw_payload' => $order,
+                    // Match AliExpress / Reverb: raw['order'] + raw['line'].
+                    'raw_payload' => ['order' => $order, 'line' => $item],
                     'import_status' => 'ready',
                 ]
             );
@@ -252,6 +245,20 @@ class NeweggOrderSyncService
      */
     protected function mergeShipToFields(array $existing, array $incoming): array
     {
+        // Cached payload may be wrapped (OrderInfo / order) — unwrap before comparing ShipTo*.
+        if (is_array($existing['order'] ?? null)) {
+            $existing = $existing['order'];
+        }
+        if (isset($existing['OrderInfo']) && is_array($existing['OrderInfo'])) {
+            $inner = $existing['OrderInfo'];
+            if (isset($inner[0]) && is_array($inner[0])) {
+                $inner = $inner[0];
+            }
+            if (is_array($inner)) {
+                $existing = $inner;
+            }
+        }
+
         $keys = [
             'ShipToAddress1', 'ShipToAddress2', 'ShipToCityName', 'ShipToStateCode',
             'ShipToZipCode', 'ShipToCountryCode', 'ShipToFirstName', 'ShipToLastName',

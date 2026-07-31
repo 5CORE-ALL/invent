@@ -65,8 +65,8 @@
         @include('marketplace.newegg._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
-            <strong>Pull from Newegg</strong> refreshes shipping/buyer details and, if this order is already on Shopify, updates the Shopify address.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Newegg</strong> so Newegg is marked shipped with that tracking number.
+            Order details are pulled from Newegg and sent to Shopify when you push this order.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Newegg</strong> so the tracking number is declared on Newegg too.
         </div>
 
         @if($aeLiveError ?? null)

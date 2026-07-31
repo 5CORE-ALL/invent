@@ -206,6 +206,54 @@ class EbayTwoController extends Controller
             ->keyBy(function ($metric) {
                 return ShopifySku::normalizeSkuForShopifyLookup($metric->sku);
             });
+
+        // Prior-day Price / INV / OV L30 (California) for green/red/gray trend dots.
+        $todayPt = Carbon::now('America/Los_Angeles')->toDateString();
+        $priceYesterdayBySku = [];
+        $invYesterdayBySku = [];
+        $l30YesterdayBySku = [];
+        if (Schema::hasTable('ebay2_sku_daily_data')) {
+            $latestPriorRows = DB::table('ebay2_sku_daily_data as d')
+                ->join(DB::raw('(SELECT sku, MAX(record_date) AS max_date FROM ebay2_sku_daily_data WHERE record_date < ? GROUP BY sku) as x'), function ($join) {
+                    $join->on('d.sku', '=', 'x.sku')->on('d.record_date', '=', 'x.max_date');
+                })
+                ->addBinding($todayPt, 'join')
+                ->select('d.sku', 'd.daily_data')
+                ->get();
+            foreach ($latestPriorRows as $hist) {
+                $data = is_array($hist->daily_data ?? null)
+                    ? $hist->daily_data
+                    : (json_decode($hist->daily_data ?? '{}', true) ?: []);
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
+                if ($norm === '') {
+                    continue;
+                }
+                $priceYesterdayBySku[$norm] = round((float) ($data['price'] ?? 0), 2);
+                if (array_key_exists('ovl30', $data)) {
+                    $l30YesterdayBySku[$norm] = (int) $data['ovl30'];
+                }
+                if (array_key_exists('inv', $data)) {
+                    $invYesterdayBySku[$norm] = (int) $data['inv'];
+                }
+            }
+        }
+        // Prefer shopifysku_inventory_history.closing_inventory for INV prior-day
+        if (Schema::hasTable('shopifysku_inventory_history')) {
+            $invHistRows = DB::table('shopifysku_inventory_history as h')
+                ->join(DB::raw('(SELECT sku, MAX(snapshot_date) AS max_date FROM shopifysku_inventory_history WHERE snapshot_date < ? GROUP BY sku) as x'), function ($join) {
+                    $join->on('h.sku', '=', 'x.sku')->on('h.snapshot_date', '=', 'x.max_date');
+                })
+                ->addBinding($todayPt, 'join')
+                ->select('h.sku', 'h.closing_inventory')
+                ->get();
+            foreach ($invHistRows as $hist) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($hist->sku ?? ''));
+                if ($norm === '') {
+                    continue;
+                }
+                $invYesterdayBySku[$norm] = (int) ($hist->closing_inventory ?? 0);
+            }
+        }
         
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
@@ -613,6 +661,9 @@ class EbayTwoController extends Controller
             // Shopify
             $row["INV"] = $shopify->inv ?? 0;
             $row["L30"] = $shopify->quantity ?? 0;
+            $pmNormInv = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $row['inv_yesterday'] = $invYesterdayBySku[$pmNormInv] ?? null;
+            $row['l30_yesterday'] = $l30YesterdayBySku[$pmNormInv] ?? null;
             
             // NR/REQ status from listing status
             if ($listingStatus) {
@@ -630,6 +681,8 @@ class EbayTwoController extends Controller
             $row["eBay L30"] = $ebayMetric->ebay_l30 ?? 0;
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
+            $pmNorm = ShopifySku::normalizeSkuForShopifyLookup((string) $pm->sku);
+            $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
             $row['views'] = $ebayMetric->views ?? 0;
             $row['l7_views'] = $ebayMetric->l7_views ?? 0;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
@@ -934,6 +987,8 @@ class EbayTwoController extends Controller
                 $row['fba'] = "";
                 $row["INV"] = 0;
                 $row["L30"] = 0;
+                $row['inv_yesterday'] = $invYesterdayBySku[$normKey] ?? null;
+                $row['l30_yesterday'] = $l30YesterdayBySku[$normKey] ?? null;
                 $row['nr_req'] = 'REQ';
                 $row['B Link'] = '';
                 $row['S Link'] = '';
@@ -942,6 +997,7 @@ class EbayTwoController extends Controller
                 $row["eBay L30"] = $metric->ebay_l30 ?? 0;
                 $row["eBay L60"] = $metric->ebay_l60 ?? 0;
                 $row["eBay Price"] = $metric->ebay_price ?? 0;
+                $row['price_yesterday'] = $priceYesterdayBySku[$normKey] ?? null;
                 $row['views'] = $metric->views ?? 0;
                 $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
@@ -1808,111 +1864,147 @@ class EbayTwoController extends Controller
         }
     }
 
+    /**
+     * Per-SKU Price / CVR / Views history for /ebay2-tabulator-view charts.
+     * Same response shape as /ebay-metrics-history (ebay1): price, views, l7_views, cvr_percent.
+     */
     public function getMetricsHistory(Request $request)
     {
-        $days = $request->input('days', 30);
+        $days = (int) $request->input('days', 30); // Default 30; 0 = lifetime
         $sku = $request->input('sku');
-        
-        $minDays = 7;
-        if ($days < $minDays) {
-            $days = $minDays;
+        $skuNorm = $sku ? strtoupper(trim($sku)) : null;
+
+        // California (America/Los_Angeles) window — include today PT so live CVR 30 matches the table.
+        $endDate = Carbon::now('America/Los_Angeles')->startOfDay();
+        if ($days === 0) {
+            $startDate = null; // lifetime — no lower bound
+        } else {
+            if ($days < 7) {
+                $days = 7;
+            }
+            $startDate = $endDate->copy()->subDays($days - 1);
         }
-        
-        $californiaToday = \Carbon\Carbon::now('America/Los_Angeles')->startOfDay();
-        $endDate = $californiaToday;
-        $startDate = $endDate->copy()->subDays($days - 1);
-        
-        $chartData = [];
+
         $dataByDate = [];
-        
+
         try {
-            // Get data from ebay2_metrics table
-            if ($sku) {
-                $metric = Ebay2Metric::where('sku', $sku)->first();
-                
-                if ($metric) {
-                    // Create data points for the date range using the current metric data
-                    $currentDate = \Carbon\Carbon::parse($startDate);
-                    while ($currentDate->lte($endDate)) {
-                        $dateStr = $currentDate->format('Y-m-d');
-                        
-                        // Distribute the L30 and L60 data across the date range
-                        $dataByDate[$dateStr] = [
-                            'date' => $dateStr,
-                            'units' => 0,
-                            'revenue' => 0,
-                            'views' => (int)($metric->views ?? 0) / $days
-                        ];
-                        
-                        $currentDate->addDay();
-                    }
-                    
-                    // Add recent data points
-                    $today = $californiaToday->format('Y-m-d');
-                    if (isset($dataByDate[$today])) {
-                        $dataByDate[$today]['units'] = (int)($metric->ebay_l30 ?? 0);
-                        $dataByDate[$today]['revenue'] = (float)(($metric->ebay_price ?? 0) * ($metric->ebay_l30 ?? 0));
-                        $dataByDate[$today]['views'] = (int)($metric->views ?? 0);
-                    }
+            // Optional historical snapshots (same role as ebay_sku_daily_data for ebay1).
+            if ($skuNorm && Schema::hasTable('ebay2_sku_daily_data')) {
+                $query = DB::table('ebay2_sku_daily_data')
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                    ->where('record_date', '<=', $endDate->toDateString())
+                    ->orderBy('record_date', 'asc');
+                if ($startDate) {
+                    $query->where('record_date', '>=', $startDate->toDateString());
                 }
-            } else {
-                // If no specific SKU, aggregate from all metrics
-                $metrics = Ebay2Metric::all();
-                
-                $totalUnits = $metrics->sum('ebay_l30');
-                $totalViews = $metrics->sum('views');
-                $totalRevenue = $metrics->sum(function($m) {
-                    return ($m->ebay_price ?? 0) * ($m->ebay_l30 ?? 0);
-                });
-                
-                $currentDate = \Carbon\Carbon::parse($startDate);
-                while ($currentDate->lte($endDate)) {
-                    $dateStr = $currentDate->format('Y-m-d');
-                    
-                    $dataByDate[$dateStr] = [
-                        'date' => $dateStr,
-                        'units' => 0,
-                        'revenue' => 0,
-                        'views' => (int)($totalViews / $days)
+
+                foreach ($query->get() as $record) {
+                    $data = is_array($record->daily_data ?? null)
+                        ? $record->daily_data
+                        : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                    $dateKey = Carbon::parse($record->record_date)->format('Y-m-d');
+                    $views = (int) ($data['views'] ?? 0);
+                    $ebayL30 = (int) ($data['ebay_l30'] ?? 0);
+                    $cvr = $views > 0
+                        ? round(($ebayL30 / $views) * 100, 2)
+                        : round((float) ($data['cvr_percent'] ?? 0), 2);
+                    $dataByDate[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                        'price' => round((float) ($data['price'] ?? 0), 2),
+                        'views' => $views,
+                        'l7_views' => (int) ($data['l7_views'] ?? 0),
+                        'cvr_percent' => $cvr,
+                        'ad_percent' => round((float) ($data['ad_percent'] ?? 0), 2),
+                        'ebay_l30' => $ebayL30,
                     ];
-                    
-                    $currentDate->addDay();
-                }
-                
-                // Add recent data to today
-                $today = $californiaToday->format('Y-m-d');
-                if (isset($dataByDate[$today])) {
-                    $dataByDate[$today]['units'] = (int)$totalUnits;
-                    $dataByDate[$today]['revenue'] = (float)$totalRevenue;
-                    $dataByDate[$today]['views'] = (int)$totalViews;
                 }
             }
         } catch (\Exception $e) {
-            \Log::error('Error fetching eBay2 metrics history: ' . $e->getMessage());
+            Log::info('No eBay2 daily metrics data available. Historical data will be populated by metrics collection command.');
         }
 
-        // Fill in missing dates with zero values
-        $currentDate = \Carbon\Carbon::parse($startDate);
-        
-        while ($currentDate->lte($endDate)) {
-            $dateStr = $currentDate->format('Y-m-d');
-            
-            if (!isset($dataByDate[$dateStr])) {
-                $dataByDate[$dateStr] = [
-                    'date' => $dateStr,
-                    'units' => 0,
-                    'revenue' => 0,
-                    'views' => 0
+        // Overlay live ebay_2_metrics for California today so the chart matches CVR 30 / Prc on the tabulator.
+        if ($skuNorm) {
+            $live = Ebay2Metric::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                ->first();
+            if ($live) {
+                $todayKey = $endDate->toDateString();
+                $views = (int) ($live->views ?? 0);
+                $ebayL30 = (int) ($live->ebay_l30 ?? 0);
+                $price = round((float) ($live->ebay_price ?? 0), 2);
+                $cvr = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0;
+
+                $dataByDate[$todayKey] = [
+                    'date' => $todayKey,
+                    'date_formatted' => $endDate->format('M d'),
+                    'price' => $price,
+                    'views' => $views,
+                    'l7_views' => (int) ($live->l7_views ?? 0),
+                    'cvr_percent' => $cvr,
+                    'ad_percent' => round((float) ($dataByDate[$todayKey]['ad_percent'] ?? 0), 2),
+                    'ebay_l30' => $ebayL30,
                 ];
             }
-            
-            $currentDate->addDay();
         }
-        
-        ksort($dataByDate);
-        $chartData = array_values($dataByDate);
 
-        return response()->json($chartData);
+        // Seed carry-forward from last snapshot before the window (same as ebay1).
+        $carry = null;
+        if ($skuNorm && $startDate && Schema::hasTable('ebay2_sku_daily_data')) {
+            $prior = DB::table('ebay2_sku_daily_data')
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])
+                ->where('record_date', '<', $startDate->toDateString())
+                ->orderByDesc('record_date')
+                ->first();
+            if ($prior) {
+                $priorData = is_array($prior->daily_data ?? null)
+                    ? $prior->daily_data
+                    : (json_decode($prior->daily_data ?? '{}', true) ?: []);
+                $pViews = (int) ($priorData['views'] ?? 0);
+                $pL30 = (int) ($priorData['ebay_l30'] ?? 0);
+                $carry = [
+                    'price' => round((float) ($priorData['price'] ?? 0), 2),
+                    'views' => $pViews,
+                    'l7_views' => (int) ($priorData['l7_views'] ?? 0),
+                    'cvr_percent' => $pViews > 0
+                        ? round(($pL30 / $pViews) * 100, 2)
+                        : round((float) ($priorData['cvr_percent'] ?? 0), 2),
+                    'ad_percent' => round((float) ($priorData['ad_percent'] ?? 0), 2),
+                    'ebay_l30' => $pL30,
+                ];
+            }
+        }
+
+        // Full window day-by-day with forward-fill (never invent $0 price cliffs).
+        if ($skuNorm && $startDate) {
+            $filled = [];
+            $currentDate = $startDate->copy();
+            while ($currentDate->lte($endDate)) {
+                $dateKey = $currentDate->format('Y-m-d');
+                if (isset($dataByDate[$dateKey])) {
+                    $carry = $dataByDate[$dateKey];
+                    $filled[$dateKey] = $dataByDate[$dateKey];
+                } elseif ($carry !== null) {
+                    $filled[$dateKey] = [
+                        'date' => $dateKey,
+                        'date_formatted' => $currentDate->format('M d'),
+                        'price' => (float) ($carry['price'] ?? 0),
+                        'views' => (int) ($carry['views'] ?? 0),
+                        'l7_views' => (int) ($carry['l7_views'] ?? 0),
+                        'cvr_percent' => (float) ($carry['cvr_percent'] ?? 0),
+                        'ad_percent' => (float) ($carry['ad_percent'] ?? 0),
+                        'ebay_l30' => (int) ($carry['ebay_l30'] ?? 0),
+                    ];
+                }
+                $currentDate->addDay();
+            }
+            $dataByDate = $filled;
+        }
+
+        ksort($dataByDate);
+
+        return response()->json(array_values($dataByDate));
     }
 
     public function pushEbay2Price(Request $request)

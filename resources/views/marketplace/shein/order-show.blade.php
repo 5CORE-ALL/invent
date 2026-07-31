@@ -65,8 +65,8 @@
         @include('marketplace.shein._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
-            <strong>Pull from Shein</strong> refreshes shipping/buyer details and, if this order is already on Shopify, updates the Shopify address.
-            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Shein</strong> so Shein is marked shipped with that tracking number.
+            Order details are pulled from Shein and sent to Shopify when you push this order.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to Shein</strong> so the tracking number is declared on Shein too.
         </div>
 
         @if($aeLiveError ?? null)

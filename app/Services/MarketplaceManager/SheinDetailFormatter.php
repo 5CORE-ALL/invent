@@ -365,9 +365,8 @@ class SheinDetailFormatter
         if ($address1 === '' && ! empty($shipping['detail_address'])) {
             $address1 = trim((string) $shipping['detail_address']);
         }
-        if ($address1 === '' && ! empty($shipping['full_address'])) {
-            $address1 = trim((string) $shipping['full_address']);
-        }
+        // Do NOT fall back to full_address (includes name/city/zip) — that creates
+        // a fake half street line and blocks later auto re-sync.
 
         if ($address1 !== '') {
             $countryCode = $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null);

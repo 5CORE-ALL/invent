@@ -776,6 +776,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // eBay 2 per-SKU Price / CVR snapshots for /ebay2-tabulator-view Price trend dots + charts
+        $ist($schedule->command('ebay2:collect-metrics')
+            ->dailyAt('19:18')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-collect-metrics')
+            ->withoutOverlapping(90)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         // TikTok 1 / 2 per-SKU Price snapshots for /tiktok-pricing Price charts
         $ist($schedule->command('tiktok:collect-metrics')
             ->dailyAt('19:20')

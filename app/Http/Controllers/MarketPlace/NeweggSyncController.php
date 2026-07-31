@@ -697,41 +697,10 @@ class NeweggSyncController extends Controller
         $line = NeweggOrderMetric::query()->findOrFail($id);
         $result = app(NeweggOrderDetailService::class)->fetchAndPersistOrderDetail((string) $line->order_id);
 
-        if (empty($result['success'])) {
-            return response()->json([
-                'success' => false,
-                'message' => $result['message'] ?? 'Failed to pull order details.',
-            ]);
-        }
-
-        $line->refresh();
-        $message = $result['message'] ?? 'Order details updated from Newegg.';
-        $shopifySynced = null;
-
-        // Already-imported orders were often created without ShipTo; push address on pull.
-        if (! empty($line->shopify_order_id)) {
-            $sync = app(NeweggOrderPushService::class)->syncShippingAddressToShopify($line);
-            $shopifySynced = ! empty($sync['success']);
-
-            if ($shopifySynced) {
-                $message = 'Pulled from Newegg and updated shipping address on Shopify.';
-            } elseif (! empty($sync['skipped'])) {
-                $message = 'Pulled from Newegg. '.($sync['message'] ?? 'Shopify address not updated.');
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'pulled' => true,
-                    'shopify_synced' => false,
-                    'message' => 'Pulled from Newegg, but Shopify address update failed: '.($sync['message'] ?? 'unknown error'),
-                ], 422);
-            }
-        }
-
+        // Persist only — Shopify address fill matches AliExpress / Reverb (SyncNeweggAddressJob).
         return response()->json([
-            'success' => true,
-            'pulled' => true,
-            'shopify_synced' => $shopifySynced,
-            'message' => $message,
+            'success' => ! empty($result['success']),
+            'message' => $result['message'] ?? ($result['success'] ? 'Order details updated from Newegg.' : 'Failed to pull order details.'),
         ]);
     }
 

@@ -219,6 +219,8 @@
             white-space: nowrap;
         }
 
+        /* Metric history modals — full width (same as /ebay-tabulator-view) */
+        #skuMetricsModal.modal,
         #spriceCvrHistoryModal.modal {
             --tz-modal-width: 100%;
             --tz-modal-margin: 0.5rem 0;
@@ -762,28 +764,48 @@
         </div>
     </div>
 
-    <!-- SKU Metrics Chart Modal -->
-    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Date Range:</label>
-                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                            <option value="7">Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
+    <!-- SKU Metrics Chart Modal (same format as /ebay-tabulator-view; dates = California / Pacific) -->
+    <div class="modal fade p-0" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none m-0 mx-0">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="skuChartModalTitle">eBay 2 - <span id="modalSkuName"></span> - Metrics</span> <span id="skuChartModalSuffix">(Rolling L30 · PT)</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sku-chart-days-filter" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="14">14 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
                         </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
                     </div>
-                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
-                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                </div>
+                <div class="modal-body p-2">
+                    <div id="skuChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="skuMetricsChart"></canvas>
+                        </div>
+                        <div id="skuChartRefPanel" style="display: flex; gap: 6px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0; min-width: 0; flex-wrap: nowrap; overflow-x: auto;">
+                            <div class="sku-ref-col" data-metric="0" style="min-width: 62px; text-align: center; padding: 4px 4px;">
+                                <div style="font-size: 7px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 3px;"><span id="skuChartRefDot" class="sku-col-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd; flex-shrink: 0;"></span><span id="skuChartRefLabel">Price</span></div>
+                                <div style="font-size: 6px; font-weight: 700; color: #dc3545;">High</div><div id="skuCol0High" style="font-size: 10px; font-weight: 700; color: #dc3545;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #6c757d;">Med</div><div id="skuCol0Med" style="font-size: 10px; font-weight: 700; color: #6c757d;">-</div>
+                                <div style="font-size: 6px; font-weight: 700; color: #198754;">Low</div><div id="skuCol0Low" style="font-size: 10px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
                     </div>
-                    <div style="height: 400px;">
-                        <canvas id="skuMetricsChart"></canvas>
+                    <div id="skuChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="chart-no-data-message" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data available for this SKU. Data will appear after running the metrics collection command.</p>
                     </div>
                 </div>
             </div>
@@ -1472,7 +1494,9 @@
             return ((grossPft - adSpend) / lp) * 100;
         }
         let skuMetricsChart = null;
+        let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views'
         let currentSku = null;
+        let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
@@ -1825,166 +1849,122 @@
             toast.addEventListener('hidden.bs.toast', () => toast.remove());
         }
 
-        // SKU-specific chart
+        // Format helper for SKU chart Price series (matches /ebay-tabulator-view)
+        function skuChartFmtVal(v) {
+            return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
+        }
+
+        // SKU-specific chart (layout/plugins match /ebay-tabulator-view: ref panel, median line, value labels)
         function initSkuMetricsChart() {
-            const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+            const canvas = document.getElementById('skuMetricsChart');
+            if (!canvas || typeof Chart === 'undefined') {
+                return;
+            }
+            const ctx = canvas.getContext('2d');
+
+            const medianLinePlugin = {
+                id: 'skuMedianLine',
+                afterDraw(chart) {
+                    if (!skuChartFirstSeriesStats || skuChartFirstSeriesStats.median === undefined) return;
+                    const yScale = chart.scales.y;
+                    const xScale = chart.scales.x;
+                    const c = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(skuChartFirstSeriesStats.median);
+                    c.save();
+                    c.setLineDash([6, 4]);
+                    c.strokeStyle = '#6c757d';
+                    c.lineWidth = 1.2;
+                    c.beginPath();
+                    c.moveTo(xScale.left, yPixel);
+                    c.lineTo(xScale.right, yPixel);
+                    c.stroke();
+                    c.restore();
+                }
+            };
+
+            const valueLabelsPlugin = {
+                id: 'skuValueLabels',
+                afterDatasetsDraw(chart) {
+                    if (!chart.data.datasets.length) return;
+                    const dataset = chart.data.datasets[0];
+                    const meta = chart.getDatasetMeta(0);
+                    const c = chart.ctx;
+                    const valueFmt = (skuChartFirstSeriesStats && skuChartFirstSeriesStats.valueFmt) ? skuChartFirstSeriesStats.valueFmt : skuChartFmtVal;
+                    const angle = -40 * Math.PI / 180; // diagonal so labels don't collide
+                    meta.data.forEach((point, i) => {
+                        const val = dataset.data[i];
+                        if (val == null || !point) return;
+                        const txt = String(valueFmt(val));
+                        c.save();
+                        c.font = 'bold 11px Inter, system-ui, sans-serif';
+                        c.fillStyle = '#000000';
+                        c.strokeStyle = 'rgba(255,255,255,0.95)';
+                        c.lineWidth = 3;
+                        c.lineJoin = 'round';
+                        c.textAlign = 'left';
+                        c.textBaseline = 'middle';
+                        c.translate(point.x + 2, point.y - 10);
+                        c.rotate(angle);
+                        c.strokeText(txt, 0, 0);
+                        c.fillText(txt, 0, 0);
+                        c.restore();
+                    });
+                }
+            };
+
             skuMetricsChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: [],
-                    datasets: [
-                        {
-                            label: 'Price (USD)',
-                            data: [],
-                            borderColor: '#FF0000',
-                            backgroundColor: 'rgba(255, 0, 0, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Views',
-                            data: [],
-                            borderColor: '#0000FF',
-                            backgroundColor: 'rgba(0, 0, 255, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'CVR%',
-                            data: [],
-                            borderColor: '#008000',
-                            backgroundColor: 'rgba(0, 128, 0, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        }
-                    ]
+                    datasets: [{
+                        label: 'Price (USD)',
+                        data: [],
+                        borderColor: '#adb5bd',
+                        backgroundColor: 'rgba(108,117,125,0.08)',
+                        borderWidth: 1.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        yAxisID: 'y',
+                        tension: 0.3,
+                        fill: true
+                    }]
                 },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
+                    layout: { padding: { top: 36, left: 4, right: 14, bottom: 2 } },
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 15,
-                                font: {
-                                    size: 12
-                                }
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'eBay SKU Metrics',
-                            font: {
-                                size: 16,
-                                weight: 'bold'
-                            },
-                            padding: {
-                                top: 10,
-                                bottom: 20
-                            }
-                        },
+                        legend: { display: false },
+                        title: { display: false },
                         tooltip: {
                             enabled: true,
                             mode: 'index',
                             intersect: false,
+                            titleFont: { size: 10 },
+                            bodyFont: { size: 10 },
+                            padding: 6,
                             callbacks: {
                                 label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    let value = context.parsed.y || 0;
-                                    
-                                    // Format based on dataset label
-                                    if (label.includes('Price')) {
-                                        return label + ': $' + value.toFixed(2);
-                                    } else if (label.includes('Views')) {
-                                        return label + ': ' + value.toLocaleString();
-                                    } else if (label.includes('CVR')) {
-                                        return label + ': ' + value.toFixed(1) + '%';
-                                    } else if (label.includes('AD')) {
-                                        return label + ': ' + Math.round(value) + '%';
-                                    }
-                                    return label + ': ' + value;
+                                    return 'Price: ' + skuChartFmtVal(context.parsed.y || 0);
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            title: {
-                                display: true,
-                                text: 'Date',
-                                font: {
-                                    size: 12,
-                                    weight: 'bold'
-                                }
-                            },
-                            ticks: {
-                                font: {
-                                    size: 11
-                                }
-                            }
+                            ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } }
                         },
                         y: {
                             type: 'linear',
                             display: true,
                             position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Price/Views',
-                                font: {
-                                    size: 12,
-                                    weight: 'bold'
-                                }
-                            },
                             beginAtZero: true,
                             ticks: {
-                                font: {
-                                    size: 11
-                                },
-                                callback: function(value, index, values) {
-                                    if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
-                                        return '$' + value.toFixed(0);
-                                    }
-                                    return value.toLocaleString();
-                                }
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'Percent (%)',
-                                font: {
-                                    size: 12,
-                                    weight: 'bold'
-                                }
-                            },
-                            beginAtZero: true,
-                            grid: {
-                                drawOnChartArea: false,
-                            },
-                            ticks: {
-                                font: {
-                                    size: 11
-                                },
-                                callback: function(value) {
-                                    return value.toFixed(0) + '%';
+                                font: { size: 9 },
+                                callback: function(v) {
+                                    return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'));
                                 }
                             }
                         }
@@ -1994,42 +1974,123 @@
         }
 
         function loadSkuMetricsData(sku, days = 30) {
-            console.log('Loading metrics data for SKU:', sku, 'Days:', days);
-            fetch(`/ebay-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+            $('#skuChartLoading').show();
+            $('#skuChartContainer').hide();
+            $('#chart-no-data-message').hide();
+            const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
+            fetch(`/ebay2-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`)
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Metrics data received:', data);
-                    if (skuMetricsChart) {
-                        if (!data || data.length === 0) {
-                            console.warn('No data returned for SKU:', sku);
-                            $('#chart-no-data-message').show();
-                            skuMetricsChart.data.labels = [];
-                            skuMetricsChart.data.datasets.forEach(dataset => {
-                                dataset.data = [];
-                            });
-                            skuMetricsChart.options.plugins.title.text = 'eBay Metrics';
-                            skuMetricsChart.update();
-                            return;
-                        }
-                        
-                        $('#chart-no-data-message').hide();
-                        skuMetricsChart.options.plugins.title.text = `eBay Metrics (${days} Days)`;
-                        skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                        skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
-                        skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
-                        skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
-                        skuMetricsChart.update('active');
-                        console.log('Chart updated successfully with', data.length, 'data points');
+                    $('#skuChartLoading').hide();
+                    if (!skuMetricsChart) return;
+
+                    function setSkuRefCol(dsIdx, high, med, low, fmt) {
+                        const refRed = '#dc3545', refGray = '#6c757d', refGreen = '#198754';
+                        const hEl = document.getElementById('skuCol' + dsIdx + 'High');
+                        const mEl = document.getElementById('skuCol' + dsIdx + 'Med');
+                        const lEl = document.getElementById('skuCol' + dsIdx + 'Low');
+                        if (hEl) { hEl.textContent = fmt(high); hEl.style.color = high === 0 ? refGreen : high > 0 ? refRed : refGray; }
+                        if (mEl) { mEl.textContent = fmt(med); mEl.style.color = med === 0 ? refGreen : med > 0 ? refRed : refGray; }
+                        if (lEl) { lEl.textContent = fmt(low); lEl.style.color = low === 0 ? refGreen : low > 0 ? refRed : refGray; }
                     }
+                    function statsForArr(arr) {
+                        const valid = arr.filter(v => v != null && !isNaN(v));
+                        if (valid.length === 0) return { min: 0, max: 0, median: 0 };
+                        const min = Math.min(...valid);
+                        const max = Math.max(...valid);
+                        const sorted = [...valid].sort((a, b) => a - b);
+                        const mid = Math.floor(sorted.length / 2);
+                        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+                        return { min, max, median };
+                    }
+                    function clearRefPanel() {
+                        skuChartFirstSeriesStats = null;
+                        ['skuCol0High', 'skuCol0Med', 'skuCol0Low'].forEach(function(id) {
+                            const el = document.getElementById(id);
+                            if (el) el.textContent = '-';
+                        });
+                    }
+
+                    if (!data || data.length === 0) {
+                        clearRefPanel();
+                        skuMetricsChart.data.labels = [];
+                        skuMetricsChart.data.datasets.forEach(dataset => { dataset.data = []; });
+                        skuMetricsChart.update('active');
+                        $('#chart-no-data-message').show();
+                        return;
+                    }
+
+                    const labels = data.map(d => d.date_formatted || d.date || '');
+                    const isCvr = currentSkuChartMetric === 'cvr';
+                    const isViews = currentSkuChartMetric === 'views';
+                    const isL7 = currentSkuChartMetric === 'l7_views';
+                    const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
+                    const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
+                    const values = isCvr
+                        ? data.map(d => Number(d.cvr_percent) || 0)
+                        : isViews
+                            ? data.map(d => Number(d.views) || 0)
+                            : isL7
+                                ? data.map(d => Number(d.l7_views) || 0)
+                                : data.map(d => Number(d.price) || 0);
+
+                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                    const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
+                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)' };
+                    const refDotEl = document.getElementById('skuChartRefDot');
+                    const refLabelEl = document.getElementById('skuChartRefLabel');
+                    if (refLabelEl) refLabelEl.textContent = refLabelText;
+                    if (refDotEl) refDotEl.style.background = refColors[currentSkuChartMetric] || '#adb5bd';
+
+                    skuMetricsChart.data.labels = labels;
+                    skuMetricsChart.data.datasets[0].data = values;
+                    skuMetricsChart.data.datasets[0].label = refLabelText + (currentSkuChartMetric === 'price' ? ' (USD)' : '');
+                    skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
+                    skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
+
+                    const refFmt = isCvr ? cvrFmt : (isViews || isL7) ? intFmt : skuChartFmtVal;
+                    if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
+                        if (isCvr) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Number(v).toFixed(0) + '%'; };
+                        else if (isViews || isL7) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
+                        else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
+                    }
+                    if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
+                        if (isCvr) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CVR%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L30 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
+                        else if (isL7) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L7 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
+                        else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
+                    }
+
+                    const s0 = statsForArr(values);
+                    setSkuRefCol(0, s0.max, s0.median, s0.min, refFmt);
+
+                    const refRed = '#dc3545';
+                    const refGray = '#6c757d';
+                    const dotColors = values.map((v, i) => {
+                        if (i === 0) return refGray;
+                        return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? refRed : refGray;
+                    });
+                    skuChartFirstSeriesStats = { values, median: s0.median, dataMin: s0.min, dataMax: s0.max, dotColors, valueFmt: refFmt };
+                    skuMetricsChart.data.datasets[0].pointBackgroundColor = dotColors;
+                    skuMetricsChart.data.datasets[0].pointBorderColor = dotColors;
+                    skuMetricsChart.data.datasets[0].pointBorderWidth = 1.5;
+
+                    $('#skuChartContainer').show();
+                    skuMetricsChart.update('active');
                 })
                 .catch(error => {
+                    $('#skuChartLoading').hide();
+                    skuChartFirstSeriesStats = null;
+                    ['skuCol0High', 'skuCol0Med', 'skuCol0Low'].forEach(function(id) {
+                        const el = document.getElementById(id);
+                        if (el) el.textContent = '-';
+                    });
+                    $('#chart-no-data-message').show();
                     console.error('Error loading SKU metrics data:', error);
-                    alert('Error loading metrics data. Please check console for details.');
                 });
         }
 
@@ -4100,16 +4161,15 @@
                 loadMetricsData(days);
             });
 
-            // SKU chart days filter
+            // SKU chart days filter (same as /ebay-tabulator-view)
             $('#sku-chart-days-filter').on('change', function() {
                 const days = $(this).val();
-                if (currentSku) {
-                    if (skuMetricsChart) {
-                        skuMetricsChart.options.plugins.title.text = `eBay Metrics (${days} Days)`;
-                        skuMetricsChart.update();
-                    }
-                    loadSkuMetricsData(currentSku, days);
-                }
+                const daysNum = parseInt(days, 10);
+                const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
+                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
+                $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ' · PT)');
+                if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
             });
 
             // Update selected count display
@@ -5120,11 +5180,6 @@
                                        data-sku="${sku}"
                                        title="Copy SKU"></i>`;
                             
-                            // Metrics chart button
-                            html += `<button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 4px; vertical-align: middle;">
-                                        <i class="fa fa-info-circle"></i>
-                                     </button>`;
-                            
                             return html;
                         }
                     },
@@ -5172,15 +5227,65 @@
                         title: "INV",
                         field: "INV",
                         hozAlign: "center",
-                        width: 50,
-                        sorter: "number"
+                        width: 60,
+                        sorter: "number",
+                        headerTooltip: "INV vs prior day (PT): green = up, red = down, gray = same / no prior.",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const yesterday = parseFloat(rowData.inv_yesterday);
+                            const hasYesterday = isFinite(yesterday);
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as prior day (' + Math.round(yesterday) + ')')
+                                : 'No prior-day INV yet';
+                            if (hasYesterday) {
+                                if (value > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs prior day (' + Math.round(yesterday) + ')';
+                                } else if (value < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs prior day (' + Math.round(yesterday) + ')';
+                                }
+                            }
+                            const dot = !isParent
+                                ? `<span title="${dotTip}" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-left: 3px; vertical-align: middle;"></span>`
+                                : '';
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center;">${Math.round(value)}${dot}</span>`;
+                        }
                     },
                     {
                         title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
-                        width: 50,
-                        sorter: "number"
+                        width: 65,
+                        sorter: "number",
+                        headerTooltip: "OV L30 vs prior day (PT): green = up, red = down, gray = same / no prior.",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const yesterday = parseFloat(rowData.l30_yesterday);
+                            const hasYesterday = isFinite(yesterday);
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as prior day (' + Math.round(yesterday) + ')')
+                                : 'No prior-day OV L30 yet';
+                            if (hasYesterday) {
+                                if (value > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs prior day (' + Math.round(yesterday) + ')';
+                                } else if (value < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs prior day (' + Math.round(yesterday) + ')';
+                                }
+                            }
+                            const dot = !isParent
+                                ? `<span title="${dotTip}" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; margin-left: 3px; vertical-align: middle;"></span>`
+                                : '';
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center;">${Math.round(value)}${dot}</span>`;
+                        }
                     },
 
                      {
@@ -5366,7 +5471,6 @@
                             const cvr60 = parseFloat(rowData.CVR_60) || 0;
                             const tol = 0.1;
                             let arrowHtml = '';
-                            let dotColor = '#008000'; // green by default
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
                             if (!isParent) {
                                 let arrowColor = '#6c757d';
@@ -5375,22 +5479,22 @@
                                     // CVR 30 > CVR 60 (improving)
                                     arrowColor = '#28a745';
                                     arrowIcon = 'fa-arrow-up';
-                                    dotColor = '#28a745'; // green
                                 } else if (val < cvr60 - tol) {
                                     // CVR 60 > CVR 30 (declining)
                                     arrowColor = '#a00211';
                                     arrowIcon = 'fa-arrow-down';
-                                    dotColor = '#a00211'; // red
-                                } else {
-                                    // CVR 30 equals CVR 60 (within tolerance)
-                                    dotColor = '#ffc107'; // yellow
                                 }
-                                arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                                arrowHtml =
+                                    ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                             }
-                            const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
+                            const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' :
+                                (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             const sku = rowData['(Child) sku'] || '';
-                            const dotBtn = (sku && !isParent) ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" title="View CVR chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>` : '';
-                            return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml} ${dotBtn}`.trim();
+                            // Click the % value to open CVR chart (same as /ebay-tabulator-view)
+                            const valueHtml = (sku && !isParent)
+                                ? `<span class="view-sku-chart" data-sku="${sku}" data-metric="cvr" title="View CVR chart" style="color: ${color}; font-weight: 600; cursor: pointer;">${val.toFixed(1)}%</span>`
+                                : `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${valueHtml}${arrowHtml}</span>`;
                         },
                         width: 65
                     },
@@ -5473,14 +5577,53 @@
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
+                        headerTooltip: "Price vs yesterday (PT): green = up, red = down, gray = same / no yesterday. Click price or dot for chart.",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
+                            const rowData = cell.getRow().getData();
+                            const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
+                            const sku = rowData['(Child) sku'] || '';
+                            const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                            const yesterday = parseFloat(rowData.price_yesterday);
+                            const hasYesterday = isFinite(yesterday) && yesterday > 0;
+
+                            // Green if price > yesterday, red if <, gray otherwise (same / missing)
+                            let dotColor = '#6c757d';
+                            let dotTip = hasYesterday
+                                ? ('Same as yesterday ($' + yesterday.toFixed(2) + ')')
+                                : 'No yesterday price yet';
+                            if (hasYesterday && value > 0) {
+                                if (value > yesterday) {
+                                    dotColor = '#28a745';
+                                    dotTip = 'Up vs yesterday ($' + yesterday.toFixed(2) + ')';
+                                } else if (value < yesterday) {
+                                    dotColor = '#a00211';
+                                    dotTip = 'Down vs yesterday ($' + yesterday.toFixed(2) + ')';
+                                }
+                            }
+                            const dotBtn = (sku && !isParent)
+                                ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="price" title="${dotTip} — click for Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`
+                                : '';
+
                             if (value === 0) {
+                                if (sku && !isParent) {
+                                    return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: #a00211; font-weight: 600; cursor: pointer;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>${dotBtn}</span>`;
+                                }
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
-                            return `$${value.toFixed(2)}`;
+
+                            const priceFormatted = '$' + value.toFixed(2);
+                            const priceColor = (lmpPrice > 0 && value > lmpPrice) ? '#dc3545' : 'inherit';
+                            const priceWeight = (lmpPrice > 0 && value > lmpPrice) ? '600' : 'normal';
+                            if (sku && !isParent) {
+                                return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${sku}" data-metric="price" title="View Price chart" style="color: ${priceColor}; font-weight: ${priceWeight}; cursor: pointer;">${priceFormatted}</span>${dotBtn}</span>`;
+                            }
+                            if (lmpPrice > 0 && value > lmpPrice) {
+                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
+                            }
+                            return priceFormatted;
                         },
-                        width: 70
+                        width: 80
                     },
 
                     {
@@ -6879,14 +7022,21 @@
                     });
                 }
 
-                // View SKU chart
+                // View SKU chart (Price or CVR from column / SKU info icon) — same as /ebay-tabulator-view
                 if (e.target.closest('.view-sku-chart')) {
                     e.preventDefault();
                     e.stopPropagation();
-                    const sku = e.target.closest('.view-sku-chart').getAttribute('data-sku');
+                    const el = e.target.closest('.view-sku-chart');
+                    const sku = el.getAttribute('data-sku');
+                    currentSkuChartMetric = (el.getAttribute('data-metric') || 'price');
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
+                    const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                    const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
+                    $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30 · PT)');
+                    $('#skuChartLoading').show();
+                    $('#skuChartContainer').hide();
                     $('#chart-no-data-message').hide();
                     loadSkuMetricsData(sku, 30);
                     $('#skuMetricsModal').modal('show');

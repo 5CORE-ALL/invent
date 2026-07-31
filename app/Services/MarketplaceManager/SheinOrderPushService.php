@@ -145,7 +145,7 @@ class SheinOrderPushService
             ->where('shopify_order_id', '!=', '')
             ->orderByDesc('id')
             ->limit($limit * 5)
-            ->get(['id', 'order_id', 'shopify_order_id', 'raw_payload']);
+            ->get(['id', 'order_id', 'shopify_order_id']);
 
         $unique = [];
         foreach ($rows as $row) {
@@ -214,7 +214,7 @@ class SheinOrderPushService
     {
         $settings ??= MarketplaceSyncSettings::getFor('shein');
 
-        return (bool) ($settings['order']['sync_address_to_shopify'] ?? true);
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
     }
 
     public function importToShopify(SheinOrderMetric $order): ?string
@@ -315,25 +315,20 @@ class SheinOrderPushService
             ];
         }
 
-        // Snapshot cached root before live refresh — refresh used to wipe ShipTo and
-        // create Shopify orders without shipping_address.
+        // Same as AliExpress / Reverb: require a successful live detail refresh before push.
+        // Snapshot cache only to restore ship-to if Shein returns a partial/masked address.
         $cachedRoot = $this->orderDetailService->resolveOrderRoot($order);
 
         $detailResult = $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
-        $order->refresh();
-
-        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
-        if (empty($detailResult['success']) && $orderRoot === []) {
-            $orderRoot = $cachedRoot;
-        }
-        if ($orderRoot === [] && $cachedRoot === []) {
+        if (empty($detailResult['success'])) {
             return [
                 'success' => false,
                 'message' => $detailResult['message'] ?? 'Could not load Shein order details before Shopify push.',
             ];
         }
 
-        // If live refresh lost ship-to fields, restore from pre-refresh cache.
+        $order->refresh();
+        $orderRoot = $this->orderDetailService->resolveOrderRoot($order);
         $orderRoot = $this->restoreShippingFromCache($orderRoot, $cachedRoot);
 
         $lines = SheinOrderMetric::query()
@@ -357,9 +352,6 @@ class SheinOrderPushService
         $carrier = (string) (($detail['shipment']['service'] ?? '') ?: 'Shein');
 
         $warnings = $this->buildImportWarnings($detail, $lineResolution, $orderPayload);
-        if (empty($detailResult['success'])) {
-            $warnings[] = 'Could not refresh live Shein details ('.($detailResult['message'] ?? 'unknown').') — using cached order payload.';
-        }
 
         return [
             'success' => true,

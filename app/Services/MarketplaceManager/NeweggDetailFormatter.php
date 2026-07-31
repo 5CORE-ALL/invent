@@ -365,9 +365,7 @@ class NeweggDetailFormatter
         if ($address1 === '' && ! empty($shipping['detail_address'])) {
             $address1 = trim((string) $shipping['detail_address']);
         }
-        if ($address1 === '' && ! empty($shipping['full_address'])) {
-            $address1 = trim((string) $shipping['full_address']);
-        }
+        // Do NOT fall back to full_address (name/city/zip joined) — blocks later re-sync.
 
         if ($address1 !== '') {
             $countryCode = $this->normalizeCountryCode($shipping['country'] ?? $shipping['country_name'] ?? null);

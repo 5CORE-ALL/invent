@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\SheinOrderMetric;
 use App\Services\SheinApiService;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Order detail helpers for MM Shein order show / Shopify push.
@@ -75,6 +76,17 @@ class SheinOrderDetailService
             return ['success' => false, 'message' => 'Order not found on Shein'];
         }
 
+        // Dedicated address export (like AliExpress receiptinfo.get).
+        // order-detail alone often has a partial/masked receiveMsg.
+        try {
+            $addressRes = $this->sheinApi->getOrderAddress($orderId, 1);
+            if (! empty($addressRes['success']) && is_array($addressRes['data'] ?? null)) {
+                $order = $this->mergeReceiveMsg($order, $addressRes['data']);
+            }
+        } catch (\Throwable $e) {
+            // Keep order-detail payload; address job can retry later.
+        }
+
         $existing = SheinOrderMetric::query()
             ->where('order_id', $orderId)
             ->whereNotNull('raw_payload')
@@ -97,14 +109,31 @@ class SheinOrderDetailService
         ];
         $status = $statusMap[(int) $statusCode] ?? (string) ($statusCode ?? '');
 
-        SheinOrderMetric::query()
+        // Same persistence shape as AliExpress / Reverb: wrap under raw['order'].
+        $lines = SheinOrderMetric::query()
             ->where('order_id', $orderId)
-            ->update([
-                'raw_payload' => $order,
+            ->get();
+
+        if ($lines->isEmpty()) {
+            return ['success' => false, 'message' => 'Order not found in local database.'];
+        }
+
+        foreach ($lines as $line) {
+            $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+            $raw['order'] = $order;
+            $raw['order_detail_fetched_at'] = now()->toIso8601String();
+            $line->update([
+                'raw_payload' => $raw,
                 'status' => $status,
             ]);
+        }
 
-        return ['success' => true, 'message' => 'Order details updated from Shein.'];
+        Log::info('SheinOrderDetailService: persisted order detail', [
+            'order_id' => $orderId,
+            'lines' => $lines->count(),
+        ]);
+
+        return ['success' => true, 'order' => $order, 'message' => 'Order details updated from Shein.'];
     }
 
     /**
@@ -268,7 +297,36 @@ class SheinOrderDetailService
     }
 
     /**
+     * Merge export-address receiveMsg onto an order-detail payload (field-level).
+     * Same pattern as AliexpressOrderDetailService::mergeReceiptAddress.
+     *
+     * @param  array<string, mixed>  $order
+     * @param  array<string, mixed>  $receive
+     * @return array<string, mixed>
+     */
+    protected function mergeReceiveMsg(array $order, array $receive): array
+    {
+        $existing = is_array($order['receiveMsg'] ?? null) ? $order['receiveMsg'] : [];
+        if ($existing === [] && is_array($order['shippingAddress'] ?? null)) {
+            $existing = $order['shippingAddress'];
+        }
+
+        foreach ($receive as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $existing[$key] = $value;
+        }
+
+        $order['receiveMsg'] = $existing;
+
+        return $order;
+    }
+
+    /**
      * Keep previously stored ship-to / customer PII when a refresh returns blanks.
+     * Nested address objects are merged field-by-field (AliExpress style) so a
+     * partial receiveMsg never wipes a previously full address.
      *
      * @param  array<string, mixed>  $existing
      * @param  array<string, mixed>  $incoming
@@ -276,13 +334,36 @@ class SheinOrderDetailService
      */
     protected function mergePreservedShipTo(array $existing, array $incoming): array
     {
+        if (is_array($existing['order'] ?? null)) {
+            $existing = $existing['order'];
+        }
         $existing = $this->unwrapOrderInfoNode($existing);
         if (! $this->looksLikeOrderInfo($existing)) {
             return $incoming;
         }
 
+        $nestedKeys = ['receiveMsg', 'shippingAddress', 'billAddress'];
+        foreach ($nestedKeys as $key) {
+            $oldVal = is_array($existing[$key] ?? null) ? $existing[$key] : null;
+            $newVal = is_array($incoming[$key] ?? null) ? $incoming[$key] : null;
+            if ($oldVal === null || $oldVal === []) {
+                continue;
+            }
+            if ($newVal === null || $newVal === []) {
+                $incoming[$key] = $oldVal;
+
+                continue;
+            }
+            foreach ($oldVal as $field => $oldFieldVal) {
+                $newFieldVal = $newVal[$field] ?? null;
+                if (($newFieldVal === null || $newFieldVal === '') && $oldFieldVal !== null && $oldFieldVal !== '') {
+                    $newVal[$field] = $oldFieldVal;
+                }
+            }
+            $incoming[$key] = $newVal;
+        }
+
         $preserveKeys = [
-            'receiveMsg', 'shippingAddress', 'billAddress',
             'ShipToAddress1', 'ShipToAddress2', 'ShipToCityName', 'ShipToStateCode',
             'ShipToZipCode', 'ShipToCountryCode', 'ShipToFirstName', 'ShipToLastName',
             'ShipToCompany', 'ShipToPhoneNumber', 'CustomerName', 'CustomerEmailAddress',
@@ -386,8 +467,26 @@ class SheinOrderDetailService
 
         $created = $order['orderTime'] ?? $order['paymentTime'] ?? $order['OrderDate'] ?? optional($line->order_date)?->toDateTimeString();
 
-        $address1 = trim((string) ($receive['address'] ?? $receive['address1'] ?? $order['ShipToAddress1'] ?? ''));
-        $address2 = trim((string) ($receive['address2'] ?? $order['ShipToAddress2'] ?? ''));
+        // Shein export-address: street = line1, address = line2 (or line1 if street empty),
+        // addressExt = extra line. Also accept order-detail aliases.
+        $street = trim((string) ($receive['street'] ?? $receive['detailAddress'] ?? $receive['detail_address'] ?? ''));
+        $lineAddress = trim((string) ($receive['address'] ?? $receive['address1'] ?? $order['ShipToAddress1'] ?? ''));
+        $addressExt = trim((string) ($receive['addressExt'] ?? $receive['address2'] ?? $receive['address_2'] ?? $order['ShipToAddress2'] ?? ''));
+        $district = trim((string) ($receive['district'] ?? ''));
+
+        $address1 = $street !== '' ? $street : $lineAddress;
+        $address2Parts = [];
+        if ($street !== '' && $lineAddress !== '') {
+            $address2Parts[] = $lineAddress;
+        }
+        if ($addressExt !== '') {
+            $address2Parts[] = $addressExt;
+        }
+        if ($district !== '') {
+            $address2Parts[] = $district;
+        }
+        $address2 = trim(implode(', ', $address2Parts));
+
         $city = trim((string) ($receive['city'] ?? $order['ShipToCityName'] ?? ''));
         $province = trim((string) ($receive['province'] ?? $receive['state'] ?? $order['ShipToStateCode'] ?? ''));
         $zip = trim((string) ($receive['postCode'] ?? $receive['zipCode'] ?? $order['ShipToZipCode'] ?? ''));

@@ -83,15 +83,7 @@ class SheinOrderSyncService
             $this->dispatchImportsForNewOrders();
         }
 
-        if (SheinOrderPushService::canAutoSyncAddress()) {
-            try {
-                \App\Jobs\SyncSheinAddressJob::dispatch(false, 25);
-            } catch (\Throwable $e) {
-                Log::warning('SheinOrderSyncService: could not queue address sync', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        // Address sync is queued by SyncMarketplaceOrdersJob (same as AliExpress / Reverb).
 
         $pages = (int) (($rawNew['windows'] ?? 0) + ($rawUpd['windows'] ?? 0));
 
@@ -179,6 +171,9 @@ class SheinOrderSyncService
             ->orderBy('id')
             ->value('raw_payload');
         if (is_array($existingPayload)) {
+            if (is_array($existingPayload['order'] ?? null)) {
+                $existingPayload = $existingPayload['order'];
+            }
             $order = $this->mergeAddressFields($existingPayload, $order);
         }
 
@@ -213,7 +208,8 @@ class SheinOrderSyncService
                     'order_date' => $orderDate,
                     'status' => $status,
                     'quantity' => 1,
-                    'raw_payload' => $order,
+                    // Match AliExpress / Reverb wrapper shape.
+                    'raw_payload' => ['order' => $order],
                     'import_status' => 'ready',
                 ]
             );
@@ -245,7 +241,8 @@ class SheinOrderSyncService
                     'display_title' => trim((string) ($goods['goodsTitle'] ?? '')),
                     'quantity' => $qty,
                     'amount' => $amount,
-                    'raw_payload' => $order,
+                    // Match AliExpress / Reverb: raw['order'] + raw['line'].
+                    'raw_payload' => ['order' => $order, 'line' => $goods],
                     'import_status' => 'ready',
                 ]
             );
@@ -262,8 +259,28 @@ class SheinOrderSyncService
      */
     protected function mergeAddressFields(array $existing, array $incoming): array
     {
+        // Nested address objects: field-level merge (never wipe a full receiveMsg with a partial one).
+        foreach (['receiveMsg', 'shippingAddress', 'billAddress'] as $key) {
+            $oldVal = is_array($existing[$key] ?? null) ? $existing[$key] : null;
+            $newVal = is_array($incoming[$key] ?? null) ? $incoming[$key] : null;
+            if ($oldVal === null || $oldVal === []) {
+                continue;
+            }
+            if ($newVal === null || $newVal === []) {
+                $incoming[$key] = $oldVal;
+
+                continue;
+            }
+            foreach ($oldVal as $field => $oldFieldVal) {
+                $newFieldVal = $newVal[$field] ?? null;
+                if (($newFieldVal === null || $newFieldVal === '') && $oldFieldVal !== null && $oldFieldVal !== '') {
+                    $newVal[$field] = $oldFieldVal;
+                }
+            }
+            $incoming[$key] = $newVal;
+        }
+
         $keys = [
-            'receiveMsg', 'shippingAddress', 'billAddress',
             'buyerName', 'buyerEmail', 'phone',
             'address', 'city', 'province', 'postCode', 'country',
             'firstName', 'lastName',
