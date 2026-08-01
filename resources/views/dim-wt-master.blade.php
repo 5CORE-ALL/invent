@@ -209,6 +209,10 @@
         .table-responsive thead th.item-dim-header {
             background-color: #fff9c4 !important; /* light yellow */
         }
+        /* Declared dimension headers — distinct from ACT yellow */
+        .table-responsive thead th.item-dim-decl-header {
+            background-color: #d4edda !important; /* light green */
+        }
         /* Always hide CTN L/W/H (CM) columns from view */
         .table-responsive thead th.ctn-cm-col,
         .table-responsive tbody td.ctn-cm-col {
@@ -684,6 +688,18 @@
                                     <th class="item-dim-header">
                                         <span class="th-vertical-label" style="font-size: 9px;">Item H IN</span>
                                     </th>
+                                    <th class="item-dim-decl-header" title="Copies Itm wt GW when Decl is empty">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Itm wt GW Decl</span>
+                                    </th>
+                                    <th class="item-dim-decl-header" title="Copies Item L IN when Decl is empty">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item L IN Decl</span>
+                                    </th>
+                                    <th class="item-dim-decl-header" title="Copies Item W IN when Decl is empty">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item W IN Decl</span>
+                                    </th>
+                                    <th class="item-dim-decl-header" title="Copies Item H IN when Decl is empty">
+                                        <span class="th-vertical-label" style="font-size: 9px;">Item H IN Decl</span>
+                                    </th>
                                     <th class="item-dim-header" title="Girth = 2 × (Width + Height)">
                                         <span class="th-vertical-label" style="font-size: 9px;">GIRTH</span>
                                     </th>
@@ -754,8 +770,8 @@
                                 <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter Itm wt GW">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWtDecl" class="form-label">Item WT DECL (LB)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Item WT DECL (LB)">
+                                <label for="editWtDecl" class="form-label">Itm wt GW Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Itm wt GW Decl">
                             </div>
                         </div>
                         
@@ -771,6 +787,20 @@
                             <div class="col-md-4">
                                 <label for="editH" class="form-label">Item Height (Inch)</label>
                                 <input type="number" step="0.01" class="form-control" id="editH" name="h" placeholder="Enter Item Height (Inch)">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="editLDecl" class="form-label">Item L IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editLDecl" name="l_decl" placeholder="Enter Item L IN Decl">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editWDecl" class="form-label">Item W IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editWDecl" name="w_decl" placeholder="Enter Item W IN Decl">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="editHDecl" class="form-label">Item H IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editHDecl" name="h_decl" placeholder="Enter Item H IN Decl">
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -896,7 +926,7 @@
                         <strong>Steps:</strong>
                         <ol class="mb-0 mt-2">
                             <li>Download the sample file below</li>
-                            <li>Fill in the dim & wt data (Weight ACT (Kg), Itm wt GW, WT DECL (LB), Length (inch), Width (inch), Height (Inch), Length (CM), Width (CM), Height (CM), CTN L (CM), CTN W (CM), CTN H (CM), CTN QTY, Carton CBM columns as applicable)</li>
+                            <li>Fill in the dim & wt data (Weight ACT (Kg), Itm wt GW, Item L IN, Item W IN, Item H IN, Itm wt GW Decl, Item L IN Decl, Item W IN Decl, Item H IN Decl, Length (CM), Width (CM), Height (CM), CTN L (CM), CTN W (CM), CTN H (CM), CTN QTY, Carton CBM columns as applicable)</li>
                             <li>Upload the completed file</li>
                         </ol>
                     </div>
@@ -1384,6 +1414,31 @@
                     hCell.textContent = cellVal(orgDims.height, 0);
                     row.appendChild(hCell);
 
+                    // Decl columns (fallback to ACT when Decl is empty)
+                    const wtDeclCell = document.createElement('td');
+                    wtDeclCell.className = 'text-center';
+                    wtDeclCell.title = 'Itm wt GW Decl';
+                    wtDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'wt_decl', 'wt_act'), 1);
+                    row.appendChild(wtDeclCell);
+
+                    const lDeclCell = document.createElement('td');
+                    lDeclCell.className = 'text-center';
+                    lDeclCell.title = 'Item L IN Decl';
+                    lDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'l_decl', 'l'), 0);
+                    row.appendChild(lDeclCell);
+
+                    const wDeclCell = document.createElement('td');
+                    wDeclCell.className = 'text-center';
+                    wDeclCell.title = 'Item W IN Decl';
+                    wDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'w_decl', 'w'), 0);
+                    row.appendChild(wDeclCell);
+
+                    const hDeclCell = document.createElement('td');
+                    hDeclCell.className = 'text-center';
+                    hDeclCell.title = 'Item H IN Decl';
+                    hDeclCell.textContent = isParentRow ? '--' : cellVal(itemDeclValue(item, 'h_decl', 'h'), 0);
+                    row.appendChild(hDeclCell);
+
                     // GIRTH = 2 × (Width + Height)
                     const girthCell = document.createElement('td');
                     girthCell.className = 'text-center';
@@ -1759,6 +1814,12 @@
                 return value === null || value === undefined || value === '' || value === 0 || parseFloat(value) === 0;
             }
 
+            /** Decl field value, falling back to ACT when Decl is empty. */
+            function itemDeclValue(item, declKey, actKey) {
+                if (!isMissing(item[declKey])) return item[declKey];
+                return item[actKey];
+            }
+
             // Apply all filters
             function applyFilters() {
                 const parentSearchVal = (document.getElementById('parentSearch')?.value || '').toLowerCase();
@@ -1815,21 +1876,25 @@
                     9: { key: 'org_l', type: 'num' },
                     10: { key: 'org_w', type: 'num' },
                     11: { key: 'org_h', type: 'num' },
-                    12: { key: 'girth', type: 'num' },
-                    13: { key: 'girth_plus_l', type: 'num' },
-                    14: { key: 'cbm', type: 'num' },
-                    15: { key: 'l_cm', type: 'num' },
-                    16: { key: 'w_cm', type: 'num' },
-                    17: { key: 'h_cm', type: 'num' },
-                    18: { key: 'ctn_l', type: 'num' },
-                    19: { key: 'ctn_w', type: 'num' },
-                    20: { key: 'ctn_h', type: 'num' },
-                    21: { key: 'ctn_cbm', type: 'num' },
-                    22: { key: 'ctn_qty', type: 'num' },
-                    23: { key: 'ctn_cbm_each', type: 'num' },
-                    24: { key: 'ctn_instructions', type: 'text' },
-                    25: { key: 'instructions_item_pkg', type: 'text' },
-                    26: { key: 'verified_data', type: 'num' },
+                    12: { key: 'wt_decl', type: 'num' },
+                    13: { key: 'l_decl', type: 'num' },
+                    14: { key: 'w_decl', type: 'num' },
+                    15: { key: 'h_decl', type: 'num' },
+                    16: { key: 'girth', type: 'num' },
+                    17: { key: 'girth_plus_l', type: 'num' },
+                    18: { key: 'cbm', type: 'num' },
+                    19: { key: 'l_cm', type: 'num' },
+                    20: { key: 'w_cm', type: 'num' },
+                    21: { key: 'h_cm', type: 'num' },
+                    22: { key: 'ctn_l', type: 'num' },
+                    23: { key: 'ctn_w', type: 'num' },
+                    24: { key: 'ctn_h', type: 'num' },
+                    25: { key: 'ctn_cbm', type: 'num' },
+                    26: { key: 'ctn_qty', type: 'num' },
+                    27: { key: 'ctn_cbm_each', type: 'num' },
+                    28: { key: 'ctn_instructions', type: 'text' },
+                    29: { key: 'instructions_item_pkg', type: 'text' },
+                    30: { key: 'verified_data', type: 'num' },
                 };
 
                 const getVal = (item, key) => {
@@ -1848,6 +1913,10 @@
                         if (key === 'girth') return d.girth;
                         return d.girthPlusL;
                     }
+                    if (key === 'wt_decl') return itemDeclValue(item, 'wt_decl', 'wt_act');
+                    if (key === 'l_decl') return itemDeclValue(item, 'l_decl', 'l');
+                    if (key === 'w_decl') return itemDeclValue(item, 'w_decl', 'w');
+                    if (key === 'h_decl') return itemDeclValue(item, 'h_decl', 'h');
                     if (key === 'cbm') {
                         return getItemCbm(item);
                     }
@@ -1947,7 +2016,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "INV", "Type", "Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "GIRTH", "GIRTH + L", "Itm CBM", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
+                    const columns = ["SKU", "Status", "INV", "Type", "Weight ACT (Kg)", "Itm wt GW", "Item L IN", "Item W IN", "Item H IN", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "GIRTH", "GIRTH + L", "Itm CBM", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)", "Verified"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -1969,17 +2038,26 @@
                         "Itm wt GW": {
                             key: "wt_act"
                         },
-                        "WT DECL (LB)": {
-                            key: "wt_decl"
-                        },
-                        "Length (inch)": {
+                        "Item L IN": {
                             key: "org_l"
                         },
-                        "Width (inch)": {
+                        "Item W IN": {
                             key: "org_w"
                         },
-                        "Height (Inch)": {
+                        "Item H IN": {
                             key: "org_h"
+                        },
+                        "Itm wt GW Decl": {
+                            key: "wt_decl"
+                        },
+                        "Item L IN Decl": {
+                            key: "l_decl"
+                        },
+                        "Item W IN Decl": {
+                            key: "w_decl"
+                        },
+                        "Item H IN Decl": {
+                            key: "h_decl"
                         },
                         "GIRTH": {
                             key: "girth"
@@ -2069,6 +2147,18 @@
                                             return;
                                         }
 
+                                        if (key === 'wt_decl') {
+                                            const v = itemDeclValue(item, 'wt_decl', 'wt_act');
+                                            row.push(v === null || v === undefined || v === '' ? '' : parseFloat(v) || 0);
+                                            return;
+                                        }
+                                        if (key === 'l_decl' || key === 'w_decl' || key === 'h_decl') {
+                                            const actKey = key === 'l_decl' ? 'l' : (key === 'w_decl' ? 'w' : 'h');
+                                            const v = itemDeclValue(item, key, actKey);
+                                            row.push(v === null || v === undefined || v === '' ? '' : Math.round(parseFloat(v) || 0));
+                                            return;
+                                        }
+
                                         if (key === 'cbm') {
                                             const itmCbm = getItemCbm(item);
                                             row.push(itmCbm === null ? '' : parseFloat(itmCbm.toFixed(4)));
@@ -2104,7 +2194,7 @@
                                             }
                                         }
                                         // Format numeric columns (WT ACT, WT DECL, L, W, H, CBM, CTN fields, etc.)
-                                        else if (["wt_act_kg", "wt_act", "wt_decl", "l", "w", "h", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each"].includes(key)) {
+                                        else if (["wt_act_kg", "wt_act", "wt_decl", "l", "w", "h", "l_decl", "w_decl", "h_decl", "l_cm", "w_cm", "h_cm", "ctn_l", "ctn_w", "ctn_h", "ctn_cbm", "ctn_qty", "ctn_cbm_each"].includes(key)) {
                                             value = parseFloat(value) || 0;
                                         }
 
@@ -2127,7 +2217,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["Weight ACT (Kg)", "Itm wt GW", "WT DECL (LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)"].includes(col)) {
+                                } else if (["Weight ACT (Kg)", "Itm wt GW", "Item L IN", "Item W IN", "Item H IN", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -2193,8 +2283,8 @@
                 const filtCountEl  = document.getElementById('skuScopeFilteredCount');
 
                 const DIM_HEADERS = [
-                    'Weight ACT (Kg)', 'Itm wt GW', 'WT DECL (LB)',
-                    'Length (inch)', 'Width (inch)', 'Height (Inch)',
+                    'Weight ACT (Kg)', 'Itm wt GW', 'Item L IN', 'Item W IN', 'Item H IN',
+                    'Itm wt GW Decl', 'Item L IN Decl', 'Item W IN Decl', 'Item H IN Decl',
                     'Length (CM)', 'Width (CM)', 'Height (CM)',
                     'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)',
                     'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)'
@@ -2379,8 +2469,8 @@
                 // Download sample file
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with all columns
-                    const sampleHeader = ['SKU', 'Weight ACT (Kg)', 'Itm wt GW', 'WT DECL (LB)', 'Length (inch)', 'Width (inch)', 'Height (Inch)', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'Verified (0/1)'];
-                    const sampleKeys = ['SKU', 'wt_act_kg', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'verified_data'];
+                    const sampleHeader = ['SKU', 'Weight ACT (Kg)', 'Itm wt GW', 'Item L IN', 'Item W IN', 'Item H IN', 'Itm wt GW Decl', 'Item L IN Decl', 'Item W IN Decl', 'Item H IN Decl', 'Length (CM)', 'Width (CM)', 'Height (CM)', 'CTN L (CM)', 'CTN W (CM)', 'CTN H (CM)', 'CTN (CBM)', 'CTN (QTY)', 'CTN (CBM/Each)', 'Verified (0/1)'];
+                    const sampleKeys = ['SKU', 'wt_act_kg', 'wt_act', 'l', 'w', 'h', 'wt_decl', 'l_decl', 'w_decl', 'h_decl', 'l_cm', 'w_cm', 'h_cm', 'ctn_l', 'ctn_w', 'ctn_h', 'ctn_cbm', 'ctn_qty', 'ctn_cbm_each', 'verified_data'];
 
                     // Populate the sample with ALL real SKUs (parent rows excluded)
                     const sampleData = [sampleHeader];
@@ -2408,10 +2498,13 @@
                         { wch: 15 }, // SKU
                         { wch: 16 }, // Weight ACT (Kg)
                         { wch: 14 }, // Itm wt GW
-                        { wch: 14 }, // WT DECL (LB)
-                        { wch: 14 }, // Length (inch)
-                        { wch: 12 }, // Width (inch)
-                        { wch: 14 }, // Height (Inch)
+                        { wch: 12 }, // Item L IN
+                        { wch: 12 }, // Item W IN
+                        { wch: 12 }, // Item H IN
+                        { wch: 16 }, // Itm wt GW Decl
+                        { wch: 14 }, // Item L IN Decl
+                        { wch: 14 }, // Item W IN Decl
+                        { wch: 14 }, // Item H IN Decl
                         { wch: 12 }, // Length (CM)
                         { wch: 12 }, // Width (CM)
                         { wch: 12 }, // Height (CM)
@@ -2654,10 +2747,13 @@
                 document.getElementById('editParent').value = product.Parent || '';
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
-                document.getElementById('editWtDecl').value = product.wt_decl || '';
+                document.getElementById('editWtDecl').value = product.wt_decl || product.wt_act || '';
                 document.getElementById('editL').value = product.l || '';
                 document.getElementById('editW').value = product.w || '';
                 document.getElementById('editH').value = product.h || '';
+                document.getElementById('editLDecl').value = product.l_decl || product.l || '';
+                document.getElementById('editWDecl').value = product.w_decl || product.w || '';
+                document.getElementById('editHDecl').value = product.h_decl || product.h || '';
                 document.getElementById('editLCm').value = product.l_cm || '';
                 document.getElementById('editWCm').value = product.w_cm || '';
                 document.getElementById('editHCm').value = product.h_cm || '';
@@ -2753,6 +2849,9 @@
                         l: document.getElementById('editL').value.trim() || null,
                         w: document.getElementById('editW').value.trim() || null,
                         h: document.getElementById('editH').value.trim() || null,
+                        l_decl: document.getElementById('editLDecl').value.trim() || null,
+                        w_decl: document.getElementById('editWDecl').value.trim() || null,
+                        h_decl: document.getElementById('editHDecl').value.trim() || null,
                         l_cm: document.getElementById('editLCm').value.trim() || null,
                         w_cm: document.getElementById('editWCm').value.trim() || null,
                         h_cm: document.getElementById('editHCm').value.trim() || null,

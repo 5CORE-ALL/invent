@@ -6788,7 +6788,14 @@ PROMPT;
                 'weight_act__kg_' => 'wt_act_kg',   // Weight ACT (Kg)
                 'wt_act__lb_' => 'wt_act',      // WT ACT (LB) — legacy header
                 'itm_wt_gw' => 'wt_act',       // Itm wt GW (renamed column)
-                'wt_decl__lb_' => 'wt_decl',     // WT DECL (LB)
+                'itm_wt_gw_decl' => 'wt_decl', // Itm wt GW Decl
+                'wt_decl__lb_' => 'wt_decl',     // WT DECL (LB) — legacy header
+                'item_l_in' => 'l',            // Item L IN
+                'item_w_in' => 'w',            // Item W IN
+                'item_h_in' => 'h',            // Item H IN
+                'item_l_in_decl' => 'l_decl',  // Item L IN Decl
+                'item_w_in_decl' => 'w_decl',  // Item W IN Decl
+                'item_h_in_decl' => 'h_decl',  // Item H IN Decl
                 'length__inch_' => 'l',            // Length (inch)
                 'width__inch_' => 'w',            // Width (inch)
                 'height__inch_' => 'h',            // Height (Inch)

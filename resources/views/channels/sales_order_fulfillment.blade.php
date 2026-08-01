@@ -481,6 +481,212 @@
             line-height: 1.2;
             white-space: nowrap;
         }
+        .sof-inv-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .sof-inv-zero-alert {
+            color: #dc3545;
+            font-size: 0.75rem;
+            line-height: 1;
+            cursor: help;
+        }
+        .sof-inv-zero-alert i {
+            color: #dc3545;
+        }
+        .sof-label-badge {
+            display: inline-block;
+            font-weight: 600;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.35rem;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .sof-label-env { background: #cfe2ff; color: #084298; border: 1px solid #9ec5fe; } /* Envelope — blue */
+        .sof-label-std { background: #d1e7dd; color: #0f5132; border: 1px solid #a3cfbb; } /* Standard — green */
+        .sof-label-osize { background: #f8d7da; color: #842029; border: 1px solid #f1aeb5; } /* O-Size — red */
+        .sof-label-pallet { background: #e2d9f3; color: #432874; border: 1px solid #c5b3e6; }
+        .sof-label-other { background: #e9ecef; color: #343a40; border: 1px solid #ced4da; }
+        .sof-label-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            justify-content: center;
+        }
+        .sof-label-dims-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6c8cff;
+            box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.22);
+            cursor: pointer;
+            flex-shrink: 0;
+            vertical-align: middle;
+            border: none;
+            padding: 0;
+        }
+        .sof-label-dims-dot:hover {
+            box-shadow: 0 0 0 3px rgba(108, 140, 255, 0.4);
+        }
+        #sofLabelDimsModal .modal-dialog {
+            max-width: min(1600px, 96vw);
+            width: 96vw;
+            margin: 1rem auto;
+        }
+        #sofLabelDimsModal .modal-header {
+            padding: 1rem 1.5rem;
+            background: #cfe2ff;
+            border-bottom-color: #9ec5fe;
+        }
+        #sofLabelDimsModal .modal-title {
+            font-size: 1.5rem;
+            color: #084298;
+        }
+        #sofLabelDimsModal .modal-body {
+            padding: 1.5rem 1.75rem;
+            font-size: 1.15rem;
+        }
+        #sofLabelDimsModal .modal-footer {
+            padding: 1rem 1.5rem;
+        }
+        #sofLabelDimsModal .modal-footer .btn {
+            font-size: 1rem;
+            padding: 0.5rem 1.25rem;
+        }
+        #sofLabelDimsModal .sof-label-sku-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        #sofLabelDimsModal .sof-label-type-right {
+            margin-left: auto;
+            text-align: right;
+            font-size: 2rem;
+            line-height: 1.3;
+            white-space: nowrap;
+            padding-top: 0.15rem;
+        }
+        #sofLabelDimsModal .sof-label-type-right .text-muted {
+            font-size: 2rem;
+            color: #64748b !important;
+        }
+        #sofLabelDimsModal #sof-label-dims-type {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        #sofLabelDimsModal .sof-label-sku-img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: #f8f9fa;
+            flex-shrink: 0;
+        }
+        #sofLabelDimsModal .sof-label-sku-img.is-missing {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #adb5bd;
+            font-size: 0.85rem;
+        }
+        #sofLabelDimsModal .sof-label-sku-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            min-width: 0;
+            flex: 1;
+        }
+        #sofLabelDimsModal .sof-label-sku-line {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+        }
+        #sofLabelDimsModal .sof-label-sku-label {
+            color: #64748b;
+            font-size: 1rem;
+        }
+        #sofLabelDimsModal #sof-label-dims-sku {
+            font-size: 2.55rem;
+            font-weight: 700;
+            color: #0f766e;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        .sof-sku-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+        }
+        .sof-sku-cell code {
+            white-space: nowrap;
+        }
+        .sof-sku-copy {
+            border: none;
+            background: #f1f5f9;
+            color: #475569;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+            font-size: 0.75rem;
+        }
+        .sof-sku-copy:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        .sof-sku-copy.copied {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        #sofLabelDimsModal .sof-sku-copy {
+            width: 36px;
+            height: 36px;
+            font-size: 1rem;
+        }
+        #sofLabelDimsModal .sof-label-dims-table {
+            font-size: 1.15rem;
+            margin-bottom: 0;
+        }
+        #sofLabelDimsModal .sof-label-dims-table th,
+        #sofLabelDimsModal .sof-label-dims-table thead th,
+        #sofLabelDimsModal .sof-label-dims-table > :not(caption) > * > th {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 1rem;
+            text-transform: lowercase;
+            color: #000;
+            vertical-align: middle;
+            padding: 0.85rem 0.75rem;
+            --bs-table-bg: #fff9c4;
+            --bs-table-accent-bg: #fff9c4;
+            background-color: #fff9c4 !important;
+        }
+        #sofLabelDimsModal .sof-label-dims-table th.sof-dim-decl {
+            --bs-table-bg: #f8d7da;
+            --bs-table-accent-bg: #f8d7da;
+            background-color: #f8d7da !important; /* pink — Decl columns only */
+        }
+        #sofLabelDimsModal .sof-label-dims-table td {
+            text-align: center;
+            vertical-align: middle;
+            padding: 1rem 0.75rem;
+            font-size: 1.25rem;
+        }
     </style>
 @endsection
 
@@ -768,6 +974,71 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="sofLabelDimsModal" tabindex="-1" aria-labelledby="sofLabelDimsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-semibold mb-0" id="sofLabelDimsModalLabel">Label details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="sof-label-sku-row">
+                        <img id="sof-label-dims-img" class="sof-label-sku-img d-none" alt="SKU image" src="">
+                        <div id="sof-label-dims-img-missing" class="sof-label-sku-img is-missing">No image</div>
+                        <div class="sof-label-sku-meta">
+                            <div class="sof-label-sku-line">
+                                <span class="sof-label-sku-label">SKU:</span>
+                                <code id="sof-label-dims-sku">—</code>
+                                <button type="button" class="sof-sku-copy" id="sof-label-dims-sku-copy" title="Copy SKU" aria-label="Copy SKU">
+                                    <i class="fas fa-copy" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="sof-label-type-right">
+                            <span class="text-muted">Type:</span>
+                            <span id="sof-label-dims-type" class="ms-1">—</span>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <span class="fw-semibold">Label Qty:</span>
+                        <span id="sof-label-dims-qty" class="ms-1">—</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered sof-label-dims-table">
+                            <thead>
+                                <tr>
+                                    <th class="sof-dim-act">itm wt gw</th>
+                                    <th class="sof-dim-act">item l in</th>
+                                    <th class="sof-dim-act">item w in</th>
+                                    <th class="sof-dim-act">item h in</th>
+                                    <th class="sof-dim-decl">itm wt gw<br>decl</th>
+                                    <th class="sof-dim-decl">item l in<br>decl</th>
+                                    <th class="sof-dim-decl">item w in<br>decl</th>
+                                    <th class="sof-dim-decl">item h in<br>decl</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="sof-label-dims-wt-act">—</td>
+                                    <td id="sof-label-dims-l">—</td>
+                                    <td id="sof-label-dims-w">—</td>
+                                    <td id="sof-label-dims-h">—</td>
+                                    <td id="sof-label-dims-wt-decl">—</td>
+                                    <td id="sof-label-dims-l-decl">—</td>
+                                    <td id="sof-label-dims-w-decl">—</td>
+                                    <td id="sof-label-dims-h-decl">—</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -960,6 +1231,100 @@
         return dot;
     }
 
+    function sofLabelDimsDisplay(v) {
+        if (v === null || v === undefined || v === '') {
+            return '—';
+        }
+        return String(v);
+    }
+
+    function copyTextToClipboard(text, btn) {
+        const value = (text || '').toString();
+        if (!value) {
+            return;
+        }
+        const done = function () {
+            if (!btn) return;
+            btn.classList.add('copied');
+            btn.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
+            setTimeout(function () {
+                btn.classList.remove('copied');
+                btn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+            }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(function () {
+                window.prompt('Copy:', value);
+            });
+        } else {
+            window.prompt('Copy:', value);
+            done();
+        }
+    }
+
+    function openLabelDimsModal(row) {
+        const modalEl = document.getElementById('sofLabelDimsModal');
+        if (!modalEl || typeof bootstrap === 'undefined') {
+            return;
+        }
+        const data = row || {};
+        const sku = (data.sku || '').toString().trim();
+        const skuEl = document.getElementById('sof-label-dims-sku');
+        const typeEl = document.getElementById('sof-label-dims-type');
+        const qtyEl = document.getElementById('sof-label-dims-qty');
+        const imgEl = document.getElementById('sof-label-dims-img');
+        const imgMissingEl = document.getElementById('sof-label-dims-img-missing');
+        if (skuEl) skuEl.textContent = sku || '—';
+        if (typeEl) typeEl.textContent = (data.label || '').toString().trim() || '—';
+        if (qtyEl) qtyEl.textContent = sofLabelDimsDisplay(data.label_qty);
+
+        const imageUrl = (data.sku_image || '').toString().trim();
+        if (imgEl && imgMissingEl) {
+            if (imageUrl) {
+                imgEl.src = imageUrl;
+                imgEl.alt = sku ? ('Image for ' + sku) : 'SKU image';
+                imgEl.classList.remove('d-none');
+                imgMissingEl.classList.add('d-none');
+                imgEl.onerror = function () {
+                    imgEl.classList.add('d-none');
+                    imgEl.removeAttribute('src');
+                    imgMissingEl.classList.remove('d-none');
+                };
+            } else {
+                imgEl.classList.add('d-none');
+                imgEl.removeAttribute('src');
+                imgMissingEl.classList.remove('d-none');
+            }
+        }
+
+        const map = {
+            'sof-label-dims-wt-act': data.wt_act,
+            'sof-label-dims-l': data.l,
+            'sof-label-dims-w': data.w,
+            'sof-label-dims-h': data.h,
+            'sof-label-dims-wt-decl': data.wt_decl,
+            'sof-label-dims-l-decl': data.l_decl,
+            'sof-label-dims-w-decl': data.w_decl,
+            'sof-label-dims-h-decl': data.h_decl,
+        };
+        Object.keys(map).forEach(function (id) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = sofLabelDimsDisplay(map[id]);
+        });
+
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    document.getElementById('sof-label-dims-sku-copy')?.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        const skuEl = document.getElementById('sof-label-dims-sku');
+        const sku = (skuEl?.textContent || '').trim();
+        if (!sku || sku === '—') {
+            return;
+        }
+        copyTextToClipboard(sku, ev.currentTarget);
+    });
+
     function syncChOrdersLinkAcrossTables(channelId, savedLink) {
         const id = Number(channelId);
         if (table) {
@@ -1022,12 +1387,33 @@
         });
     }
 
+    function formatChannelPctAlert(value, threshold, metricLabel) {
+        if (value === null || value === undefined || value === '') {
+            return '<span class="sof-oc-missing">—</span>';
+        }
+        const n = Number(value);
+        if (!Number.isFinite(n)) {
+            return '<span class="sof-oc-missing">—</span>';
+        }
+        const label = Math.round(n).toLocaleString(undefined, {
+            maximumFractionDigits: 0,
+        }) + '%';
+        if (n < threshold) {
+            return `<span class="sof-inv-cell">`
+                + `<span>${escapeHtml(label)}</span>`
+                + `<span class="sof-inv-zero-alert" title="Alert: Channel ${escapeHtml(metricLabel)} is below ${threshold}%">`
+                + `<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>`
+                + `</span></span>`;
+        }
+        return `<span class="sof-inv-cell">${escapeHtml(label)}</span>`;
+    }
+
     function orderListColumns(statusBadgeClass) {
         return [
             {
                 title: 'Channel',
                 field: 'channel_label',
-                minWidth: 120,
+                minWidth: 100,
                 headerHozAlign: 'center',
                 formatter: function (cell) {
                     const row = cell.getRow().getData();
@@ -1042,7 +1428,7 @@
             {
                 title: 'Ch Orders',
                 field: 'ch_orders_link',
-                width: 90,
+                minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerSort: false,
@@ -1052,7 +1438,7 @@
             {
                 title: 'Order ID',
                 field: 'order_id',
-                width: 90,
+                minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerTooltip: 'Hover green dot to see full Order ID and copy',
@@ -1124,7 +1510,7 @@
             {
                 title: 'Date',
                 field: 'order_date',
-                minWidth: 140,
+                minWidth: 110,
                 headerHozAlign: 'center',
                 formatter: function (cell) {
                     const v = cell.getValue();
@@ -1133,7 +1519,7 @@
                         const d = new Date(String(v).replace(' ', 'T'));
                         if (!isNaN(d.getTime())) {
                             return d.toLocaleString(undefined, {
-                                year: 'numeric', month: 'short', day: '2-digit',
+                                month: 'short', day: '2-digit',
                                 hour: '2-digit', minute: '2-digit',
                             });
                         }
@@ -1144,7 +1530,7 @@
             {
                 title: 'Status',
                 field: 'status_label',
-                minWidth: 120,
+                minWidth: 90,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 formatter: function (cell) {
@@ -1155,17 +1541,38 @@
             {
                 title: 'SKU',
                 field: 'sku',
-                minWidth: 120,
+                minWidth: 280,
+                width: 280,
                 headerHozAlign: 'center',
                 formatter: function (cell) {
                     const sku = (cell.getValue() || '').toString().trim();
-                    return sku ? `<code>${escapeHtml(sku)}</code>` : '—';
+                    if (!sku) {
+                        return '—';
+                    }
+                    const wrap = document.createElement('span');
+                    wrap.className = 'sof-sku-cell';
+                    const code = document.createElement('code');
+                    code.textContent = sku;
+                    wrap.appendChild(code);
+                    const copyBtn = document.createElement('button');
+                    copyBtn.type = 'button';
+                    copyBtn.className = 'sof-sku-copy';
+                    copyBtn.title = 'Copy SKU';
+                    copyBtn.setAttribute('aria-label', 'Copy SKU');
+                    copyBtn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+                    copyBtn.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        copyTextToClipboard(sku, copyBtn);
+                    });
+                    wrap.appendChild(copyBtn);
+                    return wrap;
                 },
             },
             {
                 title: 'Product',
                 field: 'display_title',
-                width: 90,
+                minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 headerTooltip: 'Hover dot to see full product name',
@@ -1191,9 +1598,77 @@
                 },
             },
             {
+                title: 'INV',
+                field: 'INV',
+                minWidth: 70,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                headerTooltip: 'Shopify on-hand inventory (shopify_skus.inv). Red triangle = zero stock alert.',
+                formatter: function (cell) {
+                    const raw = cell.getValue();
+                    const n = (raw === null || raw === undefined || raw === '') ? 0 : Number(raw);
+                    const label = Number.isFinite(n) ? n.toLocaleString() : '0';
+                    if (!Number.isFinite(n) || n === 0) {
+                        return `<span class="sof-inv-cell">`
+                            + `<span>${label}</span>`
+                            + `<span class="sof-inv-zero-alert" title="Alert: INV is 0 — out of stock">`
+                            + `<i class="fas fa-exclamation-triangle" aria-hidden="true"></i>`
+                            + `</span></span>`;
+                    }
+                    return `<span class="sof-inv-cell">${label}</span>`;
+                },
+            },
+            {
+                title: 'Label',
+                field: 'label',
+                minWidth: 90,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                headerTooltip: 'Shipping Master Label Type. Click the blue dot for Label Qty & dimensions.',
+                formatter: function (cell) {
+                    const data = cell.getRow().getData() || {};
+                    const v = (cell.getValue() || '').toString().trim();
+                    const wrap = document.createElement('span');
+                    wrap.className = 'sof-label-cell';
+
+                    if (v) {
+                        const cls = ({
+                            'ENV': 'sof-label-env',
+                            'STD': 'sof-label-std',
+                            'O-Size': 'sof-label-osize',
+                            'Pallet': 'sof-label-pallet',
+                        })[v] || 'sof-label-other';
+                        const badge = document.createElement('span');
+                        badge.className = 'sof-label-badge ' + cls;
+                        badge.textContent = v;
+                        wrap.appendChild(badge);
+                    } else {
+                        const missing = document.createElement('span');
+                        missing.className = 'sof-oc-missing';
+                        missing.textContent = '—';
+                        wrap.appendChild(missing);
+                    }
+
+                    const dot = document.createElement('button');
+                    dot.type = 'button';
+                    dot.className = 'sof-label-dims-dot';
+                    dot.title = 'View Label Qty & dimensions';
+                    dot.setAttribute('aria-label', 'View Label Qty and dimensions');
+                    dot.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        openLabelDimsModal(data);
+                    });
+                    wrap.appendChild(dot);
+
+                    return wrap;
+                },
+            },
+            {
                 title: 'Qty',
                 field: 'quantity',
-                width: 70,
+                minWidth: 60,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 sorter: 'number',
@@ -1201,7 +1676,7 @@
             {
                 title: 'Amount',
                 field: 'amount',
-                width: 100,
+                minWidth: 80,
                 hozAlign: 'right',
                 headerHozAlign: 'center',
                 sorter: 'number',
@@ -1212,9 +1687,33 @@
                 },
             },
             {
+                title: 'Prft alert',
+                field: 'groi_pct',
+                minWidth: 80,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                headerTooltip: 'Channel GROI% from Channel Master. Red triangle if below 40%.',
+                formatter: function (cell) {
+                    return formatChannelPctAlert(cell.getValue(), 40, 'GROI%');
+                },
+            },
+            {
+                title: 'GPFT%',
+                field: 'gpft_pct',
+                minWidth: 70,
+                hozAlign: 'center',
+                headerHozAlign: 'center',
+                sorter: 'number',
+                headerTooltip: 'Channel GPFT% from Channel Master. Red triangle if below 15%.',
+                formatter: function (cell) {
+                    return formatChannelPctAlert(cell.getValue(), 15, 'GPFT%');
+                },
+            },
+            {
                 title: 'Shopify',
                 field: 'shopify_order_id',
-                minWidth: 120,
+                minWidth: 90,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
                 formatter: function (cell) {
@@ -1745,7 +2244,7 @@
         pendingTableLoading = true;
 
         pendingTable = new Tabulator('#sof-pending-table', {
-            layout: 'fitColumns',
+            layout: 'fitDataFill',
             placeholder: 'Loading pending orders…',
             pagination: true,
             paginationSize: 50,
@@ -1816,7 +2315,7 @@
         fulfilledTableLoading = true;
 
         fulfilledTable = new Tabulator('#sof-fulfilled-table', {
-            layout: 'fitColumns',
+            layout: 'fitDataFill',
             placeholder: 'Loading Label Created orders…',
             pagination: true,
             paginationSize: 50,
@@ -1881,7 +2380,7 @@
                                 const d = new Date(String(v).replace(' ', 'T'));
                                 if (!isNaN(d.getTime())) {
                                     return d.toLocaleString(undefined, {
-                                        year: 'numeric', month: 'short', day: '2-digit',
+                                        month: 'short', day: '2-digit',
                                         hour: '2-digit', minute: '2-digit',
                                     });
                                 }
@@ -1935,7 +2434,7 @@
         scanDoneTableLoading = true;
 
         scanDoneTable = new Tabulator('#sof-scan-done-table', {
-            layout: 'fitColumns',
+            layout: 'fitDataFill',
             placeholder: 'Loading Scan Done orders…',
             pagination: true,
             paginationSize: 50,
@@ -1999,7 +2498,7 @@
                                 const d = new Date(String(v).replace(' ', 'T'));
                                 if (!isNaN(d.getTime())) {
                                     return d.toLocaleString(undefined, {
-                                        year: 'numeric', month: 'short', day: '2-digit',
+                                        month: 'short', day: '2-digit',
                                         hour: '2-digit', minute: '2-digit',
                                     });
                                 }
@@ -2053,7 +2552,7 @@
         invoicedTableLoading = true;
 
         invoicedTable = new Tabulator('#sof-invoiced-table', {
-            layout: 'fitColumns',
+            layout: 'fitDataFill',
             placeholder: 'Loading Invoiced orders…',
             pagination: true,
             paginationSize: 50,
@@ -2117,7 +2616,7 @@
                                 const d = new Date(String(v).replace(' ', 'T'));
                                 if (!isNaN(d.getTime())) {
                                     return d.toLocaleString(undefined, {
-                                        year: 'numeric', month: 'short', day: '2-digit',
+                                        month: 'short', day: '2-digit',
                                         hour: '2-digit', minute: '2-digit',
                                     });
                                 }
@@ -2171,7 +2670,7 @@
         deliveredTableLoading = true;
 
         deliveredTable = new Tabulator('#sof-delivered-table', {
-            layout: 'fitColumns',
+            layout: 'fitDataFill',
             placeholder: 'Loading Delivered orders…',
             pagination: true,
             paginationSize: 50,
@@ -2235,7 +2734,7 @@
                                 const d = new Date(String(v).replace(' ', 'T'));
                                 if (!isNaN(d.getTime())) {
                                     return d.toLocaleString(undefined, {
-                                        year: 'numeric', month: 'short', day: '2-digit',
+                                        month: 'short', day: '2-digit',
                                         hour: '2-digit', minute: '2-digit',
                                     });
                                 }
@@ -2289,7 +2788,7 @@
         allOrderTableLoading = true;
 
         allOrderTable = new Tabulator('#sof-all-order-table', {
-            layout: 'fitColumns',
+            layout: 'fitDataFill',
             placeholder: 'Loading all orders…',
             pagination: true,
             paginationSize: 50,
@@ -2353,7 +2852,7 @@
                                 const d = new Date(String(v).replace(' ', 'T'));
                                 if (!isNaN(d.getTime())) {
                                     return d.toLocaleString(undefined, {
-                                        year: 'numeric', month: 'short', day: '2-digit',
+                                        month: 'short', day: '2-digit',
                                         hour: '2-digit', minute: '2-digit',
                                     });
                                 }
