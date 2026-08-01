@@ -199,7 +199,8 @@ class FaireLinkMapSyncService
                     ['sku' => $sku],
                     [
                         'price' => $price,
-                        'faire_stock' => is_numeric($qty) ? (int) $qty : null,
+                        // unsignedInteger column — clamp negatives (oversell) to 0
+                        'faire_stock' => is_numeric($qty) ? max(0, (int) $qty) : null,
                     ]
                 );
             }

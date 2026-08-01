@@ -424,7 +424,8 @@ class FaireInventorySyncService
             if ($sku === '') {
                 continue;
             }
-            $qty = (int) $row['inventory'];
+            // Column is unsignedInteger — never persist negative (Shopify oversell => 0).
+            $qty = max(0, (int) $row['inventory']);
 
             if (Schema::hasTable('faire_pricing_prices')) {
                 FairePricingPrice::updateOrCreate(
@@ -446,7 +447,7 @@ class FaireInventorySyncService
                 continue;
             }
 
-            $neQty = (int) $row['inventory'];
+            $neQty = max(0, (int) $row['inventory']);
             $shopifyQty = array_key_exists('shopify_qty', $row) ? (int) $row['shopify_qty'] : $neQty;
 
             // Never overwrite shopify_skus.available_to_sell — owned by SyncShopifyLiveInventory.
