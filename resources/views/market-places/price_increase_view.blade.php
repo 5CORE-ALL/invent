@@ -545,6 +545,9 @@
             opacity: 0.7;
         }
 
+        /* Chart modal stacks above OV L30 only when both are open (set via JS — do not raise all backdrops) */
+        #pricingMasterChartModal.pi-chart-over-ovl30 { z-index: 1085; }
+
         #ovl30DetailsModal .table td:has(.push-price-btn) {
             width: 28px;
             max-width: 32px;
@@ -1115,6 +1118,10 @@
                                 <span id="modal-siblings-count" class="text-muted fw-normal"></span>
                             </label>
                         </div>
+                        <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm btn-danger ms-1"
+                            title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
+                            <i class="fas fa-eraser"></i> Clear Sprice of All Marketplace
+                        </button>
                         <span class="text-muted small">Applies to selected channels (checkbox). Uses each channel’s margin.</span>
                     </div>
                 </div>
@@ -1165,9 +1172,21 @@
                                             style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc3545;cursor:pointer;border:1px solid #a00211;"
                                             title="View missing listings for this SKU"></span>
                                     </th>
-                                    <th class="text-end" id="modal-total-price">$0.00</th>
+                                    <th class="text-end">
+                                        <span id="modal-total-price">$0.00</span>
+                                        <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-price-chart-dot"
+                                            data-metric="price" data-sku=""
+                                            style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"
+                                            title="View Price history (Rolling L30)"></i>
+                                    </th>
                                     <th class="text-end" id="modal-total-views">0</th>
-                                    <th class="text-end" id="modal-avg-cvr">0%</th>
+                                    <th class="text-end">
+                                        <span id="modal-avg-cvr">0%</span>
+                                        <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-cvr-chart-dot"
+                                            data-metric="cvr" data-sku=""
+                                            style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;"
+                                            title="View CVR history (Rolling L30)"></i>
+                                    </th>
                                     <th class="text-end" id="modal-avg-groi">0%</th>
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
                                     <th class="text-end" id="modal-avg-nroi">0%</th>
@@ -2007,6 +2026,8 @@
 
         function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil) {
             $('#modalSkuName').text(sku);
+            // Wire totals-row Price / CVR chart dots to this SKU
+            $('#modal-price-chart-dot, #modal-cvr-chart-dot').attr('data-sku', sku || '');
             syncModalGroupSelects('');
             // Fresh SKU → clear siblings checkbox so it isn't accidentally left on from prior SKU
             $('#modal-siblings-apply-cb').prop('checked', false);
@@ -2816,13 +2837,31 @@
                         priceColorStyle = 'color:#006400;font-weight:700;';
                     }
                 }
+                // Rolling history dots — same chart modal as main-table Price / CVR columns
+                const chartSkuEsc = String(getModalPrimarySku() || item.sku || '')
+                    .replace(/"/g, '&quot;');
+                const priceChartMetric = mpLower === 'amazon' ? 'amz_price' : 'price';
+                const priceChartDot = (isListed && chartSkuEsc)
+                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="' + priceChartMetric
+                        + '" data-sku="' + chartSkuEsc
+                        + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"'
+                        + ' title="View ' + (priceChartMetric === 'amz_price' ? 'Amz Price' : 'Price')
+                        + ' history (Rolling L30)"></i>'
+                    : '';
+                const cvrChartDot = (isListed && chartSkuEsc && !viewsMissing)
+                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr"'
+                        + ' data-sku="' + chartSkuEsc
+                        + '" style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;"'
+                        + ' title="View CVR history (Rolling L30)"></i>'
+                    : '';
+
                 const priceCellHtml = !isListed
                     ? '-'
                     : '<span style="' + priceColorStyle + '" title="' +
                         ((isTemuMpRow || isTemu2MpRow) && price > 0
                             ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + price.toFixed(2))
                             : '') +
-                      '">$' + displayPrice.toFixed(2) + '</span>';
+                      '">$' + displayPrice.toFixed(2) + '</span>' + priceChartDot;
 
                 const pushedByTip = item.pushed_by
                     ? String(item.pushed_by + (item.pushed_at ? ' ' + item.pushed_at : '')).replace(/"/g, '&quot;')
@@ -2841,7 +2880,7 @@
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
                         <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
-                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'))}</td>
+                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' + cvrChartDot : '-'))}</td>
                         <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
@@ -4984,6 +5023,75 @@
             }
             return Math.max(0.01, parseFloat(newPrice.toFixed(2)));
         }
+
+        /**
+         * Clear SPRICE on every editable marketplace row for the open SKU.
+         * This SKU only — siblings never get 0 (same rule as Prc Mode → Clear SPRICE).
+         */
+        function clearAllMarketplaceSpriceInModal() {
+            const sku = getModalPrimarySku();
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') {
+                showToast('No SKU loaded in modal', 'error');
+                return;
+            }
+            const $rows = [];
+            $('#ovl30DetailsTableBody tr').each(function() {
+                const $tr = $(this);
+                if (!$tr.find('.editable-sprice').length) return;
+                // Only clear rows that currently have a SPRICE (or any editable listed row)
+                const mp = String($tr.attr('data-marketplace') || '');
+                if (!mp) return;
+                $rows.push($tr);
+            });
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows to clear', 'warning');
+                return;
+            }
+            if (!confirm(
+                'Clear SPRICE on ALL ' + $rows.length + ' marketplace(s) for SKU: ' + sku + '?\n\n'
+                + 'This SKU only — siblings are never cleared to 0.'
+            )) return;
+
+            const $btn = $('#modal-clear-all-sprice-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
+            let doneCount = 0;
+            let okCount = 0;
+
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                $tr.find('.editable-sprice').val('').trigger('input');
+                saveModalSpriceForRow($tr, 0, function(ok) {
+                    if (ok) {
+                        okCount++;
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '') === mp) {
+                                item.sprice = 0;
+                                item.sgpft = 0;
+                                item.sroi = 0;
+                                item.spft = 0;
+                            }
+                        });
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('Cleared SPRICE on ' + okCount + '/' + $rows.length + ' marketplace(s)')
+                                : 'Failed to clear SPRICE',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('click', '#modal-clear-all-sprice-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            clearAllMarketplaceSpriceInModal();
+        });
 
         function saveModalSpriceForRow($row, sprice, done) {
             const sku = getModalPrimarySku() || $row.attr('data-sku');
@@ -8549,6 +8657,39 @@
         const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
 
+        /**
+         * Open chart modal safely. When OV L30 is already open, stack chart above it
+         * without trapping the OV L30 modal under a raised backdrop.
+         */
+        function showPricingMasterChartModal() {
+            const chartEl = document.getElementById('pricingMasterChartModal');
+            if (!chartEl) return;
+            const ovl30Open = $('#ovl30DetailsModal').hasClass('show');
+            chartEl.classList.toggle('pi-chart-over-ovl30', ovl30Open);
+            const existing = bootstrap.Modal.getInstance(chartEl);
+            const modal = existing || new bootstrap.Modal(chartEl);
+            modal.show();
+            if (ovl30Open) {
+                // Raise only the newest backdrop (chart's), leave OV L30 backdrop alone
+                setTimeout(function() {
+                    const backs = document.querySelectorAll('.modal-backdrop');
+                    if (backs.length) {
+                        backs[backs.length - 1].style.zIndex = '1080';
+                        backs[backs.length - 1].classList.add('pi-chart-backdrop');
+                    }
+                }, 10);
+            }
+            loadPricingMasterChart();
+        }
+
+        $(document).on('hidden.bs.modal', '#pricingMasterChartModal', function() {
+            this.classList.remove('pi-chart-over-ovl30');
+            document.querySelectorAll('.modal-backdrop.pi-chart-backdrop').forEach(function(el) {
+                el.classList.remove('pi-chart-backdrop');
+                el.style.zIndex = '';
+            });
+        });
+
         $(document).on('click', '.summary-chart-badge', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -8566,9 +8707,7 @@
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
-            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
-            modal.show();
-            loadPricingMasterChart();
+            showPricingMasterChartModal();
         });
 
         $(document).on('click', '.pricing-master-chart-link', function(e) {
@@ -8598,9 +8737,7 @@
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
-            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
-            modal.show();
-            loadPricingMasterChart();
+            showPricingMasterChartModal();
         });
 
         // Temu Views chart — same /temu-metrics-history source as /temu-decrease Views dot
@@ -8623,9 +8760,7 @@
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
-            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
-            modal.show();
-            loadPricingMasterChart();
+            showPricingMasterChartModal();
         });
 
         $(document).on('change', '#pricingMasterChartRangeSelect', function() {
