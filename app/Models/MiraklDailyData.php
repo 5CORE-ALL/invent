@@ -45,15 +45,21 @@ class MiraklDailyData extends Model
         'shipping_country',
         'shipping_carrier',
         'shipping_method',
+        'shopify_order_id',
+        'pushed_to_shopify_at',
+        'import_status',
+        'raw_payload',
     ];
 
     protected $casts = [
         'order_created_at' => 'datetime',
         'order_updated_at' => 'datetime',
+        'pushed_to_shopify_at' => 'datetime',
         'unit_price' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'shipping_price' => 'decimal:2',
         'shipping_tax' => 'decimal:2',
+        'raw_payload' => 'array',
     ];
 
     /**

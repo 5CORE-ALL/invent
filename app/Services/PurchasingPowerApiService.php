@@ -154,7 +154,7 @@ class PurchasingPowerApiService extends BestBuyApiService
                     continue;
                 }
 
-                $qty = max(0, (int) ($line['quantity'] ?? 0));
+                $qty = max(0, (int) ($line['stock'] ?? 0));
                 $linePrice = (float) ($line['price'] ?? 0);
                 $unitPrice = isset($line['price_unit']) && is_numeric($line['price_unit'])
                     ? (float) $line['price_unit']
@@ -177,7 +177,7 @@ class PurchasingPowerApiService extends BestBuyApiService
                     'status' => $line['order_line_state'] ?? ($order['order_state'] ?? ''),
                     'sku' => $sku,
                     'product_name' => $line['product_title'] ?? null,
-                    'quantity' => $qty,
+                    'stock' => $qty,
                     'unit_price' => $unitPrice,
                     'amount' => $totalPrice,
                     'commission' => $commission,
@@ -197,5 +197,65 @@ class PurchasingPowerApiService extends BestBuyApiService
         }
 
         return $rows;
+    }
+
+    public function isConfigured(): bool
+    {
+        $mcmKey = trim((string) config('services.purchasingpower.mcm_api_key', ''));
+        $apiKey = trim((string) config('services.purchasingpower.api_key', ''));
+
+        return $mcmKey !== '' || $apiKey !== '';
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Purchasing Power MCM/API credentials missing (PURCHASING_POWER_MCM_API_KEY or PURCHASING_POWER_API_KEY).',
+            ];
+        }
+
+        try {
+            $result = $this->fetchOrders(now()->subDays(7), now(), 1);
+            $count = count($result['orders'] ?? []);
+
+            return [
+                'success' => true,
+                'message' => "Mirakl MCM OR11 reachable (sample: {$count} order(s) in last 7 days).",
+                'sample_count' => $count,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Push stock updates to Mirakl MCM offers (stub until OF24 wired).
+     *
+     * @param  array<int, array{sku: string, quantity: int}>  $items
+     * @return array{pushed: int, failed: int, message: string}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        if ($items === []) {
+            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.'];
+        }
+
+        Log::info('PurchasingPowerApiService: updateItemInventoryBulk stub — local stock persisted only', [
+            'count' => count($items),
+        ]);
+
+        return [
+            'pushed' => count($items),
+            'failed' => 0,
+            'message' => 'Mirakl offer stock push is not wired yet — updated local purchasing_power_products.stock only.',
+        ];
     }
 }

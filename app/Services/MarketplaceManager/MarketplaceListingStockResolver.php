@@ -36,6 +36,16 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_TEMU = 'temu';
 
+    public const CHANNEL_PURCHASINGPOWER = 'purchasingpower';
+
+    public const CHANNEL_WAYFAIR = 'wayfair';
+
+    public const CHANNEL_BESTBUY = 'bestbuy';
+
+    public const CHANNEL_MACY = 'macy';
+
+    public const CHANNEL_DOBA = 'doba';
+
     public const CHANNEL_EBAY1 = 'ebay1';
 
     public const CHANNEL_EBAY2 = 'ebay2';
@@ -863,6 +873,21 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_TEMU) {
             self::hydrateFromTemuMetrics($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_temu');
+        } elseif ($channel === self::CHANNEL_PURCHASINGPOWER) {
+            self::hydrateFromPurchasingPowerProducts($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_purchasing_power');
+        } elseif ($channel === self::CHANNEL_WAYFAIR) {
+            self::hydrateFromWayfairPricingPrices($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_wayfair');
+        } elseif ($channel === self::CHANNEL_BESTBUY) {
+            self::hydrateFromBestbuyUsaProducts($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_bestbuy');
+        } elseif ($channel === self::CHANNEL_MACY) {
+            self::hydrateFromMacyProducts($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_macy');
+        } elseif ($channel === self::CHANNEL_DOBA) {
+            self::hydrateFromDobaMetrics($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_doba');
         } elseif ($channel === self::CHANNEL_EBAY1) {
             self::hydrateFromPricing($map, $keys, 'ebay1');
             self::hydrateFromMappings($map, $keys, 'inventory_ebay1');
@@ -995,6 +1020,36 @@ final class MarketplaceListingStockResolver
 
         if ($channel === 'temu') {
             self::hydrateFromTemuMetrics($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'purchasingpower') {
+            self::hydrateFromPurchasingPowerProducts($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'wayfair') {
+            self::hydrateFromWayfairPricingPrices($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'bestbuy') {
+            self::hydrateFromBestbuyUsaProducts($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'macy') {
+            self::hydrateFromMacyProducts($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'doba') {
+            self::hydrateFromDobaMetrics($map, $keys);
 
             return;
         }
@@ -1171,6 +1226,101 @@ final class MarketplaceListingStockResolver
             ->get(['sku', 'quantity'])
             ->each(function ($row) use (&$map) {
                 self::put($map, (string) $row->sku, (int) $row->quantity);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromPurchasingPowerProducts(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('purchasing_power_products') || ! Schema::hasColumn('purchasing_power_products', 'stock')) {
+            return;
+        }
+
+        \App\Models\PurchasingPowerProduct::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('stock')
+            ->get(['sku', 'stock'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->stock);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromBestbuyUsaProducts(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('bestbuy_usa_products') || ! Schema::hasColumn('bestbuy_usa_products', 'stock')) {
+            return;
+        }
+
+        \App\Models\BestbuyUsaProduct::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('stock')
+            ->get(['sku', 'stock'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->stock);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromMacyProducts(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('macy_products') || ! Schema::hasColumn('macy_products', 'stock')) {
+            return;
+        }
+
+        \App\Models\MacyProduct::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('stock')
+            ->get(['sku', 'stock'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->stock);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromDobaMetrics(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('doba_metrics') || ! Schema::hasColumn('doba_metrics', 'inventory')) {
+            return;
+        }
+
+        \App\Models\DobaMetric::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('inventory')
+            ->get(['sku', 'inventory'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->inventory);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromWayfairPricingPrices(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('wayfair_pricing_prices') || ! Schema::hasColumn('wayfair_pricing_prices', 'wayfair_stock')) {
+            return;
+        }
+
+        \App\Models\WayfairPricingPrice::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('wayfair_stock')
+            ->get(['sku', 'wayfair_stock'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->wayfair_stock);
             });
     }
 

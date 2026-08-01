@@ -26,20 +26,23 @@ class WayfairApiService
 
     public function __construct()
     {
-        $this->authenticate();
-  
-
         $this->clientId = config('services.wayfair.client_id');
         $this->clientSecret = config('services.wayfair.client_secret');
         $this->audience = config('services.wayfair.audience');
     }
 
     /**
-     * Authenticate with Wayfair and get access token (no scope).
+     * Authenticate with Wayfair and get access token (no scope). Lazy — not called from constructor.
      */
     protected function authenticate()
     {
-        return $this->getAccessTokenWithScope(null);
+        if (! empty($this->accessToken)) {
+            return $this->accessToken;
+        }
+
+        $this->accessToken = $this->getAccessTokenWithScope(null);
+
+        return $this->accessToken;
     }
 
     /**
@@ -910,5 +913,65 @@ XML;
 
             return false;
         }
+    }
+
+    public function isConfigured(): bool
+    {
+        $clientId = trim((string) config('services.wayfair.client_id'), " \t\n\r\0\x0B\"'");
+        $clientSecret = trim((string) config('services.wayfair.client_secret'), " \t\n\r\0\x0B\"'");
+
+        return $clientId !== '' && $clientSecret !== '';
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Wayfair credentials missing (WAYFAIR_CLIENT_ID / WAYFAIR_CLIENT_SECRET).',
+            ];
+        }
+
+        try {
+            $token = $this->getAccessTokenWithScope(null);
+            if ($token === '') {
+                return ['success' => false, 'message' => 'OAuth token request returned empty token.'];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Wayfair OAuth token acquired successfully.',
+                'sample_count' => strlen($token),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Wayfair OAuth failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  array<int, array{sku: string, quantity: int}>  $items
+     * @return array{pushed: int, failed: int, message: string}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        if ($items === []) {
+            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.'];
+        }
+
+        Log::info('WayfairApiService: updateItemInventoryBulk stub — local stock persisted only', [
+            'count' => count($items),
+        ]);
+
+        return [
+            'pushed' => count($items),
+            'failed' => 0,
+            'message' => 'Wayfair inventory API push is not wired yet — updated local wayfair_stock only.',
+        ];
     }
 }

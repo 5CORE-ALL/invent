@@ -37,6 +37,10 @@ class WayfairDailyData extends Model
         'event_type',
         'event_name',
         'packing_slip_url',
+        'shopify_order_id',
+        'pushed_to_shopify_at',
+        'import_status',
+        'raw_payload',
     ];
 
     protected $casts = [
@@ -44,5 +48,7 @@ class WayfairDailyData extends Model
         'estimated_ship_date' => 'date',
         'unit_price' => 'decimal:2',
         'total_price' => 'decimal:2',
+        'pushed_to_shopify_at' => 'datetime',
+        'raw_payload' => 'array',
     ];
 }

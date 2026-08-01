@@ -22,6 +22,89 @@ class DobaApiService
         $this->baseUrl = 'https://openapi.doba.com/api';
     }
 
+    public function isConfigured(): bool
+    {
+        return filled(config('services.doba.app_key'))
+            && filled(config('services.doba.private_key'));
+    }
+
+    /**
+     * Push available inventory for a Doba itemNo (best-effort across known endpoints).
+     *
+     * @return array{success: bool, message: string, response?: mixed, errors?: string}
+     */
+    public function updateItemInventory(string $itemNo, int $qty): array
+    {
+        $itemNo = trim($itemNo);
+        if ($itemNo === '') {
+            return ['success' => false, 'message' => 'itemNo is required.', 'errors' => 'itemNo is required.'];
+        }
+
+        $qty = max(0, $qty);
+
+        try {
+            $timestamp = $this->getMillisecond();
+            $content = $this->getContent($timestamp);
+            $sign = $this->generateSignature($content);
+
+            $headers = [
+                'appKey' => config('services.doba.app_key'),
+                'signType' => 'rsa2',
+                'timestamp' => $timestamp,
+                'sign' => $sign,
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ];
+
+            $payloadAttempts = [
+                ['itemNo' => $itemNo, 'availableInventory' => $qty],
+                ['itemNo' => $itemNo, 'inventory' => $qty],
+                ['itemNo' => $itemNo, 'availableInventory' => (string) $qty],
+                ['itemNo' => $itemNo, 'inventory' => (string) $qty],
+            ];
+
+            $urls = [
+                $this->baseUrl.'/goods/update',
+                $this->baseUrl.'/goods/info/update',
+            ];
+
+            $lastMessage = 'Doba inventory update failed for all endpoints.';
+            foreach ($urls as $url) {
+                foreach ($payloadAttempts as $payload) {
+                    Log::info('Doba inventory update attempt', ['url' => $url, 'item_no' => $itemNo, 'qty' => $qty]);
+                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
+                    $responseData = $response->json() ?? [];
+                    Log::info('Doba inventory update response', [
+                        'url' => $url,
+                        'status' => $response->status(),
+                        'response' => $responseData,
+                    ]);
+
+                    if (! $response->successful()) {
+                        $lastMessage = 'HTTP '.$response->status().': '.($responseData['responseMessage'] ?? $response->body());
+                        continue;
+                    }
+
+                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
+                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Doba API error '.$responseData['responseCode']);
+                        continue;
+                    }
+
+                    return [
+                        'success' => true,
+                        'message' => 'Doba inventory updated.',
+                        'response' => $responseData,
+                    ];
+                }
+            }
+
+            return ['success' => false, 'message' => $lastMessage, 'errors' => $lastMessage];
+        } catch (\Throwable $e) {
+            Log::error('Doba updateItemInventory failed', ['item_no' => $itemNo, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage(), 'errors' => $e->getMessage()];
+        }
+    }
+
     /**
      * Update product title for the given SKU on Doba.
      * Resolves SKU to itemNo via DobaMetric or DobaDataView, then calls OpenAPI.

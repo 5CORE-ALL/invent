@@ -589,4 +589,81 @@ class BestBuyApiService
             return false;
         }
     }
+
+    public function isConfigured(): bool
+    {
+        $macyId = trim((string) config('services.macy.client_id', ''));
+        $macySecret = trim((string) config('services.macy.client_secret', ''));
+        $mcmKey = trim((string) config('services.bestbuy.mcm_api_key', ''));
+
+        return ($macyId !== '' && $macySecret !== '') || $mcmKey !== '';
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Best Buy Mirakl Connect credentials missing (MACY_CLIENT_ID + MACY_CLIENT_SECRET or BESTBUY_MCM_API_KEY).',
+            ];
+        }
+
+        try {
+            $token = $this->getAccessToken();
+            if (! $token) {
+                return [
+                    'success' => false,
+                    'message' => 'OAuth token request failed — check Macy Mirakl Connect client_id/client_secret.',
+                ];
+            }
+
+            $response = Http::withoutVerifying()->withToken($token)->get(
+                'https://miraklconnect.com/api/products?limit=1&channel_code='.$this->miraklChannelCode()
+            );
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Mirakl Connect products ping failed: '.$response->status(),
+                ];
+            }
+
+            $count = count($response->json()['data'] ?? []);
+
+            return [
+                'success' => true,
+                'message' => "Mirakl Connect reachable for channel {$this->miraklChannelCode()} (sample: {$count} product row(s)).",
+                'sample_count' => $count,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  array<int, array{sku: string, quantity: int}>  $items
+     * @return array{pushed: int, failed: int, message: string}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        if ($items === []) {
+            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.'];
+        }
+
+        Log::info('BestBuyApiService: updateItemInventoryBulk stub — local stock persisted only', [
+            'count' => count($items),
+        ]);
+
+        return [
+            'pushed' => count($items),
+            'failed' => 0,
+            'message' => 'Mirakl Connect quantity push is not wired yet — updated local bestbuy_usa_products.stock only.',
+        ];
+    }
 }

@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
-use App\Models\WayfairProduct;
+use App\Models\WayfairPricingPrice;
 
 class FetchWayfairData extends Command
 {
@@ -56,7 +56,7 @@ class FetchWayfairData extends Command
         }
 
         $this->info("Truncating old Wayfair data...");
-        WayfairProduct::truncate(); 
+        WayfairPricingPrice::truncate(); 
 
         $this->info("Access token received. Fetching all purchase orders...");
 
@@ -80,7 +80,7 @@ class FetchWayfairData extends Command
                     if (!$sku) continue;
 
                     // Save to DB
-                    WayfairProduct::create([
+                    WayfairPricingPrice::create([
                         'sku' => $sku,
                         'purchase_order_data' => $poJson
                     ]);

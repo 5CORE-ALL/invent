@@ -238,10 +238,14 @@ class MarketplaceApiConfigService
                 'services.temu.secret_key',
                 'services.temu.access_token',
             ]),
-            'macy', 'bestbuy' => $this->filledAll([
+            'macy' => $this->filledAll([
                 'services.macy.client_id',
                 'services.macy.client_secret',
             ]),
+            'bestbuy' => $this->filledAll([
+                'services.macy.client_id',
+                'services.macy.client_secret',
+            ]) || filled(config('services.bestbuy.mcm_api_key')),
             'reverb' => $this->reverbConfigured(),
             'wayfair' => $this->filledAll([
                 'services.wayfair.client_id',
@@ -281,7 +285,7 @@ class MarketplaceApiConfigService
                 'services.newegg.seller_id',
             ]),
             'topdawg' => $this->filled('services.topdawg.token'),
-            'purchasingpower' => $this->filled('services.purchasingpower.api_key'),
+            'purchasingpower' => $this->filled('services.purchasingpower.mcm_api_key') || $this->filled('services.purchasingpower.api_key'),
             'shopify_b2b' => $this->shopifyB2bConfigured(),
             default => false,
         };

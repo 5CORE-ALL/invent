@@ -57,6 +57,11 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'amazon' => 'amazon:sync-orders',
             'topdawg' => 'topdawg:sync-orders',
             'temu' => 'temu:sync-orders',
+            'purchasingpower' => 'purchasingpower:sync-orders',
+            'wayfair' => 'wayfair:sync-orders',
+            'bestbuy' => 'bestbuy:sync-orders',
+            'macy' => 'macy:sync-orders',
+            'doba' => 'doba:sync-orders',
             'ebay1' => 'ebay1:sync-orders',
             'ebay2' => 'ebay2:sync-orders',
             'ebay3' => 'ebay3:sync-orders',
@@ -121,6 +126,16 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncTopDawgAddressJob::dispatch(false, 25);
             } elseif ($slug === 'temu' && \App\Services\MarketplaceManager\TemuOrderPushService::canAutoSyncAddress()) {
                 SyncTemuAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'purchasingpower' && \App\Services\MarketplaceManager\PurchasingPowerOrderPushService::canAutoSyncAddress()) {
+                SyncPurchasingPowerAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'wayfair' && \App\Services\MarketplaceManager\WayfairOrderPushService::canAutoSyncAddress()) {
+                SyncWayfairAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'bestbuy' && \App\Services\MarketplaceManager\BestBuyOrderPushService::canAutoSyncAddress()) {
+                SyncBestBuyAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'macy' && \App\Services\MarketplaceManager\MacyOrderPushService::canAutoSyncAddress()) {
+                SyncMacyAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'doba' && \App\Services\MarketplaceManager\DobaOrderPushService::canAutoSyncAddress()) {
+                SyncDobaAddressJob::dispatch(false, 25);
             } elseif ($slug === 'amazon' && \App\Services\MarketplaceManager\AmazonOrderPushService::canAutoSyncAddress()) {
                 SyncAmazonAddressJob::dispatch(false, 25);
             } elseif ($slug === 'ebay1' && \App\Services\MarketplaceManager\Ebay1OrderPushService::canAutoSyncAddress()) {

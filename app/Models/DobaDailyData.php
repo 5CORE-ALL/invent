@@ -52,6 +52,10 @@ class DobaDailyData extends Model
         'seller_name',
         'order_item_json',
         'order_json',
+        'shopify_order_id',
+        'pushed_to_shopify_at',
+        'import_status',
+        'raw_payload',
     ];
 
     protected $casts = [
@@ -59,6 +63,8 @@ class DobaDailyData extends Model
         'pay_time' => 'datetime',
         'ship_time' => 'datetime',
         'delivery_time' => 'datetime',
+        'pushed_to_shopify_at' => 'datetime',
+        'raw_payload' => 'array',
         'item_price' => 'decimal:2',
         'total_price' => 'decimal:2',
         'shipping_fee' => 'decimal:2',

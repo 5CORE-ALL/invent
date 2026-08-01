@@ -53,6 +53,11 @@ class MarketplaceOrderPaidFilter
             'shein' => self::isSheinPaid($order),
             'topdawg' => self::isTopDawgPaid($order),
             'temu' => self::isTemuPaid($order),
+            'purchasingpower' => self::isPurchasingPowerPaid($order),
+            'wayfair' => self::isWayfairPaid($order),
+            'bestbuy' => self::isBestBuyPaid($order),
+            'macy' => self::isMacyPaid($order),
+            'doba' => self::isDobaPaid($order),
             'ebay1', 'ebay2', 'ebay3' => self::isEbayPaid($order),
             'faire' => self::isFairePaid($order),
             'amazon' => self::isAmazonPaid($order),
@@ -95,6 +100,64 @@ class MarketplaceOrderPaidFilter
         }
 
         return ! in_array($status, ['UNPAID', 'PENDING', 'PENDING_PAYMENT', 'WAIT_PAY', 'NOT_PAY'], true);
+    }
+
+    protected static function isPurchasingPowerPaid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->status ?? '')));
+        if ($status === '' || str_contains($status, 'CANCEL')) {
+            return ! str_contains($status, 'CANCEL');
+        }
+
+        $paidish = ['SHIPPED', 'SHIPPING', 'RECEIVED', 'CLOSED', 'COMPLETED', 'TO_COLLECT'];
+        foreach ($paidish as $needle) {
+            if (str_contains($status, $needle)) {
+                return true;
+            }
+        }
+
+        return ! in_array($status, ['UNPAID', 'PENDING', 'PAYMENT_PENDING', 'WAITING_ACCEPTANCE', 'STAGING'], true);
+    }
+
+    protected static function isWayfairPaid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->status ?? '')));
+        if ($status === '' || str_contains($status, 'CANCEL')) {
+            return ! str_contains($status, 'CANCEL');
+        }
+
+        return ! in_array($status, ['UNPAID', 'PENDING', 'PAYMENT_PENDING'], true);
+    }
+
+    protected static function isBestBuyPaid(object $order): bool
+    {
+        return self::isPurchasingPowerPaid($order);
+    }
+
+    protected static function isMacyPaid(object $order): bool
+    {
+        return self::isPurchasingPowerPaid($order);
+    }
+
+    protected static function isDobaPaid(object $order): bool
+    {
+        if (! empty($order->pay_time)) {
+            return true;
+        }
+
+        $status = strtoupper(trim((string) ($order->order_status ?? '')));
+        if ($status === '' || str_contains($status, 'CANCEL')) {
+            return ! str_contains($status, 'CANCEL');
+        }
+
+        $paidish = ['PAID', 'SHIPPED', 'SHIPPING', 'DELIVERED', 'COMPLETED', 'CONFIRMED', 'PROCESSING'];
+        foreach ($paidish as $needle) {
+            if (str_contains($status, $needle)) {
+                return true;
+            }
+        }
+
+        return ! in_array($status, ['UNPAID', 'PENDING', 'PAYMENT_PENDING', 'WAIT_PAY', 'NOT_PAY'], true);
     }
 
     protected static function isEbayPaid(object $order): bool

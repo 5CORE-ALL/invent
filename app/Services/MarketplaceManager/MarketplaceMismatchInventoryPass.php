@@ -37,7 +37,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
             return $empty;
         }
 
@@ -74,6 +74,11 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'macy' => app(MacyInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'doba' => app(DobaInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch),
@@ -110,6 +115,11 @@ final class MarketplaceMismatchInventoryPass
             'shein' => 'shein_metric',
             'topdawg' => 'topdawg_products',
             'temu' => 'temu_metrics',
+            'purchasingpower' => 'purchasing_power_products',
+            'wayfair' => 'wayfair_pricing_prices',
+            'bestbuy' => 'bestbuy_usa_products',
+            'macy' => 'macy_products',
+            'doba' => 'doba_metrics',
             'ebay1' => 'ebay_metrics',
             'ebay2' => 'ebay_2_metrics',
             'ebay3' => 'ebay_3_metrics',
@@ -146,6 +156,68 @@ final class MarketplaceMismatchInventoryPass
                 ->where('sku', '!=', '')
                 ->where('goods_id', '!=', '')
                 ->whereColumn('sku', '!=', 'goods_id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'purchasingpower') {
+            return \App\Models\PurchasingPowerProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'wayfair') {
+            return \App\Models\WayfairPricingPrice::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'bestbuy') {
+            return \App\Models\BestbuyUsaProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'macy') {
+            return \App\Models\MacyProduct::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'doba') {
+            return \App\Models\DobaMetric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->whereNotNull('item_id')
+                ->where('item_id', '!=', '')
                 ->pluck('sku')
                 ->map(static fn ($sku) => trim((string) $sku))
                 ->filter(static fn (string $sku) => $sku !== '')
@@ -235,6 +307,11 @@ final class MarketplaceMismatchInventoryPass
             'shein' => MarketplaceListingStockResolver::CHANNEL_SHEIN,
             'topdawg' => MarketplaceListingStockResolver::CHANNEL_TOPDAWG,
             'temu' => MarketplaceListingStockResolver::CHANNEL_TEMU,
+            'purchasingpower' => MarketplaceListingStockResolver::CHANNEL_PURCHASINGPOWER,
+            'wayfair' => MarketplaceListingStockResolver::CHANNEL_WAYFAIR,
+            'bestbuy' => MarketplaceListingStockResolver::CHANNEL_BESTBUY,
+            'macy' => MarketplaceListingStockResolver::CHANNEL_MACY,
+            'doba' => MarketplaceListingStockResolver::CHANNEL_DOBA,
             'ebay1' => MarketplaceListingStockResolver::CHANNEL_EBAY1,
             'ebay2' => MarketplaceListingStockResolver::CHANNEL_EBAY2,
             'ebay3' => MarketplaceListingStockResolver::CHANNEL_EBAY3,
@@ -252,6 +329,11 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinLiveListingsService::class)->peekCached(),
             'topdawg' => app(TopDawgLiveListingsService::class)->peekCached(),
             'temu' => app(TemuLiveListingsService::class)->peekCached(),
+            'purchasingpower' => app(PurchasingPowerLiveListingsService::class)->peekCached(),
+            'wayfair' => app(WayfairLiveListingsService::class)->peekCached(),
+            'bestbuy' => app(BestBuyLiveListingsService::class)->peekCached(),
+            'macy' => app(MacyLiveListingsService::class)->peekCached(),
+            'doba' => app(DobaLiveListingsService::class)->peekCached(),
             'ebay1' => app(Ebay1LiveListingsService::class)->peekCached(),
             'ebay2' => app(Ebay2LiveListingsService::class)->peekCached(),
             'ebay3' => app(Ebay3LiveListingsService::class)->peekCached(),

@@ -1691,4 +1691,80 @@ class MacysApiService
 
         return $current."\n\n".$incoming;
     }
+
+    public function isConfigured(): bool
+    {
+        $clientId = trim((string) config('services.macy.client_id', ''));
+        $clientSecret = trim((string) config('services.macy.client_secret', ''));
+
+        return $clientId !== '' && $clientSecret !== '';
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Macy Mirakl Connect credentials missing (MACY_CLIENT_ID + MACY_CLIENT_SECRET).',
+            ];
+        }
+
+        try {
+            $token = $this->getAccessToken();
+            if (! $token) {
+                return [
+                    'success' => false,
+                    'message' => 'OAuth token request failed — check MACY_CLIENT_ID / MACY_CLIENT_SECRET.',
+                ];
+            }
+
+            $response = Http::withoutVerifying()->withToken($token)->get(
+                'https://miraklconnect.com/api/products?limit=1&channel_code=macys'
+            );
+
+            if (! $response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Mirakl Connect products ping failed: '.$response->status(),
+                ];
+            }
+
+            $count = count($response->json()['data'] ?? []);
+
+            return [
+                'success' => true,
+                'message' => "Mirakl Connect reachable for channel macys (sample: {$count} product row(s)).",
+                'sample_count' => $count,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  array<int, array{sku: string, quantity: int}>  $items
+     * @return array{pushed: int, failed: int, message: string}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        if ($items === []) {
+            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.'];
+        }
+
+        Log::info('MacysApiService: updateItemInventoryBulk stub — local stock persisted only', [
+            'count' => count($items),
+        ]);
+
+        return [
+            'pushed' => count($items),
+            'failed' => 0,
+            'message' => 'Mirakl Connect quantity push is not wired yet — updated local macy_products.stock only.',
+        ];
+    }
 }

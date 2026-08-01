@@ -366,6 +366,21 @@ class MarketplaceManagerController extends Controller
             'faire' => Schema::hasTable('faire_metric')
                 ? (int) FaireMetric::query()->whereNotNull('sku')->count()
                 : 0,
+            'purchasingpower' => Schema::hasTable('purchasing_power_products')
+                ? (int) \App\Models\PurchasingPowerProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'wayfair' => Schema::hasTable('wayfair_pricing_prices')
+                ? (int) \App\Models\WayfairPricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'bestbuy' => Schema::hasTable('bestbuy_usa_products')
+                ? (int) \App\Models\BestbuyUsaProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'macy' => Schema::hasTable('macy_products')
+                ? (int) \App\Models\MacyProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'doba' => Schema::hasTable('doba_metrics')
+                ? (int) \App\Models\DobaMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
             default => 0,
         };
     }

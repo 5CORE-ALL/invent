@@ -16,5 +16,6 @@ class MacyProduct extends Model
         'm_l30',
         'm_l60',
         'price',
+        'stock',
     ];
 }

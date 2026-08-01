@@ -9,6 +9,9 @@ use App\Services\MarketplaceManager\AmazonInventorySyncService;
 use App\Services\MarketplaceManager\FaireInventorySyncService;
 use App\Services\MarketplaceManager\NeweggInventorySyncService;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
+use App\Services\MarketplaceManager\WayfairInventorySyncService;
+use App\Services\MarketplaceManager\BestBuyInventorySyncService;
+use App\Services\MarketplaceManager\MacyInventorySyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -54,6 +57,10 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
             'newegg' => app(NeweggInventorySyncService::class)->syncFromShopify(false),
             'faire' => app(FaireInventorySyncService::class)->syncFromShopify(false),
             'amazon' => app(AmazonInventorySyncService::class)->syncFromShopify(false),
+            'wayfair' => app(WayfairInventorySyncService::class)->syncFromShopify(false),
+            'bestbuy' => app(BestBuyInventorySyncService::class)->syncFromShopify(false),
+            'macy' => app(MacyInventorySyncService::class)->syncFromShopify(false),
+            'doba' => app(DobaInventorySyncService::class)->syncFromShopify(false),
             default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
         };
 

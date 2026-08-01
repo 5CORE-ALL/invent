@@ -13,6 +13,11 @@ use App\Http\Controllers\MarketPlace\Ebay1SyncController;
 use App\Http\Controllers\MarketPlace\Ebay2SyncController;
 use App\Http\Controllers\MarketPlace\Ebay3SyncController;
 use App\Http\Controllers\MarketPlace\TopDawgSyncController;
+use App\Http\Controllers\MarketPlace\PurchasingPowerSyncController;
+use App\Http\Controllers\MarketPlace\WayfairSyncController;
+use App\Http\Controllers\MarketPlace\BestBuySyncController;
+use App\Http\Controllers\MarketPlace\MacySyncController;
+use App\Http\Controllers\MarketPlace\DobaSyncController;
 use App\Http\Controllers\MarketPlace\TemuSyncController;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
@@ -26,7 +31,7 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire'];
 
     protected function getController(string $marketplace): ?object
     {
@@ -34,6 +39,11 @@ class MarketplaceController extends Controller
             'reverb' => app(ReverbSyncController::class),
             'topdawg' => app(TopDawgSyncController::class),
             'temu' => app(TemuSyncController::class),
+            'purchasingpower' => app(PurchasingPowerSyncController::class),
+            'wayfair' => app(WayfairSyncController::class),
+            'bestbuy' => app(BestBuySyncController::class),
+            'macy' => app(MacySyncController::class),
+            'doba' => app(DobaSyncController::class),
             'aliexpress' => app(AliexpressSyncController::class),
             'alibaba' => app(AlibabaSyncController::class),
             'newegg' => app(NeweggSyncController::class),
@@ -102,6 +112,21 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu') {
             return app(TemuSyncController::class)->pullProductFromTemu($shopifySku);
         }
+        if ($marketplace === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->pullProductFromPurchasingPower($shopifySku);
+        }
+        if ($marketplace === 'wayfair') {
+            return app(WayfairSyncController::class)->pullProductFromWayfair($shopifySku);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->pullProductFromBestBuy($shopifySku);
+        }
+        if ($marketplace === 'macy') {
+            return app(MacySyncController::class)->pullProductFromMacy($shopifySku);
+        if ($marketplace === 'doba') {
+            return app(DobaSyncController::class)->pullProductFromDoba($shopifySku);
+        }
+        }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pullProductFromAmazon($shopifySku);
         }
@@ -144,6 +169,21 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'temu') {
             return app(TemuSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'wayfair') {
+            return app(WayfairSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'macy') {
+            return app(MacySyncController::class)->pushProductInventory($shopifySku);
+        if ($marketplace === 'doba') {
+            return app(DobaSyncController::class)->pushProductInventory($shopifySku);
+        }
         }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pushProductInventory($shopifySku);
@@ -188,6 +228,21 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu') {
             return app(TemuSyncController::class)->pullOrderFromTemu($order);
         }
+        if ($marketplace === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->pullOrderFromPurchasingPower($order);
+        }
+        if ($marketplace === 'wayfair') {
+            return app(WayfairSyncController::class)->pullOrderFromWayfair($order);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->pullOrderFromBestBuy($order);
+        }
+        if ($marketplace === 'macy') {
+            return app(MacySyncController::class)->pullOrderFromMacy($order);
+        if ($marketplace === 'doba') {
+            return app(DobaSyncController::class)->pullOrderFromDoba($order);
+        }
+        }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pullOrderFromAmazon($order);
         }
@@ -230,6 +285,21 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'temu') {
             return app(TemuSyncController::class)->pushTrackingToTemu($order);
+        }
+        if ($marketplace === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->pushTrackingToPurchasingPower($order);
+        }
+        if ($marketplace === 'wayfair') {
+            return app(WayfairSyncController::class)->pushTrackingToWayfair($order);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->pushTrackingToBestBuy($order);
+        }
+        if ($marketplace === 'macy') {
+            return app(MacySyncController::class)->pushTrackingToMacy($order);
+        if ($marketplace === 'doba') {
+            return app(DobaSyncController::class)->pushTrackingToDoba($order);
+        }
         }
         if ($marketplace === 'amazon') {
             return app(AmazonSyncController::class)->pushTrackingToAmazon($order);
@@ -309,6 +379,21 @@ class MarketplaceController extends Controller
         if ($marketplace === 'temu') {
             return app(TemuSyncController::class)->saveSettings($request);
         }
+        if ($marketplace === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'wayfair') {
+            return app(WayfairSyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'macy') {
+            return app(MacySyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'doba') {
+            return app(DobaSyncController::class)->saveSettings($request);
+        }
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->saveSettings($request);
         }
@@ -362,6 +447,21 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'temu') {
             return app(TemuSyncController::class)->pushOrderToShopify($request);
         }
+        if (strtolower($marketplace) === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'wayfair') {
+            return app(WayfairSyncController::class)->pushOrderToShopify($request);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'macy') {
+            return app(MacySyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'doba') {
+            return app(DobaSyncController::class)->pushOrderToShopify($request);
+        }
         if (strtolower($marketplace) === 'amazon') {
             return app(AmazonSyncController::class)->pushOrderToShopify($request);
         }
@@ -403,6 +503,21 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'temu') {
             return app(TemuSyncController::class)->deleteReadyOrder($request);
         }
+        if (strtolower($marketplace) === 'purchasingpower') {
+            return app(PurchasingPowerSyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'wayfair') {
+            return app(WayfairSyncController::class)->deleteReadyOrder($request);
+        }
+        if ($marketplace === 'bestbuy') {
+            return app(BestBuySyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'macy') {
+            return app(MacySyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'doba') {
+            return app(DobaSyncController::class)->deleteReadyOrder($request);
+        }
         if (strtolower($marketplace) === 'amazon') {
             return app(AmazonSyncController::class)->deleteReadyOrder($request);
         }
@@ -432,6 +547,11 @@ class MarketplaceController extends Controller
             'shein' => app(SheinSyncController::class)->markOrderAlreadyImported($request),
             'topdawg' => app(TopDawgSyncController::class)->markOrderAlreadyImported($request),
             'temu' => app(TemuSyncController::class)->markOrderAlreadyImported($request),
+            'purchasingpower' => app(PurchasingPowerSyncController::class)->markOrderAlreadyImported($request),
+            'wayfair' => app(WayfairSyncController::class)->markOrderAlreadyImported($request),
+            'bestbuy' => app(BestBuySyncController::class)->markOrderAlreadyImported($request),
+            'macy' => app(MacySyncController::class)->markOrderAlreadyImported($request),
+            'doba' => app(DobaSyncController::class)->markOrderAlreadyImported($request),
             'amazon' => app(AmazonSyncController::class)->markOrderAlreadyImported($request),
             'ebay1' => app(Ebay1SyncController::class)->markOrderAlreadyImported($request),
             'ebay2' => app(Ebay2SyncController::class)->markOrderAlreadyImported($request),
@@ -444,7 +564,7 @@ class MarketplaceController extends Controller
     public function queueStatus(string $marketplace): JsonResponse
     {
         $marketplace = strtolower($marketplace);
-        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'ebay1', 'ebay2', 'ebay3', 'faire'], true)) {
+        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'faire'], true)) {
             return response()->json(['success' => false, 'message' => 'Queue status not available for this marketplace.'], 404);
         }
 

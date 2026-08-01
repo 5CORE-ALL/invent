@@ -1443,6 +1443,226 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Purchasing Power Marketplace Manager
+        $schedule->job(new \App\Jobs\SyncInventoryToPurchasingPower)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('purchasingpower'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('purchasingpower', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncPurchasingPowerTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncPurchasingPowerAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('purchasingpower:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('purchasingpower-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Wayfair Marketplace Manager
+        $schedule->job(new \App\Jobs\SyncInventoryToWayfair)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('wayfair'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('wayfair', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncWayfairTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncWayfairAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('wayfair:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('wayfair-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Best Buy Marketplace Manager
+        $schedule->job(new \App\Jobs\SyncInventoryToBestBuy)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('bestbuy'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('bestbuy', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncBestBuyTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncBestBuyAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('bestbuy:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Macy's Marketplace Manager
+        $schedule->job(new \App\Jobs\SyncInventoryToMacy)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('macy'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('macy', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMacyTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMacyAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('macy:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('macy-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Doba Marketplace Manager
+        $schedule->job(new \App\Jobs\SyncInventoryToDoba)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('doba'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('doba', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncDobaTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncDobaAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('doba:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('doba-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // eBay 1 Marketplace Manager: inventory/price from Shopify, orders to Shopify
         $schedule->job(new \App\Jobs\SyncInventoryToEbay1)
             ->everyFourHours()

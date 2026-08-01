@@ -17,7 +17,12 @@ class PurchasingPowerSale extends Model
         'tracking_number', 'tracking_url', 'customer_first_name',
         'customer_last_name', 'customer_city', 'customer_state',
         'customer_country', 'order_id',
+        'shopify_order_id', 'pushed_to_shopify_at', 'import_status', 'raw_payload',
     ];
 
-    protected $casts = ['date_created' => 'datetime'];
+    protected $casts = [
+        'date_created' => 'datetime',
+        'pushed_to_shopify_at' => 'datetime',
+        'raw_payload' => 'array',
+    ];
 }
