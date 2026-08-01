@@ -1577,17 +1577,18 @@
                     <div class="alert alert-info py-2 mb-3" style="font-size: 13px;">
                         <i class="fas fa-info-circle me-2"></i>
                         Enter a rate in any <em>(slab &times; carrier)</em> cell. On <strong>Apply</strong>, each rate is
-                        written to its carrier column for every non-parent SKU in that slab. Empty cells are skipped.
+                        written to every non-parent SKU in that slab (saved on each SKU in Product Master — there is no separate slab-rates table).
+                        The outer table shows the same slab rate, and on page load any SKU that differs is <strong>auto-saved</strong> to that rate
+                        so other pages read the same <code>Values</code> keys (<code>ship</code>, <code>ship_bb</code>, etc.).
                         <div class="text-muted mt-1">
                             <span class="badge bg-light text-dark border me-1" style="background-color: #f8fafc;">5.49</span>
-                            <span class="me-2">= filled SKUs in the slab share this value (missing ones can still be filled).</span>
+                            <span class="me-2">= filled SKUs in the slab share this value.</span>
                             <span class="badge bg-warning-subtle text-dark border me-1" style="background-color: #fffbeb;">mixed</span>
-                            <span class="me-2">= SKUs in that LB have different rates (shows majority; type a rate + Apply to overwrite).</span>
-                            Example: type <strong>6</strong> in a slab’s Ship cell → Apply → <strong>all</strong> SKUs in that LB get <code>ship=6</code>.
-                            <strong>Apply</strong> only saves columns you type in (Ship → <code>ship</code>, Temu → <code>temu_ship</code>).
+                            <span class="me-2">= SKUs have different stored rates (shows majority; Apply syncs all SKUs to that rate).</span>
+                            Example: type <strong>6</strong> in Ship → Apply → all SKUs in that LB get <code>ship=6</code>, and outer Ship shows <strong>6</strong>.
                         </div>
                         <div class="text-muted mt-1">
-                            Slabs use <strong>Item WT ACT (LB)</strong> &mdash; same bands as the column filter.
+                            Slabs use <strong>Item WT ACT Decl (LB)</strong> (ACT rounded up to the billable slab).
                             Carriers: Ship, Ship BB, TT 1 Ship, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
                         </div>
                     </div>
@@ -1663,6 +1664,24 @@
             let bulkEditList = null; // When set, save will update all these products with form values
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
+
+            // Same carriers as Slab Rates modal. Outer table shows these from the
+            // slab majority/consensus so Ship matches the modal for that weight band.
+            const SLAB_RATE_CARRIERS = [
+                { key: 'ship',       label: 'Ship' },
+                { key: 'ship_bb',    label: 'Ship BB' },
+                { key: 'tt_ship',    label: 'TT 1 Ship' },
+                { key: 'temu_ship',  label: 'Temu ship' },
+                { key: 'temu_gofo',  label: 'Temu GOFO' },
+                { key: 'gofo',       label: 'GOFO' },
+                { key: 'fedex',      label: 'Fedex' },
+                { key: 'ups',        label: 'UPS' },
+                { key: 'usps',       label: 'USPS' },
+                { key: 'uni',        label: 'UNI' }
+            ];
+            // { carrierKey: { slabKey: rate } } — rebuilt after every data load
+            let slabRateIndex = {};
+            let slabAutoSyncRunning = false;
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1751,16 +1770,21 @@
                         }
                         return response.json();
                     })
-                    .then(response => {
+                    .then(async response => {
                         if (response && response.data && Array.isArray(response.data)) {
                             tableData = response.data;
+                            rebuildSlabRateIndex();
                             applyFilters();
                             updateCounts();
                             refreshProductPlaybackState();
+                            document.getElementById('rainbow-loader').style.display = 'none';
+                            // Persist slab majority rates onto each SKU so other pages
+                            // (pricing, comparison, marketplaces) read the same Values keys.
+                            await syncSlabRatesToDatabase();
                         } else {
                             console.error('Invalid data format received from server');
+                            document.getElementById('rainbow-loader').style.display = 'none';
                         }
-                        document.getElementById('rainbow-loader').style.display = 'none';
                     })
                     .catch(error => {
                         console.error('Failed to load Shipping Master data: ' + error.message);
@@ -2099,32 +2123,35 @@
                     };
 
                     const shipPmCell = document.createElement('td');
-                    setShippingNumericCell(shipPmCell, item.ship, isParentRow);
+                    setShippingNumericCell(shipPmCell, getOuterCarrierDisplayRate(item, 'ship', isParentRow), isParentRow);
                     shipPmCell.classList.add('shipping-ship-col');
+                    annotateOuterCarrierCell(shipPmCell, item, 'ship', isParentRow);
                     row.appendChild(shipPmCell);
 
                     const shipBbPmCell = document.createElement('td');
-                    setShippingNumericCell(shipBbPmCell, item.ship_bb, isParentRow);
+                    setShippingNumericCell(shipBbPmCell, getOuterCarrierDisplayRate(item, 'ship_bb', isParentRow), isParentRow);
+                    annotateOuterCarrierCell(shipBbPmCell, item, 'ship_bb', isParentRow);
                     row.appendChild(shipBbPmCell);
 
                     const carrierShipHighlight = [];
-                    const appendCarrierShipCell = (rawValue, extraClass = '') => {
+                    const appendCarrierShipCell = (carrierKey, extraClass = '') => {
                         const td = document.createElement('td');
-                        setShippingNumericCell(td, rawValue, isParentRow);
+                        setShippingNumericCell(td, getOuterCarrierDisplayRate(item, carrierKey, isParentRow), isParentRow);
+                        annotateOuterCarrierCell(td, item, carrierKey, isParentRow);
                         if (extraClass) td.classList.add(...extraClass.split(/\s+/).filter(Boolean));
                         const value = carrierShipNumericFromCell(td);
                         if (value !== null) carrierShipHighlight.push({ td, value });
                         row.appendChild(td);
                     };
 
-                    appendCarrierShipCell(item.tt_ship);
-                    appendCarrierShipCell(item.temu_ship);
-                    appendCarrierShipCell(item.temu_gofo);
-                    appendCarrierShipCell(item.gofo);
-                    appendCarrierShipCell(item.fedex, 'hide-carrier-col');
-                    appendCarrierShipCell(item.ups, 'hide-carrier-col');
-                    appendCarrierShipCell(item.usps, 'hide-carrier-col');
-                    appendCarrierShipCell(item.uni, 'hide-carrier-col');
+                    appendCarrierShipCell('tt_ship');
+                    appendCarrierShipCell('temu_ship');
+                    appendCarrierShipCell('temu_gofo');
+                    appendCarrierShipCell('gofo');
+                    appendCarrierShipCell('fedex', 'hide-carrier-col');
+                    appendCarrierShipCell('ups', 'hide-carrier-col');
+                    appendCarrierShipCell('usps', 'hide-carrier-col');
+                    appendCarrierShipCell('uni', 'hide-carrier-col');
                     highlightCarrierShipMinMax(carrierShipHighlight);
 
                     const fbaSkuCell = document.createElement('td');
@@ -3234,7 +3261,10 @@
             function matchesMarketplaceShipColFilter(item, fieldName, mode) {
                 if (!mode || mode === 'all') return true;
                 const isP = isParentSkuItem(item);
-                const raw = item[fieldName];
+                // Filter against the same value the outer cell shows (slab rate).
+                const raw = (typeof getOuterCarrierDisplayRate === 'function')
+                    ? getOuterCarrierDisplayRate(item, fieldName, isP)
+                    : item[fieldName];
                 const kind = marketplaceShipDisplayKind(raw, isP);
                 if (mode === 'zero') return kind === 'zero';
                 if (mode === 'dash') return kind === 'dash';
@@ -3372,9 +3402,9 @@
             ];
 
             /**
-             * Round ACT weight UP for Declared display.
-             * ≥ 1 lb → next whole lb (2.4 → 3, 2.0 → 2).
-             * < 1 lb → next oz slab cap.
+             * Round ACT weight UP to the billable Declared slab ceiling.
+             * < 1 lb → next oz slab cap (2 / 4 / 8 / 12 / 15.99 oz).
+             * ≥ 1 lb → containing upward LB band max (1.1 → 2, 14.5 → 20).
              */
             function roundWeightLbUpToSlab(lb) {
                 if (lb === null || !Number.isFinite(lb) || lb <= 0) return null;
@@ -3385,18 +3415,44 @@
                     for (let i = 0; i < WT_ACT_DECL_OZ_SLAB_CAPS.length; i++) {
                         const cap = WT_ACT_DECL_OZ_SLAB_CAPS[i];
                         if (oz <= cap + 1e-9) {
-                            return Math.round((cap / 16) * 100) / 100;
+                            // Keep precision so 2 oz = 0.125 stays inside oz_2 (lbMax 0.125).
+                            // 15.99 oz → ~1 lb billable → lands in the 1–2 lb slab.
+                            const exact = cap / 16;
+                            return cap >= 15.99 ? 1 : Math.round(exact * 10000) / 10000;
                         }
                     }
                     return 1;
                 }
 
+                for (let i = 0; i < WT_ACT_UPWARD_LB_BANDS.length; i++) {
+                    const band = WT_ACT_UPWARD_LB_BANDS[i];
+                    if (band.lbMax == null) {
+                        if (lb >= (band.lbMin != null ? band.lbMin : 0)) {
+                            return Math.ceil(lb - 1e-9);
+                        }
+                        continue;
+                    }
+                    if (lb <= band.lbMax + 1e-9) {
+                        return band.lbMax;
+                    }
+                }
+
                 return Math.ceil(lb - 1e-9);
             }
 
-            /** Declared = ACT weight rounded up (always derived from ACT). */
+            /** Declared = ACT weight rounded up to the shipping slab ceiling. */
             function itemWeightDeclLbRounded(item) {
                 return roundWeightLbUpToSlab(itemWeightActLbResolved(item));
+            }
+
+            /**
+             * Weight used for Slab Rates banding: Declared (billable) LB.
+             * Falls back to ACT when Declared cannot be resolved.
+             */
+            function itemWeightForSlabLb(item) {
+                const decl = itemWeightDeclLbRounded(item);
+                if (decl !== null && Number.isFinite(decl) && decl > 0) return decl;
+                return itemWeightActLbResolved(item);
             }
 
             function itemWeightDeclDisplay(item, isParentRow) {
@@ -3485,6 +3541,21 @@
                 return w > lowerExclusive && w <= def.lbMax;
             }
 
+            /** Match a resolved lb weight against a slab/filter band key. */
+            function matchesLbWeightBandValue(w, band) {
+                if (band === 'lb_0') {
+                    return w === null || w === 0;
+                }
+                if (w === null || !Number.isFinite(w)) return false;
+                if (band === 'oz_1599' || /^oz_\d+$/.test(band)) {
+                    return matchesWtActOzLbBand(w, band);
+                }
+                if (WT_ACT_UPWARD_LB_BANDS.some(b => b.key === band)) {
+                    return matchesWtActUpwardLbBand(w, band);
+                }
+                return true;
+            }
+
             /** Item WT ACT (lb) preset bands (filterWtAct select values). */
             function matchesWtActLbBand(item, band) {
                 if (!band || band === 'all') return true;
@@ -3495,15 +3566,20 @@
                     const w = itemWeightActLbResolved(item);
                     return w === null || w === 0;
                 }
-                const w = itemWeightActLbResolved(item);
-                if (w === null || !Number.isFinite(w)) return false;
-                if (band === 'oz_1599' || /^oz_\d+$/.test(band)) {
-                    return matchesWtActOzLbBand(w, band);
+                return matchesLbWeightBandValue(itemWeightActLbResolved(item), band);
+            }
+
+            /**
+             * Slab Rates banding — uses Declared (billable) weight so outer Ship
+             * lines up with the LB slab the Declared column rounds into.
+             */
+            function matchesSlabWeightBand(item, band) {
+                if (!band || band === 'all') return true;
+                if (band === 'missing' || band === 'lb_0') {
+                    const act = itemWeightActLbResolved(item);
+                    return act === null || act === 0;
                 }
-                if (WT_ACT_UPWARD_LB_BANDS.some(b => b.key === band)) {
-                    return matchesWtActUpwardLbBand(w, band);
-                }
-                return true;
+                return matchesLbWeightBandValue(itemWeightForSlabLb(item), band);
             }
 
             // Apply all filters
@@ -5017,23 +5093,8 @@
             });
 
             // Slab Rates: apply per-carrier rates to all SKUs in a weight slab.
-            // Uses the same Item WT ACT (LB) bands as the filter dropdown so
-            // "what you filter" matches "what gets the rate".
-
-            // Carriers shown as columns in the slab matrix. Keys match the
-            // backend /dim-wt-master/update payload fields (and Values keys).
-            const SLAB_RATE_CARRIERS = [
-                { key: 'ship',       label: 'Ship' },
-                { key: 'ship_bb',    label: 'Ship BB' },
-                { key: 'tt_ship',    label: 'TT 1 Ship' },
-                { key: 'temu_ship',  label: 'Temu ship' },
-                { key: 'temu_gofo',  label: 'Temu GOFO' },
-                { key: 'gofo',       label: 'GOFO' },
-                { key: 'fedex',      label: 'Fedex' },
-                { key: 'ups',        label: 'UPS' },
-                { key: 'usps',       label: 'USPS' },
-                { key: 'uni',        label: 'UNI' }
-            ];
+            // Bands use Declared (billable) weight — ACT rounded up to the slab
+            // ceiling — so outer Ship matches the LB slab Declared rounds into.
 
             function getSlabDefinitions() {
                 const slabs = [{ key: 'lb_0', label: '0 lb' }];
@@ -5050,8 +5111,165 @@
             function getNonParentItemsInSlab(slabKey) {
                 if (!Array.isArray(tableData)) return [];
                 return tableData.filter(item =>
-                    item && !isParentSkuItem(item) && matchesWtActLbBand(item, slabKey)
+                    item && !isParentSkuItem(item) && matchesSlabWeightBand(item, slabKey)
                 );
+            }
+
+            /** Declared-weight slab key for one SKU (same banding as Slab Rates modal). */
+            function resolveItemSlabKey(item) {
+                if (!item || isParentSkuItem(item)) return null;
+                const slabs = getSlabDefinitions();
+                for (let i = 0; i < slabs.length; i++) {
+                    if (matchesSlabWeightBand(item, slabs[i].key)) return slabs[i].key;
+                }
+                return null;
+            }
+
+            /**
+             * Rebuild slab majority/consensus rates from current tableData.
+             * Outer Ship columns read from this so they match the Slab modal.
+             * There is no separate "slab rates" DB table — rates live per SKU
+             * in Values.ship; the modal (and this index) are the group summary.
+             */
+            function rebuildSlabRateIndex() {
+                const next = {};
+                SLAB_RATE_CARRIERS.forEach(c => { next[c.key] = {}; });
+                if (!Array.isArray(tableData) || tableData.length === 0) {
+                    slabRateIndex = next;
+                    return;
+                }
+                getSlabDefinitions().forEach(slab => {
+                    const items = getNonParentItemsInSlab(slab.key);
+                    if (items.length === 0) return;
+                    SLAB_RATE_CARRIERS.forEach(c => {
+                        const summary = computeSlabCarrierSummary(items, c.key);
+                        const rate = summary.consensusValue !== null
+                            ? summary.consensusValue
+                            : summary.majorityValue;
+                        if (rate !== null && Number.isFinite(rate)) {
+                            next[c.key][slab.key] = rate;
+                        }
+                    });
+                });
+                slabRateIndex = next;
+            }
+
+            /** Rate shown on the outer table = Slab modal rate for that weight band. */
+            function getOuterCarrierDisplayRate(item, carrierKey, isParentRow) {
+                if (!item || isParentRow) return item ? item[carrierKey] : null;
+                const slabKey = resolveItemSlabKey(item);
+                if (slabKey && slabRateIndex[carrierKey] && slabRateIndex[carrierKey][slabKey] != null) {
+                    return slabRateIndex[carrierKey][slabKey];
+                }
+                return item[carrierKey];
+            }
+
+            /** Tooltip when SKU-stored value differs from the slab rate shown. */
+            function annotateOuterCarrierCell(td, item, carrierKey, isParentRow) {
+                if (!td || !item || isParentRow) return;
+                const slabKey = resolveItemSlabKey(item);
+                const slabRate = (slabKey && slabRateIndex[carrierKey])
+                    ? slabRateIndex[carrierKey][slabKey]
+                    : null;
+                if (slabRate == null || !Number.isFinite(slabRate)) return;
+                const storedRaw = item[carrierKey];
+                const stored = (storedRaw === null || storedRaw === undefined || storedRaw === '')
+                    ? null
+                    : parseFloat(storedRaw);
+                const storedNorm = Number.isFinite(stored) ? normalizeSlabRate(stored) : null;
+                const slabNorm = normalizeSlabRate(slabRate);
+                if (storedNorm !== slabNorm) {
+                    const storedLabel = storedNorm === null ? 'missing' : ('$' + formatSlabRate(storedNorm));
+                    td.title = `Slab rate $${formatSlabRate(slabNorm)} (SKU stored ${storedLabel}). Saving to Product Master…`;
+                } else {
+                    td.title = `Slab rate $${formatSlabRate(slabNorm)} (saved)`;
+                }
+            }
+
+            /**
+             * Write slab majority/consensus rates onto each SKU's Values.{carrier}
+             * so outer table AND other pages use the same saved keys.
+             */
+            async function syncSlabRatesToDatabase() {
+                if (slabAutoSyncRunning) return;
+                if (!Array.isArray(tableData) || tableData.length === 0) return;
+
+                const perSku = new Map();
+                tableData.forEach(item => {
+                    if (!item || isParentSkuItem(item) || item.id == null) return;
+                    const slabKey = resolveItemSlabKey(item);
+                    if (!slabKey) return;
+
+                    const fields = {};
+                    SLAB_RATE_CARRIERS.forEach(c => {
+                        const slabRate = slabRateIndex[c.key] ? slabRateIndex[c.key][slabKey] : null;
+                        if (slabRate == null || !Number.isFinite(slabRate)) return;
+                        const rate = normalizeSlabRate(slabRate);
+                        if (rate === null) return;
+
+                        const raw = item[c.key];
+                        if (raw === null || raw === undefined || raw === '') {
+                            fields[c.key] = rate;
+                            return;
+                        }
+                        const n = parseFloat(raw);
+                        if (!Number.isFinite(n) || normalizeSlabRate(n) !== rate) {
+                            fields[c.key] = rate;
+                        }
+                    });
+
+                    if (Object.keys(fields).length === 0) return;
+                    perSku.set(String(item.id), { item, fields });
+                });
+
+                if (perSku.size === 0) return;
+
+                slabAutoSyncRunning = true;
+                const entries = Array.from(perSku.values());
+                showToast('info', `Saving slab rates to ${entries.length} SKU(s)…`);
+
+                let success = 0;
+                let failed = 0;
+                const concurrency = 6;
+
+                for (let i = 0; i < entries.length; i += concurrency) {
+                    const batch = entries.slice(i, i + concurrency);
+                    const results = await Promise.all(batch.map(async ({ item, fields }) => {
+                        try {
+                            const response = await fetch('/dim-wt-master/update', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': csrfToken
+                                },
+                                body: JSON.stringify({
+                                    product_id: item.id,
+                                    sku: item.SKU,
+                                    parent: item.Parent || '',
+                                    ...fields
+                                })
+                            });
+                            if (!response.ok) return false;
+                            // Keep in-memory row in sync with what we just saved
+                            Object.keys(fields).forEach(k => { item[k] = fields[k]; });
+                            return true;
+                        } catch (e) {
+                            return false;
+                        }
+                    }));
+                    results.forEach(ok => { if (ok) success++; else failed++; });
+                }
+
+                rebuildSlabRateIndex();
+                applyFilters();
+                updateCounts();
+
+                if (failed === 0) {
+                    showToast('success', `Saved slab rates on ${success} SKU(s). Other pages will use these Values keys.`);
+                } else {
+                    showToast('warning', `Saved ${success} SKU(s), ${failed} failed.`);
+                }
+                slabAutoSyncRunning = false;
             }
 
             function isCarrierValueMissing(item, carrierKey) {
@@ -5274,9 +5492,15 @@
                 const slabsTouched = new Set();
 
                 inputs.forEach(inp => {
-                    // Only columns the user typed/filled — never silently write
-                    // an untouched Ship cell when they only edited Temu (etc.).
-                    if (inp.getAttribute('data-user-edited') !== '1') return;
+                    // Apply writes:
+                    //  1) cells the user typed
+                    //  2) mixed cells (majority shown) — sync outliers so outer
+                    //     Ship matches the LB slab rate without re-typing
+                    //  3) consensus cells with missing SKUs — fill the gaps
+                    const userEdited = inp.getAttribute('data-user-edited') === '1';
+                    const isMixed = inp.getAttribute('data-is-mixed') === '1';
+                    const needsMissing = inp.getAttribute('data-needs-missing-fill') === '1';
+                    if (!userEdited && !isMixed && !needsMissing) return;
 
                     const raw = String(inp.value || '').trim();
                     if (raw === '') return;
@@ -5286,11 +5510,20 @@
                     const carrierKey = inp.getAttribute('data-carrier-key');
                     if (!slabKey || !carrierKey) return;
 
-                    // scope "all" = every SKU in the slab (outliers overwritten).
                     let items = getNonParentItemsInSlab(slabKey);
                     if (scope === 'missing') {
                         items = items.filter(it => isCarrierValueMissing(it, carrierKey));
+                    } else if (!userEdited && isMixed) {
+                        // Untouched mixed: only rewrite SKUs that differ / are missing
+                        items = items.filter(it => {
+                            if (isCarrierValueMissing(it, carrierKey)) return true;
+                            const n = parseFloat(it[carrierKey]);
+                            return !Number.isFinite(n) || normalizeSlabRate(n) !== normalizeSlabRate(rate);
+                        });
+                    } else if (!userEdited && needsMissing) {
+                        items = items.filter(it => isCarrierValueMissing(it, carrierKey));
                     }
+                    // userEdited + scope all → every SKU in the slab
                     if (items.length === 0) return;
 
                     totalCellsApplied++;
@@ -5306,7 +5539,7 @@
                 });
 
                 if (perSku.size === 0) {
-                    showToast('warning', 'Nothing to apply. Type a rate in the carrier column you want (Ship, Temu, …) — only edited columns are saved.');
+                    showToast('warning', 'Nothing to apply. Type a rate, or Apply on mixed / partially-filled slab cells to sync outer Ship with the LB slab rate.');
                     return;
                 }
 

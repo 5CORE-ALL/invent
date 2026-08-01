@@ -2516,29 +2516,48 @@
                 const mpLower = (item.marketplace || '').toLowerCase();
                 const isDobaMp = mpLower === 'doba';
                 const isReverbMp = mpLower === 'reverb';
-                const isNoAdsMp = isDobaMp || isReverbMp;
-                // Doba/Reverb: Ads% = 0 (same as channel pricing pages); others use channel Ads%
-                const tacosCh = isNoAdsMp ? 0 : parseFloat(item.tacos_ch || 0);
-                // NPFT% = GPFT% − Ads%; Doba/Reverb NPFT = GPFT (no ads)
-                const npft = isNoAdsMp ? gpft : (gpft - tacosCh);
+                const isEbayMp = ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower);
+                const isPpMp = mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase';
+                const isTdMp = mpLower === 'topdawg';
+                const isSheinMp = mpLower === 'shein';
+                // Doba/PPower/TopDawg/Shein: Ads% = 0; Reverb/eBay use channel Ads% (pricing tabulators)
+                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp;
+                // Temu: every row uses aggregate Ads% (~2.6%) — same as /temu-decrease badgeAvgAds
+                const isTemuMpRow = mpLower === 'temu';
+                const isTemu2MpRow = mpLower === 'temu2';
+                const tacosCh = (isNoAdsMp || isTemu2MpRow) ? 0 : parseFloat(item.tacos_ch || 0);
+                const adsDisplay = tacosCh;
+                // NPFT% = GPFT% − Ads%; Temu skips subtract when Ads%=100 (same as /temu-decrease)
+                let npft;
+                if (isNoAdsMp || isTemu2MpRow) {
+                    npft = gpft;
+                } else if (isTemuMpRow && tacosCh === 100) {
+                    npft = gpft;
+                } else {
+                    npft = gpft - tacosCh;
+                }
 
                 // SPRICE and calculated values
                 const sprice = parseFloat(item.sprice || 0);
                 const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
-                const ship = parseFloat(item.ship || 0);
-                // Doba margin default 0.95; Reverb 0.85; others 0.80
-                const margin = parseFloat(item.margin || (isDobaMp ? 0.95 : (isReverbMp ? 0.85 : 0.80)));
+                // PPower/TopDawg: ship excluded from all formulas
+                const ship = (isPpMp || isTdMp) ? 0 : parseFloat(item.ship || 0);
+                // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
+                const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
+                const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
+                    ? parseFloat(item.margin)
+                    : (isDobaMp ? 0.95 : ((isReverbMp || isEbay23Mp) ? 0.85 : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80))));
 
                 // GROI% = (Price × Margin − LP − Ship) ÷ LP × 100
-                // Doba/Reverb NROI = GROI (no ads); Temu uses GROI−Ads%; else dollar-ads/LP
+                // Doba NROI = GROI (no ads); Temu uses GROI−Ads%; Reverb/others: dollar-ads/LP
                 let groi = 0, nroi = 0;
                 if (lp > 0 && price > 0) {
                     const grossProfit = price * margin - lp - ship;
                     groi = (grossProfit / lp) * 100;
-                    if (isNoAdsMp) {
+                    if (isNoAdsMp || isTemu2MpRow) {
                         nroi = groi;
-                    } else if (mpLower === 'temu' || mpLower === 'temu2') {
+                    } else if (isTemuMpRow) {
                         nroi = (tacosCh === 100) ? groi : (groi - tacosCh);
                     } else {
                         const adsPerUnit = price * (tacosCh / 100);
@@ -2551,19 +2570,21 @@
                     const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                     const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
                     sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
-                    // Doba/Reverb: SPFT = SGPFT (no ads); TikTok/Temu/Temu2: SPFT = SGPFT − channel Ads%; else L30==0 skip-ads
-                    if (isNoAdsMp) {
+                    // Doba: SPFT = SGPFT; Reverb/eBay/TikTok/Temu: SPFT = SGPFT − Ads%; else L30==0 skip-ads
+                    if (isNoAdsMp || isTemu2MpRow) {
                         spft = sgpft;
-                    } else if (mpLower === 'tiktok' || mpLower === 'temu' || mpLower === 'temu2') {
+                    } else if (mpLower === 'tiktok' || isTemuMpRow || isReverbMp || isEbayMp) {
                         spft = (tacosCh === 100) ? sgpft : (sgpft - tacosCh);
                     } else {
                         spft = (l30 == 0 ? sgpft : (sgpft - ad));
                     }
                     sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
-                    // SNROI%: Doba/Reverb = SROI (no ads); others subtract SPRICE × Ads%
+                    // SNROI%: Doba/Temu2 = SROI; Temu = SROI − Ads%; others (incl. Reverb) subtract SPRICE × Ads$
                     if (lp > 0) {
-                        if (isNoAdsMp) {
+                        if (isNoAdsMp || isTemu2MpRow) {
                             snroi = sroi;
+                        } else if (isTemuMpRow) {
+                            snroi = (tacosCh === 100) ? sroi : (sroi - tacosCh);
                         } else {
                             const sGross = calcSp * margin - lp - ship;
                             const sAds = calcSp * (tacosCh / 100);
@@ -2572,7 +2593,7 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower'].includes(mpLower);
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -2593,9 +2614,10 @@
                 else if (gpft <= 40) { gpftColor = '#28a745'; gpftStyle = styleForCellColor(gpftColor); }
                 else { gpftStyle = 'color:#4e0dab;font-weight:700;'; }
                 
-                // Ads% color — channel Ads% (same thresholds as /all-marketplace-master)
-                if (tacosCh < 5) adColor = '#e83e8c';
-                else if (tacosCh <= 10) adColor = '#28a745';
+                // Ads% color — Temu uses per-SKU Ads%; others use channel Ads%
+                const adsColorVal = isTemuMpRow ? adsDisplay : tacosCh;
+                if (adsColorVal < 5) adColor = '#e83e8c';
+                else if (adsColorVal <= 10) adColor = '#28a745';
                 else adColor = '#a00211';
                 
                 // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
@@ -2701,7 +2723,7 @@
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'fba'
+                    'reverb', 'fba', 'topdawg'
                 ];
                 const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
                 const hasPushableSprice = parseFloat(item.sprice) > 0;
@@ -2747,7 +2769,7 @@
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(tacosCh) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(adsDisplay) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">
                             ${(() => {
                                 if (!isListed) return '-';
@@ -3990,13 +4012,21 @@
             const row = input.closest('tr');
             const sprice = parseFloat(input.val()) || 0;
             const lp = parseFloat(row.attr('data-lp')) || 0;
-            const ship = parseFloat(row.attr('data-ship')) || 0;
             const ad = parseFloat(row.attr('data-ad')) || 0;
             const mpForMargin = String(row.attr('data-marketplace') || '').toLowerCase();
-            const isNoAdsEdit = (mpForMargin === 'doba' || mpForMargin === 'reverb');
+            const isPpEdit = (mpForMargin === 'ppower' || mpForMargin === 'purchasingpower' || mpForMargin === 'purchase');
+            const isTdEdit = (mpForMargin === 'topdawg');
+            const isSheinEdit = (mpForMargin === 'shein');
+            const isNoAdsEdit = (mpForMargin === 'doba' || isPpEdit || isTdEdit || isSheinEdit);
+            // PPower/TopDawg: ship excluded
+            const ship = (isPpEdit || isTdEdit) ? 0 : (parseFloat(row.attr('data-ship')) || 0);
             const tacosCh = isNoAdsEdit ? 0 : (parseFloat(row.attr('data-tacos-ch')) || 0);
-            const margin = parseFloat(row.attr('data-margin'))
-                || (mpForMargin === 'doba' ? 0.95 : (mpForMargin === 'reverb' ? 0.85 : 0.80));
+            const marginAttr = row.attr('data-margin');
+            const margin = (marginAttr !== null && marginAttr !== undefined && marginAttr !== '')
+                ? parseFloat(marginAttr)
+                : (mpForMargin === 'doba' ? 0.95
+                    : ((mpForMargin === 'reverb' || ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpForMargin)) ? 0.85
+                        : (isPpEdit ? 0.65 : (isTdEdit ? 0 : 0.80))));
             const l30 = parseFloat(row.attr('data-l30')) || 0;
             
             const $sgpftSpan = row.find('.calculated-sgpft');
@@ -4007,12 +4037,14 @@
             if (sprice > 0) {
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
                 const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
-                const isNoAdsMp = (mpLower === 'doba' || mpLower === 'reverb');
+                const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit);
                 const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
                 const sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
-                // Doba/Reverb: no ads (same as channel pricing pages)
+                // Doba/Shein: no ads; Reverb/eBay/TikTok: SGPFT − channel Ads%
+                const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
+                    || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
                 const spft = isNoAdsMp ? sgpft
-                    : ((mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+                    : (isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
                 const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
                 const snroi = lp > 0
                     ? (isNoAdsMp
@@ -4055,17 +4087,25 @@
             if (!sku || sprice === 0) return;
             
             const lp = parseFloat(row.attr('data-lp')) || 0;
-            const ship = parseFloat(row.attr('data-ship')) || 0;
-            const ad = parseFloat(row.attr('data-ad')) || 0;
-            const tacosCh = parseFloat(row.attr('data-tacos-ch')) || 0;
-            const margin = parseFloat(row.attr('data-margin')) || 0.80;
-            const l30 = parseFloat(row.attr('data-l30')) || 0;
             const mpLower = String(marketplace || '').toLowerCase();
+            const isNoAdsBlur = (mpLower === 'doba' || mpLower === 'ppower' || mpLower === 'purchasingpower'
+                || mpLower === 'purchase' || mpLower === 'topdawg' || mpLower === 'shein');
+            const ship = (mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase'
+                || mpLower === 'topdawg') ? 0 : (parseFloat(row.attr('data-ship')) || 0);
+            const ad = parseFloat(row.attr('data-ad')) || 0;
+            const tacosCh = isNoAdsBlur ? 0 : (parseFloat(row.attr('data-tacos-ch')) || 0);
+            const marginAttrBlur = row.attr('data-margin');
+            const margin = (marginAttrBlur !== null && marginAttrBlur !== undefined && marginAttrBlur !== '')
+                ? parseFloat(marginAttrBlur) : 0.80;
+            const l30 = parseFloat(row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
             
             const sgpft = sprice > 0 ? ((calcSp * margin - ship - lp) / calcSp) * 100 : 0;
-            const spft = (mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
+            const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
+                || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
+            const spft = isNoAdsBlur ? sgpft
+                : (isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
             
             input.css('border-color', '#ff9c00');
@@ -4131,19 +4171,29 @@
             const sku = getModalPrimarySku() || $row.attr('data-sku');
             const marketplace = $row.attr('data-marketplace');
             const lp = parseFloat($row.attr('data-lp')) || 0;
-            const ship = parseFloat($row.attr('data-ship')) || 0;
             const ad = parseFloat($row.attr('data-ad')) || 0;
-            const tacosCh = parseFloat($row.attr('data-tacos-ch')) || 0;
             const mpLower = String(marketplace || '').toLowerCase();
-            const isNoAdsMp = (mpLower === 'doba' || mpLower === 'reverb');
-            const margin = parseFloat($row.attr('data-margin'))
-                || (mpLower === 'doba' ? 0.95 : (mpLower === 'reverb' ? 0.85 : 0.80));
+            const isPpMp = (mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase');
+            const isTdMp = (mpLower === 'topdawg');
+            const isSheinMp = (mpLower === 'shein');
+            const isNoAdsMp = (mpLower === 'doba' || isPpMp || isTdMp || isSheinMp);
+            // PPower/TopDawg: ship excluded (Shein uses product_master ship)
+            const ship = (isPpMp || isTdMp) ? 0 : (parseFloat($row.attr('data-ship')) || 0);
+            const tacosCh = isNoAdsMp ? 0 : (parseFloat($row.attr('data-tacos-ch')) || 0);
+            const marginAttrSave = $row.attr('data-margin');
+            const margin = (marginAttrSave !== null && marginAttrSave !== undefined && marginAttrSave !== '')
+                ? parseFloat(marginAttrSave)
+                : (mpLower === 'doba' ? 0.95
+                    : ((mpLower === 'reverb' || ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)) ? 0.85
+                        : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80))));
             const l30 = parseFloat($row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
             const sgpft = sprice > 0 ? ((calcSp * margin - ship - lp) / calcSp) * 100 : 0;
+            const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
+                || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
             const spft = isNoAdsMp ? sgpft
-                : ((mpLower === 'tiktok') ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+                : (isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
 
             if (!sku || !marketplace) {
@@ -4386,7 +4436,8 @@
                 const mpLower = String($tr.attr('data-marketplace') || '').toLowerCase();
                 let margin = parseFloat($tr.attr('data-margin'));
                 if (!(margin > 0)) {
-                    margin = (mpLower === 'doba') ? 0.95 : (mpLower === 'reverb' ? 0.85 : 0.80);
+                    margin = (mpLower === 'doba') ? 0.95
+                        : ((mpLower === 'reverb' || ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower)) ? 0.85 : 0.80);
                 }
                 const computed = computeFn({ lp: lp, ship: ship, margin: margin, marketplace: mpLower });
                 if (!computed || !(computed.newPrice > 0)) {
@@ -4756,7 +4807,7 @@
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'temu', 'temu2', 'tiktok', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
                     'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
-                    'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower'
+                    'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
                 ];
                 const editable = editableChannels.includes(mp);
 
@@ -4934,11 +4985,15 @@
                 const lp = parseFloat($tr.attr('data-lp')) || (item ? parseFloat(item.lp) || 0 : 0);
                 const ship = parseFloat($tr.attr('data-ship')) || (item ? parseFloat(item.ship) || 0 : 0);
                 const ad = parseFloat($tr.attr('data-ad')) || (item ? parseFloat(item.ad) || 0 : 0);
+                const tacosCh = parseFloat($tr.attr('data-tacos-ch')) || (item ? parseFloat(item.tacos_ch) || 0 : 0);
                 const margin = parseFloat($tr.attr('data-margin')) || (item ? parseFloat(item.margin) || 0.80 : 0.80);
                 const l30 = parseFloat($tr.attr('data-l30')) || (item ? parseInt(item.l30) || 0 : 0);
+                const mpLower = String(s.marketplace || '').toLowerCase();
                 const sprice = s.suggested;
                 const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
-                const spft = l30 == 0 ? sgpft : (sgpft - ad);
+                const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
+                    || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
+                const spft = isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
                 const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
 
                 $.ajax({

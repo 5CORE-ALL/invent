@@ -231,13 +231,12 @@ class TopDawgSyncController extends Controller
     }
 
     /**
-     * Take-home % from marketplace_percentages for TopDawg (default 95).
+     * Take-home % from marketplace_percentages (marketplace = TopDawg) only — no hardcoded fallback.
      */
     private function topDawgMarketplacePercentage(): float
     {
         $fromTable = MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');
-        $percentage = $fromTable !== null ? (float) $fromTable : 95.0;
 
-        return $percentage > 0 ? $percentage : 95.0;
+        return $fromTable !== null ? (float) $fromTable : 0.0;
     }
 }

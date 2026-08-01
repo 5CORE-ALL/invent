@@ -1148,6 +1148,15 @@ class CategoryController extends Controller
             // Log history for every changed field (Values + FBA)
             $this->logShippingMasterChanges($product, $validated, $oldValues, $values, $fbaOldShip, $fbaOldManualTotal);
 
+            // Invalidate comparison / API slab-rate cache when ship fields change
+            $shipKeys = ['ship', 'ship_bb', 'tt_ship', 'temu_ship', 'ebay2_ship', 'gofo', 'temu_gofo', 'fedex', 'ups', 'usps', 'uni'];
+            foreach ($shipKeys as $shipKey) {
+                if (array_key_exists($shipKey, $validated)) {
+                    Cache::forget("shipping_slab_rates:{$shipKey}");
+                    Cache::forget("shipping_slab_rates_decl_v2:{$shipKey}");
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Dim & Wt Master updated successfully',

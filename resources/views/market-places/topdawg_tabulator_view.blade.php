@@ -117,7 +117,7 @@
                             <option value="30plus">30%+</option>
                         </select>
                         {{-- GROI / ROI% bracket filter — backed by the per-row `ROI%` field
-                             (((TD Price × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) / LP) × 100).
+                             (((TD Price × {{ $topdawgPercentage }}% − LP) / LP) × 100 — no ship).
                              Brackets match the column's existing color thresholds
                              (red < 40, yellow 40–75, green 75–125, pink ≥ 125) so the
                              dropdown options stay visually consistent with the cell colors. --}}
@@ -207,7 +207,7 @@
                         {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%. --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                             id="target-roi-controls"
-                            title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% on every selected row (back-solves so SROI column equals the target)">
+                            title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ $topdawgPercentage }}% on every selected row (no ship)">
                             <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
                                    aria-label="Target ROI percent">
                                 <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
@@ -216,7 +216,7 @@
                                 placeholder="30" step="0.1" style="width: 80px;"
                                 title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
                             <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                                title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / {{ $topdawgPercentage ?? 95 }}% for every selected row"
+                                title="Apply — Compute & save S PRC = (LP × (1 + Target ROI%/100)) / {{ $topdawgPercentage }}% for every selected row (no ship)"
                                 aria-label="Apply Target ROI">
                                 <i class="fas fa-calculator"></i>
                             </button>
@@ -225,16 +225,16 @@
                         {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%. --}}
                         <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                             id="target-gpft-controls"
-                            title="Target GPFT% — sets S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) on every selected row">
+                            title="Target GPFT% — sets S PRC = LP / ({{ $topdawgPercentage }}% − Target GPFT%/100) on every selected row (no ship)">
                             <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
                                    aria-label="Target GPFT percent">
                                 <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                             </label>
                             <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                                 placeholder="30" step="0.1" style="width: 80px;"
-                                title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the TopDawg take-home margin ({{ $topdawgPercentage ?? 95 }}%).">
+                                title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the TopDawg take-home margin ({{ $topdawgPercentage }}%).">
                             <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                                title="Apply — Compute & save S PRC = (LP + Ship) / ({{ $topdawgPercentage ?? 95 }}% − Target GPFT%/100) for every selected row"
+                                title="Apply — Compute & save S PRC = LP / ({{ $topdawgPercentage }}% − Target GPFT%/100) for every selected row (no ship)"
                                 aria-label="Apply Target GPFT">
                                 <i class="fas fa-calculator"></i>
                             </button>
@@ -295,7 +295,7 @@
 @section('script-bottom')
 <script>
     const TD_MAP_TOLERANCE = 3;
-    const TD_PERCENTAGE    = {{ $topdawgPercentage ?? 95 }} / 100;
+    const TD_PERCENTAGE    = {{ $topdawgPercentage }} / 100;
     // Pinned to /topdawg/sales-dashboard Total Revenue / PFT% / ROI%.
     const TD_SALES_DASHBOARD_REVENUE = {{ number_format((float) ($topdawgSalesDashboardRevenue ?? 0), 2, '.', '') }};
     const TD_SALES_DASHBOARD_GPFT = {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }};
@@ -520,9 +520,9 @@
             newSprice = Math.max(0.99, tdRoundToRetailPrice(newSprice));
 
             const lp   = parseFloat(d.LP_productmaster) || 0;
-            const ship = parseFloat(d.Ship_productmaster) || 0;
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
-            const sroi  = lp > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp) * 100) : 0;
+            // No ship — same as /topdawg/sales-dashboard
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
+            const sroi  = lp > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp) * 100) : 0;
 
             row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
             updates.push({ sku: sku, sprice: newSprice });
@@ -887,13 +887,10 @@
                     }
                 },
                 {
-                    // SGPFT% — gross profit % at the seller price.
-                    // Formula matches GPFT%, with SPRICE in place of TD Price:
-                    //   ((SPRICE × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) / SPRICE) × 100
-                    // LP + Ship come from CP Master so this margin uses the same
-                    // assumptions as the GPFT badge above the table.
+                    // SGPFT% — gross profit % at the seller price (no ship).
+                    //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / SPRICE) × 100
                     title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 55, sorter: 'number',
-                    tooltip: 'Gross Profit % at SPRICE (same formula as GPFT%, using Ship from CP Master)',
+                    tooltip: 'Gross Profit % at SPRICE (same formula as GPFT%, no ship)',
                     formatter: c => {
                         const v = c.getValue();
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
@@ -909,11 +906,10 @@
                     }
                 },
                 {
-                    // SROI% — return on investment at the seller price.
-                    // Formula matches ROI%, with SPRICE in place of TD Price:
-                    //   ((SPRICE × {{ $topdawgPercentage ?? 95 }}% − LP − Ship) / LP) × 100
+                    // SROI% — return on investment at the seller price (no ship).
+                    //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / LP) × 100
                     title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55, sorter: 'number',
-                    tooltip: 'ROI % at SPRICE (same formula as ROI%, using Ship from CP Master)',
+                    tooltip: 'ROI % at SPRICE (same formula as ROI%, no ship)',
                     formatter: c => {
                         const v = c.getValue();
                         if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
@@ -1055,8 +1051,8 @@
         });
 
         // Inline SPRICE edit — same UX as /purchasing-power-pricing. Live-recompute
-        // SGPFT / SROI from the new SPRICE (using LP + Ship from CP Master so the
-        // margins match the GPFT / GROI badges), then auto-save via the existing
+        // SGPFT / SROI from the new SPRICE (LP only — no ship, same as sales-dashboard),
+        // then auto-save via the existing
         // /topdawg-save-sprice endpoint. Empty value → null (clear SPRICE).
         table.on('cellEdited', function(cell) {
             if (cell.getField() !== 'SPRICE') return;
@@ -1066,8 +1062,7 @@
             if (!sku) return;
 
             const raw = cell.getValue();
-            const lp   = parseFloat(d.LP_productmaster)   || 0;
-            const ship = parseFloat(d.Ship_productmaster) || 0;
+            const lp = parseFloat(d.LP_productmaster) || 0;
 
             if (raw === '' || raw === null || raw === undefined || isNaN(parseFloat(raw)) || parseFloat(raw) <= 0) {
                 row.update({ SPRICE: null, SGPFT: null, SROI: null });
@@ -1077,8 +1072,8 @@
             }
 
             const newSprice = +parseFloat(raw).toFixed(2);
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
-            const sroi  = lp > 0        ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp)       * 100) : 0;
+            const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
+            const sroi  = lp > 0        ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp)       * 100) : 0;
 
             row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
             tdSaveSpriceUpdates([{ sku: sku, sprice: newSprice }]);
@@ -1262,13 +1257,13 @@
          * Target ROI% / Target GPFT% bulk apply (TopDawg, margin = TD_PERCENTAGE)
          * ----------------------------------------------------------------------
          * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
-         * target. TopDawg's SGPFT / SROI formulas include shipping (matches
+         * target. TopDawg's SGPFT / SROI formulas exclude shipping (matches
          * TopDawgPricingController::getViewTopDawgTabularData lines 187-188 and
          * tdApplyDiscount above):
-         *     SROI%  = ((sprice * TD_PERCENTAGE − lp − ship) / lp)     * 100
-         *           → sprice = (lp * (1 + ROI%/100) + ship) / TD_PERCENTAGE
-         *     SGPFT% = ((sprice * TD_PERCENTAGE − lp − ship) / sprice) * 100
-         *           → sprice = (lp + ship) / (TD_PERCENTAGE − GPFT%/100)
+         *     SROI%  = ((sprice * TD_PERCENTAGE − lp) / lp)     * 100
+         *           → sprice = (lp * (1 + ROI%/100)) / TD_PERCENTAGE
+         *     SGPFT% = ((sprice * TD_PERCENTAGE − lp) / sprice) * 100
+         *           → sprice = lp / (TD_PERCENTAGE − GPFT%/100)
          * Optimistic SGPFT / SROI written client-side, then the existing
          * /topdawg-save-sprice endpoint reconciles them server-side. Plain 2-decimal
          * rounding — no .99 snapping — because snapping would shift the achieved
@@ -1303,14 +1298,13 @@
 
                 const lp = parseFloat(d.LP_productmaster) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(d.Ship_productmaster) || 0;
 
-                const candidate = (lp * roiMultiplier + ship) / TD_PERCENTAGE;
+                const candidate = (lp * roiMultiplier) / TD_PERCENTAGE;
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp)     * 100) : 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
+                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp)     * 100) : 0;
 
                 row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
                 updates.push({ sku: sku, sprice: newSprice });
@@ -1361,14 +1355,13 @@
 
                 const lp = parseFloat(d.LP_productmaster) || 0;
                 if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(d.Ship_productmaster) || 0;
 
-                const candidate = (lp + ship) / denom;
+                const candidate = lp / denom;
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / newSprice) * 100) : 0;
-                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp - ship) / lp)     * 100) : 0;
+                const sgpft = newSprice > 0 ? Math.round(((newSprice * TD_PERCENTAGE - lp) / newSprice) * 100) : 0;
+                const sroi  = lp > 0       ? Math.round(((newSprice * TD_PERCENTAGE - lp) / lp)     * 100) : 0;
 
                 row.update({ SPRICE: newSprice, SGPFT: sgpft, SROI: sroi });
                 updates.push({ sku: sku, sprice: newSprice });

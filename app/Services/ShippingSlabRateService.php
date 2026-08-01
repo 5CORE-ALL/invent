@@ -29,6 +29,9 @@ class ShippingSlabRateService
         'label' => '12.01–15.99 oz (0.751 – 1 lb)',
     ];
 
+    /** Oz slab ceilings used when rounding Declared weight up to the next slab. */
+    private const WT_ACT_DECL_OZ_SLAB_CAPS = [2, 4, 8, 12, 15.99];
+
     private const WT_ACT_UPWARD_LB_BANDS = [
         ['key' => 'lb_101_2', 'lbMin' => 1, 'lbMax' => 2, 'label' => '1 lb – 2 lb'],
         ['key' => 'lb_201_3', 'lbMin' => 2.01, 'lbMax' => 3, 'label' => '2.01 lb – 3 lb'],
@@ -59,18 +62,21 @@ class ShippingSlabRateService
             ? $this->getSkuCarrierRate(trim($sku), $carrier)
             : null;
 
+        // Band by Declared (billable) weight — ACT rounded up to the slab ceiling.
+        $declWeight = $this->roundWeightLbUpToSlab($weightLb);
+
         if ($skuRate !== null) {
             return [
                 'success' => true,
                 'rate' => $skuRate,
-                'slab_key' => $this->resolveSlabKeyForWeight($weightLb),
+                'slab_key' => $this->resolveSlabKeyForWeight($declWeight),
                 'slab_label' => null,
                 'mixed' => false,
                 'source' => 'product_master',
             ];
         }
 
-        $slabKey = $this->resolveSlabKeyForWeight($weightLb);
+        $slabKey = $this->resolveSlabKeyForWeight($declWeight);
         if ($slabKey === null) {
             return [
                 'success' => false,
@@ -101,22 +107,25 @@ class ShippingSlabRateService
     /** @return array<string, array{slab_key: string, slab_label: string, rate: ?float, mixed: bool}> */
     public function getAllSlabCarrierRates(string $carrier = 'ship'): array
     {
-        return Cache::remember("shipping_slab_rates:{$carrier}", 300, function () use ($carrier) {
+        // Cache key bumped when banding switched from ACT → Declared slab weight.
+        return Cache::remember("shipping_slab_rates_decl_v2:{$carrier}", 300, function () use ($carrier) {
             $products = $this->loadShippingMasterRows();
             $result = [];
 
             foreach ($this->getSlabDefinitions() as $slab) {
                 $items = array_values(array_filter(
                     $products,
-                    fn (array $item) => ! $this->isParentSku($item) && $this->matchesWtActLbBand($item, $slab['key'])
+                    fn (array $item) => ! $this->isParentSku($item) && $this->matchesSlabWeightBand($item, $slab['key'])
                 ));
                 $summary = $this->computeSlabCarrierSummary($items, $carrier);
+                $rate = $summary['uniformValue'] ?? $summary['majorityValue'];
+                $mixed = $summary['uniformValue'] === null && count($summary['distinctValues']) > 1;
 
                 $result[$slab['key']] = [
                     'slab_key' => $slab['key'],
                     'slab_label' => $slab['label'],
-                    'rate' => $summary['uniformValue'],
-                    'mixed' => $summary['uniformValue'] === null && count($summary['distinctValues']) > 0,
+                    'rate' => $rate,
+                    'mixed' => $mixed,
                 ];
             }
 
@@ -277,25 +286,69 @@ class ShippingSlabRateService
         return null;
     }
 
-    /** @param array<string, mixed> $item */
-    private function itemWeightActMissing(array $item): bool
+    /**
+     * Round ACT weight UP to the billable Declared slab ceiling.
+     * < 1 lb → next oz slab cap; ≥ 1 lb → containing upward LB band max.
+     */
+    public function roundWeightLbUpToSlab(?float $lb): ?float
     {
-        $lb = $item['wt_act'] ?? null;
-        $kg = $item['wt_act_kg'] ?? null;
+        if ($lb === null || ! is_finite($lb) || $lb <= 0) {
+            return null;
+        }
 
-        return ($lb === null || $lb === '') && ($kg === null || $kg === '');
+        if ($lb < 1) {
+            $oz = round($lb * 16, 2);
+            foreach (self::WT_ACT_DECL_OZ_SLAB_CAPS as $cap) {
+                if ($oz <= $cap + 1e-9) {
+                    // Keep precision so 2 oz = 0.125 stays inside oz_2 (lbMax 0.125).
+                    // 15.99 oz → 1 lb billable → lands in the 1–2 lb slab.
+                    if ($cap >= 15.99) {
+                        return 1.0;
+                    }
+
+                    return round($cap / 16, 4);
+                }
+            }
+
+            return 1.0;
+        }
+
+        foreach (self::WT_ACT_UPWARD_LB_BANDS as $band) {
+            if ($band['lbMax'] === null) {
+                if ($lb >= ($band['lbMin'] ?? 0)) {
+                    return (float) ceil($lb - 1e-9);
+                }
+                continue;
+            }
+            if ($lb <= $band['lbMax'] + 1e-9) {
+                return (float) $band['lbMax'];
+            }
+        }
+
+        return (float) ceil($lb - 1e-9);
     }
 
     /** @param array<string, mixed> $item */
-    private function matchesWtActLbBand(array $item, string $band): bool
+    private function itemWeightForSlabLb(array $item): ?float
     {
-        if ($band === 'lb_0') {
-            $w = $this->itemWeightActLbResolved($item);
-
-            return $w === null || $w === 0.0;
+        $decl = $this->roundWeightLbUpToSlab($this->itemWeightActLbResolved($item));
+        if ($decl !== null && is_finite($decl) && $decl > 0) {
+            return $decl;
         }
 
-        $w = $this->itemWeightActLbResolved($item);
+        return $this->itemWeightActLbResolved($item);
+    }
+
+    /** @param array<string, mixed> $item */
+    private function matchesSlabWeightBand(array $item, string $band): bool
+    {
+        if ($band === 'lb_0') {
+            $act = $this->itemWeightActLbResolved($item);
+
+            return $act === null || $act === 0.0;
+        }
+
+        $w = $this->itemWeightForSlabLb($item);
         if ($w === null || ! is_finite($w)) {
             return false;
         }
@@ -467,6 +520,7 @@ class ShippingSlabRateService
         $filled = 0;
         $missing = 0;
 
+        $counts = [];
         foreach ($items as $item) {
             $raw = $item[$carrierKey] ?? null;
             if ($raw === null || $raw === '') {
@@ -482,7 +536,9 @@ class ShippingSlabRateService
 
             $filled++;
             $rounded = $this->normalizeSlabRate($num);
-            $distinct[(string) $rounded] = $rounded;
+            $key = (string) $rounded;
+            $distinct[$key] = $rounded;
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
         }
 
         $distinctValues = array_values($distinct);
@@ -493,8 +549,21 @@ class ShippingSlabRateService
             ? $distinctValues[0]
             : null;
 
+        $majorityValue = null;
+        if ($filled > 0) {
+            $bestCount = -1;
+            foreach ($distinctValues as $value) {
+                $count = $counts[(string) $value] ?? 0;
+                if ($count > $bestCount) {
+                    $bestCount = $count;
+                    $majorityValue = $value;
+                }
+            }
+        }
+
         return [
             'uniformValue' => $uniformValue,
+            'majorityValue' => $majorityValue,
             'distinctValues' => $distinctValues,
         ];
     }

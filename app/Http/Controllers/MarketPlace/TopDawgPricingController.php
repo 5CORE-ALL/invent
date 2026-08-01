@@ -192,10 +192,12 @@ class TopDawgPricingController extends Controller
 
             $row['Dil'] = $inv > 0 ? round(($ovL30 / $inv) * 100, 0) : 0;
 
+            // Profit formulas exclude ship — same as /topdawg/sales-dashboard
+            // GPFT% = ((Price × margin − LP) / Price) × 100
             $price = $tdPrice;
             if ($price > 0) {
-                $row['GPFT%'] = round((($price * $percentageValue - $lp - $ship) / $price) * 100, 0);
-                $row['ROI%'] = $lp > 0 ? round((($price * $percentageValue - $lp - $ship) / $lp) * 100, 0) : 0;
+                $row['GPFT%'] = round((($price * $percentageValue - $lp) / $price) * 100, 0);
+                $row['ROI%'] = $lp > 0 ? round((($price * $percentageValue - $lp) / $lp) * 100, 0) : 0;
             } else {
                 $row['GPFT%'] = 0;
                 $row['ROI%'] = 0;
@@ -203,15 +205,15 @@ class TopDawgPricingController extends Controller
 
             $row['PFT %'] = $row['GPFT%'];
             // Unit profit at listing price (pricing tool). Badge profit uses order Sales × margin.
-            $row['Profit'] = ($price * $percentageValue) - $lp - $ship;
-            // L30 profit from real order sales: (sales × margin) − (LP + Ship) × qty
-            $row['Profit L30'] = round(($salesL30 * $percentageValue) - (($lp + $ship) * $tdL30), 2);
+            $row['Profit'] = ($price * $percentageValue) - $lp;
+            // L30 profit from real order sales: (sales × margin) − LP × qty (no ship)
+            $row['Profit L30'] = round(($salesL30 * $percentageValue) - ($lp * $tdL30), 2);
 
             // SPRICE-based S* metrics (recomputed live in JS too — kept in sync here for fresh page loads).
             $sprice = (float) ($row['SPRICE'] ?? 0);
             if ($sprice > 0) {
-                $row['SGPFT'] = round((($sprice * $percentageValue - $lp - $ship) / $sprice) * 100, 0);
-                $row['SROI']  = $lp > 0 ? round((($sprice * $percentageValue - $lp - $ship) / $lp) * 100, 0) : 0;
+                $row['SGPFT'] = round((($sprice * $percentageValue - $lp) / $sprice) * 100, 0);
+                $row['SROI']  = $lp > 0 ? round((($sprice * $percentageValue - $lp) / $lp) * 100, 0) : 0;
             } else {
                 $row['SGPFT'] = null;
                 $row['SROI']  = null;
@@ -358,12 +360,14 @@ class TopDawgPricingController extends Controller
         }
     }
 
+    /**
+     * Take-home % from marketplace_percentages (marketplace = TopDawg) only — no hardcoded fallback.
+     */
     private function marketplacePercentage(): float
     {
         $fromTable = MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');
-        $percentage = $fromTable !== null ? (float) $fromTable : 95.0;
 
-        return $percentage > 0 ? $percentage : 95.0;
+        return $fromTable !== null ? (float) $fromTable : 0.0;
     }
 
     /**
