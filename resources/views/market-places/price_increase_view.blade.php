@@ -24,9 +24,12 @@
             font-size: 11px;
             font-weight: 600;
         }
+        /* Outer main table: no column-expand grips (resize only inside OV L30 modal) */
+        .tabulator .tabulator-header .tabulator-col-resize-handle {
+            display: none !important;
+        }
 
 
-        
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
@@ -371,7 +374,7 @@
             min-height: 0;
             max-height: none;
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto; /* allow horizontal scroll when columns are manually widened */
         }
         #ovl30DetailsModal .table tbody {
             background-color: #fff !important;
@@ -379,8 +382,58 @@
         }
         #ovl30DetailsModal #ovl30DetailsTable {
             width: 100%;
-            max-width: 100%;
+            max-width: none; /* grow past viewport when user expands columns (Tabulator-like) */
             table-layout: fixed;
+        }
+        /* OV L30: Tabulator-style ◂▸ column resize grips on header edges */
+        #ovl30DetailsModal .modal-vertical-header th {
+            position: relative;
+        }
+        #ovl30DetailsModal .ovl30-col-resizer {
+            /* th is rotate(180deg) — CSS left maps to the visual right edge */
+            position: absolute;
+            top: 0;
+            left: -5px;
+            right: auto;
+            width: 10px;
+            height: 100%;
+            cursor: ew-resize;
+            z-index: 6;
+            user-select: none;
+            touch-action: none;
+            background: transparent;
+        }
+        #ovl30DetailsModal .ovl30-col-resizer::before {
+            content: "◂▸";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            /* un-flip so arrows stay upright despite parent th rotate(180deg) */
+            transform: translate(-50%, -50%) rotate(180deg);
+            font-size: 9px;
+            line-height: 1;
+            color: #64748b;
+            font-weight: 700;
+            pointer-events: none;
+            opacity: 0.75;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-col-resizer:hover,
+        #ovl30DetailsModal .ovl30-col-resizer.is-resizing {
+            background: rgba(13, 110, 253, 0.2);
+        }
+        #ovl30DetailsModal .ovl30-col-resizer:hover::before,
+        #ovl30DetailsModal .ovl30-col-resizer.is-resizing::before {
+            color: #0d6efd;
+            opacity: 1;
+        }
+        #ovl30DetailsModal.ovl30-cols-manual #ovl30DetailsTable {
+            width: max-content;
+            min-width: 100%;
+        }
+        body.ovl30-col-resizing {
+            cursor: ew-resize !important;
+            user-select: none !important;
         }
         #ovl30DetailsModal .table td {
             color: #334155 !important;
@@ -721,6 +774,23 @@
             cursor: pointer;
             width: 16px;
             height: 16px;
+        }
+        /* Blue 5 Core reference row — same as /ebay-tabulator-view */
+        #lmpModal .lmp-five-core-row,
+        #lmpModal .lmp-five-core-row > td {
+            background-color: #dbeafe !important;
+            color: #1e3a8a;
+            --bs-table-bg-type: #dbeafe;
+            --bs-table-striped-bg: #dbeafe;
+            --bs-table-hover-bg: #bfdbfe;
+            font-weight: 600;
+        }
+        #lmpModal .lmp-five-core-row:hover > td {
+            background-color: #bfdbfe !important;
+        }
+        #lmpModal .lmp-five-core-row .lmp-five-core-price {
+            font-size: 14px;
+            font-weight: 700;
         }
         #lmpModal .lmp-channel-icon.temu {
             background: #fb7701;
@@ -1085,6 +1155,19 @@
                 <div id="modal-target-controls" class="px-3 py-2 border-bottom bg-light">
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
+                            title="Apply this SPRICE to all checked channels. Doba gets 25% less (×0.75).">
+                            <label for="modal-bulk-sprice-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
+                                SPRICE:
+                            </label>
+                            <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
+                                placeholder="0.00" step="0.01" min="0" style="width: 80px;"
+                                title="SPRICE applied to selected channels (Doba = 25% less)">
+                            <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
+                                title="Apply SPRICE to checked channels (Doba −25%)" aria-label="Apply SPRICE">
+                                <i class="fas fa-check"></i> Apply
+                            </button>
+                        </div>
+                        <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
                             title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
                             <label for="modal-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
                                 <span aria-hidden="true">🎯</span> ROI%:
@@ -1134,13 +1217,13 @@
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="Sort by L30"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Missing L</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Sort by Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th>LMP</th>
                                     <th>Links</th>
                                     <th class="ovl30-select-th" title="Select channels (respects Group filter)">
@@ -1179,19 +1262,19 @@
                                             style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"
                                             title="View Price history (Rolling L30)"></i>
                                     </th>
-                                    <th class="text-end" id="modal-total-views">0</th>
-                                    <th class="text-end">
+                                    <th class="text-end ovl30-metric-col" id="modal-total-views">0</th>
+                                    <th class="text-end ovl30-metric-col">
                                         <span id="modal-avg-cvr">0%</span>
                                         <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-cvr-chart-dot"
                                             data-metric="cvr" data-sku=""
                                             style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;"
                                             title="View CVR history (Rolling L30)"></i>
                                     </th>
-                                    <th class="text-end" id="modal-avg-groi">0%</th>
-                                    <th class="text-end" id="modal-avg-gpft">0%</th>
-                                    <th class="text-end" id="modal-avg-nroi">0%</th>
-                                    <th class="text-end" id="modal-avg-npft">0%</th>
-                                    <th class="text-end" id="modal-avg-ad">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-groi">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-gpft">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-nroi">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-npft">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-ad">0%</th>
                                     <th></th>
                                     <th></th>
                                     <th></th>
@@ -1735,15 +1818,7 @@
                             title="Editable LMP multiplier — autofilled with 0.98">
                     </div>
 
-                    {{-- Temu SPRICE / push — same as /temu-decrease --}}
-                    <button type="button" id="pi-clear-temu-sprice-btn" class="btn btn-sm btn-danger ms-2"
-                        title="Clear Temu SPRICE for selected SKUs, or visible rows when none selected">
-                        <i class="fas fa-trash"></i> Clear Temu SPRICE
-                    </button>
-                    <button type="button" id="pi-push-temu-price-btn" class="btn btn-sm btn-success ms-1"
-                        title="Push Temu S PRC to Temu as base/supplier price (same as /temu-decrease)">
-                        <i class="fas fa-cloud-upload-alt"></i> Push Temu Prices
-                    </button>
+                    {{-- Temu Clear/Push removed from outer toolbar — use OV L30 modal Temu push instead --}}
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1827,7 +1902,11 @@
         // OVL30 Details modal sort state (column header click)
         let ovl30ModalSortBy = 'l30_desc';
 
-        $(document).on('click', '#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable', function() {
+        let ovl30JustResizedCol = false;
+        $(document).on('click', '#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable', function(e) {
+            // Ignore click after a column resize drag
+            if ($(e.target).closest('.ovl30-col-resizer').length) return;
+            if (ovl30JustResizedCol) return;
             const sortField = $(this).data('sort');
             const currentVal = (ovl30ModalSortBy || 'l30_desc').toString();
             const [currentField, currentDir] = currentVal.split('_');
@@ -2055,9 +2134,16 @@
             ovl30ModalDil = isFinite(dilValue) ? dilValue : 0;
             
             showModalLoading(sku);
-            
-            const modal = new bootstrap.Modal(document.getElementById('ovl30DetailsModal'));
-            modal.show();
+
+            // Reuse existing instance — `new Modal().show()` on an already-open modal
+            // stacks orphan .modal-backdrop layers and leaves a black screen after close/refresh.
+            const modalEl = document.getElementById('ovl30DetailsModal');
+            if (modalEl) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                if (!modalEl.classList.contains('show')) {
+                    modal.show();
+                }
+            }
             
             // Fetch marketplace breakdown and FBA data
             $.ajax({
@@ -2067,6 +2153,15 @@
                 success: function(data) { renderMarketplaceData(data); },
                 error: function(xhr) { showModalError('Failed to load data'); }
             });
+        }
+
+        /** Remove leftover Bootstrap backdrops when no modal is open (fixes black screen). */
+        function cleanupOrphanModalBackdrops() {
+            if (document.querySelector('.modal.show')) return;
+            document.querySelectorAll('.modal-backdrop').forEach(function(el) { el.remove(); });
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
         }
 
         // Deep-link from /ebay-tabulator-view LMP magnifying glass (and others):
@@ -2504,11 +2599,116 @@
             });
         }
 
-        /** Largest font size that fits all columns in the modal width, then stretch table to 100%. */
+        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths';
+        let ovl30ManualColWidths = false;
+
+        function loadOvl30SavedColWidths() {
+            try {
+                const raw = localStorage.getItem(OVL30_COL_WIDTHS_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return (parsed && typeof parsed === 'object') ? parsed : null;
+            } catch (e) { return null; }
+        }
+        function saveOvl30ColWidths(map) {
+            try { localStorage.setItem(OVL30_COL_WIDTHS_KEY, JSON.stringify(map || {})); } catch (e) {}
+        }
+        function applyOvl30ColWidths(map) {
+            if (!map) return;
+            const $ths = $('#ovl30DetailsTable thead tr.modal-vertical-header th');
+            $ths.each(function(idx) {
+                const w = parseInt(map[idx], 10);
+                if (!w || w < 24) return;
+                $(this).css({ width: w + 'px', minWidth: w + 'px', maxWidth: w + 'px' });
+                $('#ovl30DetailsTable tbody td:nth-child(' + (idx + 1) + '), #ovl30DetailsTable thead tr.modal-totals-row th:nth-child(' + (idx + 1) + ')')
+                    .css({ width: w + 'px', minWidth: w + 'px', maxWidth: w + 'px' });
+            });
+        }
+        function collectOvl30ColWidths() {
+            const map = {};
+            $('#ovl30DetailsTable thead tr.modal-vertical-header th').each(function(idx) {
+                const w = Math.round($(this).outerWidth());
+                if (w > 0) map[idx] = w;
+            });
+            return map;
+        }
+        function setOvl30ManualWidthMode(on) {
+            ovl30ManualColWidths = !!on;
+            $('#ovl30DetailsModal').toggleClass('ovl30-cols-manual', ovl30ManualColWidths);
+            const tableEl = document.getElementById('ovl30DetailsTable');
+            if (!tableEl) return;
+            if (ovl30ManualColWidths) {
+                tableEl.style.width = 'max-content';
+                tableEl.style.minWidth = '100%';
+                tableEl.style.tableLayout = 'fixed';
+            }
+        }
+        function applyWidthToOvl30Col(colIdx, newW) {
+            const $th = $('#ovl30DetailsTable thead tr.modal-vertical-header th').eq(colIdx);
+            $th.css({ width: newW + 'px', minWidth: newW + 'px', maxWidth: newW + 'px' });
+            $('#ovl30DetailsTable tbody td:nth-child(' + (colIdx + 1) + '), #ovl30DetailsTable thead tr.modal-totals-row th:nth-child(' + (colIdx + 1) + ')')
+                .css({ width: newW + 'px', minWidth: newW + 'px', maxWidth: newW + 'px' });
+        }
+
+        function initOvl30ColResizers() {
+            $('#ovl30DetailsTable thead tr.modal-vertical-header th').each(function() {
+                const $th = $(this);
+                if ($th.find('.ovl30-col-resizer').length) return;
+                $th.append('<div class="ovl30-col-resizer" title="Drag to resize column"></div>');
+            });
+        }
+
+        // Drag ◂▸ grips on OV L30 headers (same look/feel as Tabulator)
+        (function bindOvl30ColResize() {
+            let resizing = false;
+            let startX = 0;
+            let startW = 0;
+            let colIdx = -1;
+
+            $(document).on('mousedown', '#ovl30DetailsModal .ovl30-col-resizer', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $th = $(this).closest('th');
+                resizing = true;
+                startX = e.pageX;
+                startW = $th.outerWidth();
+                colIdx = $th.index();
+                $(this).addClass('is-resizing');
+                $('body').addClass('ovl30-col-resizing');
+                setOvl30ManualWidthMode(true);
+            });
+            $(document).on('mousemove.ovl30Resize', function(e) {
+                if (!resizing || colIdx < 0) return;
+                applyWidthToOvl30Col(colIdx, Math.max(28, Math.round(startW + (e.pageX - startX))));
+            });
+            $(document).on('mouseup.ovl30Resize', function() {
+                if (!resizing) return;
+                resizing = false;
+                $('body').removeClass('ovl30-col-resizing');
+                $('#ovl30DetailsModal .ovl30-col-resizer').removeClass('is-resizing');
+                saveOvl30ColWidths(collectOvl30ColWidths());
+                ovl30JustResizedCol = true;
+                setTimeout(function() { ovl30JustResizedCol = false; }, 0);
+                colIdx = -1;
+            });
+        })();
+
+        /** Largest font size that fits all columns in the modal width, then stretch table to 100%.
+         *  Skipped when user has manually resized columns (Tabulator-like widths win). */
         function autoFitOvl30TableFont() {
             const wrap = document.querySelector('#ovl30DetailsModal .ovl30-table-wrap');
             const tableEl = document.getElementById('ovl30DetailsTable');
             if (!wrap || !tableEl || !$('#ovl30DetailsModal').hasClass('show')) return;
+
+            initOvl30ColResizers();
+
+            // Restore / keep manual widths — do not crush them with autofit
+            const saved = loadOvl30SavedColWidths();
+            if (ovl30ManualColWidths || (saved && Object.keys(saved).length)) {
+                setOvl30ManualWidthMode(true);
+                applyOvl30ColWidths(saved || collectOvl30ColWidths());
+                return;
+            }
 
             const avail = wrap.clientWidth;
             if (avail < 80) return;
@@ -2536,6 +2736,7 @@
             applyFs(best);
             tableEl.style.width = '100%';
             tableEl.style.tableLayout = 'fixed';
+            initOvl30ColResizers();
         }
 
         let ovl30AutoFitTimer = null;
@@ -2879,13 +3080,13 @@
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
-                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
-                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' + cvrChartDot : '-'))}</td>
-                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(adsDisplay) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' + cvrChartDot : '-'))}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(adsDisplay) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">
                             ${(() => {
                                 if (!isListed) return '-';
@@ -3074,6 +3275,10 @@
             ajaxURL: "/cvr-master-data-json",
             ajaxSorting: false,
             layout: "fitDataFill",
+            columnDefaults: {
+                resizable: false,
+                minWidth: 40
+            },
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -3899,7 +4104,7 @@
                     visible: false,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — shown instead of raw Temu LMP",
+                    headerTooltip: "Direct Temu LMP (raw competitor price — no Recovery calculation)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
@@ -3914,7 +4119,7 @@
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;" title="Temu Recovery">$${price.toFixed(2)}</a>`;
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;" title="Temu LMP (direct)">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -5200,6 +5405,8 @@
         $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
             exitModalPricePctMode(false);
             syncModalGroupSelects('');
+            // After push-reload used to stack backdrops; clear any leftover black screen
+            setTimeout(cleanupOrphanModalBackdrops, 50);
         });
 
         $(document).on('click', '#modal-apply-discount-btn', function() {
@@ -5320,6 +5527,84 @@
             if (e.key === 'Enter') {
                 e.preventDefault();
                 $('#modal-apply-discount-btn').trigger('click');
+            }
+        });
+
+        // ==================== BULK SPRICE (same value on checked; Doba = 25% less) ====================
+        function applyModalBulkSprice() {
+            const rawInput = $('#modal-bulk-sprice-input').val();
+            const basePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (rawInput === '' || rawInput == null || !isFinite(basePrice) || !(basePrice > 0)) {
+                showToast('Please enter a SPRICE greater than 0', 'error');
+                $('#modal-bulk-sprice-input').focus();
+                return;
+            }
+            if (modalSelectedChannels.size === 0) {
+                showToast('Please select at least one channel (checkbox)', 'error');
+                return;
+            }
+            const $rows = collectModalTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows selected', 'error');
+                return;
+            }
+
+            const dobaPrice = +(basePrice * 0.75).toFixed(2); // 25% less for Doba
+            if (!confirm(
+                'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' selected channel(s)'
+                + '?\n\nDoba will get 25% less: $' + dobaPrice.toFixed(2)
+                + siblingsApplyLabel()
+            )) return;
+
+            const $btn = $('#modal-apply-bulk-sprice-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            let doneCount = 0;
+            let okCount = 0;
+            let siblingsOk = 0;
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                const mpLower = mp.toLowerCase();
+                const isDoba = (mpLower === 'doba');
+                const newPrice = isDoba ? dobaPrice : +basePrice.toFixed(2);
+                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
+                    if (ok) {
+                        okCount++;
+                        if (res && res.siblings_count) {
+                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
+                        }
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '') === mp) {
+                                item.sprice = newPrice;
+                            }
+                        });
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('SPRICE applied to ' + okCount + ' channel(s)'
+                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
+                                    + '. Doba = $' + dobaPrice.toFixed(2) + ' (−25%). Use Push to go live.')
+                                : 'Failed to save SPRICE',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('click', '#modal-apply-bulk-sprice-btn', function(e) {
+            e.preventDefault();
+            applyModalBulkSprice();
+        });
+        $(document).on('keydown', '#modal-bulk-sprice-input', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyModalBulkSprice();
             }
         });
 
@@ -6056,10 +6341,12 @@
 
         function reloadOvl30ModalAfterPush() {
             const currentSku = $('#modalSkuName').text();
+            if (!currentSku || !$('#ovl30DetailsModal').hasClass('show')) return;
             const currentImage = $('#modal-product-image').attr('src');
             const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
             const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
             const currentDil = parseFloat($('#modal-header-dil').text());
+            // Refresh data only — do not re-instantiate/show the modal (avoids black backdrop)
             loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
         }
 
@@ -6390,8 +6677,13 @@
             updateLmpPullBtnTitle(initialFilter);
 
             if (!refreshFromApi) {
-                const modal = new bootstrap.Modal(document.getElementById('lmpModal'));
-                modal.show();
+                const lmpEl = document.getElementById('lmpModal');
+                if (lmpEl) {
+                    const modal = bootstrap.Modal.getOrCreateInstance(lmpEl);
+                    if (!lmpEl.classList.contains('show')) {
+                        modal.show();
+                    }
+                }
             }
 
             const loadingMsg = refreshFromApi
@@ -6635,18 +6927,6 @@
             return price + ship;
         }
 
-        /**
-         * Temu LMP Recovery (Temu only):
-         * price ≤ $27 → (Price × 0.85) + 2.99
-         * price > $27 → Price × 0.85
-         */
-        function temuLmpRecovery(price) {
-            const p = parseFloat(price);
-            if (!(p > 0)) return null;
-            if (p <= 27) return +((p * 0.85) + 2.99).toFixed(2);
-            return +(p * 0.85).toFixed(2);
-        }
-
         function lmpChannelIconHtml(channel) {
             if (channel === 'amazon') {
                 return '<span class="lmp-channel-icon amazon" title="Amazon"><i class="fab fa-amazon"></i></span>';
@@ -6865,6 +7145,103 @@
             return rows;
         }
 
+        /**
+         * Our listing for the blue 5 Core LMP row (same idea as /ebay-tabulator-view).
+         * Prefer OV L30 breakdown price when available; else main-table fields.
+         */
+        function getLmpOurListing(sku, channel) {
+            const ch = String(channel || 'ebay').toLowerCase();
+            const skuKey = String(sku || '').trim();
+            let price = 0;
+            let link = '';
+            let image = '';
+            let itemId = '';
+            let title = '5 Core — ' + skuKey;
+
+            // 1) OV L30 modal breakdown (most accurate per-channel price / links)
+            if (Array.isArray(ovl30ModalData) && ovl30ModalData.length) {
+                const mpAliases = {
+                    ebay: ['ebay', 'ebay1', 'ebayone'],
+                    amazon: ['amazon'],
+                    temu: ['temu'],
+                };
+                const aliases = mpAliases[ch] || [ch];
+                const hit = ovl30ModalData.find(function(item) {
+                    return aliases.indexOf(String(item.marketplace || '').toLowerCase()) !== -1
+                        && parseFloat(item.price) > 0;
+                });
+                if (hit) {
+                    price = parseFloat(hit.price) || 0;
+                    link = hit.buyer_link || hit.seller_link || '';
+                    image = hit.image_path || hit.image || '';
+                }
+            }
+
+            // 2) Main Tabulator / fullDataset row
+            let rowData = null;
+            if (!(price > 0) || !image) {
+                if (typeof table !== 'undefined' && table && table.getRows) {
+                    const r = (table.getRows() || []).find(function(row) {
+                        const d = row.getData();
+                        return String(d.sku || '').trim() === skuKey;
+                    });
+                    if (r) rowData = r.getData();
+                }
+                if (!rowData && Array.isArray(fullDataset)) {
+                    rowData = fullDataset.find(function(r) {
+                        return String(r.sku || '').trim() === skuKey && r.is_parent_summary !== true;
+                    }) || null;
+                }
+                if (rowData) {
+                    if (!(price > 0)) {
+                        if (ch === 'ebay') price = parseFloat(rowData.ebay1_price) || 0;
+                        else if (ch === 'amazon') price = parseFloat(rowData.amazon_price) || 0;
+                        else if (ch === 'temu') price = parseFloat(rowData.temu_price) || parseFloat(rowData.temu_base_price) || 0;
+                    }
+                    if (!image) image = rowData.image_path || rowData.image || '';
+                    if (ch === 'ebay') itemId = rowData.ebay1_item_id ? String(rowData.ebay1_item_id) : '';
+                }
+            }
+
+            if (!link && ch === 'ebay' && itemId) {
+                link = 'https://www.ebay.com/itm/' + itemId;
+            }
+            if (!title || title === '5 Core — ') title = '5 Core — ' + (skuKey || 'our listing');
+
+            return { price: price, link: link, image: image, itemId: itemId, title: title, channel: ch };
+        }
+
+        function buildLmpFiveCoreRowHtml(our) {
+            const price = parseFloat(our.price) || 0;
+            if (!(price > 0)) return '';
+            const thumb = our.image
+                ? '<img src="' + String(our.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
+                : '';
+            const linkHtml = our.link
+                ? ' <a href="' + String(our.link).replace(/"/g, '&quot;') + '" target="_blank" class="text-primary ms-1" title="Open our listing"><i class="fa fa-external-link"></i></a>'
+                : '';
+            const chIcon = lmpChannelIconHtml(our.channel || 'ebay');
+            const priceCell = '<div class="d-flex align-items-center">'
+                + thumb + chIcon
+                + '<span class="lmp-five-core-price">$' + price.toFixed(2) + '</span>'
+                + ' <span class="badge bg-primary ms-1">Ours</span>'
+                + linkHtml
+                + '</div>';
+            const psCell = '<strong class="lmp-five-core-price">$' + price.toFixed(2) + '</strong>'
+                + ' <span class="badge bg-primary ms-1">5 CORE</span>';
+            const titleEsc = String(our.title || '5 Core (our listing)').replace(/"/g, '&quot;');
+            return '<tr class="lmp-five-core-row" title="Our 5 Core listing — sorted by price to show market level">'
+                + '<td class="text-center text-muted small">—</td>'
+                + '<td>' + priceCell + '</td>'
+                + '<td class="text-muted">-</td>'
+                + '<td class="text-muted">-</td>'
+                + '<td><span class="badge bg-primary">Ours</span></td>'
+                + '<td title="' + titleEsc + '">' + psCell + '</td>'
+                + '<td class="text-center text-muted small">—</td>'
+                + '<td class="text-muted small">' + titleEsc + '</td>'
+                + '</tr>';
+        }
+
         function renderLmpMergedTable() {
             const sku = lmpModalCache.sku;
             const filter = lmpModalCache.filter || 'all';
@@ -6962,11 +7339,9 @@
                 badgeParts.push('<span class="badge" style="background:#d9281d;color:#fff;">Reverb $' + reverbLowest.toFixed(2) + '</span>');
             }
             if (temuLowest != null) {
-                // Outside badge: Temu Recovery (not raw price)
-                const temuRecoveryBadge = temuLmpRecovery(temuLowest);
-                const temuBadgeVal = temuRecoveryBadge != null ? temuRecoveryBadge : temuLowest;
-                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;" title="Temu Recovery from L1 $'
-                    + temuLowest.toFixed(2) + '">Temu $' + temuBadgeVal.toFixed(2) + '</span>');
+                // Direct Temu LMP (raw L1 — no Recovery calculation)
+                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;" title="Temu LMP (direct)">'
+                    + 'Temu $' + temuLowest.toFixed(2) + '</span>');
             }
             if (badgeParts.length) {
                 html += '<div class="lmp-lowest-badges">' + badgeParts.join('') + '</div>';
@@ -6978,7 +7353,15 @@
                 html += buildLmpAddFormHtml(sku, addChannel || 'amazon');
             }
 
-            if (!rows.length) {
+            // 5 Core our-listing row — same as /ebay-tabulator-view (insert at our price level)
+            // Show for eBay (primary), and Amazon/Temu when those filters are active.
+            const fiveCoreChannel = (filter === 'ebay' || filter === 'amazon' || filter === 'temu')
+                ? filter
+                : (filter === 'all' ? 'ebay' : null);
+            const ourListing = fiveCoreChannel ? getLmpOurListing(sku, fiveCoreChannel) : { price: 0 };
+            const fiveCoreHtml = buildLmpFiveCoreRowHtml(ourListing);
+
+            if (!rows.length && !fiveCoreHtml) {
                 const labelMap = { all: 'Amazon, eBay, Google, BestBuy, Macy, Reverb, or Temu', amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
                 const label = labelMap[filter] || 'competitors';
                 html += '<div class="alert alert-info mb-0 py-2 px-2"><i class="fa fa-info-circle"></i> No ' + label + ' competitors found</div>';
@@ -6987,22 +7370,28 @@
                 return;
             }
 
-            // Recovery column only on Temu LMP tab (before Price)
-            const showTemuRecoveryCol = (filter === 'temu');
             html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light">'
                 + '<tr><th>#</th>'
-                + (showTemuRecoveryCol
-                    ? '<th title="Temu Recovery: ≤$27 → (Price×0.85)+2.99; &gt;$27 → Price×0.85">Recovery</th>'
-                    : '')
                 + '<th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
                 + '</thead><tbody>';
 
-            rows.forEach(function(row, i) {
-                const sn = 'L' + (i + 1);
-                const lowest = channelLowest[row.channel];
+            let fiveCoreInserted = false;
+            const ourPrice = parseFloat(ourListing.price) || 0;
+            let lIndex = 0;
+
+            rows.forEach(function(row) {
                 const landed = lmpPricePlusShip(row) || row.price;
+                // Insert 5 Core just before the first competitor at/above our price (never counts as L1)
+                if (!fiveCoreInserted && fiveCoreHtml && ourPrice > 0 && landed >= ourPrice) {
+                    html += fiveCoreHtml;
+                    fiveCoreInserted = true;
+                }
+
+                lIndex++;
+                const sn = 'L' + lIndex;
+                const lowest = channelLowest[row.channel];
                 const isLowest = !row.ignored && lowest != null && Math.abs(landed - lowest) < 0.01;
                 const thumb = row.image
                     ? '<img src="' + String(row.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
@@ -7017,14 +7406,6 @@
                     + '<span style="font-weight:600;">$' + row.price.toFixed(2) + '</span>'
                     + linkHtml
                     + '</div>';
-                let recoveryCell = '';
-                if (showTemuRecoveryCol) {
-                    const rec = (row.channel === 'temu') ? temuLmpRecovery(row.price) : null;
-                    recoveryCell = (rec != null)
-                        ? '<span style="font-weight:700;color:#fb7701;" title="From Price $'
-                            + row.price.toFixed(2) + '">$' + rec.toFixed(2) + '</span>'
-                        : '<span class="text-muted">-</span>';
-                }
                 const ratingCell = row.rating != null
                     ? '<span><i class="fa fa-star text-warning"></i> ' + row.rating.toFixed(1) + '</span>'
                     : '<span class="text-muted">-</span>';
@@ -7073,7 +7454,6 @@
                 const rowClass = (row.ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 html += '<tr class="' + rowClass + '" title="' + titleAttr + '">'
                     + '<td>' + sn + '</td>'
-                    + (showTemuRecoveryCol ? ('<td class="text-end">' + recoveryCell + '</td>') : '')
                     + '<td>' + priceCell + '</td>'
                     + '<td>' + ratingCell + '</td>'
                     + '<td>' + reviewsCell + '</td>'
@@ -7083,6 +7463,10 @@
                     + '<td class="text-nowrap">' + editBtn + delBtn + '</td>'
                     + '</tr>';
             });
+
+            if (!fiveCoreInserted && fiveCoreHtml) {
+                html += fiveCoreHtml;
+            }
 
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
@@ -8688,6 +9072,11 @@
                 el.classList.remove('pi-chart-backdrop');
                 el.style.zIndex = '';
             });
+            setTimeout(cleanupOrphanModalBackdrops, 50);
+        });
+
+        $(document).on('hidden.bs.modal', '#lmpModal, #spriceDetailsModal, #missingListingsModal, #remarkHistoryModal, #spriceSuggestModal', function() {
+            setTimeout(cleanupOrphanModalBackdrops, 50);
         });
 
         $(document).on('click', '.summary-chart-badge', function(e) {

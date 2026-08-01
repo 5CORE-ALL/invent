@@ -291,6 +291,37 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
+        /* Tabulator column resize — visible ◂▸ grip on header borders */
+        .tabulator .tabulator-header .tabulator-col-resize-handle {
+            width: 10px !important;
+            margin-left: -5px !important;
+            margin-right: -5px !important;
+            cursor: ew-resize !important;
+            z-index: 20 !important;
+            position: relative;
+            background: transparent !important;
+        }
+        .tabulator .tabulator-header .tabulator-col-resize-handle::before {
+            content: "◂▸";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 9px;
+            line-height: 1;
+            color: #fff;
+            font-weight: 700;
+            text-shadow: 0 0 2px rgba(0,0,0,0.55), 0 1px 1px rgba(0,0,0,0.35);
+            pointer-events: none;
+            opacity: 0.85;
+            white-space: nowrap;
+        }
+        .tabulator .tabulator-header .tabulator-col-resize-handle:hover {
+            background: rgba(255, 255, 255, 0.25) !important;
+        }
+        .tabulator .tabulator-header .tabulator-col-resize-handle:hover::before {
+            opacity: 1;
+        }
 
         .tabulator-paginator label {
             margin-right: 5px;
@@ -4272,6 +4303,11 @@
             ajaxURL: "/temu-decrease-data",
             ajaxSorting: false,
             layout: "fitDataStretch",
+            // Drag column edges to widen/narrow (same as ebay / other Tabulator pages)
+            columnDefaults: {
+                resizable: true,
+                minWidth: 40
+            },
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -4356,7 +4392,9 @@
                     field: "goods_id",
                     hozAlign: "left",
                     sorter: "string",
+                    minWidth: 80,
                     width: 120,
+                    resizable: true,
                     // Hidden by default — users can re-enable via the Col dropdown
                     // (persists in channel_tabulator_column_settings as 'temu_decrease').
                     visible: false,
@@ -4375,7 +4413,9 @@
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
-                    sorter: "number"
+                    sorter: "number",
+                    minWidth: 40,
+                    resizable: true
                 },
                 {
                     title: "Temu Stock",

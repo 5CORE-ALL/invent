@@ -1703,8 +1703,8 @@ class CvrMasterController extends Controller
                     $temuLmpByNormalizedSku,
                     $temuLmpSkuGroupService
                 );
-                // Outside (main table): show Temu Recovery instead of raw LMP price
-                $temuLmpPrice = $this->temuLmpRecoveryPrice($temuLmpResolved['price']);
+                // Direct Temu LMP (raw competitor price — no Recovery calculation)
+                $temuLmpPrice = $temuLmpResolved['price'];
                 $temuLmpLink = $temuLmpResolved['link'];
                 $temuLmpCount = $temuLmpResolved['count'];
 
@@ -1761,6 +1761,9 @@ class CvrMasterController extends Controller
                     "image_path" => $imagePath,
                     "inventory" => $inventory,
                     "amazon_price" => $amazonPrice > 0 ? round($amazonPrice, 2) : null,
+                    // eBay 1 our listing — used for blue 5 Core row in LMP (same as /ebay-tabulator-view)
+                    "ebay1_price" => $ebay1Price > 0 ? round($ebay1Price, 2) : null,
+                    "ebay1_item_id" => $ebay1Metric ? ($ebay1Metric->item_id ?? null) : null,
                     "amazon_sprice" => $amazonSprice,
                     "amazon_standard_price" => $amazonStandardPrice,
                     "amazon_sgpft" => $amazonSgpft,
@@ -2434,8 +2437,8 @@ class CvrMasterController extends Controller
                     $temuLmpByNormalizedSku,
                     $temuLmpSkuGroupService
                 );
-                // Outside (Details LMP): Temu Recovery instead of raw price
-                return $this->temuLmpRecoveryPrice($resolved['price']);
+                // Direct Temu LMP (raw competitor price — no Recovery calculation)
+                return $resolved['price'];
             };
 
             // TikTok LMP: query only linked SKUs (not full tiktok_sku_competitors table)
@@ -6878,26 +6881,6 @@ class CvrMasterController extends Controller
      * @param  array<string, TemuLmp|object>  $temuLmpByNormalizedSku
      * @return array{price: float|null, link: string|null, count: int, entries: list<array{price: mixed, link: mixed}>}
      */
-    /**
-     * Temu LMP Recovery (shown outside instead of raw price):
-     * price ≤ $27 → (Price × 0.85) + 2.99
-     * price > $27 → Price × 0.85
-     */
-    private function temuLmpRecoveryPrice($price): ?float
-    {
-        if ($price === null || $price === '' || !is_numeric($price)) {
-            return null;
-        }
-        $p = floatval($price);
-        if (!($p > 0)) {
-            return null;
-        }
-        if ($p <= 27) {
-            return round(($p * 0.85) + 2.99, 2);
-        }
-        return round($p * 0.85, 2);
-    }
-
     private function resolveTemuLmpForSku(
         string $sku,
         array $temuLmpByNormalizedSku,
