@@ -162,12 +162,13 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * All pending orders across Marketplace Manager channels (for Pending tab).
+     * Last 30 days only.
      */
     public function pendingData(): JsonResponse
     {
         try {
             $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->pendingOrdersQuery($slug),
+                fn (string $slug) => $this->scopedToLast30Days($this->pendingOrdersQuery($slug), $slug),
                 false
             );
 
@@ -187,21 +188,13 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Not Scan (shipped / fulfilled) orders in the last 24 hours.
+     * Label Created (shipped / fulfilled) orders — last 30 days.
      */
     public function fulfilledData(): JsonResponse
     {
         try {
-            $since = now()->subDay();
             $rows = $this->collectOrderRows(
-                function (string $slug) use ($since) {
-                    $query = $this->fulfilledOrdersQuery($slug);
-                    if ($query === null) {
-                        return null;
-                    }
-
-                    return $this->applyUpdatedSinceFilter($query, $since, $slug);
-                },
+                fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug),
                 true
             );
 
@@ -221,21 +214,13 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Scan Done — orders with status Received only (last 24 hours).
+     * Scan Done — status Received only, last 30 days.
      */
     public function scanDoneData(): JsonResponse
     {
         try {
-            $since = now()->subDay();
             $rows = $this->collectOrderRows(
-                function (string $slug) use ($since) {
-                    $query = $this->scanDoneOrdersQuery($slug);
-                    if ($query === null) {
-                        return null;
-                    }
-
-                    return $this->applyUpdatedSinceFilter($query, $since, $slug);
-                },
+                fn (string $slug) => $this->scopedToLast30Days($this->scanDoneOrdersQuery($slug), $slug),
                 true
             );
 
@@ -255,13 +240,13 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Invoiced — all orders with Invoiced status (no time window).
+     * Invoiced — last 30 days.
      */
     public function invoicedData(): JsonResponse
     {
         try {
             $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->invoicedOrdersQuery($slug),
+                fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug),
                 true
             );
 
@@ -281,13 +266,13 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Delivered — all orders with Delivered status (no time window).
+     * Delivered — delivered / received orders from the last 30 days.
      */
     public function deliveredData(): JsonResponse
     {
         try {
             $rows = $this->collectOrderRows(
-                fn (string $slug) => $this->deliveredOrdersQuery($slug),
+                fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
                 true
             );
 
@@ -297,6 +282,8 @@ class SalesOrderFulfillmentController extends Controller
                 'count' => count($rows),
             ]);
         } catch (\Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load Delivered orders.',
@@ -312,16 +299,8 @@ class SalesOrderFulfillmentController extends Controller
     public function allOrderData(): JsonResponse
     {
         try {
-            $since = now()->subDays(30)->startOfDay();
             $rows = $this->collectOrderRows(
-                function (string $slug) use ($since) {
-                    $query = $this->allOrdersQuery($slug);
-                    if ($query === null) {
-                        return null;
-                    }
-
-                    return $this->applyLast30DaysFilter($query, $since, $slug);
-                },
+                fn (string $slug) => $this->scopedToLast30Days($this->allOrdersQuery($slug), $slug),
                 true,
                 true
             );
@@ -936,7 +915,7 @@ class SalesOrderFulfillmentController extends Controller
 
     protected function pendingOrderCountForSlug(string $slug): int
     {
-        $query = $this->pendingOrdersQuery($slug);
+        $query = $this->scopedToLast30Days($this->pendingOrdersQuery($slug), $slug);
         if ($query === null) {
             return 0;
         }
@@ -949,35 +928,45 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Count of Not Scan orders updated in the last 24 hours (all MM channels).
+     * Count of Label Created orders in the last 30 days (all MM channels).
+     * JSON key remains fulfilled_24h for frontend compatibility.
      */
     protected function fulfilledLast24HoursCount(): int
     {
-        return $this->countOrdersLast24Hours(fn (string $slug) => $this->fulfilledOrdersQuery($slug));
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
+        );
     }
 
     /**
-     * Count of Scan Done (Received) orders updated in the last 24 hours.
+     * Count of Scan Done (Received) orders in the last 30 days.
+     * JSON key remains scan_done_24h for frontend compatibility.
      */
     protected function scanDoneLast24HoursCount(): int
     {
-        return $this->countOrdersLast24Hours(fn (string $slug) => $this->scanDoneOrdersQuery($slug));
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->scanDoneOrdersQuery($slug), $slug)
+        );
     }
 
     /**
-     * Count of all Invoiced orders (no time window).
+     * Count of Invoiced orders in the last 30 days.
      */
     protected function invoicedOrdersCount(): int
     {
-        return $this->countAllOrders(fn (string $slug) => $this->invoicedOrdersQuery($slug));
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->invoicedOrdersQuery($slug), $slug)
+        );
     }
 
     /**
-     * Count of all Delivered orders (no time window).
+     * Count of Delivered orders in the last 30 days.
      */
     protected function deliveredOrdersCount(): int
     {
-        return $this->countAllOrders(fn (string $slug) => $this->deliveredOrdersQuery($slug));
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
+        );
     }
 
     /**
@@ -985,16 +974,21 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function allOrdersCount(): int
     {
-        $since = now()->subDays(30)->startOfDay();
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->allOrdersQuery($slug), $slug)
+        );
+    }
 
-        return $this->countAllOrders(function (string $slug) use ($since) {
-            $query = $this->allOrdersQuery($slug);
-            if ($query === null) {
-                return null;
-            }
+    /**
+     * Apply shared last-30-days order-date filter, or pass through null queries.
+     */
+    protected function scopedToLast30Days(?Builder $query, string $slug): ?Builder
+    {
+        if ($query === null) {
+            return null;
+        }
 
-            return $this->applyLast30DaysFilter($query, $since, $slug);
-        });
+        return $this->applyLast30DaysFilter($query, now()->subDays(30)->startOfDay(), $slug);
     }
 
     /**

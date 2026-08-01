@@ -706,19 +706,19 @@
                                 <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="Active channels from channel_master (same as /all-marketplace-master)">
                                     Channels: <span id="sof-channel-count">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-pending-total-badge" style="background:#fff3cd; color:#856404; font-weight:600; border:1px solid #ffe69c;" title="Sum of Pending column (unfulfilled orders across Marketplace Manager channels)">
+                                <span class="badge fs-6 p-2" id="sof-pending-total-badge" style="background:#fff3cd; color:#856404; font-weight:600; border:1px solid #ffe69c;" title="Pending / unfulfilled orders from the last 30 days across Marketplace Manager channels">
                                     Pending: <span id="sof-pending-total">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-fulfilled-24h-badge" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / shipped orders updated in the last 24 hours across Marketplace Manager channels">
+                                <span class="badge fs-6 p-2" id="sof-fulfilled-24h-badge" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / shipped orders from the last 30 days across Marketplace Manager channels">
                                     Label Created: <span id="sof-fulfilled-24h">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-scan-done-24h-badge" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Scan Done — status Received only, updated in the last 24 hours">
+                                <span class="badge fs-6 p-2" id="sof-scan-done-24h-badge" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Scan Done — status Received only, last 30 days">
                                     Scan Done: <span id="sof-scan-done-24h">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-invoiced-badge" style="background:#e2d9f3; color:#432874; font-weight:600; border:1px solid #c5b3e6;" title="All Invoiced status orders">
+                                <span class="badge fs-6 p-2" id="sof-invoiced-badge" style="background:#e2d9f3; color:#432874; font-weight:600; border:1px solid #c5b3e6;" title="Invoiced orders from the last 30 days">
                                     Invoiced: <span id="sof-invoiced-total">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-delivered-badge" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered / Received across all marketplaces (Faire DELIVERED, Shein/Reverb Received, etc.)">
+                                <span class="badge fs-6 p-2" id="sof-delivered-badge" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered / Received in the last 30 days (Faire DELIVERED, Shein/Reverb Received, etc.)">
                                     Delivered: <span id="sof-delivered-total">0</span>
                                 </span>
                                 <span class="badge fs-6 p-2" id="sof-all-order-badge" style="background:#e9ecef; color:#343a40; font-weight:600; border:1px solid #ced4da;" title="All marketplace orders from the last 30 days (original status)">
@@ -797,7 +797,7 @@
                             <button class="nav-link" id="sof-delivered-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-delivered-pane" type="button" role="tab"
                                     aria-controls="sof-delivered-pane" aria-selected="false">
-                                Delivered <span class="badge ms-1" id="sof-delivered-tab-count" style="background:#cff4fc;color:#055160;border:1px solid #9eeaf9;">0</span>
+                                Delivered <span class="badge ms-1" id="sof-delivered-tab-count" style="background:#cff4fc;color:#055160;border:1px solid #9eeaf9;" title="Last 30 days">0</span>
                             </button>
                         </li>
                     </ul>
@@ -849,7 +849,8 @@
                                     </div>
                                 </div>
                             </div>
-                            <div id="sof-pending-table" style="height: calc(100vh - 380px);"></div>
+                            <p class="small text-muted mb-2">Pending / unfulfilled orders from the last 30 days.</p>
+                            <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-fulfilled-pane" role="tabpanel" aria-labelledby="sof-fulfilled-tab">
@@ -865,7 +866,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Label Created / shipped orders updated in the last 24 hours.</p>
+                            <p class="small text-muted mb-2">Label Created / shipped orders from the last 30 days.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -882,7 +883,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Scan Done — status Received only, updated in the last 24 hours.</p>
+                            <p class="small text-muted mb-2">Scan Done — status Received only, last 30 days.</p>
                             <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -899,7 +900,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">All Invoiced status orders.</p>
+                            <p class="small text-muted mb-2">Invoiced orders from the last 30 days.</p>
                             <div id="sof-invoiced-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -916,7 +917,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Delivered / Received across all marketplaces (Faire DELIVERED, Shein &amp; Reverb Received, etc.).</p>
+                            <p class="small text-muted mb-2">Delivered / Received from the last 30 days (Faire DELIVERED, Shein &amp; Reverb Received, etc.).</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
                         </div>
                     </div>
@@ -2244,7 +2245,7 @@
         pendingTableLoading = true;
 
         pendingTable = new Tabulator('#sof-pending-table', {
-            layout: 'fitDataFill',
+            layout: 'fitColumns',
             placeholder: 'Loading pending orders…',
             pagination: true,
             paginationSize: 50,
@@ -2315,7 +2316,7 @@
         fulfilledTableLoading = true;
 
         fulfilledTable = new Tabulator('#sof-fulfilled-table', {
-            layout: 'fitDataFill',
+            layout: 'fitColumns',
             placeholder: 'Loading Label Created orders…',
             pagination: true,
             paginationSize: 50,
@@ -2434,7 +2435,7 @@
         scanDoneTableLoading = true;
 
         scanDoneTable = new Tabulator('#sof-scan-done-table', {
-            layout: 'fitDataFill',
+            layout: 'fitColumns',
             placeholder: 'Loading Scan Done orders…',
             pagination: true,
             paginationSize: 50,
@@ -2552,7 +2553,7 @@
         invoicedTableLoading = true;
 
         invoicedTable = new Tabulator('#sof-invoiced-table', {
-            layout: 'fitDataFill',
+            layout: 'fitColumns',
             placeholder: 'Loading Invoiced orders…',
             pagination: true,
             paginationSize: 50,
@@ -2661,17 +2662,23 @@
     }
 
     function ensureDeliveredTable() {
-        if (deliveredTable || deliveredTableLoading) {
-            if (deliveredTable) {
-                setTimeout(function () { deliveredTable.redraw(true); }, 50);
-            }
+        if (deliveredTableLoading) {
             return;
+        }
+        if (deliveredTable) {
+            if (deliveredTableLoaded) {
+                setTimeout(function () { deliveredTable.redraw(true); }, 50);
+                return;
+            }
+            // Previous load failed — rebuild so user can retry by re-opening the tab.
+            try { deliveredTable.destroy(); } catch (e) {}
+            deliveredTable = null;
         }
         deliveredTableLoading = true;
 
         deliveredTable = new Tabulator('#sof-delivered-table', {
-            layout: 'fitDataFill',
-            placeholder: 'Loading Delivered orders…',
+            layout: 'fitColumns',
+            placeholder: 'Loading Delivered orders (last 30 days)…',
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, true],
@@ -2694,12 +2701,16 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                deliveredRows = (response && response.success && Array.isArray(response.data))
-                    ? response.data
-                    : [];
+                if (!response || response.success === false) {
+                    deliveredTableLoading = false;
+                    deliveredTableLoaded = false;
+                    deliveredRows = [];
+                    return [];
+                }
+                deliveredRows = Array.isArray(response.data) ? response.data : [];
                 deliveredTableLoaded = true;
                 deliveredTableLoading = false;
-                const count = (response && response.count != null)
+                const count = (response.count != null)
                     ? Number(response.count)
                     : deliveredRows.length;
                 const tabCount = document.getElementById('sof-delivered-tab-count');
@@ -2707,6 +2718,14 @@
                 const deliveredEl = document.getElementById('sof-delivered-total');
                 if (deliveredEl) deliveredEl.textContent = count.toLocaleString();
                 return deliveredRows;
+            },
+            ajaxError: function () {
+                deliveredTableLoading = false;
+                deliveredTableLoaded = false;
+                deliveredRows = [];
+                if (deliveredTable) {
+                    deliveredTable.setPlaceholder('Failed to load Delivered orders. Switch tabs and open Delivered again to retry.');
+                }
             },
             dataLoaded: function () {
                 applyDeliveredFilters();
@@ -2716,7 +2735,7 @@
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
                         c.title = 'Delivered';
-                        c.headerTooltip = 'Delivered status';
+                        c.headerTooltip = 'Delivered status (last 30 days)';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -2788,7 +2807,7 @@
         allOrderTableLoading = true;
 
         allOrderTable = new Tabulator('#sof-all-order-table', {
-            layout: 'fitDataFill',
+            layout: 'fitColumns',
             placeholder: 'Loading all orders…',
             pagination: true,
             paginationSize: 50,
