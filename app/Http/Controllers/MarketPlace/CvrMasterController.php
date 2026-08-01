@@ -4316,6 +4316,9 @@ class CvrMasterController extends Controller
             }
             unset($row);
 
+            // Attach push history (date / price / user) per marketplace for OV L30 History column
+            $this->enrichBreakdownPushHistory($breakdownData, $fullSku);
+
             Log::info('Total marketplaces: ' . count($breakdownData));
 
             return response()->json($breakdownData);
@@ -6390,6 +6393,180 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Read marketplace data_view JSON value for a SKU (for push history enrichment).
+     */
+    private function getMarketplaceDataViewValue(string $sku, string $marketplace): array
+    {
+        $marketplace = strtolower(trim($marketplace));
+        $sku = trim($sku);
+        if ($sku === '' || $marketplace === '') {
+            return [];
+        }
+
+        $dataView = null;
+        $usesValues = false;
+        try {
+            if ($marketplace === 'amazon') {
+                $dataView = AmazonDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: AmazonDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'doba') {
+                $dataView = DobaDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: DobaDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'walmart') {
+                $dataView = WalmartDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: WalmartDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
+                $dataView = EbayDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: EbayDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'ebay2' || $marketplace === 'ebaytwo') {
+                $dataView = EbayTwoDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: EbayTwoDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'ebay3' || $marketplace === 'ebaythree') {
+                $dataView = EbayThreeDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: EbayThreeDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
+                $dataView = BestbuyUSADataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: BestbuyUSADataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
+                $dataView = MacyDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: MacyDataView::where('sku', $sku)->first();
+            } elseif (in_array($marketplace, ['shopifyb2c', 'sb2c', 'shopify'], true)) {
+                $dataView = Shopifyb2cDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: Shopifyb2cDataView::where('sku', $sku)->first();
+            } elseif (in_array($marketplace, ['shopifyb2b', 'sb2b'], true)) {
+                $dataView = ShopifyB2BDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: ShopifyB2BDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'reverb') {
+                $dataView = ReverbViewData::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: ReverbViewData::where('sku', $sku)->first();
+                $usesValues = true;
+            } elseif ($marketplace === 'topdawg' && Schema::hasTable('topdawg_data_views')) {
+                $dataView = TopDawgDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: TopDawgDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'temu') {
+                $dataView = TemuDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: TemuDataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'temu2' && Schema::hasTable('temu2_data_view')) {
+                $dataView = Temu2DataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: Temu2DataView::where('sku', $sku)->first();
+            } elseif ($marketplace === 'tiktok') {
+                $dataView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: TiktokShopDataView::where('sku', $sku)->first();
+            }
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        if (!$dataView) {
+            return [];
+        }
+
+        $raw = $usesValues ? ($dataView->values ?? null) : ($dataView->value ?? null);
+        $val = is_array($raw) ? $raw : (is_string($raw) ? (json_decode($raw, true) ?: []) : []);
+        return is_array($val) ? $val : [];
+    }
+
+    /**
+     * Normalize push meta + history from a data_view value array.
+     *
+     * @return array{pushed_by:?string,pushed_at:?string,pushed_price:?float,push_history:array}
+     */
+    private function extractPushMeta(array $val): array
+    {
+        $history = [];
+        if (isset($val['SPRICE_PUSH_HISTORY']) && is_array($val['SPRICE_PUSH_HISTORY'])) {
+            foreach ($val['SPRICE_PUSH_HISTORY'] as $h) {
+                if (!is_array($h)) {
+                    continue;
+                }
+                $history[] = $h;
+            }
+        }
+
+        // Backfill a single entry from last-push fields when history is empty
+        if (empty($history) && !empty($val['SPRICE_PUSHED_AT'])) {
+            $history[] = [
+                'price' => isset($val['SPRICE_PUSHED_VALUE']) ? floatval($val['SPRICE_PUSHED_VALUE']) : null,
+                'by' => $val['SPRICE_PUSHED_BY'] ?? null,
+                'at' => $val['SPRICE_PUSHED_AT'],
+                'marketplace' => $val['SPRICE_PUSHED_MARKETPLACE'] ?? null,
+            ];
+        }
+
+        $formatted = [];
+        foreach (array_slice($history, 0, 30) as $h) {
+            $atRaw = $h['at'] ?? null;
+            $atFmt = null;
+            if ($atRaw) {
+                try {
+                    $atFmt = Carbon::parse($atRaw)->format('Y-m-d H:i');
+                } catch (\Throwable $e) {
+                    $atFmt = is_string($atRaw) ? $atRaw : null;
+                }
+            }
+            $price = isset($h['price']) && is_numeric($h['price']) ? round(floatval($h['price']), 2) : null;
+            if ($price === null && $atFmt === null && empty($h['by'])) {
+                continue;
+            }
+            $formatted[] = [
+                'price' => $price,
+                'by' => $h['by'] ?? null,
+                'at' => $atFmt,
+                'marketplace' => $h['marketplace'] ?? null,
+            ];
+        }
+
+        $pushedAtShort = null;
+        if (!empty($val['SPRICE_PUSHED_AT'])) {
+            try {
+                $pushedAtShort = Carbon::parse($val['SPRICE_PUSHED_AT'])->format('jM');
+            } catch (\Throwable $e) {
+                $pushedAtShort = null;
+            }
+        }
+
+        return [
+            'pushed_by' => $val['SPRICE_PUSHED_BY'] ?? null,
+            'pushed_at' => $pushedAtShort,
+            'pushed_price' => isset($val['SPRICE_PUSHED_VALUE']) && is_numeric($val['SPRICE_PUSHED_VALUE'])
+                ? round(floatval($val['SPRICE_PUSHED_VALUE']), 2)
+                : null,
+            'push_history' => $formatted,
+        ];
+    }
+
+    /**
+     * Attach push_history / pushed_price onto each OV L30 breakdown row.
+     */
+    private function enrichBreakdownPushHistory(array &$breakdownData, string $fullSku): void
+    {
+        foreach ($breakdownData as &$row) {
+            $mp = strtolower(trim((string) ($row['marketplace'] ?? '')));
+            $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed')
+                ? (string) $row['sku']
+                : $fullSku;
+            $val = $this->getMarketplaceDataViewValue($rowSku, $mp);
+            if (empty($val) && strtoupper($rowSku) !== strtoupper($fullSku)) {
+                $val = $this->getMarketplaceDataViewValue($fullSku, $mp);
+            }
+            $meta = $this->extractPushMeta($val);
+            if (empty($row['pushed_by']) && !empty($meta['pushed_by'])) {
+                $row['pushed_by'] = $meta['pushed_by'];
+                $row['pushed_at'] = $meta['pushed_at'];
+            }
+            $row['pushed_price'] = $meta['pushed_price'];
+            // Ensure marketplace label is on each history row for display
+            $hist = [];
+            foreach ($meta['push_history'] as $h) {
+                $h['marketplace'] = $h['marketplace'] ?: ($row['marketplace'] ?? $mp);
+                $hist[] = $h;
+            }
+            $row['push_history'] = $hist;
+        }
+        unset($row);
+    }
+
+    /**
      * Save price push status to the appropriate data_view table
      */
     private function savePricePushStatus($sku, $marketplace, $status, $pushedPrice = null)
@@ -6423,6 +6600,12 @@ class CvrMasterController extends Controller
                 if (Schema::hasTable('topdawg_data_views')) {
                     $dataView = TopDawgDataView::firstOrNew(['sku' => $sku]);
                 }
+            } elseif ($marketplace === 'temu') {
+                $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'temu2' && Schema::hasTable('temu2_data_view')) {
+                $dataView = Temu2DataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'tiktok') {
+                $dataView = TiktokShopDataView::firstOrNew(['sku' => $sku]);
             }
             
             if ($dataView) {
@@ -6439,15 +6622,32 @@ class CvrMasterController extends Controller
                 $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
                 
                 // Save pushed by information
+                $pushedBy = null;
                 if (auth()->check()) {
-                    $existing['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+                    $pushedBy = auth()->user()->name ?? auth()->user()->email;
+                    $existing['SPRICE_PUSHED_BY'] = $pushedBy;
                     $existing['SPRICE_PUSHED_BY_ID'] = auth()->id();
                 }
-                $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
+                $pushedAt = now()->toDateTimeString();
+                $existing['SPRICE_PUSHED_AT'] = $pushedAt;
                 
                 // Save the pushed price
                 if ($pushedPrice !== null) {
                     $existing['SPRICE_PUSHED_VALUE'] = $pushedPrice;
+                }
+
+                // Append to rolling push history (newest first, keep 30)
+                if ($status === 'pushed' && $pushedPrice !== null && floatval($pushedPrice) > 0) {
+                    $hist = isset($existing['SPRICE_PUSH_HISTORY']) && is_array($existing['SPRICE_PUSH_HISTORY'])
+                        ? $existing['SPRICE_PUSH_HISTORY']
+                        : [];
+                    array_unshift($hist, [
+                        'price' => round(floatval($pushedPrice), 2),
+                        'by' => $pushedBy ?: 'Unknown',
+                        'at' => $pushedAt,
+                        'marketplace' => $marketplace,
+                    ]);
+                    $existing['SPRICE_PUSH_HISTORY'] = array_slice($hist, 0, 30);
                 }
                 
                 if ($marketplace === 'reverb') {

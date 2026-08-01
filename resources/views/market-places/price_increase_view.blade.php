@@ -43,15 +43,15 @@
             margin-right: 5px;
         }
 
-        /* OV L30 Modal – light bg with dark text */
+        /* OV L30 Modal – compact, readable UI */
         #ovl30DetailsModal #modal-price-pct-btn {
-            width: 34px;
-            height: 30px;
+            width: 30px;
+            height: 28px;
             padding: 0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 13px;
         }
         #ovl30DetailsModal #modal-price-pct-btn.dropdown-toggle::after {
             display: none;
@@ -64,75 +64,242 @@
         }
         #ovl30DetailsModal .ovl30-prc-row-cb,
         #ovl30DetailsModal #ovl30-select-all-cb {
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
             cursor: pointer;
             margin: 0;
             vertical-align: middle;
         }
         #ovl30DetailsModal .modal-vertical-header th.ovl30-select-th,
-        #ovl30DetailsModal .modal-vertical-header th.ovl30-bulk-push-th {
-            writing-mode: horizontal-tb;
-            transform: none;
-            height: auto;
-            min-height: 48px;
-            padding: 2px !important;
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-bulk-push-th,
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-sprice-suggest-th {
+            padding: 4px 2px !important;
             vertical-align: middle;
             text-align: center;
         }
         #ovl30DetailsModal .ovl30-bulk-push-btn {
-            width: 22px;
-            height: 20px;
+            width: 24px;
+            height: 22px;
             padding: 0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
+            font-size: 11px;
         }
-        #ovl30DetailsModal .modal-header,
+        #ovl30DetailsModal .modal-header {
+            background: #f8fafc !important;
+            color: #0f172a !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+            padding: 0.55rem 0.85rem !important;
+        }
         #ovl30DetailsModal .table thead {
-            background-color: #e2e8f0 !important;
-            color: #000000 !important;
-            border-color: #cbd5e1 !important;
+            background-color: #5FA6AA !important;
+            color: #fff !important;
+            border-color: #4f969a !important;
         }
+        /* Horizontal compact headers — teal from reference */
         #ovl30DetailsModal .modal-vertical-header th {
-            writing-mode: vertical-rl;
+            writing-mode: horizontal-tb !important;
             text-orientation: mixed;
             white-space: nowrap;
-            transform: rotate(180deg);
-            height: calc(var(--ovl30-fs, 11px) * 5.2);
-            min-height: 48px;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
             vertical-align: middle;
-            font-size: var(--ovl30-fs, 11px) !important;
+            font-size: 10px !important;
             font-weight: 700;
-            padding: 2px 2px;
-            background-color: #e2e8f0 !important;
-            color: #000000 !important;
-            border-color: #cbd5e1 !important;
+            letter-spacing: 0.01em;
+            padding: 6px 4px !important;
+            background-color: #5FA6AA !important;
+            color: #fff !important;
+            border-color: #4f969a !important;
+            line-height: 1.15;
         }
         #ovl30DetailsModal .modal-vertical-header th span {
-            color: #000000 !important;
+            color: #fff !important;
+            display: inline;
         }
-        /* Exception for M column - keep it horizontal */
         #ovl30DetailsModal .modal-vertical-header th:nth-child(1) {
             writing-mode: horizontal-tb;
             transform: none;
-            height: auto;
-            min-height: 56px;
-        }
-        /* Auto Fill SPRICE button column – keep horizontal */
-        #ovl30DetailsModal .modal-vertical-header th.ovl30-sprice-suggest-th {
-            writing-mode: horizontal-tb;
-            transform: none;
-            height: auto;
-            min-height: 48px;
-            padding: 2px !important;
-            vertical-align: middle;
+            min-width: 72px;
+            text-align: left !important;
         }
         #ovl30DetailsModal .ovl30-sprice-suggest-btn {
-            padding: 2px 5px;
+            padding: 2px 6px;
             line-height: 1;
             font-size: 11px;
+        }
+        #ovl30DetailsModal .ovl30-header-sku {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+        #ovl30DetailsModal .ovl30-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            font-size: 12px;
+            color: #475569;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-stat strong {
+            color: #0f172a;
+            font-weight: 700;
+        }
+        #ovl30DetailsModal .ovl30-toolbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem 0.65rem;
+            padding: 0.55rem 0.85rem;
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #ovl30DetailsModal .ovl30-tool-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.45rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #ovl30DetailsModal .ovl30-tool-group label {
+            margin: 0;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-tool-group .form-control {
+            height: 28px;
+            font-size: 12px;
+            padding: 2px 6px;
+        }
+        #ovl30DetailsModal .ovl30-tool-group .btn,
+        #ovl30DetailsModal .ovl30-toolbar > .btn {
+            height: 28px;
+            font-size: 12px;
+            padding: 2px 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-toolbar .form-check {
+            margin: 0;
+            padding: 0.2rem 0.55rem 0.2rem 1.7rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            min-height: 0;
+        }
+        #ovl30DetailsModal .ovl30-toolbar .form-check-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+        }
+        #ovl30DetailsModal #modal-clear-all-sprice-btn {
+            background: #fff;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+        #ovl30DetailsModal #modal-clear-all-sprice-btn:hover {
+            background: #fef2f2;
+            color: #991b1b;
+            border-color: #fca5a5;
+        }
+        #ovl30DetailsModal .modal-footer {
+            padding: 0.45rem 0.85rem;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(1) {
+            font-weight: 700 !important;
+            color: #0f172a !important;
+        }
+        #ovl30DetailsModal #modal-header-lmp-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        /* Fixed column widths so header / totals / body stay aligned */
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-channel { width: 88px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-num { width: 52px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-price { width: 68px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-lmp { width: 64px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-link { width: 40px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-check { width: 34px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-icon { width: 34px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-sprice { width: 72px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-push { width: 36px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-by { width: 36px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-history { width: 52px; }
+        #ovl30DetailsModal .ovl30-history-btn {
+            border: none;
+            background: transparent;
+            color: #5FA6AA;
+            padding: 0 4px;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        #ovl30DetailsModal .ovl30-history-btn:hover { color: #3d7f83; }
+        #ovl30DetailsModal .ovl30-history-btn.has-history { color: #0d6efd; }
+        #ovl30PushHistoryModal {
+            z-index: 1080;
+        }
+        #ovl30PushHistoryModal .table th,
+        #ovl30PushHistoryModal .table td {
+            font-size: 12px;
+            vertical-align: middle;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-select-th,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-select-cell,
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-sprice-suggest-th,
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-bulk-push-th,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-push-cell,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-link-cell,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-by-cell {
+            text-align: center !important;
+            vertical-align: middle !important;
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable .ovl30-prc-row-cb,
+        #ovl30DetailsModal #ovl30-select-all-cb {
+            display: block;
+            margin: 0 auto;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable .editable-sprice {
+            display: inline-block;
+            margin: 0;
+            vertical-align: middle;
+        }
+        #ovl30DetailsModal .ovl30-sprice-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            width: 100%;
+        }
+        #ovl30DetailsModal .ovl30-sprice-lmp-alert {
+            color: #dc3545;
+            font-size: 11px;
+            line-height: 1;
+            cursor: help;
+            flex-shrink: 0;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-num-cell,
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-num-th {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
         }
 
         /* Playback controls – default (teal/primary) + NPFT (violet) */
@@ -323,17 +490,17 @@
         
         /* Totals row – light background, dark text; same font size as body rows */
         #ovl30DetailsModal .modal-totals-row {
-            background-color: #f1f5f9 !important;
-            font-weight: 700 !important;
+            background-color: #eef2ff !important;
+            font-weight: 600 !important;
             font-size: var(--ovl30-fs, 11px) !important;
             color: #0f172a !important;
-            border-top: 2px solid #cbd5e1 !important;
+            border-top: 1px solid #c7d2fe !important;
         }
         #ovl30DetailsModal .modal-totals-row th {
-            font-weight: 700 !important;
+            font-weight: 600 !important;
             font-size: var(--ovl30-fs, 11px) !important;
             line-height: 1.2;
-            padding: 2px 2px !important;
+            padding: 4px 3px !important;
             color: #0f172a !important;
             border-color: #e2e8f0 !important;
         }
@@ -352,6 +519,8 @@
             display: flex;
             flex-direction: column;
             border-radius: 0;
+            border: 0;
+            box-shadow: none;
         }
         #ovl30DetailsModal .modal-header,
         #ovl30DetailsModal .modal-footer {
@@ -365,37 +534,47 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            padding-bottom: 0.5rem;
+            padding: 0.35rem 0.65rem 0.5rem !important;
         }
         #ovl30DetailsModal .ovl30-table-wrap {
             --ovl30-fs: 11px;
-            --ovl30-header-h: 56px;
+            --ovl30-header-h: 34px;
             flex: 1 1 auto;
             min-height: 0;
             max-height: none;
             overflow-y: auto;
-            overflow-x: auto; /* allow horizontal scroll when columns are manually widened */
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
         }
         #ovl30DetailsModal .table tbody {
             background-color: #fff !important;
             color: #0f172a !important;
         }
+        #ovl30DetailsModal .table tbody tr:nth-child(even) {
+            background-color: #fafbfc !important;
+        }
+        #ovl30DetailsModal .table tbody tr:hover {
+            background-color: #f1f5f9 !important;
+        }
         #ovl30DetailsModal #ovl30DetailsTable {
             width: 100%;
-            max-width: none; /* grow past viewport when user expands columns (Tabulator-like) */
+            max-width: none;
             table-layout: fixed;
+            margin-bottom: 0;
+            border-color: #e2e8f0;
         }
-        /* OV L30: Tabulator-style ◂▸ column resize grips on header edges */
+        /* OV L30: column resize grips on header right edge */
         #ovl30DetailsModal .modal-vertical-header th {
             position: relative;
         }
         #ovl30DetailsModal .ovl30-col-resizer {
-            /* th is rotate(180deg) — CSS left maps to the visual right edge */
             position: absolute;
             top: 0;
-            left: -5px;
-            right: auto;
-            width: 10px;
+            right: -3px;
+            left: auto;
+            width: 8px;
             height: 100%;
             cursor: ew-resize;
             z-index: 6;
@@ -403,29 +582,24 @@
             touch-action: none;
             background: transparent;
         }
+        /* No visible gray grip marks — only a blue highlight while resizing */
         #ovl30DetailsModal .ovl30-col-resizer::before {
-            content: "◂▸";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            /* un-flip so arrows stay upright despite parent th rotate(180deg) */
-            transform: translate(-50%, -50%) rotate(180deg);
-            font-size: 9px;
-            line-height: 1;
-            color: #64748b;
-            font-weight: 700;
-            pointer-events: none;
-            opacity: 0.75;
-            white-space: nowrap;
+            content: none;
+            display: none;
         }
         #ovl30DetailsModal .ovl30-col-resizer:hover,
         #ovl30DetailsModal .ovl30-col-resizer.is-resizing {
-            background: rgba(13, 110, 253, 0.2);
+            background: rgba(13, 110, 253, 0.18);
         }
-        #ovl30DetailsModal .ovl30-col-resizer:hover::before,
-        #ovl30DetailsModal .ovl30-col-resizer.is-resizing::before {
-            color: #0d6efd;
-            opacity: 1;
+        #ovl30DetailsModal .modal-vertical-header th {
+            border-color: #e2e8f0 !important;
+            border-top: none !important;
+        }
+        #ovl30DetailsModal .table {
+            border-collapse: collapse;
+        }
+        #ovl30DetailsModal .table > :not(caption) > * > * {
+            border-bottom-width: 1px;
         }
         #ovl30DetailsModal.ovl30-cols-manual #ovl30DetailsTable {
             width: max-content;
@@ -437,18 +611,71 @@
         }
         #ovl30DetailsModal .table td {
             color: #334155 !important;
-            padding: 1px 2px !important;
+            padding: 4px 3px !important;
             font-size: var(--ovl30-fs) !important;
-            font-weight: 700 !important;
-            line-height: 1.2;
+            font-weight: 600 !important;
+            line-height: 1.25;
             vertical-align: middle;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            border-color: #eef2f6 !important;
         }
-        /* Center all column data (headers, totals, body) */
+        /* Default center; numeric / channel override via cell classes */
         #ovl30DetailsModal .ovl30-table-wrap .table th,
         #ovl30DetailsModal .ovl30-table-wrap .table td {
+            text-align: center;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(1),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(1) {
+            text-align: left !important;
+            padding-left: 8px !important;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(2),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(6),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(7),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(7),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(8),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(8),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(9),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(9),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(10),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(10),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(11),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20) {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22) {
             text-align: center !important;
         }
         #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-channel-price,
@@ -457,18 +684,25 @@
             white-space: nowrap;
         }
         #ovl30DetailsModal .table .editable-sprice {
-            width: 3.6em !important;
+            width: 4em !important;
             min-width: 0 !important;
             max-width: 100% !important;
-            height: calc(var(--ovl30-fs) + 8px);
-            padding: 0 2px !important;
+            height: 24px;
+            padding: 0 4px !important;
             font-size: var(--ovl30-fs) !important;
-            font-weight: 700;
+            font-weight: 600;
             text-align: center;
             margin: 0 auto;
             display: inline-block;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
             -moz-appearance: textfield;
             appearance: textfield;
+        }
+        #ovl30DetailsModal .table .editable-sprice:focus {
+            border-color: #93c5fd;
+            outline: 0;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
         }
         #ovl30DetailsModal .table .editable-sprice::-webkit-outer-spin-button,
         #ovl30DetailsModal .table .editable-sprice::-webkit-inner-spin-button {
@@ -480,18 +714,18 @@
             position: sticky;
             top: 0;
             z-index: 11;
-            background-color: #e2e8f0 !important;
-            box-shadow: 0 1px 0 0 #cbd5e1;
+            background-color: #5FA6AA !important;
+            box-shadow: 0 1px 0 0 #4f969a;
         }
         #ovl30DetailsModal .table thead .modal-totals-row th {
             position: sticky;
-            top: var(--ovl30-header-h, 56px);
+            top: var(--ovl30-header-h, 34px);
             z-index: 10;
-            background-color: #f1f5f9 !important;
-            box-shadow: 0 1px 0 0 #e2e8f0;
+            background-color: #e8f4f4 !important;
+            box-shadow: 0 1px 0 0 #c5e0e1;
         }
         #ovl30DetailsModal .table thead .modal-vertical-header th:nth-child(1) {
-            min-height: var(--ovl30-header-h, 56px);
+            min-height: var(--ovl30-header-h, 34px);
         }
         /* Sortable column headers – cursor and sort icon */
         #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable {
@@ -499,7 +733,11 @@
             user-select: none;
         }
         #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable:hover {
-            background-color: #cbd5e1 !important;
+            background-color: #4f969a !important;
+            color: #fff !important;
+        }
+        #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable:hover span {
+            color: #fff !important;
         }
 
         /* Missing L modal – stacks above the detail modal */
@@ -601,10 +839,16 @@
         /* Chart modal stacks above OV L30 only when both are open (set via JS — do not raise all backdrops) */
         #pricingMasterChartModal.pi-chart-over-ovl30 { z-index: 1085; }
 
-        #ovl30DetailsModal .table td:has(.push-price-btn) {
-            width: 28px;
-            max-width: 32px;
-            padding: 1px 2px !important;
+        #ovl30DetailsModal .table td:has(.push-price-btn),
+        #ovl30DetailsModal .table td.ovl30-push-cell {
+            width: 36px;
+            max-width: 40px;
+            padding: 2px !important;
+        }
+        #ovl30DetailsModal .ovl30-sprice-suggest-btn,
+        #ovl30DetailsModal .ovl30-bulk-push-btn,
+        #ovl30DetailsModal .push-price-btn {
+            margin: 0 auto;
         }
 
         #ovl30DetailsModal .lmp-add-btn {
@@ -1075,25 +1319,19 @@
     <div class="modal fade" id="ovl30DetailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xxl">
             <div class="modal-content">
-                <div class="modal-header" style="background-color: #e2e8f0; color: #0f172a;">
-                    <div class="modal-title d-flex align-items-center justify-content-between w-100" style="font-size: 2em; color: #0f172a;">
-                        <div class="d-flex align-items-center gap-3">
-                            <i class="fas fa-mouse-pointer me-2"></i> 
-                            <span id="modalSkuName" style="font-weight: bold;">SKU</span>
+                <div class="modal-header">
+                    <div class="modal-title d-flex align-items-center justify-content-between w-100 gap-2 flex-wrap pe-2">
+                        <div class="d-flex align-items-center gap-2 min-w-0">
+                            <i class="fas fa-layer-group text-primary"></i>
+                            <span id="modalSkuName" class="ovl30-header-sku text-truncate">SKU</span>
                         </div>
-                        <div class="d-flex align-items-center gap-3 flex-wrap">
-                            <span>
-                                <strong>Total INV:</strong> <span id="modal-header-inv">0</span>
-                            </span>
-                            <span>
-                                <strong>L30 Sold:</strong> <span id="modal-header-l30">0</span>
-                            </span>
-                            <span>
-                                <strong>Dil %:</strong> <span id="modal-header-dil">0%</span>
-                            </span>
-                            <span class="d-inline-flex align-items-center gap-1" style="font-size: 0.55em;">
-                                <strong class="mb-0">Group:</strong>
-                                <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 70px;"
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="ovl30-stat">INV <strong id="modal-header-inv">0</strong></span>
+                            <span class="ovl30-stat">L30 <strong id="modal-header-l30">0</strong></span>
+                            <span class="ovl30-stat">Dil% <strong id="modal-header-dil">0%</strong></span>
+                            <span class="ovl30-tool-group py-0">
+                                <label for="modal-group-select" class="mb-0">Group</label>
+                                <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
                                     title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                                     <option value="">All</option>
                                     <option value="A">A</option>
@@ -1101,13 +1339,14 @@
                                     <option value="T">T</option>
                                 </select>
                             </span>
-                            <span id="modal-header-lmp-link" style="cursor: pointer; text-decoration: underline;" title="Click to view LMP competitors">
-                                <i class="fas fa-search me-2"></i><strong>LMP</strong>
-                            </span>
+                            <button type="button" id="modal-header-lmp-link" class="btn btn-sm btn-outline-primary"
+                                title="View LMP competitors" style="height: 28px;">
+                                <i class="fas fa-search"></i> LMP
+                            </button>
                             <div class="btn-group">
                                 <button type="button" id="modal-price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle"
                                     data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false"
-                                    title="Prc Mode">
+                                    title="Price change mode">
                                     <i class="fas fa-percent"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end" id="modal-price-pct-dropdown">
@@ -1123,109 +1362,136 @@
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div id="modal-discount-input-container" class="px-3 py-2 border-bottom bg-light" style="display: none;">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span id="modal-selected-channels-count" class="fw-semibold small text-muted">(select channels)</span>
-                        <span id="modal-discount-input-label" class="text-muted small">By how much:</span>
-                        <span id="modal-discount-type-select-wrap">
-                            <select id="modal-discount-type-select" class="form-select form-select-sm" style="width: 120px;">
-                                <option value="percentage">Percentage</option>
-                                <option value="value">Value ($)</option>
-                            </select>
-                        </span>
-                        <input type="text" id="modal-discount-percentage-input" class="form-control form-control-sm"
-                            inputmode="decimal" placeholder="e.g. 10 or 2.50" autocomplete="off" style="width: 120px;">
-                        <button type="button" id="modal-apply-discount-btn" class="btn btn-sm btn-primary">
-                            <i class="fas fa-check"></i> Apply
-                        </button>
-                        <button type="button" id="modal-select-all-channels-btn" class="btn btn-sm btn-outline-secondary">
-                            Select all editable
-                        </button>
-                        <span class="text-muted small mb-0">Group:</span>
-                        <select id="modal-group-select-bar" class="form-select form-select-sm" style="width: auto; min-width: 70px;"
+                <div id="modal-discount-input-container" class="ovl30-toolbar" style="display: none;">
+                    <span id="modal-selected-channels-count" class="fw-semibold small text-muted">(select channels)</span>
+                    <span id="modal-discount-input-label" class="text-muted small">By how much:</span>
+                    <span id="modal-discount-type-select-wrap">
+                        <select id="modal-discount-type-select" class="form-select form-select-sm" style="width: 120px; height: 28px;">
+                            <option value="percentage">Percentage</option>
+                            <option value="value">Value ($)</option>
+                        </select>
+                    </span>
+                    <input type="text" id="modal-discount-percentage-input" class="form-control form-control-sm"
+                        inputmode="decimal" placeholder="e.g. 10 or 2.50" autocomplete="off" style="width: 110px; height: 28px;">
+                    <button type="button" id="modal-apply-discount-btn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                    <button type="button" id="modal-select-all-channels-btn" class="btn btn-sm btn-outline-secondary">
+                        Select all editable
+                    </button>
+                    <span class="ovl30-tool-group py-0">
+                        <label for="modal-group-select-bar" class="mb-0">Group</label>
+                        <select id="modal-group-select-bar" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
                             title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                             <option value="">All</option>
                             <option value="A">A</option>
                             <option value="D">D</option>
                             <option value="T">T</option>
                         </select>
-                    </div>
+                    </span>
                 </div>
                 {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
-                <div id="modal-target-controls" class="px-3 py-2 border-bottom bg-light">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
-                            title="Apply this SPRICE to all checked channels. Doba gets 25% less (×0.75).">
-                            <label for="modal-bulk-sprice-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
-                                SPRICE:
-                            </label>
-                            <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
-                                placeholder="0.00" step="0.01" min="0" style="width: 80px;"
-                                title="SPRICE applied to selected channels (Doba = 25% less)">
-                            <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
-                                title="Apply SPRICE to checked channels (Doba −25%)" aria-label="Apply SPRICE">
-                                <i class="fas fa-check"></i> Apply
-                            </button>
-                        </div>
-                        <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
-                            title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
-                            <label for="modal-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
-                                <span aria-hidden="true">🎯</span> ROI%:
-                            </label>
-                            <input type="number" id="modal-target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width: 60px;"
-                                title="Target ROI% for selected channels">
-                            <button type="button" id="modal-apply-target-roi-btn" class="btn btn-sm btn-success"
-                                title="Apply Target ROI% to selected channels" aria-label="Apply Target ROI">
-                                <i class="fas fa-calculator"></i>
-                            </button>
-                        </div>
-                        <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
-                            title="Target GPFT% — SPRICE = (LP + Ship) / (margin − GPFT%/100) on selected channels">
-                            <label for="modal-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
-                                <span aria-hidden="true">🎯</span> GPFT%:
-                            </label>
-                            <input type="number" id="modal-target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width: 60px;"
-                                title="Target GPFT% for selected channels (must be &lt; channel margin %)">
-                            <button type="button" id="modal-apply-target-gpft-btn" class="btn btn-sm btn-success"
-                                title="Apply Target GPFT% to selected channels" aria-label="Apply Target GPFT">
-                                <i class="fas fa-calculator"></i>
-                            </button>
-                        </div>
-                        <div class="form-check form-check-inline mb-0 ms-1 p-1 border rounded bg-white"
-                            title="When checked, the same SPRICE is saved on all child SKUs under the same parent, and Push sends that price to those siblings on each marketplace. Never applies 0.">
-                            <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
-                            <label class="form-check-label small fw-bold" for="modal-siblings-apply-cb">
-                                Siblings Apply
-                                <span id="modal-siblings-count" class="text-muted fw-normal"></span>
-                            </label>
-                        </div>
-                        <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm btn-danger ms-1"
-                            title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
-                            <i class="fas fa-eraser"></i> Clear Sprice of All Marketplace
+                <div id="modal-target-controls" class="ovl30-toolbar">
+                    <div class="ovl30-tool-group"
+                        title="Apply this SPRICE to all checked channels. Doba &amp; TopDawg get 25% less (×0.75).">
+                        <label for="modal-bulk-sprice-input">SPRICE</label>
+                        <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
+                            placeholder="0.00" step="0.01" min="0" style="width: 78px;"
+                            title="SPRICE applied to selected channels (Doba &amp; TopDawg = 25% less)">
+                        <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
+                            title="Apply SPRICE to checked channels (Doba &amp; TopDawg −25%)" aria-label="Apply SPRICE">
+                            Apply
                         </button>
-                        <span class="text-muted small">Applies to selected channels (checkbox). Uses each channel’s margin.</span>
                     </div>
+                    <div class="ovl30-tool-group"
+                        title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
+                        <label for="modal-target-roi-input">ROI%</label>
+                        <input type="number" id="modal-target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 58px;"
+                            title="Target ROI% for selected channels">
+                        <button type="button" id="modal-apply-target-roi-btn" class="btn btn-sm btn-success"
+                            title="Apply Target ROI% to selected channels" aria-label="Apply Target ROI">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="Target GPFT% — SPRICE = (LP + Ship) / (margin − GPFT%/100) on selected channels">
+                        <label for="modal-target-gpft-input">GPFT%</label>
+                        <input type="number" id="modal-target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 58px;"
+                            title="Target GPFT% for selected channels (must be &lt; channel margin %)">
+                        <button type="button" id="modal-apply-target-gpft-btn" class="btn btn-sm btn-success"
+                            title="Apply Target GPFT% to selected channels" aria-label="Apply Target GPFT">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+                    <div class="form-check"
+                        title="When checked, the same SPRICE is saved on all child SKUs under the same parent, and Push sends that price to those siblings on each marketplace. Never applies 0.">
+                        <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
+                        <label class="form-check-label" for="modal-siblings-apply-cb">
+                            Siblings
+                            <span id="modal-siblings-count" class="text-muted fw-normal"></span>
+                        </label>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="Add this $ amount to current SPRICE on selected channels (uses Price if SPRICE is empty). With Siblings checked, also applies to sibling SKUs including INV 0.">
+                        <label for="modal-sprice-bump-input">+$</label>
+                        <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
+                            placeholder="1" step="0.01" style="width: 58px;"
+                            title="Increase SPRICE by this dollar amount on selected channels (+ siblings when checked, including INV 0)">
+                        <button type="button" id="modal-apply-sprice-bump-btn" class="btn btn-sm btn-outline-primary"
+                            title="Add $ to SPRICE on checked channels (and siblings if checked)" aria-label="Apply SPRICE increase">
+                            Apply
+                        </button>
+                    </div>
+                    <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm"
+                        title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
+                        <i class="fas fa-eraser"></i> Clear All SPRICE
+                    </button>
                 </div>
-                <div class="modal-body" style="background-color: #fff;">
+                <div class="modal-body">
                     <div class="table-responsive ovl30-table-wrap">
                         <table class="table table-bordered table-hover mb-0" id="ovl30DetailsTable">
-                            <thead style="background-color: #e2e8f0; color: #0f172a;">
+                            <colgroup>
+                                <col class="ovl30-col-channel">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-icon">
+                                <col class="ovl30-col-price">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-lmp">
+                                <col class="ovl30-col-link">
+                                <col class="ovl30-col-check">
+                                <col class="ovl30-col-icon">
+                                <col class="ovl30-col-sprice">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-push">
+                                <col class="ovl30-col-by">
+                                <col class="ovl30-col-history">
+                            </colgroup>
+                            <thead>
                                 <tr class="modal-vertical-header">
-                                    <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Sort by Marketplace"><span>M</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="Sort by L30"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th title="Missing Listings – click dot to view channels with no price"><span>Missing L</span></th>
-                                    <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Sort by Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th>LMP</th>
-                                    <th>Links</th>
+                                    <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Marketplace"><span>Channel</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
+                                    <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="gpft" data-dir="desc" title="GPFT%"><span>GPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="npft" data-dir="desc" title="NPFT%"><span>NPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="ad" data-dir="asc" title="Ads% from All Marketplace Master"><span>Ads</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th title="Lowest Marketplace Price"><span>LMP</span></th>
+                                    <th title="Listing links"><span>Link</span></th>
                                     <th class="ovl30-select-th" title="Select channels (respects Group filter)">
                                         <input type="checkbox" id="ovl30-select-all-cb" title="Select as per filter">
                                     </th>
@@ -1234,21 +1500,22 @@
                                             <i class="fas fa-magic"></i>
                                         </button>
                                     </th>
-                                    <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Sort by SPRICE"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="Sort by SROI%"><span>SROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="Sort by SGPFT%"><span>SGPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="Sort by SPFT%"><span>SPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="SGPFT%"><span>SGPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="SPFT%"><span>SPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-bulk-push-th" title="Bulk push SPRICE to selected / visible marketplaces">
                                         <button type="button" class="btn btn-sm btn-primary ovl30-bulk-push-btn" id="ovl30-bulk-push-btn"
                                             title="Bulk Push — pushes SPRICE marketplace-wise (selected channels, or all visible if none selected)">
                                             <i class="fas fa-upload"></i>
                                         </button>
                                     </th>
-                                    <th>Pushed By</th>
+                                    <th title="Last pushed by"><span>By</span></th>
+                                    <th title="Push history — date, price, user for this marketplace"><span>Hist</span></th>
                                 </tr>
                                 <tr class="modal-totals-row">
-                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
+                                    <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
                                     <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-center">
                                         <span class="missing-l-dot" data-sku=""
@@ -1286,12 +1553,13 @@
                                     <th class="text-end" id="modal-avg-spft">0%</th>
                                     <th></th>
                                     <th></th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="22" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="23" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1300,6 +1568,42 @@
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OV L30 Push History (per marketplace) -->
+    <div class="modal fade" id="ovl30PushHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#5FA6AA;color:#fff;">
+                    <h6 class="modal-title mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        Push History — <span id="ovl30PushHistoryMarketplace">Channel</span>
+                        <span class="fw-normal opacity-75"> / <span id="ovl30PushHistorySku"></span></span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Marketplace</th>
+                                    <th class="text-end">Price</th>
+                                    <th>User</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ovl30PushHistoryBody">
+                                <tr><td colspan="4" class="text-center text-muted py-3">No push history</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -1839,6 +2143,7 @@
 @section('script-bottom')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
+    window.__authUserName = @json(optional(auth()->user())->name ?? optional(auth()->user())->email ?? 'You');
     /**
      * ========================================
      * CVR MASTER - TABULATOR VIEW
@@ -2103,7 +2408,20 @@
             new bootstrap.Modal(missingLModalEl, { backdrop: false }).show();
         });
 
+        let ovl30BreakdownXhr = null;
+        let ovl30BreakdownReqId = 0;
+        let ovl30ModalClosedByUser = false;
+
         function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil) {
+            ovl30ModalClosedByUser = false;
+            const reqId = ++ovl30BreakdownReqId;
+
+            // Cancel any in-flight breakdown so closing/reopening doesn't stack "Loading..." loops
+            if (ovl30BreakdownXhr && typeof ovl30BreakdownXhr.abort === 'function') {
+                try { ovl30BreakdownXhr.abort(); } catch (e) { /* ignore */ }
+                ovl30BreakdownXhr = null;
+            }
+
             $('#modalSkuName').text(sku);
             // Wire totals-row Price / CVR chart dots to this SKU
             $('#modal-price-chart-dot, #modal-cvr-chart-dot').attr('data-sku', sku || '');
@@ -2137,8 +2455,9 @@
 
             // Reuse existing instance — `new Modal().show()` on an already-open modal
             // stacks orphan .modal-backdrop layers and leaves a black screen after close/refresh.
+            // Never re-show while the user is closing / already dismissed this open.
             const modalEl = document.getElementById('ovl30DetailsModal');
-            if (modalEl) {
+            if (modalEl && !ovl30ModalClosedByUser) {
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
                 if (!modalEl.classList.contains('show')) {
                     modal.show();
@@ -2146,12 +2465,24 @@
             }
             
             // Fetch marketplace breakdown and FBA data
-            $.ajax({
+            ovl30BreakdownXhr = $.ajax({
                 url: '/cvr-master-breakdown?sku=' + encodeURIComponent(sku),
                 method: 'GET',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                success: function(data) { renderMarketplaceData(data); },
-                error: function(xhr) { showModalError('Failed to load data'); }
+                success: function(data) {
+                    if (reqId !== ovl30BreakdownReqId || ovl30ModalClosedByUser) return;
+                    if (!$('#ovl30DetailsModal').hasClass('show')) return;
+                    renderMarketplaceData(data);
+                },
+                error: function(xhr, status) {
+                    if (status === 'abort') return;
+                    if (reqId !== ovl30BreakdownReqId || ovl30ModalClosedByUser) return;
+                    if (!$('#ovl30DetailsModal').hasClass('show')) return;
+                    showModalError('Failed to load data');
+                },
+                complete: function() {
+                    if (reqId === ovl30BreakdownReqId) ovl30BreakdownXhr = null;
+                }
             });
         }
 
@@ -2165,7 +2496,8 @@
         }
 
         // Deep-link from /ebay-tabulator-view LMP magnifying glass (and others):
-        // /price-increase?sku=XXX&inv=&l30=&dil= → open same analytics modal.
+        // /price-increase?sku=XXX&inv=&l30=&dil= → open same analytics modal once.
+        // Clear ?sku= from the URL immediately so close/refresh does not keep reopening.
         (function openSkuBreakdownFromQuery() {
             try {
                 const params = new URLSearchParams(window.location.search || '');
@@ -2175,16 +2507,28 @@
                 const l30 = parseInt(params.get('l30'), 10) || 0;
                 const dil = parseFloat(params.get('dil')) || 0;
                 const image = params.get('image') || '';
-                $(function() {
+
+                // Strip deep-link params BEFORE opening (prevents reopen loops on close/reload)
+                if (window.history && window.history.replaceState) {
+                    const url = new URL(window.location.href);
+                    ['sku', 'openSku', 'inv', 'l30', 'dil', 'image'].forEach(function(k) {
+                        url.searchParams.delete(k);
+                    });
+                    window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
+                }
+
+                let opened = false;
+                function openOnce() {
+                    if (opened) return;
+                    opened = true;
                     loadMarketplaceBreakdown(sku, image, inv, l30, dil);
-                    if (window.history && window.history.replaceState) {
-                        const url = new URL(window.location.href);
-                        ['sku', 'openSku', 'inv', 'l30', 'dil', 'image'].forEach(function(k) {
-                            url.searchParams.delete(k);
-                        });
-                        window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
-                    }
-                });
+                }
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', openOnce, { once: true });
+                } else {
+                    // Defer one tick so Bootstrap/modal DOM is ready; still only once
+                    setTimeout(openOnce, 0);
+                }
             } catch (err) {
                 console.warn('openSkuBreakdownFromQuery failed', err);
             }
@@ -2193,7 +2537,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="22" class="text-center text-muted py-4">
+                    <td colspan="23" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -2204,7 +2548,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="22" class="text-center text-muted py-4">
+                    <td colspan="23" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -2214,7 +2558,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="22" class="text-center text-danger py-4">
+                    <td colspan="23" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -2290,6 +2634,7 @@
                     const parent = row && row.parent ? String(row.parent).trim() : '';
                     if (parent) {
                         const parentNorm = parent.toUpperCase();
+                        // Include ALL siblings under parent — even INV 0
                         modalSiblingSkus = fullDataset
                             .filter(function(r) {
                                 return !r.is_parent_summary
@@ -2308,6 +2653,7 @@
                 data: { sku: sku },
                 success: function(res) {
                     if (res && res.success && Array.isArray(res.siblings)) {
+                        // API is source of truth (includes INV 0 SKUs not on the filtered table)
                         modalSiblingSkus = res.siblings;
                         updateModalSiblingsCountUi();
                     }
@@ -2317,6 +2663,51 @@
                     updateModalSiblingsCountUi();
                 }
             });
+        }
+
+        /** Save SPRICE for a specific SKU/marketplace (used for siblings, including INV 0). */
+        function saveSpriceForSkuMarketplace(sku, marketplace, sprice, metrics, done) {
+            metrics = metrics || {};
+            $.ajax({
+                url: '/cvr-master-save-suggested-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    marketplace: marketplace,
+                    sprice: sprice,
+                    sgpft: metrics.sgpft || 0,
+                    spft: metrics.spft || 0,
+                    sroi: metrics.sroi || 0,
+                    amazon_margin: metrics.margin || 0.80,
+                    apply_siblings: 0, // already iterating siblings ourselves
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(res) { if (done) done(!!(res && (res.success !== false)), res); },
+                error: function() { if (done) done(false); }
+            });
+        }
+
+        /** Apply same SPRICE to every sibling SKU (includes INV 0). */
+        function applySpriceToSiblingSkus(marketplace, sprice, metrics, done) {
+            const list = (modalSiblingSkus || []).map(String).map(function(s) { return s.trim(); }).filter(Boolean);
+            if (!list.length || !(sprice > 0) || !marketplace) {
+                if (done) done(0);
+                return;
+            }
+            let i = 0;
+            let ok = 0;
+            function next() {
+                if (i >= list.length) {
+                    if (done) done(ok);
+                    return;
+                }
+                const sibSku = list[i++];
+                saveSpriceForSkuMarketplace(sibSku, marketplace, sprice, metrics, function(success) {
+                    if (success) ok++;
+                    next();
+                });
+            }
+            next();
         }
 
         $(document).on('change', '#modal-siblings-apply-cb', function() {
@@ -2599,8 +2990,10 @@
             });
         }
 
-        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths';
+        // v2: invalidate old vertical-header widths that break horizontal alignment
+        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths_v2';
         let ovl30ManualColWidths = false;
+        try { localStorage.removeItem('priceIncrease_ovl30_col_widths'); } catch (e) {}
 
         function loadOvl30SavedColWidths() {
             try {
@@ -2715,8 +3108,6 @@
 
             const applyFs = (fs) => {
                 wrap.style.setProperty('--ovl30-fs', fs + 'px');
-                const headerH = Math.max(48, Math.round(fs * 5.2));
-                wrap.style.setProperty('--ovl30-header-h', headerH + 'px');
             };
 
             // Measure natural width at each font size; pick largest that fits screen
@@ -2724,7 +3115,7 @@
             tableEl.style.tableLayout = 'auto';
 
             let best = 8;
-            for (let fs = 8; fs <= 16; fs += 0.5) {
+            for (let fs = 8; fs <= 14; fs += 0.5) {
                 applyFs(fs);
                 void tableEl.offsetWidth;
                 if (tableEl.scrollWidth <= avail + 1) {
@@ -2736,6 +3127,10 @@
             applyFs(best);
             tableEl.style.width = '100%';
             tableEl.style.tableLayout = 'fixed';
+            // Sticky totals offset = actual horizontal header height
+            const headerRow = tableEl.querySelector('thead tr.modal-vertical-header');
+            const headerH = headerRow ? Math.ceil(headerRow.getBoundingClientRect().height) : 34;
+            wrap.style.setProperty('--ovl30-header-h', Math.max(28, headerH) + 'px');
             initOvl30ColResizers();
         }
 
@@ -2792,9 +3187,13 @@
             let snroiCount = 0;
             
             data.forEach(item => {
-                const isListed = item.is_listed !== false;
-                const rowClass = !isListed ? 'table-secondary' : '';
-                const textClass = !isListed ? 'text-muted fst-italic' : '';
+                // Hide only when backend marks channel as not listed
+                const isListed = !(item.is_listed === false || item.is_listed === 0
+                    || item.is_listed === '0' || item.is_listed === 'false');
+                if (!isListed) return;
+
+                const rowClass = '';
+                const textClass = '';
                 
                 // Calculate CVR% (L30 / Views * 100). null/undefined views → N/A (channel has no view data)
                 const viewsMissing = item.views === null || item.views === undefined || item.views === '';
@@ -3070,6 +3469,19 @@
                 const pushedByCell = item.pushed_by
                     ? '<span class="pushed-by-dot" title="' + pushedByTip + '" aria-label="' + pushedByTip + '"></span>'
                     : '<span class="text-muted">-</span>';
+
+                const pushHistory = Array.isArray(item.push_history) ? item.push_history : [];
+                const histCount = pushHistory.length;
+                const histTitle = histCount
+                    ? (histCount + ' push record(s) — click to view')
+                    : 'No push history yet';
+                const historyCell = '<button type="button" class="ovl30-history-btn'
+                    + (histCount ? ' has-history' : '')
+                    + '" data-marketplace="' + String(item.marketplace || '').replace(/"/g, '&quot;') + '"'
+                    + ' title="' + histTitle.replace(/"/g, '&quot;') + '">'
+                    + '<i class="fas fa-history"></i>'
+                    + (histCount ? (' <span class="small">' + histCount + '</span>') : '')
+                    + '</button>';
                 
                 const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
                 html += `
@@ -3116,7 +3528,7 @@
                                     + '</a>';
                             })()}
                         </td>
-                        <td class="text-center ${textClass}" style="white-space: nowrap;">
+                        <td class="text-center ovl30-link-cell ${textClass}" style="white-space: nowrap;">
                             ${(item.buyer_link || item.seller_link) ? 
                                 (item.buyer_link ? '<a href="' + item.buyer_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Buyer link" style="color:#0d6efd;font-weight:700;text-decoration:none;padding:0 2px;">B</a>' : '') +
                                 (item.seller_link ? '<a href="' + item.seller_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Seller link" style="color:#495057;font-weight:700;text-decoration:none;padding:0 2px;">S</a>' : '')
@@ -3130,11 +3542,27 @@
                                     + ' title="Select channel">'
                                 : ''}
                         </td>
-                        <td class="text-center ${textClass}">-</td>
-                        <td class="text-end ${textClass}">
-                            ${isEditable && isListed ? 
-                                '<input type="number" class="form-control form-control-sm editable-sprice" value="' + sprice.toFixed(2) + '" step="0.01">' 
-                                : (sprice > 0 ? '$' + sprice.toFixed(2) : '-')}
+                        <td class="text-center ovl30-suggest-cell ${textClass}">-</td>
+                        <td class="text-end ovl30-sprice-cell ${textClass}">
+                            ${(() => {
+                                const lmpVal = parseFloat(item.lmp_price) || 0;
+                                const showAlert = sprice > 0 && lmpVal > 0 && sprice > lmpVal;
+                                const alertHtml = showAlert
+                                    ? '<i class="fas fa-exclamation-triangle ovl30-sprice-lmp-alert" title="SPRICE $'
+                                        + sprice.toFixed(2) + ' &gt; LMP $' + lmpVal.toFixed(2) + '"></i>'
+                                    : '';
+                                if (isEditable && isListed) {
+                                    return '<span class="ovl30-sprice-wrap">'
+                                        + '<input type="number" class="form-control form-control-sm editable-sprice" value="'
+                                        + sprice.toFixed(2) + '" step="0.01">'
+                                        + alertHtml
+                                        + '</span>';
+                                }
+                                if (sprice > 0) {
+                                    return '<span class="ovl30-sprice-wrap">$' + sprice.toFixed(2) + alertHtml + '</span>';
+                                }
+                                return '-';
+                            })()}
                         </td>
                         <td class="text-end ${textClass}">
                             <span class="calculated-sroi" style="${styleForCellColor(sroiColor)}">${Math.round(sroi)}%</span>
@@ -3150,7 +3578,7 @@
                         <td class="text-end ${textClass}">
                             <span class="calculated-spft" style="${styleForCellColor(spftColor)}">${Math.round(spft)}%</span>
                         </td>
-                        <td class="text-center ${textClass}">
+                        <td class="text-center ovl30-push-cell ${textClass}">
                             ${canPushPrice ? 
                                 '<button class="btn btn-sm btn-primary push-price-btn" ' +
                                 'data-sku="' + item.sku + '" ' +
@@ -3162,7 +3590,8 @@
                                 '<i class="fas fa-upload"></i></button>' 
                                 : '-'}
                         </td>
-                        <td class="text-center ${textClass}">${pushedByCell}</td>
+                        <td class="text-center ovl30-by-cell ${textClass}">${pushedByCell}</td>
+                        <td class="text-center ovl30-history-cell ${textClass}">${historyCell}</td>
                     </tr>
                 `;
             });
@@ -5068,6 +5497,25 @@
             });
         });
 
+        /** Red triangle when SPRICE > LMP (OV L30 modal). */
+        function updateOvl30SpriceLmpAlert($row) {
+            if (!$row || !$row.length) return;
+            const $wrap = $row.find('.ovl30-sprice-wrap');
+            if (!$wrap.length) return;
+            const $input = $row.find('.editable-sprice');
+            const sprice = $input.length
+                ? (parseFloat(String($input.val() || '').replace(/[$,\s]/g, '')) || 0)
+                : 0;
+            const lmp = parseFloat($row.attr('data-lmp')) || 0;
+            $wrap.find('.ovl30-sprice-lmp-alert').remove();
+            if (sprice > 0 && lmp > 0 && sprice > lmp) {
+                $wrap.append(
+                    '<i class="fas fa-exclamation-triangle ovl30-sprice-lmp-alert" title="SPRICE $'
+                    + sprice.toFixed(2) + ' > LMP $' + lmp.toFixed(2) + '"></i>'
+                );
+            }
+        }
+
         // Real-time calculation when SPRICE changes (OVL30 modal – same formula as main table)
         $(document).on('input', '.editable-sprice', function() {
             const input = $(this);
@@ -5095,6 +5543,8 @@
             const $spftSpan = row.find('.calculated-spft');
             const $roiSpan = row.find('.calculated-sroi');
             const $snroiSpan = row.find('.calculated-snroi');
+
+            updateOvl30SpriceLmpAlert(row);
             
             if (sprice > 0) {
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
@@ -5298,7 +5748,8 @@
             clearAllMarketplaceSpriceInModal();
         });
 
-        function saveModalSpriceForRow($row, sprice, done) {
+        function saveModalSpriceForRow($row, sprice, done, opts) {
+            opts = opts || {};
             const sku = getModalPrimarySku() || $row.attr('data-sku');
             const marketplace = $row.attr('data-marketplace');
             const lp = parseFloat($row.attr('data-lp')) || 0;
@@ -5332,6 +5783,10 @@
                 return;
             }
 
+            const applySiblings = (opts.applySiblings !== undefined)
+                ? (opts.applySiblings && sprice > 0 ? 1 : 0)
+                : siblingsApplyPayload(sprice);
+
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
@@ -5343,7 +5798,7 @@
                     spft: spft,
                     sroi: sroi,
                     amazon_margin: margin,
-                    apply_siblings: siblingsApplyPayload(sprice),
+                    apply_siblings: applySiblings,
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
@@ -5400,6 +5855,16 @@
                 'placeholder',
                 $(this).val() === 'percentage' ? 'Enter percentage' : 'Enter value ($)'
             );
+        });
+
+        $('#ovl30DetailsModal').on('hide.bs.modal', function() {
+            // User closed — stop in-flight load so it cannot re-show / flip back to "Loading..."
+            ovl30ModalClosedByUser = true;
+            ovl30BreakdownReqId++;
+            if (ovl30BreakdownXhr && typeof ovl30BreakdownXhr.abort === 'function') {
+                try { ovl30BreakdownXhr.abort(); } catch (e) { /* ignore */ }
+                ovl30BreakdownXhr = null;
+            }
         });
 
         $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
@@ -5530,7 +5995,11 @@
             }
         });
 
-        // ==================== BULK SPRICE (same value on checked; Doba = 25% less) ====================
+        // ==================== BULK SPRICE (same value on checked; Doba & TopDawg = 25% less) ====================
+        function isBulkSprice25OffChannel(mpLower) {
+            return mpLower === 'doba' || mpLower === 'topdawg';
+        }
+
         function applyModalBulkSprice() {
             const rawInput = $('#modal-bulk-sprice-input').val();
             const basePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -5549,10 +6018,10 @@
                 return;
             }
 
-            const dobaPrice = +(basePrice * 0.75).toFixed(2); // 25% less for Doba
+            const reducedPrice = +(basePrice * 0.75).toFixed(2); // 25% less for Doba & TopDawg
             if (!confirm(
                 'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' selected channel(s)'
-                + '?\n\nDoba will get 25% less: $' + dobaPrice.toFixed(2)
+                + '?\n\nDoba & TopDawg get 25% less: $' + reducedPrice.toFixed(2)
                 + siblingsApplyLabel()
             )) return;
 
@@ -5566,8 +6035,7 @@
             $rows.forEach(function($tr) {
                 const mp = String($tr.attr('data-marketplace') || '');
                 const mpLower = mp.toLowerCase();
-                const isDoba = (mpLower === 'doba');
-                const newPrice = isDoba ? dobaPrice : +basePrice.toFixed(2);
+                const newPrice = isBulkSprice25OffChannel(mpLower) ? reducedPrice : +basePrice.toFixed(2);
                 $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
                 saveModalSpriceForRow($tr, newPrice, function(ok, res) {
                     if (ok) {
@@ -5588,7 +6056,7 @@
                             okCount
                                 ? ('SPRICE applied to ' + okCount + ' channel(s)'
                                     + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
-                                    + '. Doba = $' + dobaPrice.toFixed(2) + ' (−25%). Use Push to go live.')
+                                    + '. Doba & TopDawg = $' + reducedPrice.toFixed(2) + ' (−25%). Use Push to go live.')
                                 : 'Failed to save SPRICE',
                             okCount ? 'success' : 'error'
                         );
@@ -5605,6 +6073,128 @@
             if (e.key === 'Enter') {
                 e.preventDefault();
                 applyModalBulkSprice();
+            }
+        });
+
+        // ==================== +$ BUMP SPRICE (add fixed $ to current SPRICE) ====================
+        function applyModalSpriceBump() {
+            const rawInput = $('#modal-sprice-bump-input').val();
+            const bump = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (rawInput === '' || rawInput == null || !isFinite(bump) || bump === 0) {
+                showToast('Enter a $ amount to add (e.g. 1 or 2)', 'error');
+                $('#modal-sprice-bump-input').focus();
+                return;
+            }
+            if (modalSelectedChannels.size === 0) {
+                showToast('Please select at least one channel (checkbox)', 'error');
+                return;
+            }
+            const $rows = collectModalTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows selected', 'error');
+                return;
+            }
+
+            const bumpLabel = (bump > 0 ? '+' : '') + '$' + Math.abs(bump).toFixed(2);
+            const withSiblings = isModalSiblingsApply();
+
+            function runBump() {
+                if (!confirm(
+                    'Increase SPRICE by ' + bumpLabel + ' on ' + $rows.length + ' selected channel(s)'
+                    + siblingsApplyLabel()
+                    + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same new SPRICE.' : '')
+                    + '?'
+                )) return;
+
+                const $btn = $('#modal-apply-sprice-bump-btn');
+                const origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+                let doneCount = 0;
+                let okCount = 0;
+                let skipped = 0;
+                let siblingsOk = 0;
+
+                function finishIfDone() {
+                    if (doneCount !== $rows.length) return;
+                    $btn.prop('disabled', false).html(origHtml);
+                    showToast(
+                        okCount
+                            ? ('SPRICE ' + bumpLabel + ' applied to ' + okCount + ' channel(s)'
+                                + (skipped ? ' (' + skipped + ' skipped)' : '')
+                                + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
+                                + '. Use Push to go live.')
+                            : (skipped === $rows.length
+                                ? 'Selected channels have no SPRICE/Price to increase'
+                                : 'Failed to save SPRICE'),
+                        okCount ? 'success' : 'error'
+                    );
+                }
+
+                $rows.forEach(function($tr) {
+                    const mp = String($tr.attr('data-marketplace') || '');
+                    const $input = $tr.find('.editable-sprice');
+                    const currentSprice = parseFloat(String($input.val() || '').replace(/[$,\s]/g, '')) || 0;
+                    const basePrice = parseFloat($tr.attr('data-price')) || 0;
+                    // Prefer current SPRICE; fall back to live Price if SPRICE empty
+                    const base = currentSprice > 0 ? currentSprice : basePrice;
+                    if (!(base > 0)) {
+                        skipped++;
+                        doneCount++;
+                        finishIfDone();
+                        return;
+                    }
+                    const newPrice = Math.max(0.01, +(base + bump).toFixed(2));
+                    const lp = parseFloat($tr.attr('data-lp')) || 0;
+                    const ship = parseFloat($tr.attr('data-ship')) || 0;
+                    const margin = parseFloat($tr.attr('data-margin')) || 0.80;
+                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
+                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+
+                    $input.val(newPrice.toFixed(2)).trigger('input');
+                    // Primary SKU only here; siblings (incl. INV 0) saved explicitly below
+                    saveModalSpriceForRow($tr, newPrice, function(ok) {
+                        if (ok) {
+                            okCount++;
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
+                            });
+                        }
+
+                        // Explicitly apply same new SPRICE to every sibling (including INV 0)
+                        if (ok && withSiblings && modalSiblingSkus.length) {
+                            applySpriceToSiblingSkus(mp, newPrice, metrics, function(sibOk) {
+                                siblingsOk = Math.max(siblingsOk, sibOk || 0);
+                                doneCount++;
+                                finishIfDone();
+                            });
+                        } else {
+                            doneCount++;
+                            finishIfDone();
+                        }
+                    }, { applySiblings: false });
+                });
+            }
+
+            // Refresh sibling list from API first so INV 0 siblings are included
+            if (withSiblings) {
+                const sku = getModalPrimarySku();
+                refreshModalSiblingSkus(sku);
+                setTimeout(runBump, 350);
+            } else {
+                runBump();
+            }
+        }
+
+        $(document).on('click', '#modal-apply-sprice-bump-btn', function(e) {
+            e.preventDefault();
+            applyModalSpriceBump();
+        });
+        $(document).on('keydown', '#modal-sprice-bump-input', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyModalSpriceBump();
             }
         });
 
@@ -6374,21 +6964,74 @@
                 + displayPrice.toFixed(2) + '</span>' + (existingDot ? (' ' + existingDot) : '')
             );
 
-            // Pushed By column (last td)
+            // Pushed By column (second-to-last); History is last
             const nowLabel = 'Just now';
-            $tr.children('td').last().html(
+            const $tds = $tr.children('td');
+            $tds.filter('.ovl30-by-cell').html(
                 '<span class="pushed-by-dot" title="Pushed ' + nowLabel + '" aria-label="Pushed"></span>'
             );
 
-            // Keep in-memory modal data in sync
+            // Keep in-memory modal data in sync + prepend history entry
+            const userName = (window.__authUserName || 'You');
+            const atIso = new Date().toISOString().slice(0, 16).replace('T', ' ');
             ovl30ModalData.forEach(function(item) {
                 if (String(item.marketplace || '') === mp) {
                     item.price = basePrice;
-                    item.pushed_by = item.pushed_by || 'pushed';
+                    item.pushed_by = item.pushed_by || userName;
                     item.pushed_at = nowLabel;
+                    item.pushed_price = basePrice;
+                    if (!Array.isArray(item.push_history)) item.push_history = [];
+                    item.push_history.unshift({
+                        price: basePrice,
+                        by: userName,
+                        at: atIso,
+                        marketplace: mp,
+                    });
+                    const count = item.push_history.length;
+                    $tds.filter('.ovl30-history-cell').html(
+                        '<button type="button" class="ovl30-history-btn has-history" data-marketplace="'
+                        + String(mp).replace(/"/g, '&quot;') + '" title="' + count + ' push record(s) — click to view">'
+                        + '<i class="fas fa-history"></i> <span class="small">' + count + '</span></button>'
+                    );
                 }
             });
         }
+
+        function openOvl30PushHistory(marketplace) {
+            const mp = String(marketplace || '');
+            const sku = getModalPrimarySku() || $('#modalSkuName').text() || '';
+            const item = (ovl30ModalData || []).find(function(r) {
+                return String(r.marketplace || '') === mp;
+            });
+            const history = (item && Array.isArray(item.push_history)) ? item.push_history : [];
+            $('#ovl30PushHistoryMarketplace').text(mp || 'Channel');
+            $('#ovl30PushHistorySku').text(sku || '-');
+            let html = '';
+            if (!history.length) {
+                html = '<tr><td colspan="4" class="text-center text-muted py-3">No push history for this marketplace yet</td></tr>';
+            } else {
+                history.forEach(function(h) {
+                    const price = (h.price != null && isFinite(parseFloat(h.price)))
+                        ? ('$' + parseFloat(h.price).toFixed(2))
+                        : '-';
+                    html += '<tr>'
+                        + '<td>' + String(h.at || '-').replace(/</g, '&lt;') + '</td>'
+                        + '<td>' + String(h.marketplace || mp || '-').replace(/</g, '&lt;') + '</td>'
+                        + '<td class="text-end fw-semibold">' + price + '</td>'
+                        + '<td>' + String(h.by || '-').replace(/</g, '&lt;') + '</td>'
+                        + '</tr>';
+                });
+            }
+            $('#ovl30PushHistoryBody').html(html);
+            const el = document.getElementById('ovl30PushHistoryModal');
+            if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+        }
+
+        $(document).on('click', '#ovl30DetailsModal .ovl30-history-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openOvl30PushHistory($(this).attr('data-marketplace') || $(this).data('marketplace'));
+        });
 
         function patchOvl30LmpCell(marketplace, lmpPrice) {
             if (!$('#ovl30DetailsModal').hasClass('show')) return;
@@ -7325,6 +7968,7 @@
             const titleEsc = String(our.title || '5 Core (our listing)').replace(/"/g, '&quot;');
             return '<tr class="lmp-five-core-row" title="Our 5 Core listing — sorted by price to show market level">'
                 + '<td class="text-center text-muted small">—</td>'
+                + '<td class="text-center text-muted small">—</td>'
                 + '<td>' + priceCell + '</td>'
                 + '<td class="text-muted">-</td>'
                 + '<td class="text-muted">-</td>'
@@ -7463,8 +8107,21 @@
                 return;
             }
 
+            let toolbar = '<div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">';
+            toolbar += '<div class="small text-muted mb-0">Select competitors, then delete</div>';
+            if (rows.length > 0) {
+                toolbar += '<button type="button" class="btn btn-sm btn-danger" id="lmp-bulk-delete-btn" disabled>'
+                    + '<i class="fa fa-trash"></i> Delete Selected</button>';
+            }
+            toolbar += '</div>';
+            html += toolbar;
+
             html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light">'
-                + '<tr><th>#</th>'
+                + '<tr>'
+                + '<th class="text-center" style="width:36px;" title="Select for bulk delete">'
+                + '<input type="checkbox" class="form-check-input" id="lmp-select-all-cb" title="Select all">'
+                + '</th>'
+                + '<th>#</th>'
                 + '<th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
@@ -7530,22 +8187,31 @@
                 const titleAttr = (row.title || row.source || '').replace(/"/g, '&quot;');
                 const linkAttr = String(row.link || '').replace(/"/g, '&quot;');
                 const extAttr = String(row.extId || '').replace(/"/g, '&quot;');
+                const skuAttr = String(sku || '').replace(/"/g, '&quot;');
+                const selectCb = '<input type="checkbox" class="form-check-input lmp-row-cb" title="Select for delete"'
+                    + ' data-id="' + String(row.id).replace(/"/g, '&quot;') + '"'
+                    + ' data-marketplace="' + row.channel + '"'
+                    + ' data-sku="' + skuAttr + '"'
+                    + ' data-price="' + row.price + '"'
+                    + ' data-ext-id="' + extAttr + '"'
+                    + ' data-link="' + linkAttr + '">';
                 const editBtn = '<button type="button" class="btn btn-sm btn-outline-warning edit-lmp-row-btn me-1" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
-                    + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
+                    + '" data-sku="' + skuAttr
                     + '" data-price="' + row.price
                     + '" data-link="' + linkAttr
                     + '" data-ext-id="' + extAttr
                     + '" title="Edit price"><i class="fa fa-edit"></i></button>';
                 const delBtn = '<button type="button" class="btn btn-sm btn-danger delete-lmp-row-btn" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
-                    + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
+                    + '" data-sku="' + skuAttr
                     + '" data-price="' + row.price
                     + '" data-ext-id="' + extAttr
                     + '" data-link="' + linkAttr
                     + '" title="Delete"><i class="fa fa-trash"></i></button>';
                 const rowClass = (row.ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 html += '<tr class="' + rowClass + '" title="' + titleAttr + '">'
+                    + '<td class="text-center align-middle">' + selectCb + '</td>'
                     + '<td>' + sn + '</td>'
                     + '<td>' + priceCell + '</td>'
                     + '<td>' + ratingCell + '</td>'
@@ -7564,6 +8230,7 @@
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
             applyLmpEditFormState();
+            updateLmpBulkDeleteUi();
         }
 
         function buildLmpAddFormHtml(sku, channel) {
@@ -8001,6 +8668,184 @@
             if (sku) loadLmpCompetitorsModal(sku, marketplace);
         });
 
+        function updateLmpBulkDeleteUi() {
+            const $cbs = $('#lmpModal .lmp-row-cb');
+            const $checked = $cbs.filter(':checked');
+            const total = $cbs.length;
+            const selected = $checked.length;
+            const $all = $('#lmp-select-all-cb');
+            if ($all.length) {
+                $all.prop('checked', total > 0 && selected === total);
+                $all.prop('indeterminate', selected > 0 && selected < total);
+            }
+            const $btn = $('#lmp-bulk-delete-btn');
+            if ($btn.length) {
+                $btn.prop('disabled', selected === 0)
+                    .html(selected > 0
+                        ? '<i class="fa fa-trash"></i> Delete Selected (' + selected + ')'
+                        : '<i class="fa fa-trash"></i> Delete Selected');
+            }
+        }
+
+        function collectCheckedLmpRows() {
+            return $('#lmpModal .lmp-row-cb:checked').map(function() {
+                const $el = $(this);
+                return {
+                    id: $el.attr('data-id') || $el.data('id'),
+                    marketplace: ($el.attr('data-marketplace') || $el.data('marketplace') || '').toLowerCase(),
+                    sku: $el.attr('data-sku') || $el.data('sku') || $('#lmpSku').text(),
+                    price: $el.attr('data-price') || $el.data('price'),
+                    extId: $el.attr('data-ext-id') || $el.data('ext-id') || '',
+                    link: $el.attr('data-link') || $el.data('link') || '',
+                };
+            }).get().filter(function(r) { return r.id || r.extId; });
+        }
+
+        function deleteLmpApiRow(item) {
+            const marketplace = (item.marketplace || '').toLowerCase();
+            const id = item.id;
+            const extId = item.extId || '';
+            const url = marketplace === 'amazon' ? '/amazon/lmp/delete'
+                : (marketplace === 'google' ? '/google-lmp-delete'
+                    : (marketplace === 'bestbuy' ? '/bestbuy-lmp-delete'
+                        : (marketplace === 'macy' ? '/macy-lmp-delete'
+                            : (marketplace === 'reverb' ? '/reverb-lmp-delete' : '/ebay-lmp-delete'))));
+            const payload = { id: id, _token: '{{ csrf_token() }}' };
+            if ((marketplace === 'ebay' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb') && extId) {
+                payload.item_id = extId;
+            }
+            if (marketplace === 'amazon' && extId) payload.asin = extId;
+            if (marketplace === 'google' && extId) payload.product_id = extId;
+            return $.ajax({
+                url: url,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: payload,
+            });
+        }
+
+        function deleteLmpSelectedRows(items, opts) {
+            opts = opts || {};
+            const list = (items || []).filter(function(r) { return r && (r.id || r.extId); });
+            if (!list.length) {
+                showToast('Select at least one competitor to delete', 'warning');
+                return;
+            }
+            const label = opts.confirmLabel || (list.length === 1
+                ? 'Delete this competitor from LMP? This cannot be undone.'
+                : 'Delete ' + list.length + ' selected competitors from LMP? This cannot be undone.');
+            if (!confirm(label)) return;
+
+            const $bulkBtn = $('#lmp-bulk-delete-btn');
+            const bulkHtml = $bulkBtn.html();
+            $bulkBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Deleting...');
+            $('#lmpModal .delete-lmp-row-btn, #lmpModal .lmp-row-cb, #lmp-select-all-cb').prop('disabled', true);
+
+            const sku = list[0].sku || $('#lmpSku').text();
+            const refreshChannel = (lmpModalCache.filter && lmpModalCache.filter !== 'all')
+                ? lmpModalCache.filter
+                : (list[0].marketplace || 'amazon');
+
+            const temuItems = list.filter(function(r) { return r.marketplace === 'temu'; });
+            const apiItems = list.filter(function(r) { return r.marketplace !== 'temu'; });
+            let success = 0;
+            let failed = 0;
+
+            function finish() {
+                $bulkBtn.prop('disabled', false).html(bulkHtml);
+                if (failed === 0) {
+                    showToast(success === 1
+                        ? 'Competitor deleted successfully'
+                        : success + ' competitors deleted successfully', 'success');
+                } else {
+                    showToast('Deleted ' + success + ' of ' + list.length + ' (' + failed + ' failed)', 'error');
+                }
+                if (success > 0) {
+                    refreshLmpAfterMutation(sku, refreshChannel);
+                } else {
+                    $('#lmpModal .delete-lmp-row-btn, #lmpModal .lmp-row-cb, #lmp-select-all-cb').prop('disabled', false);
+                    updateLmpBulkDeleteUi();
+                }
+            }
+
+            function runApiDeletes(done) {
+                let i = 0;
+                function next() {
+                    if (i >= apiItems.length) {
+                        done();
+                        return;
+                    }
+                    const item = apiItems[i++];
+                    deleteLmpApiRow(item)
+                        .done(function(response) {
+                            if (response && response.success) success++;
+                            else failed++;
+                        })
+                        .fail(function() { failed++; })
+                        .always(next);
+                }
+                next();
+            }
+
+            function runTemuDeletes(done) {
+                if (!temuItems.length) {
+                    done();
+                    return;
+                }
+                let removedCount = 0;
+                withTemuLmpEntries(sku, function(entries) {
+                    const indices = [];
+                    temuItems.forEach(function(item) {
+                        const idx = findTemuEntryIndex(entries, item.id, item.price, item.link);
+                        if (idx >= 0 && indices.indexOf(idx) === -1) indices.push(idx);
+                    });
+                    if (!indices.length) return false;
+                    // Delete high→low so earlier indices stay valid
+                    indices.sort(function(a, b) { return b - a; });
+                    indices.forEach(function(idx) { entries.splice(idx, 1); });
+                    removedCount = indices.length;
+                    return entries;
+                }, function(ok) {
+                    if (ok) {
+                        success += removedCount;
+                        failed += (temuItems.length - removedCount);
+                    } else {
+                        failed += temuItems.length;
+                    }
+                    done();
+                });
+            }
+
+            runTemuDeletes(function() {
+                runApiDeletes(finish);
+            });
+        }
+
+        $(document).on('change', '#lmp-select-all-cb', function() {
+            const checked = $(this).is(':checked');
+            $('#lmpModal .lmp-row-cb').prop('checked', checked);
+            updateLmpBulkDeleteUi();
+        });
+
+        $(document).on('change', '#lmpModal .lmp-row-cb', function() {
+            updateLmpBulkDeleteUi();
+        });
+
+        $(document).on('click', '#lmp-bulk-delete-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const selected = collectCheckedLmpRows();
+            if (!selected.length) {
+                showToast('Select at least one competitor to delete', 'warning');
+                return;
+            }
+            deleteLmpSelectedRows(selected, {
+                confirmLabel: selected.length === 1
+                    ? 'Delete the selected competitor from LMP? This cannot be undone.'
+                    : 'Delete ' + selected.length + ' selected competitors from LMP? This cannot be undone.'
+            });
+        });
+
         $(document).on('click', '#lmpModal .delete-lmp-row-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -8014,61 +8859,37 @@
             const link = btn.attr('data-link') || btn.closest('tr').find('a.text-primary').attr('href') || '';
             const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
             const label = labelMap[marketplace] || marketplace;
+
+            const selected = collectCheckedLmpRows();
+            if (selected.length > 1) {
+                const hasClicked = selected.some(function(r) {
+                    return String(r.id) === String(id) && r.marketplace === marketplace;
+                });
+                if (!hasClicked && (id || extId)) {
+                    selected.push({ id: id, marketplace: marketplace, sku: sku, price: price, extId: extId, link: link });
+                }
+                deleteLmpSelectedRows(selected, {
+                    confirmLabel: 'Delete ' + selected.length + ' selected competitors from LMP? This cannot be undone.'
+                });
+                return;
+            }
+
             if (!id && !extId) {
                 showToast('Cannot delete — missing competitor id', 'error');
                 return;
             }
-            if (!confirm('Delete this ' + label + ' competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ') from LMP? This cannot be undone.')) return;
 
-            const originalHtml = btn.html();
-            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
-
-            function afterDelete(ok, msg) {
-                if (ok) {
-                    showToast(msg || 'Competitor deleted', 'success');
-                    refreshLmpAfterMutation(sku, marketplace);
-                } else {
-                    btn.prop('disabled', false).html(originalHtml);
-                    showToast(msg || 'Failed to delete', 'error');
-                }
-            }
-
-            if (marketplace === 'temu') {
-                withTemuLmpEntries(sku, function(entries) {
-                    const idx = findTemuEntryIndex(entries, id, price, link);
-                    if (idx < 0) return false;
-                    entries.splice(idx, 1);
-                    return entries;
-                }, afterDelete);
-                return;
-            }
-
-            const url = marketplace === 'amazon' ? '/amazon/lmp/delete'
-                : (marketplace === 'google' ? '/google-lmp-delete'
-                    : (marketplace === 'bestbuy' ? '/bestbuy-lmp-delete'
-                        : (marketplace === 'macy' ? '/macy-lmp-delete'
-                            : (marketplace === 'reverb' ? '/reverb-lmp-delete' : '/ebay-lmp-delete'))));
-            const payload = {
+            deleteLmpSelectedRows([{
                 id: id,
-                _token: '{{ csrf_token() }}'
-            };
-            // eBay/Amazon/Google/BestBuy/Macy/Reverb: pass listing key so backend can clear linked-SKU copies
-            if ((marketplace === 'ebay' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb') && extId) payload.item_id = extId;
-            if (marketplace === 'amazon' && extId) payload.asin = extId;
-            if (marketplace === 'google' && extId) payload.product_id = extId;
-
-            $.ajax({
-                url: url,
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: payload,
-                success: function(response) {
-                    afterDelete(!!response.success, response.message || response.error);
-                },
-                error: function(xhr) {
-                    const msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to delete competitor';
-                    afterDelete(false, msg);
-                }
+                marketplace: marketplace,
+                sku: sku,
+                price: price,
+                extId: extId,
+                link: link,
+            }], {
+                confirmLabel: 'Delete this ' + label + ' competitor ($'
+                    + (price ? parseFloat(price).toFixed(2) : '')
+                    + ') from LMP? This cannot be undone.'
             });
         });
 
