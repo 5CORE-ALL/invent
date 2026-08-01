@@ -53,7 +53,7 @@ class MarketplaceOrderPaidFilter
             'shein' => self::isSheinPaid($order),
             'topdawg' => self::isTopDawgPaid($order),
             'temu' => self::isTemuPaid($order),
-            'ebay2', 'ebay3' => self::isEbayPaid($order),
+            'ebay1', 'ebay2', 'ebay3' => self::isEbayPaid($order),
             'faire' => self::isFairePaid($order),
             'amazon' => self::isAmazonPaid($order),
             'reverb' => self::isReverbPaid($order),

@@ -9,6 +9,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\SheinMmMetric;
+use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\ShopifySku;
@@ -36,7 +37,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
             return $empty;
         }
 
@@ -73,6 +74,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'ebay1' => app(Ebay1InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
@@ -108,6 +110,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => 'shein_metric',
             'topdawg' => 'topdawg_products',
             'temu' => 'temu_metrics',
+            'ebay1' => 'ebay_metrics',
             'ebay2' => 'ebay_2_metrics',
             'ebay3' => 'ebay_3_metrics',
             'reverb' => 'reverb_metric',
@@ -169,8 +172,12 @@ final class MarketplaceMismatchInventoryPass
                 ->all();
         }
 
-        if ($channel === 'ebay2' || $channel === 'ebay3') {
-            $query = $channel === 'ebay2' ? Ebay2Metric::query() : Ebay3Metric::query();
+        if ($channel === 'ebay1' || $channel === 'ebay2' || $channel === 'ebay3') {
+            $query = match ($channel) {
+                'ebay1' => EbayMetric::query(),
+                'ebay2' => Ebay2Metric::query(),
+                default => Ebay3Metric::query(),
+            };
 
             return $query
                 ->whereNotNull('sku')
@@ -228,6 +235,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => MarketplaceListingStockResolver::CHANNEL_SHEIN,
             'topdawg' => MarketplaceListingStockResolver::CHANNEL_TOPDAWG,
             'temu' => MarketplaceListingStockResolver::CHANNEL_TEMU,
+            'ebay1' => MarketplaceListingStockResolver::CHANNEL_EBAY1,
             'ebay2' => MarketplaceListingStockResolver::CHANNEL_EBAY2,
             'ebay3' => MarketplaceListingStockResolver::CHANNEL_EBAY3,
             'reverb' => MarketplaceListingStockResolver::CHANNEL_REVERB,
@@ -244,6 +252,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinLiveListingsService::class)->peekCached(),
             'topdawg' => app(TopDawgLiveListingsService::class)->peekCached(),
             'temu' => app(TemuLiveListingsService::class)->peekCached(),
+            'ebay1' => app(Ebay1LiveListingsService::class)->peekCached(),
             'ebay2' => app(Ebay2LiveListingsService::class)->peekCached(),
             'ebay3' => app(Ebay3LiveListingsService::class)->peekCached(),
             'reverb' => app(ReverbLiveListingsService::class)->peekCached(),

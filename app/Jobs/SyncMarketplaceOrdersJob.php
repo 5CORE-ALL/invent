@@ -57,6 +57,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'amazon' => 'amazon:sync-orders',
             'topdawg' => 'topdawg:sync-orders',
             'temu' => 'temu:sync-orders',
+            'ebay1' => 'ebay1:sync-orders',
             'ebay2' => 'ebay2:sync-orders',
             'ebay3' => 'ebay3:sync-orders',
             'faire' => 'faire:sync-orders',
@@ -122,6 +123,8 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncTemuAddressJob::dispatch(false, 25);
             } elseif ($slug === 'amazon' && \App\Services\MarketplaceManager\AmazonOrderPushService::canAutoSyncAddress()) {
                 SyncAmazonAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'ebay1' && \App\Services\MarketplaceManager\Ebay1OrderPushService::canAutoSyncAddress()) {
+                SyncEbay1AddressJob::dispatch(false, 25);
             } elseif ($slug === 'ebay2' && \App\Services\MarketplaceManager\Ebay2OrderPushService::canAutoSyncAddress()) {
                 SyncEbay2AddressJob::dispatch(false, 25);
             } elseif ($slug === 'ebay3' && \App\Services\MarketplaceManager\Ebay3OrderPushService::canAutoSyncAddress()) {

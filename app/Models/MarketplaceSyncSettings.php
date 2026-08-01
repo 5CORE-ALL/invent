@@ -103,6 +103,7 @@ class MarketplaceSyncSettings extends Model
         $isAmazon = $marketplace === 'amazon';
         $isTopDawg = $marketplace === 'topdawg';
         $isTemu = $marketplace === 'temu';
+        $isEbay1 = $marketplace === 'ebay1';
         $isEbay2 = $marketplace === 'ebay2';
         $isEbay3 = $marketplace === 'ebay3';
         $isFaire = $marketplace === 'faire';
@@ -130,6 +131,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isShein) {
             $sourceName = 'shein';
             $sourceDisplay = 'Shein';
+        } elseif ($isEbay1) {
+            $sourceName = 'ebay1';
+            $sourceDisplay = 'eBay 1';
         } elseif ($isEbay2) {
             $sourceName = 'ebay2';
             $sourceDisplay = 'eBay 2';
@@ -162,7 +166,7 @@ class MarketplaceSyncSettings extends Model
                 'fetch_orders' => true,
                 // Newegg/Shein/Faire: keep order + address + tracking automation ON by default.
                 // Amazon stays local (Seller Central fulfillment); other channels default ON.
-                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isTemu || $isEbay2 || $isEbay3 || $isFaire,
+                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isTemu || $isEbay1 || $isEbay2 || $isEbay3 || $isFaire,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
@@ -173,12 +177,13 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_shein' => $isShein,
                 'push_tracking_to_topdawg' => $isTopDawg,
                 'push_tracking_to_temu' => $isTemu,
+                'push_tracking_to_ebay1' => $isEbay1,
                 'push_tracking_to_ebay2' => $isEbay2,
                 'push_tracking_to_ebay3' => $isEbay3,
                 'push_tracking_to_faire' => $isFaire,
                 'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'amazon'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'amazon'], true),
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
@@ -194,6 +199,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_shein' => false,
                 'create_products_on_topdawg' => false,
                 'create_products_on_temu' => false,
+                'create_products_on_ebay1' => false,
                 'create_products_on_ebay2' => false,
                 'create_products_on_ebay3' => false,
                 'create_products_on_faire' => false,

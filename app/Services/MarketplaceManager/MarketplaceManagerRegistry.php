@@ -135,6 +135,15 @@ class MarketplaceManagerRegistry
                 'mp_channel_keys' => ['Temu', 'temu'],
             ],
             [
+                'slug' => 'ebay1',
+                'label' => 'eBay 1',
+                'short' => 'E1',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/1.png',
+                'enabled' => true,
+                'mp_channel_keys' => ['Ebay', 'eBay', 'eBay 1', 'Ebay 1', 'ebay1'],
+            ],
+            [
                 'slug' => 'ebay2',
                 'label' => 'eBay 2',
                 'short' => 'E2',

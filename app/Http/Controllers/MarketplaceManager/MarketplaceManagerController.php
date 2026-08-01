@@ -14,6 +14,7 @@ use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\SheinMmMetric;
 use App\Models\AmazonListingStatus;
+use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\TopDawgProduct;
@@ -352,6 +353,9 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'temu' => Schema::hasTable('temu_metrics')
                 ? (int) TemuMetric::query()->whereNotNull('goods_id')->whereNotNull('sku')->where('sku', '!=', '')->whereColumn('sku', '!=', 'goods_id')->count()
+                : 0,
+            'ebay1' => Schema::hasTable('ebay_metrics')
+                ? (int) EbayMetric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()
                 : 0,
             'ebay2' => Schema::hasTable('ebay_2_metrics')
                 ? (int) Ebay2Metric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()

@@ -36,6 +36,8 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_TEMU = 'temu';
 
+    public const CHANNEL_EBAY1 = 'ebay1';
+
     public const CHANNEL_EBAY2 = 'ebay2';
 
     public const CHANNEL_EBAY3 = 'ebay3';
@@ -861,6 +863,9 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_TEMU) {
             self::hydrateFromTemuMetrics($map, $keys);
             self::hydrateFromMappings($map, $keys, 'inventory_temu');
+        } elseif ($channel === self::CHANNEL_EBAY1) {
+            self::hydrateFromPricing($map, $keys, 'ebay1');
+            self::hydrateFromMappings($map, $keys, 'inventory_ebay1');
         } elseif ($channel === self::CHANNEL_EBAY2) {
             self::hydrateFromPricing($map, $keys, 'ebay2');
             self::hydrateFromMappings($map, $keys, 'inventory_ebay2');
@@ -990,6 +995,21 @@ final class MarketplaceListingStockResolver
 
         if ($channel === 'temu') {
             self::hydrateFromTemuMetrics($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'ebay1') {
+            if (! Schema::hasTable('ebay_metrics') || ! Schema::hasColumn('ebay_metrics', 'ebay_stock')) {
+                return;
+            }
+            \App\Models\EbayMetric::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('ebay_stock')
+                ->get(['sku', 'ebay_stock'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->ebay_stock);
+                });
 
             return;
         }

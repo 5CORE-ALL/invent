@@ -30,4 +30,21 @@ class EbayMetric extends Model
         'bullet_points',
     ];
 
+    /** MM alias for item_id (matches ebay2 product_id convention). */
+    public function getProductIdAttribute(): ?string
+    {
+        return $this->item_id;
+    }
+
+    /** MM alias for ebay_title. */
+    public function getProductNameAttribute(): ?string
+    {
+        return $this->ebay_title;
+    }
+
+    /** MM alias for ebay_price. */
+    public function getPriceAttribute()
+    {
+        return $this->ebay_price;
+    }
 }

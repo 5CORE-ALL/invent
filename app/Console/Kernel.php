@@ -1443,6 +1443,50 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // eBay 1 Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToEbay1)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('ebay1'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay1', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncEbay1TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncEbay1AddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay1:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // eBay 2 Marketplace Manager: inventory/price from Shopify, orders to Shopify
         $schedule->job(new \App\Jobs\SyncInventoryToEbay2)
             ->everyFourHours()
