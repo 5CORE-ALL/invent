@@ -100,12 +100,25 @@ class MarketplaceSyncSettings extends Model
         $isReverb = $marketplace === 'reverb';
         $isNewegg = $marketplace === 'newegg';
         $isShein = $marketplace === 'shein';
+        $isAmazon = $marketplace === 'amazon';
+        $isTopDawg = $marketplace === 'topdawg';
+        $isTemu = $marketplace === 'temu';
+        $isEbay2 = $marketplace === 'ebay2';
         $isEbay3 = $marketplace === 'ebay3';
         $isFaire = $marketplace === 'faire';
 
         $sourceName = 'aliexpress';
         $sourceDisplay = 'AliExpress';
-        if ($isAlibaba) {
+        if ($isAmazon) {
+            $sourceName = 'amazon';
+            $sourceDisplay = 'Amazon';
+        } elseif ($isTopDawg) {
+            $sourceName = 'topdawg';
+            $sourceDisplay = 'TopDawg';
+        } elseif ($isTemu) {
+            $sourceName = 'temu';
+            $sourceDisplay = 'Temu';
+        } elseif ($isAlibaba) {
             $sourceName = 'alibaba';
             $sourceDisplay = 'Alibaba';
         } elseif ($isReverb) {
@@ -117,6 +130,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isShein) {
             $sourceName = 'shein';
             $sourceDisplay = 'Shein';
+        } elseif ($isEbay2) {
+            $sourceName = 'ebay2';
+            $sourceDisplay = 'eBay 2';
         } elseif ($isEbay3) {
             $sourceName = 'ebay3';
             $sourceDisplay = 'eBay 3';
@@ -145,18 +161,24 @@ class MarketplaceSyncSettings extends Model
             'order' => [
                 'fetch_orders' => true,
                 // Newegg/Shein/Faire: keep order + address + tracking automation ON by default.
-                'auto_import_to_shopify' => $isNewegg || $isShein || $isEbay3 || $isFaire,
+                // Amazon stays local (Seller Central fulfillment); other channels default ON.
+                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isTemu || $isEbay2 || $isEbay3 || $isFaire,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
                 'push_tracking_to_aliexpress' => $marketplace === 'aliexpress',
+                'push_tracking_to_alibaba' => $isAlibaba,
                 'push_tracking_to_reverb' => $isReverb,
                 'push_tracking_to_newegg' => $isNewegg,
                 'push_tracking_to_shein' => $isShein,
+                'push_tracking_to_topdawg' => $isTopDawg,
+                'push_tracking_to_temu' => $isTemu,
+                'push_tracking_to_ebay2' => $isEbay2,
                 'push_tracking_to_ebay3' => $isEbay3,
                 'push_tracking_to_faire' => $isFaire,
+                'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'ebay3', 'aliexpress', 'reverb', 'faire'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'amazon'], true),
                 'tracking_send_notification' => false,
                 'shopify_order_tags' => [],
                 'shopify_store' => 'main',
@@ -170,6 +192,9 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_reverb' => false,
                 'create_products_on_newegg' => false,
                 'create_products_on_shein' => false,
+                'create_products_on_topdawg' => false,
+                'create_products_on_temu' => false,
+                'create_products_on_ebay2' => false,
                 'create_products_on_ebay3' => false,
                 'create_products_on_faire' => false,
                 'sync_title' => false,

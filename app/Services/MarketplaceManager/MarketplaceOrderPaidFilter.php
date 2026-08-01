@@ -51,15 +51,53 @@ class MarketplaceOrderPaidFilter
         return match ($marketplace) {
             'newegg' => self::isNeweggPaid($order),
             'shein' => self::isSheinPaid($order),
-            'ebay3' => self::isEbay3Paid($order),
+            'topdawg' => self::isTopDawgPaid($order),
+            'temu' => self::isTemuPaid($order),
+            'ebay2', 'ebay3' => self::isEbayPaid($order),
             'faire' => self::isFairePaid($order),
+            'amazon' => self::isAmazonPaid($order),
             'reverb' => self::isReverbPaid($order),
             'aliexpress', 'alibaba' => self::isAliFamilyPaid($order),
             default => true,
         };
     }
 
-    protected static function isEbay3Paid(object $order): bool
+    protected static function isTopDawgPaid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->status ?? '')));
+        if ($status === '' || str_contains($status, 'CANCEL')) {
+            return ! str_contains($status, 'CANCEL');
+        }
+
+        // Paid when we have a paid timestamp or a non-pending status.
+        if (! empty($order->order_paid_at)) {
+            return true;
+        }
+
+        return ! in_array($status, ['UNPAID', 'PENDING', 'PAYMENT_PENDING', 'PENDING_PAYMENT'], true);
+    }
+
+    protected static function isTemuPaid(object $order): bool
+    {
+        $parent = strtoupper(trim((string) ($order->parent_order_status_text ?? '')));
+        $line = strtoupper(trim((string) ($order->order_status_text ?? '')));
+        $status = $parent !== '' ? $parent : $line;
+
+        if ($status === '' || str_contains($status, 'CANCEL')) {
+            return ! str_contains($status, 'CANCEL');
+        }
+
+        $paidish = ['UN_SHIPPING', 'SHIPPED', 'DELIVERED', 'RECEIVED', 'COMPLETED', 'PARTIAL_SHIPPED'];
+        foreach ($paidish as $needle) {
+            if (str_contains($status, $needle)) {
+                return true;
+            }
+        }
+
+        return ! in_array($status, ['UNPAID', 'PENDING', 'PENDING_PAYMENT', 'WAIT_PAY', 'NOT_PAY'], true);
+    }
+
+    protected static function isEbayPaid(object $order): bool
     {
         $status = strtoupper(trim((string) ($order->status ?? '')));
         $raw = is_array($order->raw_payload ?? null) ? $order->raw_payload : [];
@@ -84,6 +122,12 @@ class MarketplaceOrderPaidFilter
         }
 
         return ! in_array($status, ['UNPAID', 'PAYMENT_PENDING', 'PENDING_PAYMENT'], true);
+    }
+
+    /** @deprecated Use isEbayPaid() */
+    protected static function isEbay3Paid(object $order): bool
+    {
+        return self::isEbayPaid($order);
     }
 
     protected static function isSheinPaid(object $order): bool
@@ -187,5 +231,12 @@ class MarketplaceOrderPaidFilter
 
         // Anything past buyer-pay is treated as paid for auto-import.
         return true;
+    }
+
+    protected static function isAmazonPaid(object $order): bool
+    {
+        $status = trim((string) ($order->status ?? ''));
+
+        return $status === '' || ! in_array($status, ['Canceled', 'Cancelled', 'Pending'], true);
     }
 }

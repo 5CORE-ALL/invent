@@ -2420,4 +2420,188 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
 
         return $res;
     }
+
+    public function isConfigured(): bool
+    {
+        $appKey = trim((string) (config('services.temu.app_key') ?? ''));
+        $secret = trim((string) (config('services.temu.secret_key') ?? ''));
+        $token = trim((string) (config('services.temu.access_token') ?? ''));
+
+        return $appKey !== '' && $secret !== '' && $token !== '';
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Temu API credentials missing. Set TEMU_APP_KEY, TEMU_SECRET_KEY, and TEMU_ACCESS_TOKEN in .env.',
+            ];
+        }
+
+        $requestBody = [
+            'type' => 'bg.local.goods.list.query',
+            'goodsSearchType' => 1,
+            'goodsStatusFilterType' => 1,
+            'pageSize' => 5,
+            'pageNumber' => 1,
+        ];
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $url = rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->timeout(30)->post($url, $signedRequest);
+            $data = $response->json() ?? [];
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                $items = $data['result']['goodsList'] ?? [];
+                $total = (int) ($data['result']['total'] ?? count($items));
+
+                return [
+                    'success' => true,
+                    'message' => 'Connected to Temu Open API. Sample page returned '.count($items)." item(s); total reported: {$total}.",
+                    'sample_count' => count($items),
+                ];
+            }
+
+            $errorMsg = (string) ($data['errorMsg'] ?? $response->body() ?: 'Unknown error');
+
+            return [
+                'success' => false,
+                'message' => trim(($data['errorCode'] ?? $response->status()).': '.$errorMsg),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, message: string, response?: mixed}
+     */
+    public function updateSkuStockTarget(string|int $goodsId, string|int $skuId, int $stockTarget): array
+    {
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Temu API credentials missing.'];
+        }
+
+        $requestBody = [
+            'type' => 'bg.local.goods.stock.edit',
+            'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+            'skuStockTargetList' => [[
+                'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
+                'stockTarget' => max(0, $stockTarget),
+            ]],
+        ];
+
+        return $this->postStockEdit($requestBody);
+    }
+
+    /**
+     * @param  array<int, array{goods_id: string|int, sku_id?: string|int|null, sku?: string, quantity: int}>  $items
+     * @return array{pushed: int, failed: int, message?: string}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        if ($items === []) {
+            return ['pushed' => 0, 'failed' => 0, 'message' => 'No items to push.'];
+        }
+
+        if (! $this->isConfigured()) {
+            return ['pushed' => 0, 'failed' => count($items), 'message' => 'Temu API credentials missing.'];
+        }
+
+        $byGoods = [];
+        foreach ($items as $item) {
+            $goodsId = trim((string) ($item['goods_id'] ?? ''));
+            if ($goodsId === '') {
+                continue;
+            }
+            $skuId = $item['sku_id'] ?? null;
+            if ($skuId === null || $skuId === '') {
+                $sku = trim((string) ($item['sku'] ?? ''));
+                if ($sku !== '') {
+                    $skuId = $this->getSkuIdBySku($sku);
+                }
+            }
+            if ($skuId === null || $skuId === '') {
+                continue;
+            }
+            $byGoods[$goodsId][] = [
+                'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
+                'stockTarget' => max(0, (int) ($item['quantity'] ?? 0)),
+            ];
+        }
+
+        $pushed = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach ($byGoods as $goodsId => $skuStockTargetList) {
+            $requestBody = [
+                'type' => 'bg.local.goods.stock.edit',
+                'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+                'skuStockTargetList' => $skuStockTargetList,
+            ];
+            $result = $this->postStockEdit($requestBody);
+            if ($result['success'] ?? false) {
+                $pushed += count($skuStockTargetList);
+            } else {
+                $failed += count($skuStockTargetList);
+                $errors[] = $result['message'] ?? 'Stock edit failed';
+            }
+            usleep(100000);
+        }
+
+        return [
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'message' => $errors === []
+                ? "Pushed stock for {$pushed} SKU(s) to Temu."
+                : implode('; ', array_slice($errors, 0, 3)),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestBody
+     * @return array{success: bool, message: string, response?: mixed}
+     */
+    protected function postStockEdit(array $requestBody): array
+    {
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $url = rtrim((string) config('services.temu.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+            $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(60);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->post($url, $signedRequest);
+            $data = $response->json() ?? [];
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                return [
+                    'success' => true,
+                    'message' => 'Stock updated on Temu.',
+                    'response' => $data['result'] ?? $data,
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => trim(($data['errorCode'] ?? $response->status()).': '.($data['errorMsg'] ?? $response->body())),
+                'response' => $data,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

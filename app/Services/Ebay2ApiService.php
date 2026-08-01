@@ -1867,4 +1867,162 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             $html
         );
     }
+
+    public function isConfigured(): bool
+    {
+        $appId = config('services.ebay2.app_id', env('EBAY_2_APP_ID'));
+        $certId = config('services.ebay2.cert_id', env('EBAY_2_CERT_ID'));
+        $refresh = config('services.ebay2.refresh_token', env('EBAY_2_REFRESH_TOKEN'));
+
+        return trim((string) $appId) !== ''
+            && trim((string) $certId) !== ''
+            && trim((string) $refresh) !== '';
+    }
+
+    /**
+     * Fast quantity (and optional price) update without GetItem.
+     *
+     * @return array{success: bool, message: string, data?: array, raw?: string}
+     */
+    public function reviseInventoryStatus(string $itemId, int $quantity, ?string $sku = null, ?float $price = null): array
+    {
+        $itemId = trim($itemId);
+        $sku = $sku !== null ? trim($sku) : null;
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'ItemID is required.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $status = $xml->addChild('InventoryStatus');
+            $status->addChild('ItemID', $itemId);
+            if ($sku !== null && $sku !== '') {
+                $status->addChild('SKU', $sku);
+            }
+            $status->addChild('Quantity', (string) max(0, $quantity));
+            if ($price !== null && $price > 0) {
+                $status->addChild('StartPrice', number_format($price, 2, '.', ''));
+            }
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'ReviseInventoryStatus',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = Http::timeout(60)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                Log::warning('eBay2 ReviseInventoryStatus: invalid XML', [
+                    'itemId' => $itemId,
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'body' => substr($body, 0, 1000),
+                ]);
+
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            if ($ack === 'Success' || $ack === 'Warning') {
+                return [
+                    'success' => true,
+                    'message' => 'Inventory updated.',
+                    'data' => $data,
+                ];
+            }
+
+            $errors = $data['Errors'] ?? [];
+            $errors = is_array($errors) ? $errors : [$errors];
+            $messages = [];
+            foreach ($errors as $err) {
+                $messages[] = $this->parseEbayError(is_array($err) ? $err : ['ShortMessage' => (string) $err]);
+            }
+            $msg = implode('; ', array_filter($messages)) ?: 'ReviseInventoryStatus failed.';
+
+            Log::warning('eBay2 ReviseInventoryStatus failed', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'qty' => $quantity,
+                'ack' => $ack,
+                'message' => $msg,
+            ]);
+
+            return ['success' => false, 'message' => $msg, 'data' => $data];
+        } catch (\Throwable $e) {
+            Log::warning('eBay2 ReviseInventoryStatus exception', [
+                'itemId' => $itemId,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_item_id?: string|null}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Configure EBAY_2_APP_ID, EBAY_2_CERT_ID, and EBAY_2_REFRESH_TOKEN in .env.',
+            ];
+        }
+
+        try {
+            $token = $this->generateBearerToken();
+            if (empty($token)) {
+                return ['success' => false, 'message' => 'Failed to generate eBay 2 bearer token.'];
+            }
+
+            $itemId = null;
+            if (Schema::hasTable('ebay_2_metrics')) {
+                $itemId = Ebay2Metric::query()
+                    ->whereNotNull('item_id')
+                    ->where('item_id', '!=', '')
+                    ->whereColumn('item_id', '!=', 'sku')
+                    ->value('item_id');
+            }
+
+            if ($itemId) {
+                $item = $this->getItem((string) $itemId);
+                $ok = is_array($item) && (isset($item['Item']) || (($item['Ack'] ?? '') === 'Success'));
+
+                return [
+                    'success' => (bool) $ok,
+                    'message' => $ok
+                        ? 'Connected. Trading API GetItem succeeded for item '.$itemId.'.'
+                        : 'Token OK but GetItem failed for sample item '.$itemId.'.',
+                    'sample_item_id' => (string) $itemId,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Connected. Bearer token generated (no sample item_id in ebay_2_metrics yet).',
+                'sample_item_id' => null,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Connection test failed: '.$e->getMessage()];
+        }
+    }
 }

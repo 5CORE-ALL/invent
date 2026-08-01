@@ -341,7 +341,17 @@ class AmazonSpApiService
                 $encodedSku = rawurlencode($amazonSku);
                 $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
-                // Build request body with proper structure
+                // Listing price + minimum seller allowed price (price floor) in one PATCH.
+                // Every updateAmazonPriceUS call keeps min price in sync with our_price.
+                $priceSchedule = [
+                    [
+                        "schedule" => [
+                            [
+                                "value_with_tax" => $price
+                            ]
+                        ]
+                    ]
+                ];
                 $body = [
                     "productType" => $productType,
                     "patches" => [[
@@ -349,16 +359,11 @@ class AmazonSpApiService
                         "path" => "/attributes/purchasable_offer",
                         "value" => [[
                             "marketplaceId" => "ATVPDKIKX0DER",
+                            "marketplace_id" => "ATVPDKIKX0DER",
                             "currency" => "USD",
-                            "our_price" => [
-                                [
-                                    "schedule" => [
-                                        [
-                                            "value_with_tax" => $price
-                                        ]
-                                    ]
-                                ]
-                            ]
+                            "audience" => "ALL",
+                            "our_price" => $priceSchedule,
+                            "minimum_seller_allowed_price" => $priceSchedule,
                         ]]
                     ]]
                 ];
@@ -368,6 +373,7 @@ class AmazonSpApiService
                     "original_sku" => $sku,
                     "amazon_sku" => $amazonSku,
                     "price" => $price,
+                    "min_price" => $price,
                     "productType" => $productType,
                     "token_fresh" => true
                 ]);
@@ -5473,5 +5479,128 @@ class AmazonSpApiService
             'error_message' => null,
             'fetched_at' => now(),
         ];
+    }
+
+    public function isConfigured(): bool
+    {
+        return filled($this->clientId)
+            && filled($this->clientSecret)
+            && filled($this->refreshToken)
+            && filled($this->marketplaceId)
+            && filled(config('services.amazon_sp.seller_id'));
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int|null}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Amazon SP-API credentials missing. Set AMAZON_SP_* keys in .env.',
+            ];
+        }
+
+        try {
+            $token = $this->getAccessToken(true);
+            if (empty($token)) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to generate Amazon SP-API access token.',
+                ];
+            }
+
+            $orders = Schema::hasTable('amazon_orders')
+                ? (int) \App\Models\AmazonOrder::query()->count()
+                : 0;
+
+            return [
+                'success' => true,
+                'message' => 'Connected. SP-API access token generated successfully.'
+                    .($orders > 0 ? " Local orders: {$orders}." : ''),
+                'sample_count' => $orders,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Best-effort merchant-fulfilled quantity update via Listings Items PATCH.
+     *
+     * @return array{success: bool, message?: string}
+     */
+    public function updateInventoryBySku(string $sku, int $quantity): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU missing.'];
+        }
+
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Amazon SP-API not configured.'];
+        }
+
+        $quantity = max(0, $quantity);
+        $sellerId = (string) config('services.amazon_sp.seller_id');
+        $marketplaceId = (string) ($this->marketplaceId ?: 'ATVPDKIKX0DER');
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (! $accessToken) {
+                return ['success' => false, 'message' => 'Could not obtain access token.'];
+            }
+
+            $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, $marketplaceId) ?: $sku;
+            $productType = $this->fetchListingProductType($amazonSku, $accessToken) ?: 'PRODUCT';
+
+            $url = $this->endpoint.'/listings/2021-08-01/items/'
+                .rawurlencode($sellerId).'/'.rawurlencode($amazonSku)
+                .'?marketplaceIds='.rawurlencode($marketplaceId);
+
+            $payload = [
+                'productType' => $productType,
+                'patches' => [
+                    [
+                        'op' => 'replace',
+                        'path' => '/attributes/fulfillment_availability',
+                        'value' => [
+                            [
+                                'fulfillment_channel_code' => 'DEFAULT',
+                                'quantity' => $quantity,
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->timeout(45)->patch($url, $payload);
+
+            if ($response->successful()) {
+                return ['success' => true];
+            }
+
+            $body = mb_substr($response->body(), 0, 300);
+
+            return [
+                'success' => false,
+                'message' => 'HTTP '.$response->status().': '.$body,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('AmazonSpApiService: updateInventoryBySku failed', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }

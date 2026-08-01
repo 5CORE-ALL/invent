@@ -620,7 +620,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Clear SPRICE → Apply % Sprice×CVR → Push to Amazon (2:00 PM IST)
+        // Amazon Sprice×CVR (2:00 PM IST):
+        // Command itself runs price refresh first (sync:amazon-prices + app:fetch-amazon-listings),
+        // then Clear → Apply % Sprice×CVR → Push (listing price + min seller price).
+        // Morning app:fetch-amazon-listings @ 09:25 still runs; this job refreshes again before push.
         $ist($schedule->command('amazon:sprice-cvr-auto-push')
             ->dailyAt('14:00')
             ->timezone('Asia/Kolkata')
@@ -1139,6 +1142,22 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
+        // Shopify label/tracking → Alibaba declare/modify shipment (settings-gated).
+        $schedule->job(new \App\Jobs\SyncAlibabaTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        // Alibaba receipt address → fill missing Shopify shipping + customer address.
+        $schedule->job(new \App\Jobs\SyncAlibabaAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         // Reverb Marketplace Manager
         $schedule->job(new \App\Jobs\SyncInventoryToReverbManager)
             ->everyFourHours()
@@ -1288,6 +1307,182 @@ class Kernel extends ConsoleKernel
             ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('shein-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Amazon Marketplace Manager: order fetch (local amazon_orders)
+        $schedule->job(new \App\Jobs\SyncInventoryToAmazon)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('amazon'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('amazon', '', true, 7))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncAmazonTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncAmazonAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('amazon:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // TopDawg Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToTopDawg)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('topdawg'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('topdawg', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTopDawgTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTopDawgAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('topdawg:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Temu Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToTemu)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('temu'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTemuTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTemuAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('temu:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('temu-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // eBay 2 Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToEbay2)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('ebay2'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('ebay2', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncEbay2TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncEbay2AddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay2:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('ebay2-sync-link-map')
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);

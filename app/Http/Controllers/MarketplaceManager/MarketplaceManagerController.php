@@ -7,12 +7,17 @@ use App\Jobs\WarmShopifyLiveCatalogCache;
 use App\Models\AlibabaMetric;
 use App\Models\AliexpressListingStatus;
 use App\Models\AliexpressMetric;
+use App\Models\ChannelMaster;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\FaireMetric;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\SheinMmMetric;
+use App\Models\AmazonListingStatus;
+use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
+use App\Models\TopDawgProduct;
+use App\Models\TemuMetric;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -32,31 +37,209 @@ class MarketplaceManagerController extends Controller
 
     public function index(): View
     {
-        $channels = [];
-
-        foreach (MarketplaceManagerRegistry::channels() as $channel) {
-            if (! $channel['enabled']) {
-                continue;
-            }
-
-            $slug = $channel['slug'];
-            $channels[] = array_merge($channel, [
-                'connected' => $this->apiConfig->isConfigured($slug),
-                'listings_count' => $this->listingCount($slug),
-                'sync_settings' => $this->syncSettingsFor($slug),
-            ]);
-        }
-
+        $channels = $this->buildIndexRows();
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
 
         return view('marketplace-manager.index', [
             'title' => 'Marketplace Manager',
             'channels' => $channels,
+            'mpChannelCount' => collect($channels)->where('mp_is_active', true)->count(),
             'shopifySkuCount' => $catalog->countDistinctAllSkus(),
             'shopifyActiveSkuCount' => $catalog->countDistinctActiveSkus(),
             'shopifyCatalogSyncedAt' => $catalog->latestSyncedAt(),
             'shopifyRefreshStatus' => Cache::get(WarmShopifyLiveCatalogCache::STATUS_CACHE_KEY),
         ]);
+    }
+
+    /**
+     * One row per Active Channels Master channel (/all-marketplace-master),
+     * with Marketplace Manager fields filled when a registry match exists.
+     * Unmatched enabled manager channels (e.g. Inactive Alibaba) are appended.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function buildIndexRows(): array
+    {
+        $mpRows = $this->allChannelMasterRows();
+        $managerByMpKey = $this->managerChannelsByMpKey();
+        $usedManagerSlugs = [];
+        $rows = [];
+
+        // All Active Channels Master names first (same list as /all-marketplace-master).
+        foreach ($mpRows as $mp) {
+            if (! $mp['is_active']) {
+                continue;
+            }
+
+            $key = strtolower($mp['channel']);
+            $manager = $managerByMpKey[$key] ?? null;
+            if ($manager !== null) {
+                $usedManagerSlugs[$manager['slug']] = true;
+            }
+
+            $rows[] = $this->mergeMpAndManagerRow($mp, $manager);
+        }
+
+        // Keep manager-only rows that are not Active on all-marketplace-master.
+        foreach (MarketplaceManagerRegistry::channels() as $manager) {
+            if (! ($manager['enabled'] ?? false)) {
+                continue;
+            }
+            if (isset($usedManagerSlugs[$manager['slug']])) {
+                continue;
+            }
+
+            $mpMatch = $this->resolveMpChannel($manager['mp_channel_keys'] ?? [], $this->channelMasterIndexFromRows($mpRows));
+            $rows[] = $this->mergeMpAndManagerRow($mpMatch, $manager);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array{channel: string, alias: ?string, missing_link: ?string, is_active: bool}|null  $mp
+     * @param  array<string, mixed>|null  $manager
+     * @return array<string, mixed>
+     */
+    protected function mergeMpAndManagerRow(?array $mp, ?array $manager): array
+    {
+        $slug = $manager['slug'] ?? null;
+
+        $row = [
+            'slug' => $slug,
+            'label' => $manager['label'] ?? null,
+            'short' => $manager['short'] ?? null,
+            'source_shop' => $manager['source_shop'] ?? null,
+            'logo' => $manager['logo'] ?? null,
+            'enabled' => (bool) ($manager['enabled'] ?? false),
+            'has_manager' => $manager !== null,
+            'connected' => $slug ? $this->apiConfig->isConfigured($slug) : false,
+            'listings_count' => $slug ? $this->listingCount($slug) : 0,
+            'sync_settings' => $slug ? $this->syncSettingsFor($slug) : [
+                'inventory' => ['inventory_sync' => false],
+                'order' => ['fetch_orders' => false, 'auto_import_to_shopify' => false],
+            ],
+            'mp_channel' => $mp['channel'] ?? null,
+            'mp_alias' => $mp['alias'] ?? null,
+            'mp_missing_link' => $mp['missing_link'] ?? null,
+            'mp_is_active' => (bool) ($mp['is_active'] ?? false),
+        ];
+
+        return $row;
+    }
+
+    /**
+     * All channel_master rows (active first), keyed lookup helpers.
+     *
+     * @return list<array{channel: string, alias: ?string, missing_link: ?string, is_active: bool}>
+     */
+    protected function allChannelMasterRows(): array
+    {
+        if (! Schema::hasTable('channel_master')) {
+            return [];
+        }
+
+        $select = ['channel', 'status'];
+        if (Schema::hasColumn('channel_master', 'alias')) {
+            $select[] = 'alias';
+        }
+        if (Schema::hasColumn('channel_master', 'missing_link')) {
+            $select[] = 'missing_link';
+        }
+
+        $rows = ChannelMaster::query()
+            ->whereNotNull('channel')
+            ->where('channel', '!=', '')
+            ->orderBy('channel')
+            ->get($select);
+
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $name = trim((string) $row->channel);
+            $key = strtolower($name);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = [
+                'channel' => $name,
+                'alias' => isset($row->alias) ? (trim((string) $row->alias) ?: null) : null,
+                'missing_link' => isset($row->missing_link) ? (trim((string) $row->missing_link) ?: null) : null,
+                'is_active' => strtolower(trim((string) ($row->status ?? ''))) === 'active',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Map lowercased channel_master name → enabled Marketplace Manager registry channel.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function managerChannelsByMpKey(): array
+    {
+        $map = [];
+        foreach (MarketplaceManagerRegistry::channels() as $channel) {
+            if (! ($channel['enabled'] ?? false)) {
+                continue;
+            }
+            foreach (($channel['mp_channel_keys'] ?? []) as $candidate) {
+                $key = strtolower(trim((string) $candidate));
+                if ($key === '' || isset($map[$key])) {
+                    continue;
+                }
+                $map[$key] = $channel;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  list<array{channel: string, alias: ?string, missing_link: ?string, is_active: bool}>  $rows
+     * @return array<string, array{channel: string, alias: ?string, missing_link: ?string, is_active: bool}>
+     */
+    protected function channelMasterIndexFromRows(array $rows): array
+    {
+        $index = [];
+        foreach ($rows as $row) {
+            $key = strtolower($row['channel']);
+            if ($key === '' || isset($index[$key])) {
+                continue;
+            }
+            $index[$key] = $row;
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param  list<string>  $candidateKeys
+     * @param  array<string, array{channel: string, alias: ?string, missing_link: ?string, is_active: bool}>  $index
+     * @return array{channel: string, alias: ?string, missing_link: ?string, is_active: bool}|null
+     */
+    protected function resolveMpChannel(array $candidateKeys, array $index): ?array
+    {
+        $activeMatch = null;
+        $anyMatch = null;
+
+        foreach ($candidateKeys as $candidate) {
+            $key = strtolower(trim((string) $candidate));
+            if ($key === '' || ! isset($index[$key])) {
+                continue;
+            }
+
+            $match = $index[$key];
+            $anyMatch ??= $match;
+            if ($match['is_active']) {
+                $activeMatch = $match;
+                break;
+            }
+        }
+
+        return $activeMatch ?? $anyMatch;
     }
 
     /**
@@ -160,6 +343,18 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'shein' => Schema::hasTable('shein_metric')
                 ? (int) SheinMmMetric::query()->whereNotNull('sku')->whereNotNull('product_id')->whereColumn('sku', '!=', 'product_id')->count()
+                : 0,
+            'amazon' => Schema::hasTable('amazon_listing_statuses')
+                ? (int) AmazonListingStatus::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'topdawg' => Schema::hasTable('topdawg_products')
+                ? (int) TopDawgProduct::query()->whereNotNull('sku')->whereNotNull('topdawg_listing_id')->whereColumn('topdawg_listing_id', '!=', 'sku')->count()
+                : 0,
+            'temu' => Schema::hasTable('temu_metrics')
+                ? (int) TemuMetric::query()->whereNotNull('goods_id')->whereNotNull('sku')->where('sku', '!=', '')->whereColumn('sku', '!=', 'goods_id')->count()
+                : 0,
+            'ebay2' => Schema::hasTable('ebay_2_metrics')
+                ? (int) Ebay2Metric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()
                 : 0,
             'ebay3' => Schema::hasTable('ebay_3_metrics')
                 ? (int) Ebay3Metric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()

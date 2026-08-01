@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\WarmAlibabaLiveListingsCache;
 use App\Models\AlibabaMetric;
 use App\Models\AlibabaOrderMetric;
 use App\Models\AlibabaPricingPrice;
@@ -13,9 +14,11 @@ use App\Services\AlibabaAuthService;
 use App\Services\MarketplaceManager\AlibabaDetailFormatter;
 use App\Services\MarketplaceManager\AlibabaInventorySyncService;
 use App\Services\MarketplaceManager\AlibabaLinkMapSyncService;
+use App\Services\MarketplaceManager\AlibabaLiveListingsService;
 use App\Services\MarketplaceManager\AlibabaOrderDetailService;
 use App\Services\MarketplaceManager\AlibabaOrderPushService;
 use App\Services\MarketplaceManager\AlibabaOrderSyncService;
+use App\Services\MarketplaceManager\AlibabaTrackingSyncService;
 use App\Services\MarketplaceManager\MarketplaceListingStockResolver;
 use App\Services\MarketplaceManager\MarketplaceOrderPaidFilter;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -155,6 +158,12 @@ class AlibabaSyncController extends Controller
         $page = max(1, (int) $request->input('page', 1));
         $perPage = 50;
         $apiError = null;
+        $forceLive = $request->boolean('refresh_live');
+        $clearCache = $request->boolean('clear_cache');
+        $liveService = app(AlibabaLiveListingsService::class);
+        if ($clearCache) {
+            $liveService->clearCache();
+        }
         $emptyCounts = ['all' => 0, 'matched' => 0, 'matched_inactive' => 0, 'mismatch' => 0, 'mismatch_inactive' => 0, 'zero' => 0, 'unlinked' => 0, 'linked' => 0];
 
         if (! Schema::hasTable('shopify_skus')) {
@@ -173,16 +182,27 @@ class AlibabaSyncController extends Controller
             ]);
         }
 
+        if ($forceLive) {
+            WarmAlibabaLiveListingsCache::dispatch();
+        }
+
         $catalog = app(ShopifyLiveVerifiedCatalogService::class);
         $linkedSkus = $this->linkedAlibabaSkus();
         $allLinkedVerified = $catalog->filterLinkedToVerified($linkedSkus);
-        $mpStock = $this->alibabaStockMapForSkus($allLinkedVerified);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->alibabaStockMapForSkus($allLinkedVerified)
+        );
         $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
         $counts = $classified['counts'] ?? $emptyCounts;
         $counts['all'] = $catalog->countDistinctAllSkus();
-        // No live state cache for Alibaba — all qty rows stay under Active tabs.
+        // Local cache — inactive state tabs stay empty until live API state is wired.
         $counts['matched_inactive'] = 0;
         $counts['mismatch_inactive'] = 0;
+
+        if (in_array($linkTab, ['matched', 'mismatch', 'zero'], true) && $liveService->peekCached() === null && ! $forceLive) {
+            WarmAlibabaLiveListingsCache::dispatch();
+        }
 
         if (! $catalog->hasAnyActive()) {
             $apiError = trim(($apiError ? $apiError.' ' : '').'Shared Shopify live catalog is empty — refresh Shopify from Marketplace Manager.');
@@ -618,6 +638,106 @@ class AlibabaSyncController extends Controller
         ]);
     }
 
+    /**
+     * Push Shopify fulfillment tracking number to Alibaba (declare shipment stub).
+     */
+    public function pushTrackingToAlibaba(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('alibaba')) {
+            return response()->json(['success' => false, 'message' => 'Alibaba not connected.']);
+        }
+
+        $line = AlibabaOrderMetric::query()->findOrFail($id);
+        $result = app(AlibabaTrackingSyncService::class)->pushTrackingForOrder($line);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'skipped' => ! empty($result['skipped']),
+            'action' => $result['action'] ?? null,
+            'message' => $result['message'] ?? 'Tracking push finished.',
+        ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    /**
+     * Bulk push Shopify tracking → Alibaba for linked orders.
+     */
+    public function syncTrackingNow(): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('alibaba')) {
+            return response()->json(['success' => false, 'message' => 'Alibaba not connected.']);
+        }
+
+        \App\Jobs\SyncAlibabaTrackingJob::dispatch(false);
+
+        return response()->json([
+            'success' => true,
+            'queued' => true,
+            'message' => 'Tracking sync queued. It reads Shopify fulfillments and declares/updates tracking on Alibaba.',
+        ]);
+    }
+
+    /**
+     * Push Shopify → Alibaba inventory for mismatch SKUs immediately (no queue).
+     */
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
+    {
+        @set_time_limit(300);
+
+        $settings = MarketplaceSyncSettings::getFor('alibaba');
+        if (! ($settings['inventory']['inventory_sync'] ?? false) && ! ($settings['pricing']['price_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Turn on Inventory sync (or Price sync) in settings first.',
+            ], 422);
+        }
+
+        $catalog = app(ShopifyLiveVerifiedCatalogService::class);
+        $liveService = app(AlibabaLiveListingsService::class);
+        $linkedSkus = $this->linkedAlibabaSkus();
+        $verified = $catalog->filterLinkedToVerified($linkedSkus);
+        $mpStock = MarketplaceListingStockResolver::classifyStockMapFromLiveOrLocal(
+            $liveService->peekCached(),
+            $this->alibabaStockMapForSkus($verified)
+        );
+        $classified = $catalog->classifyLinkedInventoryMatch($linkedSkus, $mpStock);
+        $mismatch = $classified['mismatch'] ?? [];
+
+        $offset = max(0, (int) $request->input('offset', 0));
+        $limit = max(1, min(40, (int) $request->input('limit', 25)));
+        $total = count($mismatch);
+        $batch = array_slice($mismatch, $offset, $limit);
+
+        if ($batch === []) {
+            return response()->json([
+                'success' => true,
+                'done' => true,
+                'total' => $total,
+                'offset' => $offset,
+                'updated' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'message' => $total === 0 ? 'No mismatch SKUs to sync.' : 'All mismatch batches finished.',
+            ]);
+        }
+
+        $result = app(AlibabaInventorySyncService::class)->syncSkusFromShopify($batch);
+        $nextOffset = $offset + count($batch);
+        $done = $nextOffset >= $total;
+
+        return response()->json([
+            'success' => true,
+            'done' => $done,
+            'total' => $total,
+            'offset' => $nextOffset,
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'skipped' => (int) ($result['skipped'] ?? 0),
+            'message' => $done
+                ? 'Mismatch inventory sync finished.'
+                : 'Batch synced — call again with offset='.$nextOffset.' to continue.',
+        ]);
+    }
+
     public function pushOrderToShopify(Request $request): JsonResponse
     {
         $id = (int) $request->input('id');
@@ -780,6 +900,7 @@ class AlibabaSyncController extends Controller
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
+            'push_tracking_to_alibaba', 'sync_address_to_shopify',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_alibaba', 'sync_title', 'sync_images',

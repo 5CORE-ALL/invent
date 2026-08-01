@@ -618,6 +618,7 @@ class Ebay3SyncController extends Controller
     public function syncOrders(Request $request): View
     {
         $apiError = null;
+        $statusCounts = [];
 
         if (Schema::hasTable('ebay3_order_metrics')) {
             $orders = Ebay3OrderMetric::query()
@@ -625,6 +626,13 @@ class Ebay3SyncController extends Controller
                 ->orderByDesc('id')
                 ->paginate(50)
                 ->withQueryString();
+
+            $statusCounts = Ebay3OrderMetric::query()
+                ->selectRaw("COALESCE(NULLIF(TRIM(status), ''), 'UNKNOWN') as status_key, COUNT(*) as cnt")
+                ->groupBy('status_key')
+                ->orderByDesc('cnt')
+                ->pluck('cnt', 'status_key')
+                ->all();
         } else {
             $orders = new LengthAwarePaginator([], 0, 50, 1);
             $apiError = 'Run migrations: php artisan migrate';
@@ -632,6 +640,7 @@ class Ebay3SyncController extends Controller
 
         return view('marketplace.ebay3.orders', [
             'orders' => $orders,
+            'statusCounts' => $statusCounts,
             'title' => 'eBay 3 — Orders',
             'apiError' => $apiError,
             'connected' => $this->apiConfig->isConfigured('ebay3'),

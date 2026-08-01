@@ -24,9 +24,19 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_ALIEXPRESS = 'aliexpress';
 
+    public const CHANNEL_ALIBABA = 'alibaba';
+
     public const CHANNEL_NEWEGG = 'newegg';
 
     public const CHANNEL_SHEIN = 'shein';
+
+    public const CHANNEL_AMAZON = 'amazon';
+
+    public const CHANNEL_TOPDAWG = 'topdawg';
+
+    public const CHANNEL_TEMU = 'temu';
+
+    public const CHANNEL_EBAY2 = 'ebay2';
 
     public const CHANNEL_EBAY3 = 'ebay3';
 
@@ -832,6 +842,9 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_ALIEXPRESS) {
             self::hydrateFromPricing($map, $keys, 'aliexpress');
             self::hydrateFromMappings($map, $keys, 'inventory_aliexpress');
+        } elseif ($channel === self::CHANNEL_ALIBABA) {
+            self::hydrateFromPricing($map, $keys, 'alibaba');
+            self::hydrateFromMappings($map, $keys, 'inventory_alibaba');
         } elseif ($channel === self::CHANNEL_NEWEGG) {
             self::hydrateFromPricing($map, $keys, 'newegg');
             self::hydrateFromNeweggPricing($map, $keys);
@@ -839,6 +852,18 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_SHEIN) {
             self::hydrateFromPricing($map, $keys, 'shein');
             self::hydrateFromMappings($map, $keys, 'inventory_shein');
+        } elseif ($channel === self::CHANNEL_TOPDAWG) {
+            self::hydrateFromPricing($map, $keys, 'topdawg');
+            self::hydrateFromMappings($map, $keys, 'inventory_topdawg');
+        } elseif ($channel === self::CHANNEL_AMAZON) {
+            self::hydrateFromAmazonListingStatuses($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_amazon');
+        } elseif ($channel === self::CHANNEL_TEMU) {
+            self::hydrateFromTemuMetrics($map, $keys);
+            self::hydrateFromMappings($map, $keys, 'inventory_temu');
+        } elseif ($channel === self::CHANNEL_EBAY2) {
+            self::hydrateFromPricing($map, $keys, 'ebay2');
+            self::hydrateFromMappings($map, $keys, 'inventory_ebay2');
         } elseif ($channel === self::CHANNEL_EBAY3) {
             self::hydrateFromPricing($map, $keys, 'ebay3');
             self::hydrateFromMappings($map, $keys, 'inventory_ebay3');
@@ -948,6 +973,42 @@ final class MarketplaceListingStockResolver
             return;
         }
 
+        if ($channel === 'topdawg') {
+            if (! Schema::hasTable('topdawg_products') || ! Schema::hasColumn('topdawg_products', 'remaining_inventory')) {
+                return;
+            }
+            \App\Models\TopDawgProduct::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('remaining_inventory')
+                ->get(['sku', 'remaining_inventory'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->remaining_inventory);
+                });
+
+            return;
+        }
+
+        if ($channel === 'temu') {
+            self::hydrateFromTemuMetrics($map, $keys);
+
+            return;
+        }
+
+        if ($channel === 'ebay2') {
+            if (! Schema::hasTable('ebay_2_metrics') || ! Schema::hasColumn('ebay_2_metrics', 'ebay_stock')) {
+                return;
+            }
+            \App\Models\Ebay2Metric::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('ebay_stock')
+                ->get(['sku', 'ebay_stock'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->ebay_stock);
+                });
+
+            return;
+        }
+
         if ($channel === 'ebay3') {
             if (! Schema::hasTable('ebay_3_metrics') || ! Schema::hasColumn('ebay_3_metrics', 'ebay_stock')) {
                 return;
@@ -973,6 +1034,21 @@ final class MarketplaceListingStockResolver
                 ->get(['sku', 'faire_stock'])
                 ->each(function ($row) use (&$map) {
                     self::put($map, (string) $row->sku, (int) $row->faire_stock);
+                });
+
+            return;
+        }
+
+        if ($channel === 'alibaba') {
+            if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'ab_stock')) {
+                return;
+            }
+            \App\Models\AlibabaPricingPrice::query()
+                ->whereIn('sku', $keys)
+                ->whereNotNull('ab_stock')
+                ->get(['sku', 'ab_stock'])
+                ->each(function ($row) use (&$map) {
+                    self::put($map, (string) $row->sku, (int) $row->ab_stock);
                 });
 
             return;
@@ -1056,6 +1132,46 @@ final class MarketplaceListingStockResolver
                     return;
                 }
                 self::put($map, (string) $row->sku, (int) $raw);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromTemuMetrics(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('temu_metrics') || ! Schema::hasColumn('temu_metrics', 'quantity')) {
+            return;
+        }
+
+        \App\Models\TemuMetric::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('quantity')
+            ->get(['sku', 'quantity'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->quantity);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  list<string>  $keys
+     */
+    protected static function hydrateFromAmazonListingStatuses(array &$map, array $keys): void
+    {
+        if (! Schema::hasTable('amazon_listing_statuses')) {
+            return;
+        }
+
+        \App\Models\AmazonListingStatus::query()
+            ->whereIn('sku', $keys)
+            ->get(['sku', 'value'])
+            ->each(function ($row) use (&$map) {
+                $value = is_array($row->value) ? $row->value : [];
+                if (isset($value['quantity']) && is_numeric($value['quantity'])) {
+                    self::put($map, (string) $row->sku, (int) $value['quantity']);
+                }
             });
     }
 

@@ -45,11 +45,32 @@ class MarketplaceManagerRegistry
     }
 
     /**
-     * @return array<int, array{slug: string, label: string, short: string, source_shop: string, logo: string, enabled: bool}>
+     * @return array<int, array{
+     *     slug: string,
+     *     label: string,
+     *     short: string,
+     *     source_shop: string,
+     *     logo: string,
+     *     enabled: bool,
+     *     mp_channel_keys: list<string>
+     * }>
+     *
+     * mp_channel_keys = channel_master.channel names that match this marketplace
+     * on /all-marketplace-master (case-insensitive lookup).
      */
     public static function channels(): array
     {
         return [
+            [
+                'slug' => 'amazon',
+                'label' => 'Amazon',
+                'short' => 'AMZ',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/amazon.png',
+                'enabled' => true,
+                // Active Channels Master stores this as Amazon.
+                'mp_channel_keys' => ['Amazon', 'amazon'],
+            ],
             [
                 'slug' => 'aliexpress',
                 'label' => 'AliExpress',
@@ -57,6 +78,7 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/aliexpress.png',
                 'enabled' => true,
+                'mp_channel_keys' => ['Aliexpress', 'AliExpress'],
             ],
             [
                 'slug' => 'alibaba',
@@ -65,6 +87,7 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/alibaba.svg',
                 'enabled' => true,
+                'mp_channel_keys' => ['Alibaba'],
             ],
             [
                 'slug' => 'reverb',
@@ -73,6 +96,7 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/reverb.png',
                 'enabled' => true,
+                'mp_channel_keys' => ['Reverb'],
             ],
             [
                 'slug' => 'newegg',
@@ -81,6 +105,7 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/newegg.svg',
                 'enabled' => true,
+                'mp_channel_keys' => ['Newegg', 'NewEgg'],
             ],
             [
                 'slug' => 'shein',
@@ -89,6 +114,35 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/Shein.jpg',
                 'enabled' => true,
+                'mp_channel_keys' => ['Shein'],
+            ],
+            [
+                'slug' => 'topdawg',
+                'label' => 'TopDawg',
+                'short' => 'TD',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/topdawg.svg',
+                'enabled' => true,
+                'mp_channel_keys' => ['TopDawg', 'topdawg', 'Topdawg'],
+            ],
+            [
+                'slug' => 'temu',
+                'label' => 'Temu',
+                'short' => 'TM',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/temu.jpeg',
+                'enabled' => true,
+                'mp_channel_keys' => ['Temu', 'temu'],
+            ],
+            [
+                'slug' => 'ebay2',
+                'label' => 'eBay 2',
+                'short' => 'E2',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/2.png',
+                'enabled' => true,
+                // Active Channels Master stores this as EbayTwo (alias "Ebay 2").
+                'mp_channel_keys' => ['EbayTwo', 'eBay 2', 'Ebay 2'],
             ],
             [
                 'slug' => 'ebay3',
@@ -97,6 +151,8 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/3.png',
                 'enabled' => true,
+                // Active Channels Master stores this as EbayThree (alias "Ebay 3").
+                'mp_channel_keys' => ['EbayThree', 'eBay 3', 'Ebay 3'],
             ],
             [
                 'slug' => 'faire',
@@ -105,6 +161,7 @@ class MarketplaceManagerRegistry
                 'source_shop' => 'Shopify B2C',
                 'logo' => 'uploads/faire.svg',
                 'enabled' => true,
+                'mp_channel_keys' => ['Faire'],
             ],
         ];
     }

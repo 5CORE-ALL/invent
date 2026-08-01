@@ -64,7 +64,7 @@
 <div class="container-fluid sprice-auto-wrap py-3">
     <div class="sprice-auto-hero">
         <h3><i class="fas fa-robot me-2"></i>Amazon Sprice×CVR Auto Push</h3>
-        <p>Clear SPRICE, apply % Sprice×CVR (shared rule), then push SPRICE to Amazon Listings Items API.</p>
+        <p>Run price commands first, then Clear SPRICE → Apply % Sprice×CVR → Push (listing + min price) to Amazon.</p>
         <span class="meta-pill"><i class="far fa-clock me-1"></i>{{ $scheduleLabel }}</span>
         <span class="meta-pill"><i class="fas fa-terminal me-1"></i>{{ $command }}</span>
     </div>
@@ -77,22 +77,29 @@
                     <div class="sprice-step">
                         <div class="sprice-step-num">1</div>
                         <div>
+                            <div class="fw-semibold">Run price commands</div>
+                            <div class="text-muted small"><code>sync:amazon-prices</code> then <code>app:fetch-amazon-listings</code> — freshest Amazon price + CVR inputs before Apply.</div>
+                        </div>
+                    </div>
+                    <div class="sprice-step">
+                        <div class="sprice-step-num">2</div>
+                        <div>
                             <div class="fw-semibold">Clear SPRICE</div>
                             <div class="text-muted small">Remove existing SPRICE / SPFT / SROI fields for datasheet SKUs with price.</div>
                         </div>
                     </div>
                     <div class="sprice-step">
-                        <div class="sprice-step-num">2</div>
+                        <div class="sprice-step-num">3</div>
                         <div>
                             <div class="fw-semibold">Apply % Sprice×CVR</div>
                             <div class="text-muted small">Same rule as tabulator (CVR L30 slabs × Down/Same/Up signed % of Amazon price). Ads% is not used.</div>
                         </div>
                     </div>
                     <div class="sprice-step">
-                        <div class="sprice-step-num">3</div>
+                        <div class="sprice-step-num">4</div>
                         <div>
                             <div class="fw-semibold">Push SPRICE to Amazon</div>
-                            <div class="text-muted small">Listings Items PATCH via Amazon SP-API (Shopify push skipped).</div>
+                            <div class="text-muted small">Listings Items PATCH — listing price + minimum seller allowed price (Shopify push skipped).</div>
                         </div>
                     </div>
 
@@ -120,7 +127,7 @@
                             <i class="fas fa-eye"></i> Dry Run (Apply, no push)
                         </button>
                         <button type="button" id="btn-run-now" class="btn btn-push-amazon btn-sm">
-                            <i class="fas fa-play"></i> Run Now (Clear → Apply → Push)
+                            <i class="fas fa-play"></i> Run Now (Price → Clear → Apply → Push)
                         </button>
                         <a href="{{ url('/amazon-tabulator-view') }}" class="btn btn-sprice-cvr btn-sm">
                             <i class="fas fa-percentage"></i> % Sprice×CVR (Amazon)
@@ -185,7 +192,7 @@
                     <h6 class="mb-2">CLI</h6>
                     <code class="small d-block mb-2">php artisan amazon:sprice-cvr-auto-push</code>
                     <code class="small d-block mb-2">php artisan amazon:sprice-cvr-auto-push --dry-run</code>
-                    <div class="text-muted small mb-2">Dry-run = Clear + Apply in DB, no Amazon push. Refresh tabulator to see S PRC.</div>
+                    <div class="text-muted small mb-2">Always runs price refresh first (<code>sync:amazon-prices</code> + <code>app:fetch-amazon-listings</code>), then Clear + Apply. Dry-run skips Amazon push. Use <code>--skip-price-refresh</code> to skip the price step.</div>
                     <code class="small d-block">php artisan amazon:sprice-cvr-auto-push --limit=10 --dry-run</code>
                 </div>
             </div>
@@ -254,16 +261,20 @@
     document.getElementById('btn-dry-run').addEventListener('click', function() {
         run({ dry_run: true },
             'Dry Run for Amazon?\n\n' +
-            '1) Clear SPRICE in DB\n' +
-            '2) Apply % Sprice×CVR in DB (S PRC will update after refresh)\n' +
-            '3) Skip push to Amazon\n\n' +
+            '1) Price commands (sync + fetch listings)\n' +
+            '2) Clear SPRICE in DB\n' +
+            '3) Apply % Sprice×CVR in DB (S PRC will update after refresh)\n' +
+            '4) Skip push to Amazon\n\n' +
             'Prices are NOT sent to Amazon.');
     });
 
     document.getElementById('btn-run-now').addEventListener('click', function() {
         run({ dry_run: false },
             'Run LIVE pipeline for Amazon?\n\n' +
-            '1) Clear SPRICE\n2) Apply % Sprice×CVR\n3) Push to Amazon\n\n' +
+            '1) Price commands (sync:amazon-prices + fetch-amazon-listings)\n' +
+            '2) Clear SPRICE\n' +
+            '3) Apply % Sprice×CVR\n' +
+            '4) Push to Amazon (listing + min price)\n\n' +
             'This starts in the background and can take a long time.');
     });
 })();

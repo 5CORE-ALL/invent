@@ -1,5 +1,17 @@
 @extends('layouts.vertical', ['title' => $title ?? 'eBay 3 — Orders', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
+@section('css')
+<style>
+    /* Higher specificity so these win over Bootstrap .badge (loaded after @yield('css')) */
+    .badge.ebay3-orders-badge,
+    .badge.ebay3-status-badge {
+        font-size: 1.5rem !important;
+        padding: 0.7rem 1.3rem !important;
+        line-height: 1.2;
+    }
+</style>
+@endsection
+
 @section('content')
 <div class="row">
     <div class="col-12">
@@ -13,9 +25,36 @@
             <div class="alert alert-warning">{{ $apiError }}</div>
         @endif
 
+        @php
+            $statusBadgeClass = [
+                'FULFILLED' => 'bg-success',
+                'NOT_STARTED' => 'bg-warning text-dark',
+                'IN_PROGRESS' => 'bg-info text-dark',
+                'CANCELLED' => 'bg-danger',
+                'UNKNOWN' => 'bg-secondary',
+            ];
+            $statusLabels = [
+                'NOT_STARTED' => 'Pending',
+                'FULFILLED' => 'Fulfilled',
+                'IN_PROGRESS' => 'In Progress',
+                'CANCELLED' => 'Cancelled',
+                'UNKNOWN' => 'Unknown',
+            ];
+        @endphp
+
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span class="badge bg-primary">{{ $orders->total() }} orders</span>
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <span class="badge bg-primary ebay3-orders-badge">{{ $orders->total() }} orders</span>
+                    @foreach(($statusCounts ?? []) as $status => $count)
+                        @php
+                            $key = strtoupper((string) $status);
+                            $cls = $statusBadgeClass[$key] ?? 'bg-secondary';
+                            $label = $statusLabels[$key] ?? str_replace('_', ' ', ucwords(strtolower($key), ' _'));
+                        @endphp
+                        <span class="badge {{ $cls }} ebay3-status-badge" title="{{ $label }}">{{ $label }}: {{ number_format((int) $count) }}</span>
+                    @endforeach
+                </div>
                 <div class="d-flex gap-2 align-items-center flex-wrap">
                     <select id="fetch-days" class="form-select form-select-sm" style="width:auto;">
                         <option value="from:2026-07-07" selected>From July 7, 2026 onward</option>
@@ -57,7 +96,14 @@
                                             —
                                         @endif
                                     </td>
-                                    <td><span class="badge bg-secondary">{{ $o->status }}</span></td>
+                                    <td>
+                                        @php
+                                            $rowStatus = strtoupper(trim((string) ($o->status ?? 'UNKNOWN')));
+                                            $rowCls = $statusBadgeClass[$rowStatus] ?? 'bg-secondary';
+                                            $rowLabel = $statusLabels[$rowStatus] ?? ($o->status ?: '—');
+                                        @endphp
+                                        <span class="badge {{ $rowCls }}">{{ $rowLabel }}</span>
+                                    </td>
                                     <td><code>{{ $o->sku }}</code></td>
                                     <td>{{ Str::limit($o->display_title ?? '—', 40) }}</td>
                                     <td>{{ $o->quantity ?? 1 }}</td>

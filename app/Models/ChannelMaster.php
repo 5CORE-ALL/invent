@@ -30,6 +30,7 @@ class ChannelMaster extends Model
         'base',
         'target',
         'missing_link',
+        'ch_orders_link',
         'addition_sheet',
         'update',
     ];

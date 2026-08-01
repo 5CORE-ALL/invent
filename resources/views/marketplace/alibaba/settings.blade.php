@@ -83,6 +83,19 @@
                         </label>
                         <div class="form-text ms-4">When on, unpaid Alibaba orders stay in our DB and are not queued or manually pushed to Shopify. Turn this off to import unpaid orders.</div>
                     </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[sync_address_to_shopify]" value="1" {{ ($settings['order']['sync_address_to_shopify'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Sync Alibaba shipping address → Shopify (when missing)</span>
+                        </label>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[push_tracking_to_alibaba]" value="1" {{ ($settings['order']['push_tracking_to_alibaba'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Push Shopify tracking → Alibaba (declare shipment)</span>
+                        </label>
+                        <div class="form-text ms-4">When on, scheduled jobs read Shopify fulfillments and push tracking to Alibaba. API wiring is pending — jobs run as no-ops until implemented.</div>
+                    </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>
                         <select class="form-select form-select-sm" name="order[shopify_store]" style="max-width: 400px;">

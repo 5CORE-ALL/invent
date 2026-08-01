@@ -84,6 +84,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('sales.order.fulfillment') }}" class="side-nav-link">
+                    <i class="ri-truck-line"></i>
+                    <span>Sales Order Fulfillment</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('variations.verify.masters') }}" class="side-nav-link variations-verify-masters-nav">
                     <i class="ri-layout-grid-line"></i>
                     <span>Variations Verify Masters</span>

@@ -9,8 +9,10 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\NeweggMetric;
 use App\Models\ReverbMetric;
 use App\Models\SheinMmMetric;
+use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\ShopifySku;
+use App\Models\TopDawgProduct;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -34,7 +36,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
             return $empty;
         }
 
@@ -69,11 +71,15 @@ final class MarketplaceMismatchInventoryPass
         $result = match ($channel) {
             'newegg' => app(NeweggInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'ebay2' => app(Ebay2InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'ebay3' => app(Ebay3InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'reverb' => app(ReverbInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'aliexpress' => app(AliexpressInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($mismatch),
             default => $empty,
         };
 
@@ -100,19 +106,73 @@ final class MarketplaceMismatchInventoryPass
         $table = match ($channel) {
             'newegg' => 'newegg_metric',
             'shein' => 'shein_metric',
+            'topdawg' => 'topdawg_products',
+            'temu' => 'temu_metrics',
+            'ebay2' => 'ebay_2_metrics',
             'ebay3' => 'ebay_3_metrics',
             'reverb' => 'reverb_metric',
             'aliexpress' => 'aliexpress_metric',
             'alibaba' => 'alibaba_metric',
             'faire' => 'faire_metric',
+            'amazon' => 'amazon_listing_statuses',
             default => null,
         };
         if ($table === null || ! Schema::hasTable($table)) {
             return [];
         }
 
-        if ($channel === 'ebay3') {
-            return Ebay3Metric::query()
+        if ($channel === 'topdawg') {
+            return TopDawgProduct::query()
+                ->whereNotNull('sku')
+                ->whereNotNull('topdawg_listing_id')
+                ->where('sku', '!=', '')
+                ->where('topdawg_listing_id', '!=', '')
+                ->whereColumn('sku', '!=', 'topdawg_listing_id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'temu') {
+            return \App\Models\TemuMetric::query()
+                ->whereNotNull('sku')
+                ->whereNotNull('goods_id')
+                ->where('sku', '!=', '')
+                ->where('goods_id', '!=', '')
+                ->whereColumn('sku', '!=', 'goods_id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'amazon') {
+            if (! Schema::hasTable('amazon_listing_statuses')) {
+                return [];
+            }
+
+            return \App\Models\AmazonListingStatus::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get()
+                ->filter(static fn (\App\Models\AmazonListingStatus $row) => AmazonListingStatusHelper::isLinked($row))
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'ebay2' || $channel === 'ebay3') {
+            $query = $channel === 'ebay2' ? Ebay2Metric::query() : Ebay3Metric::query();
+
+            return $query
                 ->whereNotNull('sku')
                 ->whereNotNull('item_id')
                 ->where('sku', '!=', '')
@@ -166,10 +226,14 @@ final class MarketplaceMismatchInventoryPass
         $resolverChannel = match ($channel) {
             'newegg' => MarketplaceListingStockResolver::CHANNEL_NEWEGG,
             'shein' => MarketplaceListingStockResolver::CHANNEL_SHEIN,
+            'topdawg' => MarketplaceListingStockResolver::CHANNEL_TOPDAWG,
+            'temu' => MarketplaceListingStockResolver::CHANNEL_TEMU,
+            'ebay2' => MarketplaceListingStockResolver::CHANNEL_EBAY2,
             'ebay3' => MarketplaceListingStockResolver::CHANNEL_EBAY3,
             'reverb' => MarketplaceListingStockResolver::CHANNEL_REVERB,
             'aliexpress' => MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
             'faire' => MarketplaceListingStockResolver::CHANNEL_FAIRE,
+            'amazon' => MarketplaceListingStockResolver::CHANNEL_AMAZON,
             default => $channel,
         };
 
@@ -178,10 +242,14 @@ final class MarketplaceMismatchInventoryPass
         $liveRows = match ($channel) {
             'newegg' => app(NeweggLiveListingsService::class)->peekCached(),
             'shein' => app(SheinLiveListingsService::class)->peekCached(),
+            'topdawg' => app(TopDawgLiveListingsService::class)->peekCached(),
+            'temu' => app(TemuLiveListingsService::class)->peekCached(),
+            'ebay2' => app(Ebay2LiveListingsService::class)->peekCached(),
             'ebay3' => app(Ebay3LiveListingsService::class)->peekCached(),
             'reverb' => app(ReverbLiveListingsService::class)->peekCached(),
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
             'faire' => app(FaireLiveListingsService::class)->peekCached(),
+            'amazon' => app(AmazonLiveListingsService::class)->peekCached(),
             default => null,
         };
 

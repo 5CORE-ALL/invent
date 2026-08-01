@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 class SyncEbay3TrackingFromShopify extends Command
 {
-    protected $signature = 'ebay3:sync-tracking-from-shopify
+    protected $signature = 'ebay3:sync-tracking|ebay3:sync-tracking-from-shopify
                             {--limit=40 : Max linked orders to check}
                             {--force : Run even if Push Shopify tracking setting is Off}
                             {--order= : Push tracking for a single eBay 3 order_id}';

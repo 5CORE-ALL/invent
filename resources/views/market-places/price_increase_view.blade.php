@@ -241,7 +241,7 @@
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-push { width: 36px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-by { width: 36px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-history { width: 52px; }
-        #ovl30DetailsModal .ovl30-history-btn {
+        .ovl30-history-btn {
             border: none;
             background: transparent;
             color: #5FA6AA;
@@ -250,8 +250,8 @@
             line-height: 1;
             cursor: pointer;
         }
-        #ovl30DetailsModal .ovl30-history-btn:hover { color: #3d7f83; }
-        #ovl30DetailsModal .ovl30-history-btn.has-history { color: #0d6efd; }
+        .ovl30-history-btn:hover { color: #3d7f83; }
+        .ovl30-history-btn.has-history { color: #0d6efd; }
         #ovl30PushHistoryModal {
             z-index: 1080;
         }
@@ -3870,6 +3870,31 @@
                     }
                 },
                 {
+                    title: "Hist",
+                    field: "push_history_count",
+                    headerSort: false,
+                    hozAlign: "center",
+                    minWidth: 52,
+                    headerTooltip: "Push history — date, marketplace, price, user",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary === true) return '';
+                        const sku = rowData.sku || '';
+                        const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
+                        const histTitle = histCount
+                            ? (histCount + ' push record(s) — click to view')
+                            : 'Push history — click to view';
+                        const skuEsc = String(sku).replace(/"/g, '&quot;');
+                        return '<button type="button" class="ovl30-history-btn outer-push-history-btn'
+                            + (histCount ? ' has-history' : '')
+                            + '" data-sku="' + skuEsc + '"'
+                            + ' title="' + histTitle.replace(/"/g, '&quot;') + '">'
+                            + '<i class="fas fa-history"></i>'
+                            + (histCount ? (' <span class="small">' + histCount + '</span>') : '')
+                            + '</button>';
+                    }
+                },
+                {
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
@@ -6997,6 +7022,34 @@
             });
         }
 
+        function renderOvl30PushHistoryRows(history, fallbackMarketplace) {
+            const mp = String(fallbackMarketplace || '');
+            if (!history || !history.length) {
+                return '<tr><td colspan="4" class="text-center text-muted py-3">No push history yet</td></tr>';
+            }
+            let html = '';
+            history.forEach(function(h) {
+                const price = (h.price != null && isFinite(parseFloat(h.price)))
+                    ? ('$' + parseFloat(h.price).toFixed(2))
+                    : '-';
+                html += '<tr>'
+                    + '<td>' + String(h.at || '-').replace(/</g, '&lt;') + '</td>'
+                    + '<td>' + String(h.marketplace || mp || '-').replace(/</g, '&lt;') + '</td>'
+                    + '<td class="text-end fw-semibold">' + price + '</td>'
+                    + '<td>' + String(h.by || '-').replace(/</g, '&lt;') + '</td>'
+                    + '</tr>';
+            });
+            return html;
+        }
+
+        function showOvl30PushHistoryModal(marketplaceLabel, sku, history) {
+            $('#ovl30PushHistoryMarketplace').text(marketplaceLabel || 'Channel');
+            $('#ovl30PushHistorySku').text(sku || '-');
+            $('#ovl30PushHistoryBody').html(renderOvl30PushHistoryRows(history, marketplaceLabel));
+            const el = document.getElementById('ovl30PushHistoryModal');
+            if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+        }
+
         function openOvl30PushHistory(marketplace) {
             const mp = String(marketplace || '');
             const sku = getModalPrimarySku() || $('#modalSkuName').text() || '';
@@ -7004,33 +7057,66 @@
                 return String(r.marketplace || '') === mp;
             });
             const history = (item && Array.isArray(item.push_history)) ? item.push_history : [];
-            $('#ovl30PushHistoryMarketplace').text(mp || 'Channel');
-            $('#ovl30PushHistorySku').text(sku || '-');
-            let html = '';
-            if (!history.length) {
-                html = '<tr><td colspan="4" class="text-center text-muted py-3">No push history for this marketplace yet</td></tr>';
-            } else {
-                history.forEach(function(h) {
-                    const price = (h.price != null && isFinite(parseFloat(h.price)))
-                        ? ('$' + parseFloat(h.price).toFixed(2))
-                        : '-';
-                    html += '<tr>'
-                        + '<td>' + String(h.at || '-').replace(/</g, '&lt;') + '</td>'
-                        + '<td>' + String(h.marketplace || mp || '-').replace(/</g, '&lt;') + '</td>'
-                        + '<td class="text-end fw-semibold">' + price + '</td>'
-                        + '<td>' + String(h.by || '-').replace(/</g, '&lt;') + '</td>'
-                        + '</tr>';
-                });
-            }
-            $('#ovl30PushHistoryBody').html(html);
+            showOvl30PushHistoryModal(mp || 'Channel', sku, history);
+        }
+
+        function openOuterSkuPushHistory(sku, $btn) {
+            const skuKey = String(sku || '').trim();
+            if (!skuKey) return;
+            $('#ovl30PushHistoryMarketplace').text('All channels');
+            $('#ovl30PushHistorySku').text(skuKey);
+            $('#ovl30PushHistoryBody').html(
+                '<tr><td colspan="4" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i>Loading…</td></tr>'
+            );
             const el = document.getElementById('ovl30PushHistoryModal');
             if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+            $.ajax({
+                url: '/cvr-master-push-history',
+                method: 'GET',
+                data: { sku: skuKey },
+                success: function(resp) {
+                    const history = (resp && Array.isArray(resp.history)) ? resp.history : [];
+                    const displaySku = (resp && resp.sku) ? resp.sku : skuKey;
+                    showOvl30PushHistoryModal('All channels', displaySku, history);
+                    const count = history.length;
+                    if ($btn && $btn.length) {
+                        $btn.toggleClass('has-history', count > 0);
+                        $btn.attr('title', count
+                            ? (count + ' push record(s) — click to view')
+                            : 'No push history yet');
+                        $btn.html(
+                            '<i class="fas fa-history"></i>'
+                            + (count ? (' <span class="small">' + count + '</span>') : '')
+                        );
+                        try {
+                            const row = (typeof table !== 'undefined' && table)
+                                ? table.getRows().find(function(r) {
+                                    return String((r.getData() || {}).sku || '') === skuKey;
+                                })
+                                : null;
+                            if (row) row.update({ push_history_count: count });
+                        } catch (e) { /* ignore */ }
+                    }
+                },
+                error: function() {
+                    $('#ovl30PushHistoryBody').html(
+                        '<tr><td colspan="4" class="text-center text-danger py-3">Failed to load push history</td></tr>'
+                    );
+                }
+            });
         }
 
         $(document).on('click', '#ovl30DetailsModal .ovl30-history-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
             openOvl30PushHistory($(this).attr('data-marketplace') || $(this).data('marketplace'));
+        });
+
+        $(document).on('click', '.outer-push-history-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(this);
+            openOuterSkuPushHistory($btn.attr('data-sku') || $btn.data('sku'), $btn);
         });
 
         function patchOvl30LmpCell(marketplace, lmpPrice) {

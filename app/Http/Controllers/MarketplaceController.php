@@ -8,8 +8,11 @@ use App\Http\Controllers\MarketPlace\FaireSyncController;
 use App\Http\Controllers\MarketPlace\NeweggSyncController;
 use App\Http\Controllers\MarketPlace\ReverbSyncController;
 use App\Http\Controllers\MarketPlace\SheinSyncController;
+use App\Http\Controllers\MarketPlace\AmazonSyncController;
+use App\Http\Controllers\MarketPlace\Ebay2SyncController;
 use App\Http\Controllers\MarketPlace\Ebay3SyncController;
 use App\Http\Controllers\MarketPlace\TopDawgSyncController;
+use App\Http\Controllers\MarketPlace\TemuSyncController;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,20 +25,23 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay3', 'faire'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay2', 'ebay3', 'faire'];
 
     protected function getController(string $marketplace): ?object
     {
         return match (strtolower($marketplace)) {
             'reverb' => app(ReverbSyncController::class),
             'topdawg' => app(TopDawgSyncController::class),
+            'temu' => app(TemuSyncController::class),
             'aliexpress' => app(AliexpressSyncController::class),
             'alibaba' => app(AlibabaSyncController::class),
             'newegg' => app(NeweggSyncController::class),
             'shein' => app(SheinSyncController::class),
+            'amazon' => app(AmazonSyncController::class),
+            'ebay2' => app(Ebay2SyncController::class),
             'ebay3' => app(Ebay3SyncController::class),
             'faire' => app(FaireSyncController::class),
-            'amazon', 'ebay', 'walmart' => null,
+            'ebay', 'walmart' => null,
             default => null,
         };
     }
@@ -88,6 +94,18 @@ class MarketplaceController extends Controller
         if ($marketplace === 'shein') {
             return app(SheinSyncController::class)->pullProductFromShein($shopifySku);
         }
+        if ($marketplace === 'topdawg') {
+            return app(TopDawgSyncController::class)->pullProductFromTopDawg($shopifySku);
+        }
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->pullProductFromTemu($shopifySku);
+        }
+        if ($marketplace === 'amazon') {
+            return app(AmazonSyncController::class)->pullProductFromAmazon($shopifySku);
+        }
+        if ($marketplace === 'ebay2') {
+            return app(Ebay2SyncController::class)->pullProductFromEbay2($shopifySku);
+        }
         if ($marketplace === 'ebay3') {
             return app(Ebay3SyncController::class)->pullProductFromEbay3($shopifySku);
         }
@@ -115,6 +133,18 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'shein') {
             return app(SheinSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'topdawg') {
+            return app(TopDawgSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'amazon') {
+            return app(AmazonSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'ebay2') {
+            return app(Ebay2SyncController::class)->pushProductInventory($shopifySku);
         }
         if ($marketplace === 'ebay3') {
             return app(Ebay3SyncController::class)->pushProductInventory($shopifySku);
@@ -144,6 +174,18 @@ class MarketplaceController extends Controller
         if ($marketplace === 'shein') {
             return app(SheinSyncController::class)->pullOrderFromShein($order);
         }
+        if ($marketplace === 'topdawg') {
+            return app(TopDawgSyncController::class)->pullOrderFromTopDawg($order);
+        }
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->pullOrderFromTemu($order);
+        }
+        if ($marketplace === 'amazon') {
+            return app(AmazonSyncController::class)->pullOrderFromAmazon($order);
+        }
+        if ($marketplace === 'ebay2') {
+            return app(Ebay2SyncController::class)->pullOrderFromEbay2($order);
+        }
         if ($marketplace === 'ebay3') {
             return app(Ebay3SyncController::class)->pullOrderFromEbay3($order);
         }
@@ -160,6 +202,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->pushTrackingToAliexpress($order);
         }
+        if ($marketplace === 'alibaba') {
+            return app(AlibabaSyncController::class)->pushTrackingToAlibaba($order);
+        }
         if ($marketplace === 'reverb') {
             return app(ReverbSyncController::class)->pushTrackingToReverb($order);
         }
@@ -168,6 +213,18 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'shein') {
             return app(SheinSyncController::class)->pushTrackingToShein($order);
+        }
+        if ($marketplace === 'topdawg') {
+            return app(TopDawgSyncController::class)->pushTrackingToTopDawg($order);
+        }
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->pushTrackingToTemu($order);
+        }
+        if ($marketplace === 'amazon') {
+            return app(AmazonSyncController::class)->pushTrackingToAmazon($order);
+        }
+        if ($marketplace === 'ebay2') {
+            return app(Ebay2SyncController::class)->pushTrackingToEbay2($order);
         }
         if ($marketplace === 'ebay3') {
             return app(Ebay3SyncController::class)->pushTrackingToEbay3($order);
@@ -235,6 +292,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'topdawg') {
             return app(TopDawgSyncController::class)->saveSettings($request);
         }
+        if ($marketplace === 'temu') {
+            return app(TemuSyncController::class)->saveSettings($request);
+        }
         if ($marketplace === 'aliexpress') {
             return app(AliexpressSyncController::class)->saveSettings($request);
         }
@@ -246,6 +306,12 @@ class MarketplaceController extends Controller
         }
         if ($marketplace === 'shein') {
             return app(SheinSyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'amazon') {
+            return app(AmazonSyncController::class)->saveSettings($request);
+        }
+        if ($marketplace === 'ebay2') {
+            return app(Ebay2SyncController::class)->saveSettings($request);
         }
         if ($marketplace === 'ebay3') {
             return app(Ebay3SyncController::class)->saveSettings($request);
@@ -273,6 +339,18 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'shein') {
             return app(SheinSyncController::class)->pushOrderToShopify($request);
         }
+        if (strtolower($marketplace) === 'topdawg') {
+            return app(TopDawgSyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'temu') {
+            return app(TemuSyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'amazon') {
+            return app(AmazonSyncController::class)->pushOrderToShopify($request);
+        }
+        if (strtolower($marketplace) === 'ebay2') {
+            return app(Ebay2SyncController::class)->pushOrderToShopify($request);
+        }
         if (strtolower($marketplace) === 'ebay3') {
             return app(Ebay3SyncController::class)->pushOrderToShopify($request);
         }
@@ -299,6 +377,18 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'shein') {
             return app(SheinSyncController::class)->deleteReadyOrder($request);
         }
+        if (strtolower($marketplace) === 'topdawg') {
+            return app(TopDawgSyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'temu') {
+            return app(TemuSyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'amazon') {
+            return app(AmazonSyncController::class)->deleteReadyOrder($request);
+        }
+        if (strtolower($marketplace) === 'ebay2') {
+            return app(Ebay2SyncController::class)->deleteReadyOrder($request);
+        }
         if (strtolower($marketplace) === 'ebay3') {
             return app(Ebay3SyncController::class)->deleteReadyOrder($request);
         }
@@ -306,7 +396,7 @@ class MarketplaceController extends Controller
             return app(FaireSyncController::class)->deleteReadyOrder($request);
         }
 
-        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress, Alibaba, Reverb, Newegg, Shein, eBay 3, and Faire.'], 404);
+        return response()->json(['success' => false, 'message' => 'Delete ready order is only available for AliExpress, Alibaba, Reverb, Newegg, Shein, eBay 2, eBay 3, and Faire.'], 404);
     }
 
     public function markOrderAlreadyImported(Request $request, string $marketplace): JsonResponse
@@ -317,6 +407,10 @@ class MarketplaceController extends Controller
             'reverb' => app(ReverbSyncController::class)->markOrderAlreadyImported($request),
             'newegg' => app(NeweggSyncController::class)->markOrderAlreadyImported($request),
             'shein' => app(SheinSyncController::class)->markOrderAlreadyImported($request),
+            'topdawg' => app(TopDawgSyncController::class)->markOrderAlreadyImported($request),
+            'temu' => app(TemuSyncController::class)->markOrderAlreadyImported($request),
+            'amazon' => app(AmazonSyncController::class)->markOrderAlreadyImported($request),
+            'ebay2' => app(Ebay2SyncController::class)->markOrderAlreadyImported($request),
             'ebay3' => app(Ebay3SyncController::class)->markOrderAlreadyImported($request),
             'faire' => app(FaireSyncController::class)->markOrderAlreadyImported($request),
             default => response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404),
@@ -326,7 +420,7 @@ class MarketplaceController extends Controller
     public function queueStatus(string $marketplace): JsonResponse
     {
         $marketplace = strtolower($marketplace);
-        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay3', 'faire'], true)) {
+        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'ebay2', 'ebay3', 'faire'], true)) {
             return response()->json(['success' => false, 'message' => 'Queue status not available for this marketplace.'], 404);
         }
 

@@ -442,4 +442,155 @@ class TopDawgApiService
 
         return ['success' => false, 'message' => $lastMessage];
     }
+
+    public function isConfigured(): bool
+    {
+        return trim($this->token) !== '';
+    }
+
+    /**
+     * Resolve a single product payload for Marketplace Manager detail views.
+     * Prefer local topdawg_products (already synced via link map / product fetch).
+     *
+     * @return array{success: bool, message?: string, data?: array<string, mixed>}
+     */
+    public function getProductInfo(string $productId): array
+    {
+        $productId = trim($productId);
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Product id is required.'];
+        }
+
+        $row = TopDawgProduct::query()
+            ->where(function ($q) use ($productId) {
+                $q->where('topdawg_listing_id', $productId)
+                    ->orWhere('sku', $productId)
+                    ->orWhere('tdid', $productId);
+            })
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if (! $row) {
+            return ['success' => false, 'message' => 'TopDawg product not found locally. Run Sync link map first.'];
+        }
+
+        return [
+            'success' => true,
+            'data' => [
+                'product_id' => (string) ($row->topdawg_listing_id ?: $row->sku),
+                'sku' => (string) $row->sku,
+                'title' => $row->product_title,
+                'product_title' => $row->product_title,
+                'product_name' => $row->product_title,
+                'price' => $row->price,
+                'inventory' => $row->remaining_inventory,
+                'remaining_inventory' => $row->remaining_inventory,
+                'status' => $row->listing_state,
+                'image_src' => $row->image_src,
+            ],
+        ];
+    }
+
+    /**
+     * Normalize a product info payload into SKU rows for MM detail/push helpers.
+     *
+     * @param  array<string, mixed>  $info
+     * @return list<array{product_id: string, sku: string, product_name: ?string, price: mixed, inventory: mixed, stock: mixed}>
+     */
+    public function extractSkuRowsFromProductInfo(array $info, string $productId, ?string $productName = null): array
+    {
+        $sku = trim((string) ($info['sku'] ?? $info['product_code'] ?? $info['seller_sku'] ?? ''));
+        $pid = trim((string) ($info['product_id'] ?? $info['topdawg_listing_id'] ?? $info['tdid'] ?? $productId));
+        if ($sku === '' && $pid !== '') {
+            $sku = $pid;
+        }
+        if ($sku === '') {
+            return [];
+        }
+
+        $qty = $info['inventory']
+            ?? $info['remaining_inventory']
+            ?? $info['qty_available']
+            ?? $info['quantity']
+            ?? null;
+
+        return [[
+            'product_id' => $pid !== '' ? $pid : $sku,
+            'sku' => $sku,
+            'product_name' => $productName ?: ($info['product_title'] ?? $info['product_name'] ?? $info['title'] ?? null),
+            'price' => $info['price'] ?? $info['selling_price'] ?? null,
+            'inventory' => $qty,
+            'stock' => $qty,
+        ]];
+    }
+
+    /**
+     * @return array{success: bool, message: string, sample_count?: int}
+     */
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Configure TOPDAWG_API_TOKEN in .env.',
+            ];
+        }
+
+        try {
+            $result = $this->fetchProducts();
+            $count = count($result['data'] ?? []);
+
+            return [
+                'success' => true,
+                'message' => "Connected. Product list returned {$count} item(s).",
+                'sample_count' => $count,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Push inventory quantities via SupplierProduct/update (qty_available).
+     *
+     * @param  list<array{sku: string, quantity: int}>  $items
+     * @return array{pushed: int, failed: int, error_message?: string}
+     */
+    public function updateItemInventoryBulk(array $items): array
+    {
+        $pushed = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $qty = max(0, (int) ($item['quantity'] ?? 0));
+            if ($sku === '') {
+                $failed++;
+                continue;
+            }
+
+            $result = $this->pushSupplierProductFields($sku, [
+                'qty_available' => $qty,
+                'quantity' => $qty,
+                'remaining_inventory' => $qty,
+            ]);
+
+            if (! empty($result['success'])) {
+                $pushed++;
+            } else {
+                $failed++;
+                $errors[] = $sku.': '.($result['message'] ?? 'failed');
+            }
+        }
+
+        return [
+            'pushed' => $pushed,
+            'failed' => $failed,
+            'error_message' => $errors !== [] ? implode('; ', array_slice($errors, 0, 5)) : null,
+        ];
+    }
 }

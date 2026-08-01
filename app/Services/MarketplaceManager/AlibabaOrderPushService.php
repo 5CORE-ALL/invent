@@ -74,6 +74,30 @@ class AlibabaOrderPushService
     }
 
     /**
+     * @return array{success: bool, message: string, checked: int, updated: int, skipped: int, failed: int}
+     */
+    public function syncPendingAddressesToShopify(int $limit = 40): array
+    {
+        unset($limit);
+
+        return [
+            'success' => true,
+            'message' => 'Alibaba address sync is not implemented yet.',
+            'checked' => 0,
+            'updated' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+        ];
+    }
+
+    public static function canAutoSyncAddress(?array $settings = null): bool
+    {
+        $settings ??= MarketplaceSyncSettings::getFor('alibaba');
+
+        return (bool) ($settings['order']['sync_address_to_shopify'] ?? false);
+    }
+
+    /**
      * After Shopify decrements stock for the imported order, push live qty to Alibaba
      * and refresh local AE/Shopify quantity fields used by the platform UI.
      */

@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 
 class SyncSheinTrackingFromShopify extends Command
 {
-    protected $signature = 'shein:sync-tracking-from-shopify
+    protected $signature = 'shein:sync-tracking|shein:sync-tracking-from-shopify
                             {--limit=40 : Max linked orders to check}
                             {--force : Run even if Push Shopify tracking setting is Off}
                             {--order= : Push tracking for a single Shein order_id}';

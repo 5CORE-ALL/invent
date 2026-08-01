@@ -70,6 +70,7 @@ use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
 use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ApprovalsChannelMasterController;
 use App\Http\Controllers\Channels\ChannelMasterController;
+use App\Http\Controllers\Channels\SalesOrderFulfillmentController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\ChannelPromotionMasterController;
 use App\Http\Controllers\Channels\ChannelwiseController;
@@ -526,6 +527,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-metric-dot-trends', [ChannelMasterController::class, 'getChannelMetricDotTrends']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
+    Route::get('/sales-order-fulfillment', [SalesOrderFulfillmentController::class, 'index'])->name('sales.order.fulfillment');
+    Route::get('/sales-order-fulfillment/data', [SalesOrderFulfillmentController::class, 'data'])->name('sales.order.fulfillment.data');
+    Route::get('/sales-order-fulfillment/pending-data', [SalesOrderFulfillmentController::class, 'pendingData'])->name('sales.order.fulfillment.pending.data');
+    Route::get('/sales-order-fulfillment/fulfilled-data', [SalesOrderFulfillmentController::class, 'fulfilledData'])->name('sales.order.fulfillment.fulfilled.data');
+    Route::get('/sales-order-fulfillment/scan-done-data', [SalesOrderFulfillmentController::class, 'scanDoneData'])->name('sales.order.fulfillment.scan.done.data');
+    Route::get('/sales-order-fulfillment/invoiced-data', [SalesOrderFulfillmentController::class, 'invoicedData'])->name('sales.order.fulfillment.invoiced.data');
+    Route::get('/sales-order-fulfillment/delivered-data', [SalesOrderFulfillmentController::class, 'deliveredData'])->name('sales.order.fulfillment.delivered.data');
+    Route::get('/sales-order-fulfillment/all-order-data', [SalesOrderFulfillmentController::class, 'allOrderData'])->name('sales.order.fulfillment.all.order.data');
+    Route::post('/sales-order-fulfillment/ch-orders-link', [SalesOrderFulfillmentController::class, 'saveChOrdersLink'])->name('sales.order.fulfillment.ch.orders.link');
+    Route::post('/sales-order-fulfillment/badge-link', [SalesOrderFulfillmentController::class, 'saveBadgeLink'])->name('sales.order.fulfillment.badge.link');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)
@@ -566,6 +577,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/alibaba/refresh-products/status', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'refreshProductsStatus'])->name('alibaba.refresh.status');
         Route::post('/alibaba/fetch-orders', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'fetchOrders'])->name('alibaba.fetch.orders');
         Route::post('/alibaba/sync-inventory', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'syncInventoryNow'])->name('alibaba.sync.inventory');
+        Route::post('/alibaba/sync-tracking', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'syncTrackingNow'])->name('alibaba.sync.tracking');
+        Route::post('/alibaba/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\AlibabaSyncController::class, 'syncMismatchInventoryNow'])->name('alibaba.sync.mismatch.inventory');
         Route::get('/reverb/connect', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'connect'])->name('reverb.connect');
         Route::post('/reverb/test-connection', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'testConnection'])->name('reverb.test');
         Route::post('/reverb/refresh-products', [\App\Http\Controllers\MarketPlace\ReverbSyncController::class, 'refreshProducts'])->name('reverb.refresh');
@@ -590,6 +603,38 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/shein/sync-inventory', [\App\Http\Controllers\MarketPlace\SheinSyncController::class, 'syncInventoryNow'])->name('shein.sync.inventory');
         Route::post('/shein/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\SheinSyncController::class, 'syncMismatchInventoryNow'])->name('shein.sync.mismatch.inventory');
         Route::post('/shein/sync-tracking', [\App\Http\Controllers\MarketPlace\SheinSyncController::class, 'syncTrackingNow'])->name('shein.sync.tracking');
+        Route::get('/amazon/connect', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'connect'])->name('amazon.connect');
+        Route::post('/amazon/test-connection', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'testConnection'])->name('amazon.test');
+        Route::post('/amazon/fetch-orders', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'fetchOrders'])->name('amazon.fetch.orders');
+        Route::post('/amazon/refresh-products', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'refreshProducts'])->name('amazon.refresh');
+        Route::get('/amazon/refresh-products/status', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'refreshProductsStatus'])->name('amazon.refresh.status');
+        Route::post('/amazon/sync-inventory', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'syncInventoryNow'])->name('amazon.sync.inventory');
+        Route::post('/amazon/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'syncMismatchInventoryNow'])->name('amazon.sync.mismatch.inventory');
+        Route::post('/amazon/sync-tracking', [\App\Http\Controllers\MarketPlace\AmazonSyncController::class, 'syncTrackingNow'])->name('amazon.sync.tracking');
+        Route::get('/topdawg/connect', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'connect'])->name('topdawg.connect');
+        Route::post('/topdawg/test-connection', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'testConnection'])->name('topdawg.test');
+        Route::post('/topdawg/refresh-products', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'refreshProducts'])->name('topdawg.refresh');
+        Route::get('/topdawg/refresh-products/status', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'refreshProductsStatus'])->name('topdawg.refresh.status');
+        Route::post('/topdawg/fetch-orders', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'fetchOrders'])->name('topdawg.fetch.orders');
+        Route::post('/topdawg/sync-inventory', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'syncInventoryNow'])->name('topdawg.sync.inventory');
+        Route::post('/topdawg/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'syncMismatchInventoryNow'])->name('topdawg.sync.mismatch.inventory');
+        Route::post('/topdawg/sync-tracking', [\App\Http\Controllers\MarketPlace\TopDawgSyncController::class, 'syncTrackingNow'])->name('topdawg.sync.tracking');
+        Route::get('/temu/connect', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'connect'])->name('temu.connect');
+        Route::post('/temu/test-connection', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'testConnection'])->name('temu.test');
+        Route::post('/temu/refresh-products', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'refreshProducts'])->name('temu.refresh');
+        Route::get('/temu/refresh-products/status', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'refreshProductsStatus'])->name('temu.refresh.status');
+        Route::post('/temu/fetch-orders', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'fetchOrders'])->name('temu.fetch.orders');
+        Route::post('/temu/sync-inventory', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'syncInventoryNow'])->name('temu.sync.inventory');
+        Route::post('/temu/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'syncMismatchInventoryNow'])->name('temu.sync.mismatch.inventory');
+        Route::post('/temu/sync-tracking', [\App\Http\Controllers\MarketPlace\TemuSyncController::class, 'syncTrackingNow'])->name('temu.sync.tracking');
+        Route::get('/ebay2/connect', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'connect'])->name('ebay2.connect');
+        Route::post('/ebay2/test-connection', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'testConnection'])->name('ebay2.test');
+        Route::post('/ebay2/refresh-products', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'refreshProducts'])->name('ebay2.refresh');
+        Route::get('/ebay2/refresh-products/status', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'refreshProductsStatus'])->name('ebay2.refresh.status');
+        Route::post('/ebay2/fetch-orders', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'fetchOrders'])->name('ebay2.fetch.orders');
+        Route::post('/ebay2/sync-inventory', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncInventoryNow'])->name('ebay2.sync.inventory');
+        Route::post('/ebay2/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncMismatchInventoryNow'])->name('ebay2.sync.mismatch.inventory');
+        Route::post('/ebay2/sync-tracking', [\App\Http\Controllers\MarketPlace\Ebay2SyncController::class, 'syncTrackingNow'])->name('ebay2.sync.tracking');
         Route::get('/ebay3/connect', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'connect'])->name('ebay3.connect');
         Route::post('/ebay3/test-connection', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'testConnection'])->name('ebay3.test');
         Route::post('/ebay3/refresh-products', [\App\Http\Controllers\MarketPlace\Ebay3SyncController::class, 'refreshProducts'])->name('ebay3.refresh');
@@ -611,14 +656,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/faire/sync-tracking', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncTrackingNow'])->name('faire.sync.tracking');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'aliexpress|alibaba|reverb|newegg|shein|ebay3|faire');
+            ->where('marketplace', 'amazon|aliexpress|alibaba|reverb|newegg|shein|topdawg|temu|ebay2|ebay3|faire');
     });
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
 
-    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay3, faire)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|aliexpress|alibaba|newegg|shein|ebay3|faire'])->group(function () {
+    // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|aliexpress|alibaba|newegg|shein|ebay2|ebay3|faire'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');
@@ -3546,6 +3591,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     Route::get('/cvr-master-siblings', [CvrMasterController::class, 'getSiblingSkus'])->name('cvr.master.siblings');
+    Route::get('/cvr-master-push-history', [CvrMasterController::class, 'getSkuPushHistory'])->name('cvr.master.push.history');
     Route::post('/cvr-master-bulk-change-price', [CvrMasterController::class, 'bulkChangePrice'])->name('cvr.master.bulk.change.price');
 
     // Pricing Master CVR Route (uses CVR Master controller)

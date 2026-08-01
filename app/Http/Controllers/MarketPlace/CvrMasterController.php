@@ -1731,6 +1731,20 @@ class CvrMasterController extends Controller
                 $temuDataViewRow = $temuDataViewBySku->get($sku)
                     ?? $temuDataViewBySkuUpper->get(strtoupper(trim((string) $sku)));
                 $temuSprice = null;
+                // Approx push-history count for outer Hist column (amazon/temu/walmart already loaded)
+                $pushHistoryCount = 0;
+                foreach ([$amazonDataViewRow, $temuDataViewRow, $walmartDataView->get($sku)] as $dvHistRow) {
+                    if (!$dvHistRow) {
+                        continue;
+                    }
+                    $rawHist = $dvHistRow->value ?? null;
+                    $valHist = is_array($rawHist)
+                        ? $rawHist
+                        : (is_string($rawHist) ? (json_decode($rawHist, true) ?: []) : []);
+                    if (is_array($valHist) && $valHist !== []) {
+                        $pushHistoryCount += count($this->extractPushMeta($valHist)['push_history']);
+                    }
+                }
                 if ($temuDataViewRow && $temuDataViewRow->value) {
                     $tvVal = is_array($temuDataViewRow->value)
                         ? $temuDataViewRow->value
@@ -1822,6 +1836,7 @@ class CvrMasterController extends Controller
                     "latest_remark" => $remarkText,
                     "remark_solved" => $remarkSolved,
                     "missing_l" => $missingL,
+                    "push_history_count" => $pushHistoryCount,
                 ];
             }
 
@@ -1925,6 +1940,7 @@ class CvrMasterController extends Controller
                     'listing_quality_score' => $rows->filter(fn ($r) => isset($r->listing_quality_score) && is_numeric($r->listing_quality_score) && $r->listing_quality_score > 0)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->listing_quality_score) && is_numeric($r->listing_quality_score) && $r->listing_quality_score > 0)->avg('listing_quality_score'), 1) : null,
                     'is_parent_summary' => true,
+                    'push_history_count' => 0,
                 ];
 
                 // Calculate parent DIL%
@@ -4704,6 +4720,65 @@ class CvrMasterController extends Controller
             'siblings' => $others,
             'all' => $all,
             'count' => count($others),
+        ]);
+    }
+
+    /**
+     * Aggregate SPRICE push history across all marketplaces for one SKU (outer table Hist column).
+     */
+    public function getSkuPushHistory(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', $request->input('sku', '')));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+        }
+
+        $productMaster = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            ?: ProductMaster::where('sku', $sku)->first();
+        $fullSku = $productMaster ? $productMaster->sku : $sku;
+
+        $markets = [
+            'amazon' => 'Amazon',
+            'ebay' => 'eBay',
+            'ebay2' => 'eBay2',
+            'ebay3' => 'eBay3',
+            'doba' => 'Doba',
+            'walmart' => 'Walmart',
+            'shopify' => 'Shopify',
+            'sb2b' => 'SB2B',
+            'tiktok' => 'TikTok',
+            'temu' => 'Temu',
+            'temu2' => 'Temu2',
+            'bestbuy' => 'BestBuy',
+            'macy' => "Macy's",
+            'reverb' => 'Reverb',
+            'topdawg' => 'TopDawg',
+        ];
+
+        $all = [];
+        foreach ($markets as $mpKey => $mpLabel) {
+            $val = $this->getMarketplaceDataViewValue($fullSku, $mpKey);
+            if (empty($val) && strtoupper($fullSku) !== strtoupper($sku)) {
+                $val = $this->getMarketplaceDataViewValue($sku, $mpKey);
+            }
+            $meta = $this->extractPushMeta($val);
+            foreach ($meta['push_history'] as $h) {
+                $h['marketplace'] = $h['marketplace'] ?: $mpLabel;
+                $all[] = $h;
+            }
+        }
+
+        usort($all, function ($a, $b) {
+            $ta = strtotime((string) ($a['at'] ?? '')) ?: 0;
+            $tb = strtotime((string) ($b['at'] ?? '')) ?: 0;
+            return $tb <=> $ta;
+        });
+
+        return response()->json([
+            'success' => true,
+            'sku' => $fullSku,
+            'history' => $all,
+            'count' => count($all),
         ]);
     }
 

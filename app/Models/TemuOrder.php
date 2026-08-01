@@ -43,6 +43,10 @@ class TemuOrder extends Model
         'raw_json',
         'fetch_window',
         'fetched_at',
+        'shopify_order_id',
+        'pushed_to_shopify_at',
+        'import_status',
+        'display_sku',
     ];
 
     protected $casts = [
@@ -54,6 +58,8 @@ class TemuOrder extends Model
         'order_shipping_time' => 'datetime',
         'fetched_at' => 'datetime',
         'amount_fetched_at' => 'datetime',
+        'pushed_to_shopify_at' => 'datetime',
+        'raw_json' => 'array',
         'order_base_amount' => 'decimal:2',
         'order_total_amount' => 'decimal:2',
     ];

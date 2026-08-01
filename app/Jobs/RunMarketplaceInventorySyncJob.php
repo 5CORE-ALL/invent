@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Services\MarketplaceManager\AlibabaInventorySyncService;
 use App\Services\MarketplaceManager\AliexpressInventorySyncService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
+use App\Services\MarketplaceManager\AmazonInventorySyncService;
 use App\Services\MarketplaceManager\FaireInventorySyncService;
 use App\Services\MarketplaceManager\NeweggInventorySyncService;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
@@ -52,6 +53,7 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
             'alibaba' => app(AlibabaInventorySyncService::class)->syncFromShopify(false),
             'newegg' => app(NeweggInventorySyncService::class)->syncFromShopify(false),
             'faire' => app(FaireInventorySyncService::class)->syncFromShopify(false),
+            'amazon' => app(AmazonInventorySyncService::class)->syncFromShopify(false),
             default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
         };
 
