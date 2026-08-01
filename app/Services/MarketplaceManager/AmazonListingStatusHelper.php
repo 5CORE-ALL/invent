@@ -33,6 +33,20 @@ final class AmazonListingStatusHelper
             }
         }
 
+        // Most amazon_listing_statuses rows store ASIN only inside buyer/seller links.
+        foreach (['buyer_link', 'seller_link', 'listing_url', 'url', 'link'] as $key) {
+            $url = trim((string) ($value[$key] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+            if (preg_match('#/(?:dp|gp/product|ASIN)/([A-Z0-9]{10})#i', $url, $m)) {
+                return strtoupper($m[1]);
+            }
+            if (preg_match('#[?&]asin=([A-Z0-9]{10})#i', $url, $m)) {
+                return strtoupper($m[1]);
+            }
+        }
+
         return '';
     }
 

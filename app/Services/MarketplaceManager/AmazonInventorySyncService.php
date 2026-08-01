@@ -105,18 +105,17 @@ class AmazonInventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
-            if ($shopifyStock === null) {
-                $skipped++;
-                continue;
-            }
 
-            $qty = MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
+            // Match AliExpress: missing/0 Shopify => push 0 (do not skip and leave stale Amazon qty).
+            $qty = $shopifyStock === null
+                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $inventoryRows[] = [
                 'product_id' => $productId,
                 'sku_code' => $sku,
                 'inventory' => $qty,
-                'shopify_qty' => $shopifyStock,
+                'shopify_qty' => $shopifyStock ?? 0,
             ];
         }
 
@@ -124,7 +123,7 @@ class AmazonInventorySyncService
             return [
                 'updated' => 0,
                 'failed' => 0,
-                'skipped' => $skipped,
+                'skipped' => $skipped + max(0, count($skus) - $metrics->count()),
                 'message' => 'No linked Amazon SKUs found for inventory sync.',
             ];
         }
@@ -256,17 +255,30 @@ class AmazonInventorySyncService
      */
     protected function fetchLiveShopifyQuantities(array $skus, ?array $shopifyConfig = null): array
     {
+        $live = [];
         try {
-            if ($shopifyConfig) {
-                return $this->shopifyApi->getInventoryQuantitiesBySku($skus, $shopifyConfig);
-            }
-
-            return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
+            // Signature is SKU list only; $shopifyConfig kept for call-site compatibility.
+            unset($shopifyConfig);
+            $live = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
         } catch (\Throwable $e) {
             Log::warning('AmazonInventorySyncService: live Shopify fetch failed', ['error' => $e->getMessage()]);
-
-            return [];
+            $live = [];
         }
+
+        // Fallback to local Shopify SoT used by mismatch UI when Admin API misses/fails.
+        $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        foreach ($skus as $sku) {
+            if ($this->resolveShopifyQty($live, $sku) !== null) {
+                continue;
+            }
+            $qty = $this->resolveShopifyQty($local, $sku);
+            if ($qty === null) {
+                continue;
+            }
+            $live[strtoupper(trim($sku))] = $qty;
+        }
+
+        return $live;
     }
 
     /**
