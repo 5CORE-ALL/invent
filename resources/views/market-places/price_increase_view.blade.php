@@ -1762,16 +1762,14 @@
 
     /**
      * Temu push base from SPRICE (Price Increase):
-     *   base = Sprice × 0.85
-     *   if base < 35 → (Sprice × 0.85) − 2.99
-     *   if base ≥ 35 → (Sprice × 0.85)
+     *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
+     *   if SPRICE ≥ $35 → (Sprice × 0.85)
      * PFT / ROI still use raw SPRICE / channel price — this is push/display conversion only.
      */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
         if (!isFinite(s) || s <= 0) return null;
-        const base = s * 0.85;
-        const push = base < 35 ? (base - 2.99) : base;
+        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }
@@ -3731,7 +3729,7 @@
                     field: "stemu_price_display",
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Temu push base from SPRICE: (Sprice×0.85)−2.99 if base&lt;35; else Sprice×0.85",
+                    headerTooltip: "Temu push base from SPRICE: (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -3747,7 +3745,7 @@
                     width: 60,
                     hozAlign: "center",
                     headerSort: false,
-                    headerTooltip: "Push Temu base = (Sprice×0.85)−2.99 if base&lt;35; else Sprice×0.85",
+                    headerTooltip: "Push Temu base = (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (rowData.is_parent_summary) return '';
@@ -4393,7 +4391,7 @@
             if (!confirm(
                 'Push Temu base $' + pushBase.toFixed(2)
                 + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.85'
-                + (sprice * 0.85 < 35 ? ' − 2.99' : '')
+                + (sprice < 35 ? ' − 2.99' : '')
                 + ') for SKU: ' + sku + '?'
             )) return;
 
@@ -4425,7 +4423,7 @@
             }
             if (!confirm(
                 'Push Temu base for ' + items.length + ' SKU(s)?\n'
-                + '(Sprice × 0.85) − 2.99 if base < 35; else Sprice × 0.85'
+                + '(Sprice × 0.85) − 2.99 if SPRICE < $35; else Sprice × 0.85'
             )) return;
 
             const $btn = $('#pi-push-temu-price-btn');
@@ -5882,7 +5880,7 @@
             }
             target.price = price;
             const mpLower = String(target.marketplace || '').toLowerCase();
-            // Temu: push base = (Sprice×0.85)−2.99 if base<35; else Sprice×0.85
+            // Temu: push base = (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85
             let pushPrice = price;
             if (mpLower === 'temu') {
                 const converted = temuPushBaseFromSprice(price);
@@ -5983,7 +5981,7 @@
                 }
                 confirmPrice = converted;
                 confirmExtra = ' (from SPRICE $' + price.toFixed(2)
-                    + ' × 0.85' + (price * 0.85 < 35 ? ' − 2.99' : '') + ')';
+                    + ' × 0.85' + (price < 35 ? ' − 2.99' : '') + ')';
             }
 
             if (!confirm(
