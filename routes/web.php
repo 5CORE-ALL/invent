@@ -4488,7 +4488,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu2-pricing/upload', [TemuController::class, 'uploadTemu2Pricing'])->name('temu2.pricing.upload');
     Route::get('/temu2-pricing/sample', [TemuController::class, 'downloadTemu2PricingSample'])->name('temu2.pricing.sample');
 
-    // Temu 2 View Data Upload (Temu 1 views come from Ads API → temu_metrics.product_clicks_l30)
+    // Temu 1 View Data Upload / scrape (Seller Center product clicks → temu_view_data; Ads API has no organic page views)
+    Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
+    Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
+    Route::post('/temu-view-data/scrape', [TemuController::class, 'scrapeTemuViewData'])->name('temu.viewdata.scrape');
+    Route::post('/temu-view-data/import-json', [TemuController::class, 'importTemuViewDataJson'])->name('temu.viewdata.import.json');
+
+    // Temu 2 View Data Upload (sheet → temu2_view_data)
     Route::post('/temu2-view-data/upload', [TemuController::class, 'uploadTemu2ViewData'])->name('temu2.viewdata.upload');
     Route::get('/temu2-view-data/sample', [TemuController::class, 'downloadTemu2ViewDataSample'])->name('temu2.viewdata.sample');
 

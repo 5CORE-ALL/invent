@@ -611,6 +611,16 @@ return [
         'list_price_field' => env('TEMU_LIST_PRICE_FIELD', 'listPrice'),
         'sku_id_field' => env('TEMU_SKU_ID_FIELD', 'skuId'),
         'sku_code_field' => env('TEMU_SKU_CODE_FIELD', 'outSkuSn'),
+
+        /** Seller Center cookie session for product Views scrape (no OpenAPI for organic clicks). */
+        'seller_cookie' => env('TEMU_SELLER_COOKIE'),
+        'seller_mall_id' => env('TEMU_SELLER_MALL_ID'),
+        'seller_anti_content' => env('TEMU_SELLER_ANTI_CONTENT'),
+        'seller_base_url' => env('TEMU_SELLER_BASE_URL', 'https://seller.temu.com'),
+        'agentseller_base_url' => env('TEMU_AGENTSELLER_BASE_URL', 'https://agentseller.temu.com'),
+        'seller_user_agent' => env('TEMU_SELLER_USER_AGENT'),
+        /** JSON array of {label,base,url,body} — overrides default candidate scrape endpoints. */
+        'seller_view_endpoints' => env('TEMU_SELLER_VIEW_ENDPOINTS'),
     ],
 
     /*

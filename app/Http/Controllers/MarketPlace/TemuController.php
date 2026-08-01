@@ -34,6 +34,7 @@ use App\Models\TemuCampaignReport;
 use App\Models\Temu2CampaignReport;
 use App\Services\TemuShopifySalesService;
 use App\Services\TemuApiService;
+use App\Services\TemuSellerViewScraperService;
 use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
@@ -2804,8 +2805,10 @@ class TemuController extends Controller
                 'groi_percent' => round($salesGroiPercent, 1),
             ];
 
-            // Views (Temu 1): Ads API → temu_metrics.product_clicks_l30 (by goods_id).
-            // Temu 2: still uses temu2_view_data sheet until a Temu 2 ads API path exists.
+            // Views (Temu 1): Seller Center sheet → temu_view_data.product_clicks (by goods_id).
+            // Temu OpenAPI has no product-page views; ads clkCntAll is ad-only (often 0 with organic sales).
+            // Fallback: temu_metrics.product_clicks_l30 (Ads API) when sheet has no row for that goods_id.
+            // Temu 2: temu2_view_data sheet.
             if ($isTemu2Pricing) {
                 $viewData = Schema::hasTable('temu2_view_data')
                     ? Temu2ViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
@@ -2817,28 +2820,14 @@ class TemuController extends Controller
                 $viewDataL7 = collect();
                 $viewDataL7ToL14 = collect();
             } else {
-                $viewByGoods = [];
-                TemuMetric::query()
-                    ->select('goods_id', 'product_clicks_l30')
-                    ->whereNotNull('goods_id')
-                    ->where('goods_id', '!=', '')
-                    ->get()
-                    ->each(function ($row) use (&$viewByGoods) {
-                        $key = TemuGoodsIdHelper::normalizeKey($row->goods_id);
-                        if ($key === '' || $key === null) {
-                            return;
-                        }
-                        $clicks = (int) ($row->product_clicks_l30 ?? 0);
-                        if (! isset($viewByGoods[$key]) || $clicks > (int) $viewByGoods[$key]->product_clicks) {
-                            $viewByGoods[$key] = (object) [
-                                'product_clicks' => $clicks,
-                                'ctr' => 0,
-                            ];
-                        }
-                    });
-                $viewData = collect($viewByGoods);
+                $viewData = Schema::hasTable('temu_view_data')
+                    ? TemuViewData::selectRaw('goods_id, SUM(product_impressions) as product_impressions, SUM(visitor_impressions) as visitor_impressions, SUM(product_clicks) as product_clicks, SUM(visitor_clicks) as visitor_clicks, AVG(ctr) as ctr')
+                        ->groupBy('goods_id')
+                        ->get()
+                        ->keyBy(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id))
+                    : collect();
 
-                // View 7: Ads API L7 report clicks (same clkCntAll source as L30)
+                // View 7: Ads API L7 report clicks (ad clicks only; no L7 sheet table restored yet)
                 $viewL7ByGoods = [];
                 if (Schema::hasTable('temu_ads_api_reports')) {
                     TemuAdsApiReport::query()
@@ -3079,7 +3068,7 @@ class TemuController extends Controller
                 // Get Temu L30 (last 30 days sales from Temu daily data)
                 $temuL30 = $temuSales ? (int) ($temuSales->temu_l30 ?? 0) : 0;
                 
-                // Views by goods_id: Temu 1 = API product_clicks_l30; Temu 2 = sheet
+                // Views by goods_id: Temu 1 sheet (fallback Ads API); Temu 2 sheet
                 $goodsId = $item ? $item->goods_id : null;
                 $goodsIdKeyForViews = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
                 $viewDataItem = $goodsIdKeyForViews ? $viewData->get($goodsIdKeyForViews) : null;
@@ -4049,6 +4038,200 @@ class TemuController extends Controller
         }
     }
 
+
+    /**
+     * Scrape Temu Seller Center product analytics → temu_view_data (cookie session).
+     */
+    public function scrapeTemuViewData(Request $request, TemuSellerViewScraperService $scraper)
+    {
+        $request->validate([
+            'cookie' => 'nullable|string|max:20000',
+            'days' => 'nullable|integer|min:1|max:60',
+            'keep' => 'nullable|boolean',
+            'probe' => 'nullable|boolean',
+        ]);
+
+        $cookie = $request->input('cookie') ?: null;
+        $days = (int) ($request->input('days') ?: 30);
+
+        if ($request->boolean('probe')) {
+            $results = $scraper->probe($cookie, $days);
+
+            return response()->json([
+                'success' => collect($results)->contains(fn ($r) => $r['ok']),
+                'probe' => $results,
+                'message' => collect($results)->contains(fn ($r) => $r['ok'])
+                    ? 'At least one endpoint returned parsable goods rows'
+                    : 'All endpoints failed — refresh cookie or use Import JSON / Excel upload',
+            ]);
+        }
+
+        $result = $scraper->scrape($cookie, $days, ! $request->boolean('keep'));
+
+        return response()->json([
+            'success' => $result['ok'],
+            'message' => $result['message'],
+            'imported' => $result['imported'],
+            'skipped' => $result['skipped'],
+            'deleted' => $result['deleted'],
+            'endpoint' => $result['endpoint'] ?? null,
+            'samples' => $result['samples'] ?? [],
+        ], $result['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Import Seller Center Network-tab JSON (fallback when cookie scrape paths change).
+     */
+    public function importTemuViewDataJson(Request $request, TemuSellerViewScraperService $scraper)
+    {
+        $request->validate([
+            'json' => 'required|string|max:20000000',
+            'date' => 'nullable|date',
+            'keep' => 'nullable|boolean',
+        ]);
+
+        $result = $scraper->importJson(
+            $request->input('json'),
+            $request->input('date'),
+            ! $request->boolean('keep')
+        );
+
+        return response()->json([
+            'success' => $result['ok'],
+            'message' => $result['message'],
+            'imported' => $result['imported'],
+            'skipped' => $result['skipped'],
+            'deleted' => $result['deleted'],
+            'samples' => $result['samples'] ?? [],
+        ], $result['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Upload Temu 1 View Data (Seller Center product analytics export).
+     * Writes to temu_view_data — used as /temu-decrease Views (product clicks).
+     */
+    public function uploadTemuViewData(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv|max:10240',
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+            $headers = array_shift($rows);
+
+            $headerMap = [];
+            foreach ($headers as $idx => $h) {
+                $headerMap[trim((string) $h)] = $idx;
+            }
+            $goodsIdCol = $headerMap['Goods ID'] ?? 1;
+
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                $deletedCount = TemuViewData::query()->delete();
+
+                foreach ($rows as $rowIndex => $row) {
+                    if (empty($row[0]) && empty($row[1])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $rowData = @array_combine($headers, $row);
+                    if (! is_array($rowData)) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $date = null;
+                    if (! empty($rowData['Date'])) {
+                        try {
+                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            Log::warning('Could not parse date: '.$rowData['Date']);
+                        }
+                    }
+
+                    $ctr = 0;
+                    if (! empty($rowData['CTR'])) {
+                        $ctr = (float) str_replace('%', '', (string) $rowData['CTR']);
+                    }
+
+                    // Excel row is 1-based header + 1-based data → +2
+                    $excelRow = $rowIndex + 2;
+                    $goodsIdCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdCol + 1).$excelRow);
+                    $goodsId = TemuGoodsIdHelper::fromSpreadsheetCell($goodsIdCell)
+                        ?? TemuGoodsIdHelper::normalizeKey($rowData['Goods ID'] ?? null);
+
+                    if ($goodsId === null || $goodsId === '') {
+                        $skipped++;
+                        continue;
+                    }
+
+                    TemuViewData::updateOrCreate(
+                        ['date' => $date, 'goods_id' => $goodsId],
+                        [
+                            'goods_name' => $rowData['Goods Name'] ?? null,
+                            'product_impressions' => ! empty($rowData['Product impressions']) ? (int) $rowData['Product impressions'] : 0,
+                            'visitor_impressions' => ! empty($rowData['Number of visitor impressions of the product']) ? (int) $rowData['Number of visitor impressions of the product'] : 0,
+                            'product_clicks' => ! empty($rowData['Product clicks']) ? (int) $rowData['Product clicks'] : 0,
+                            'visitor_clicks' => ! empty($rowData['Number of visitor clicks on the product']) ? (int) $rowData['Number of visitor clicks on the product'] : 0,
+                            'ctr' => $ctr,
+                        ]
+                    );
+                    $imported++;
+                }
+
+                DB::commit();
+
+                return back()->with('success', "Successfully imported $imported Temu 1 view records! ($skipped skipped, replaced $deletedCount existing rows)");
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu view data: '.$e->getMessage());
+
+            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Download Temu 1 View Data sample (Seller Center product analytics columns).
+     */
+    public function downloadTemuViewDataSample()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'Date',
+            'Goods ID',
+            'Goods Name',
+            'Product impressions',
+            'Number of visitor impressions of the product',
+            'Product clicks',
+            'Number of visitor clicks on the product',
+            'CTR',
+        ];
+
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->fromArray([
+            ['2026-07-01', '602828001095586', 'Sample Product', 100, 80, 25, 20, '25%'],
+        ], null, 'A2');
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = 'temu_view_data_sample.xlsx';
+        $tempPath = storage_path('app/'.$filename);
+        $writer->save($tempPath);
+
+        return response()->download($tempPath, $filename)->deleteFileAfterSend(true);
+    }
 
     /**
      * Upload Temu 2 View Data. Mirrors uploadTemuViewData but writes to

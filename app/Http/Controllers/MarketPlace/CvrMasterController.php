@@ -56,6 +56,7 @@ use App\Models\BestbuyPriceData;
 use App\Models\ShopifyB2CDailyData;
 use App\Models\ViewsPullData;
 use App\Models\Temu2ViewData;
+use App\Models\TemuViewData;
 use App\Models\TemuCampaignReport;
 use App\Models\Temu2CampaignReport;
 use App\Models\TemuLmp;
@@ -103,6 +104,7 @@ use App\Services\DobaApiService;
 use App\Services\WalmartService;
 use App\Services\ReverbApiService;
 use App\Services\TopDawgApiService;
+use App\Services\TemuApiService;
 use App\Services\EbayApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayThreeApiService;
@@ -220,6 +222,13 @@ class CvrMasterController extends Controller
             $amazonDataViewRows = AmazonDataView::whereIn('sku', $skus)->get();
             $amazonDataViewBySku = $amazonDataViewRows->keyBy('sku');
             $amazonDataViewBySkuUpper = $amazonDataViewRows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
+
+            // Temu SPRICE from temu_data_view (same store as /temu-decrease)
+            $temuDataViewRows = Schema::hasTable('temu_data_view')
+                ? TemuDataView::whereIn('sku', $skus)->get()
+                : collect();
+            $temuDataViewBySku = $temuDataViewRows->keyBy('sku');
+            $temuDataViewBySkuUpper = $temuDataViewRows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
 
             Log::info('CVR Master - Walmart Data fetched', [
                 'price_data' => $walmartPriceData->count(),
@@ -433,6 +442,9 @@ class CvrMasterController extends Controller
                 if (Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
                     $temuMetricCols[] = 'product_clicks_l30';
                 }
+                if (Schema::hasColumn('temu_metrics', 'sku_id')) {
+                    $temuMetricCols[] = 'sku_id';
+                }
                 $temuPricingsAll = TemuMetric::query()->get($temuMetricCols);
             }
             $temuPricingByProductSku = $this->buildTemuPricingMapForProductSkus($temuPricingsAll, $skus);
@@ -476,9 +488,27 @@ class CvrMasterController extends Controller
             // Margin — marketplace_percentages Temu (temu-decrease / temu-tabulator)
             $temuPercentage = TemuShopifySalesService::temuMarginDecimal();
 
-            // Temu views by goods_id — Ads/API metrics: temu_metrics.product_clicks_l30
-            // (MAX per goods_id — same as /temu-decrease; sheet temu_view_data removed)
+            // Temu views by goods_id — Seller Center sheet temu_view_data.product_clicks
+            // (same as /temu-decrease). Fallback: Ads API temu_metrics.product_clicks_l30.
             $temuViewByGoodsId = [];
+            if (Schema::hasTable('temu_view_data')) {
+                TemuViewData::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
+                    ->whereNotNull('goods_id')
+                    ->where('goods_id', '!=', '')
+                    ->groupBy('goods_id')
+                    ->get()
+                    ->each(function ($row) use (&$temuViewByGoodsId) {
+                        $key = TemuGoodsIdHelper::normalizeKey($row->goods_id);
+                        $clicks = (int) ($row->product_clicks ?? 0);
+                        if ($key !== null && $key !== '') {
+                            $temuViewByGoodsId[$key] = $clicks;
+                        }
+                        $rawGid = (string) ($row->goods_id ?? '');
+                        if ($rawGid !== '') {
+                            $temuViewByGoodsId[$rawGid] = $clicks;
+                        }
+                    });
+            }
             if (Schema::hasTable('temu_metrics') && Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
                 TemuMetric::query()
                     ->select('goods_id', 'product_clicks_l30')
@@ -490,12 +520,14 @@ class CvrMasterController extends Controller
                         if ($key === '' || $key === null) {
                             return;
                         }
-                        $clicks = (int) ($row->product_clicks_l30 ?? 0);
-                        if (!isset($temuViewByGoodsId[$key]) || $clicks > (int) $temuViewByGoodsId[$key]) {
-                            $temuViewByGoodsId[$key] = $clicks;
+                        // Sheet wins when present; only fill missing goods from Ads API
+                        if (isset($temuViewByGoodsId[$key])) {
+                            return;
                         }
+                        $clicks = (int) ($row->product_clicks_l30 ?? 0);
+                        $temuViewByGoodsId[$key] = $clicks;
                         $rawGid = (string) ($row->goods_id ?? '');
-                        if ($rawGid !== '' && (!isset($temuViewByGoodsId[$rawGid]) || $clicks > (int) $temuViewByGoodsId[$rawGid])) {
+                        if ($rawGid !== '' && ! isset($temuViewByGoodsId[$rawGid])) {
                             $temuViewByGoodsId[$rawGid] = $clicks;
                         }
                     });
@@ -1694,6 +1726,21 @@ class CvrMasterController extends Controller
                     if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
                 }
 
+                // Temu SPRICE — same store as /temu-decrease (temu_data_view.value.sprice / SPRICE)
+                $temuDataViewRow = $temuDataViewBySku->get($sku)
+                    ?? $temuDataViewBySkuUpper->get(strtoupper(trim((string) $sku)));
+                $temuSprice = null;
+                if ($temuDataViewRow && $temuDataViewRow->value) {
+                    $tvVal = is_array($temuDataViewRow->value)
+                        ? $temuDataViewRow->value
+                        : (json_decode($temuDataViewRow->value ?? '{}', true) ?? []);
+                    $tSpr = $tvVal['sprice'] ?? $tvVal['SPRICE'] ?? null;
+                    $temuSprice = ($tSpr !== null && $tSpr !== '' && floatval($tSpr) > 0)
+                        ? round(floatval($tSpr), 2)
+                        : null;
+                }
+                $temuSkuId = $temuPricing ? ($temuPricing->sku_id ?? null) : null;
+
                 // Determine if any channel is missing a listing (price = 0 / null)
                 // eBay2 is excluded from the check if SKU weight > 0.75 LB
                 // Walmart excluded – removed from this page
@@ -1737,6 +1784,15 @@ class CvrMasterController extends Controller
                     "total_views" => $totalViews,
                     // Temu 1 Views — same source as /temu-decrease (temu_metrics.product_clicks_l30)
                     "temu_views" => (int) $temuViews,
+                    // Temu SPRICE / push fields — same as /temu-decrease
+                    "temu_base_price" => $temuBasePrice > 0 ? round($temuBasePrice, 2) : null,
+                    "temu_price" => $temuPrice > 0 ? round($temuPrice, 2) : null,
+                    "temu_sprice" => $temuSprice,
+                    "temu_goods_id" => $goodsId,
+                    "temu_sku_id" => $temuSkuId,
+                    "temu_ship" => $temuShip > 0 ? round($temuShip, 2) : 0,
+                    "temu_margin" => $temuPercentage,
+                    "temu_push_status" => null,
                     "avg_cvr" => $avgCVR,
                     "avg_price" => $avgPrice,
                     "avg_roi" => $avgRoi,
@@ -1791,6 +1847,7 @@ class CvrMasterController extends Controller
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonStandardPriceVals = $rows->pluck('amazon_standard_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $temuSpriceVals = $rows->pluck('temu_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
                 $amazonSpftVals = $rows->pluck('amazon_spft')->filter(fn ($v) => $v !== null);
                 $amazonSroiVals = $rows->pluck('amazon_sroi')->filter(fn ($v) => $v !== null);
@@ -5153,10 +5210,17 @@ class CvrMasterController extends Controller
                 $response = $this->pushToMacy($sku, $price);
             } elseif ($marketplace === 'topdawg') {
                 $response = $this->pushToTopDawg($sku, $price);
+            } elseif ($marketplace === 'temu') {
+                $response = $this->pushToTemu(
+                    $sku,
+                    $price,
+                    $request->input('goods_id'),
+                    $request->input('sku_id')
+                );
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, TopDawg, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, TopDawg, Temu, FBA."
                 ], 400);
             }
 
@@ -6055,6 +6119,58 @@ class CvrMasterController extends Controller
                 'success' => false,
                 'message' => 'Reverb error: ' . $e->getMessage(),
                 'errors' => [['message' => $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to Temu via TemuApiService::updateSkuBasePrice (same as /temu-decrease → /temu/push-price).
+     */
+    private function pushToTemu($sku, $price, $goodsId = null, $skuId = null)
+    {
+        try {
+            if (!($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid Temu price (must be > 0)',
+                ], 400);
+            }
+
+            $result = app(TemuApiService::class)->updateSkuBasePrice(
+                (string) $sku,
+                (float) $price,
+                $goodsId !== null && $goodsId !== '' ? (string) $goodsId : null,
+                $skuId !== null && $skuId !== '' ? (string) $skuId : null
+            );
+
+            if (!empty($result['success'])) {
+                $this->savePricePushStatus($sku, 'temu', 'pushed', $price);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Temu for SKU: $sku"),
+                    'result' => $result,
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, 'temu', 'error', $price);
+
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Failed to push price to Temu',
+                'errors' => [['message' => $result['message'] ?? 'Failed to push price to Temu']],
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'temu', 'error', $price);
+            Log::error('CVR Master - Temu push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Temu API error: ' . $e->getMessage(),
+                'errors' => [['message' => $e->getMessage()]],
             ], 500);
         }
     }
@@ -7073,7 +7189,7 @@ class CvrMasterController extends Controller
 
     /**
      * Product clicks for a goods_id — same metric as /temu-decrease Views.
-     * Temu 1: MAX(product_clicks_l30) from temu_metrics API (not sheet).
+     * Temu 1: SUM(product_clicks) from temu_view_data sheet; fallback Ads API product_clicks_l30.
      * Temu 2: SUM(product_clicks) from temu2_view_data sheet.
      * Returns null when goods_id is missing (N/A), otherwise the click total (may be 0).
      */
@@ -7083,11 +7199,22 @@ class CvrMasterController extends Controller
             return null;
         }
         if (!$isTemu2) {
+            $nk = TemuGoodsIdHelper::normalizeKey($goodsId);
+            if (Schema::hasTable('temu_view_data')) {
+                $sum = (int) TemuViewData::where('goods_id', $goodsId)->sum('product_clicks');
+                if ($sum === 0 && $nk && (string) $goodsId !== $nk) {
+                    $sum = (int) TemuViewData::where('goods_id', $nk)->sum('product_clicks');
+                }
+                // If sheet has any rows for this goods_id, use sheet total (even 0)
+                $hasSheet = TemuViewData::where('goods_id', $goodsId)->exists()
+                    || ($nk && TemuViewData::where('goods_id', $nk)->exists());
+                if ($hasSheet) {
+                    return $sum;
+                }
+            }
             if (!Schema::hasTable('temu_metrics') || !Schema::hasColumn('temu_metrics', 'product_clicks_l30')) {
                 return null;
             }
-            $nk = TemuGoodsIdHelper::normalizeKey($goodsId);
-            // MAX — same as /temu-decrease (avoid double-counting SKUs under one goods_id)
             $max = (int) TemuMetric::where('goods_id', $goodsId)->max('product_clicks_l30');
             if ($max === 0 && $nk && (string) $goodsId !== $nk) {
                 $max = (int) TemuMetric::where('goods_id', $nk)->max('product_clicks_l30');

@@ -573,13 +573,13 @@
                               class="badge bg-info text-center temu-badge-history"
                               data-badge-metric="total_views" data-badge-label="Views"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Total Views from Temu Ads API (temu_metrics.product_clicks_l30 / clkCntAll) — click for history"
+                              title="Total Views from Seller Center sheet (temu_view_data Product clicks) — click for history"
                               aria-label="Total Views"><i class="fas fa-eye"></i> 0</span>
                         <span id="avg-views-badge"
                               class="badge bg-info text-center temu-badge-history"
                               data-badge-metric="avg_views" data-badge-label="AVG views"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Average Views per product from Ads API — click for history"
+                              title="Average Views per product from View Data sheet — click for history"
                               aria-label="Average Views per product"><i class="far fa-eye"></i> 0</span>
                     </div>
                 </div>
@@ -817,6 +817,20 @@
                         <ul class="dropdown-menu shadow-sm" aria-labelledby="temuUploadDropdown">
                             <li>
                                 <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#uploadViewDataModal">
+                                    <i class="fas fa-eye text-success" style="width: 18px;"></i>
+                                    <span>Up View Data</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                    data-bs-toggle="modal" data-bs-target="#scrapeViewDataModal">
+                                    <i class="fas fa-spider text-primary" style="width: 18px;"></i>
+                                    <span>Scrape Views</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item d-flex align-items-center gap-2"
                                     data-bs-toggle="modal" data-bs-target="#uploadAdDataModal">
                                     <i class="fas fa-chart-line text-warning" style="width: 18px;"></i>
                                     <span>Up Ad Data</span>
@@ -825,8 +839,8 @@
                         </ul>
                     </div>
                     <button type="button" id="fetch-views-api-btn" class="btn btn-sm btn-outline-primary"
-                        title="Fetch Views from Temu Ads API (temu.searchrec.ad.reports.goods.query → temu_metrics.product_clicks_l30 / View 7)"
-                        aria-label="Fetch Views from Temu Ads API">
+                        title="Fetch View 7 / Ads fallback from Temu Ads API (clkCntAll). Main Views column uses Up View Data sheet."
+                        aria-label="Fetch View 7 from Temu Ads API">
                         <i class="fas fa-sync-alt"></i> Views API
                     </button>
                     <span id="fetch-views-api-status" class="small text-muted" style="display:none;"></span>
@@ -1053,6 +1067,118 @@
         </div>
     </div>
 
+
+    <!-- Scrape Views Modal (Seller Center cookie / Network JSON → temu_view_data) -->
+    <div class="modal fade" id="scrapeViewDataModal" tabindex="-1" aria-labelledby="scrapeViewDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="scrapeViewDataModalLabel">
+                        <i class="fas fa-spider me-2"></i>Scrape Temu Views (Seller Center)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2">
+                        Temu OpenAPI has <strong>no organic Views</strong>. This uses your logged-in Seller Center cookie
+                        (or a Network-tab JSON paste). Cookies expire — refresh from browser when scrape fails.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Seller Center Cookie</label>
+                        <textarea id="scrapeViewCookie" class="form-control form-control-sm" rows="3"
+                            placeholder="Paste document.cookie from seller.temu.com / agentseller.temu.com (or leave blank if TEMU_SELLER_COOKIE is set on server)"></textarea>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Days</label>
+                            <select id="scrapeViewDays" class="form-select form-select-sm">
+                                <option value="7">L7</option>
+                                <option value="30" selected>L30</option>
+                                <option value="60">L60</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8 d-flex align-items-end gap-2">
+                            <button type="button" id="scrapeViewProbeBtn" class="btn btn-sm btn-outline-secondary">
+                                <i class="fas fa-stethoscope"></i> Probe
+                            </button>
+                            <button type="button" id="scrapeViewRunBtn" class="btn btn-sm btn-primary">
+                                <i class="fas fa-spider"></i> Scrape → temu_view_data
+                            </button>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold">Or import Network JSON</label>
+                        <textarea id="scrapeViewJson" class="form-control form-control-sm font-monospace" rows="6"
+                            placeholder='Paste JSON response from Seller Center → Product Analytics (DevTools → Network)'></textarea>
+                        <div class="form-text">Most reliable when Temu changes internal scrape URLs.</div>
+                    </div>
+                    <button type="button" id="scrapeViewImportJsonBtn" class="btn btn-sm btn-success">
+                        <i class="fas fa-file-import"></i> Import JSON → temu_view_data
+                    </button>
+                    <pre id="scrapeViewStatus" class="small bg-light border rounded p-2 mt-3 mb-0" style="max-height: 180px; overflow:auto; display:none;"></pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload View Data Modal (Seller Center product clicks → temu_view_data) -->
+    <div class="modal fade" id="uploadViewDataModal" tabindex="-1" aria-labelledby="uploadViewDataModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="uploadViewDataModalLabel">
+                        <i class="fas fa-eye me-2"></i>Upload Temu View Data
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if(session('success'))
+                        <div class="alert alert-success alert-dismissible fade show" role="alert">
+                            {{ session('success') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {{ session('error') }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    @endif
+
+                    <form id="uploadViewDataForm" action="{{ route('temu.viewdata.upload') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="viewDataFile" class="form-label fw-bold">
+                                <i class="fas fa-file-excel text-success me-1"></i>Choose Excel File
+                            </label>
+                            <input type="file" class="form-control" id="viewDataFile" name="file" accept=".xlsx,.xls,.csv" required>
+                            <div class="form-text">
+                                Seller Center product analytics export (.xlsx / .xls / .csv, max 10MB).
+                                Writes to <code>temu_view_data</code> — this drives the <strong>Views</strong> column.
+                            </div>
+                        </div>
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Replaces existing Temu 1 view data. Temu Ads API only returns ad clicks (often 0 with organic sales).
+                            <a href="{{ route('temu.viewdata.sample') }}" class="alert-link">
+                                <i class="fas fa-download"></i> Download Sample
+                            </a>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadViewDataForm" class="btn btn-success">
+                        <i class="fas fa-upload me-1"></i>Up View Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Upload Ad Data Modal -->
     <div class="modal fade" id="uploadAdDataModal" tabindex="-1" aria-labelledby="uploadAdDataModalLabel" aria-hidden="true">
@@ -4530,7 +4656,7 @@
                     field: "product_clicks",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "L30 ad clicks from Temu Ads API (temu_metrics.product_clicks_l30 / clkCntAll).",
+                    headerTooltip: "Seller Center Product clicks (temu_view_data). Fallback: Ads API clkCntAll when sheet has no row.",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const sku = row.sku || '';
@@ -6935,9 +7061,101 @@
             table.download("csv", "temu_decrease_data_l30.csv");
         });
 
-        // Fetch Views from Temu Ads API (same endpoint as /temu/ads).
-        // L30 → temu_metrics.product_clicks_l30 (Views column).
-        // L7  → temu_ads_api_reports period=L7 (View 7 column).
+        // Seller Center Views scrape / JSON import → temu_view_data
+        function showScrapeViewStatus(obj) {
+            const $el = $('#scrapeViewStatus');
+            $el.show().text(typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2));
+        }
+        function reloadTemuDecreaseAfterViews() {
+            if (!table) return;
+            const visibilityState = captureColumnVisibilityState();
+            table.setData(currentPeriodEndpoint()).then(function() {
+                applyFilters();
+                updateCampaignPeriodUi();
+                applyColumnVisibilityState(visibilityState);
+                buildColumnDropdown();
+                if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
+            });
+        }
+        $('#scrapeViewProbeBtn').on('click', function() {
+            const $btn = $(this).prop('disabled', true);
+            showScrapeViewStatus('Probing endpoints…');
+            $.ajax({
+                url: '{{ route("temu.viewdata.scrape") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    probe: 1,
+                    days: $('#scrapeViewDays').val() || 30,
+                    cookie: $('#scrapeViewCookie').val() || ''
+                },
+                success: function(res) {
+                    showScrapeViewStatus(res);
+                    showToast(res.message || (res.success ? 'Probe OK' : 'Probe failed'), res.success ? 'success' : 'error');
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Probe failed';
+                    showScrapeViewStatus(xhr.responseJSON || msg);
+                    showToast(msg, 'error');
+                },
+                complete: function() { $btn.prop('disabled', false); }
+            });
+        });
+        $('#scrapeViewRunBtn').on('click', function() {
+            if (!confirm('Scrape Seller Center product Views into temu_view_data?\nThis replaces existing Temu 1 view rows.')) return;
+            const $btn = $(this).prop('disabled', true);
+            showScrapeViewStatus('Scraping…');
+            $.ajax({
+                url: '{{ route("temu.viewdata.scrape") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    days: $('#scrapeViewDays').val() || 30,
+                    cookie: $('#scrapeViewCookie').val() || ''
+                },
+                timeout: 0,
+                success: function(res) {
+                    showScrapeViewStatus(res);
+                    showToast(res.message || (res.success ? 'Scraped' : 'Failed'), res.success ? 'success' : 'error');
+                    if (res.success) reloadTemuDecreaseAfterViews();
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Scrape failed';
+                    showScrapeViewStatus(xhr.responseJSON || msg);
+                    showToast(msg, 'error');
+                },
+                complete: function() { $btn.prop('disabled', false); }
+            });
+        });
+        $('#scrapeViewImportJsonBtn').on('click', function() {
+            const raw = ($('#scrapeViewJson').val() || '').trim();
+            if (!raw) { showToast('Paste Network JSON first', 'warning'); return; }
+            if (!confirm('Import pasted JSON into temu_view_data (replace existing)?')) return;
+            const $btn = $(this).prop('disabled', true);
+            showScrapeViewStatus('Importing JSON…');
+            $.ajax({
+                url: '{{ route("temu.viewdata.import.json") }}',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    json: raw
+                },
+                success: function(res) {
+                    showScrapeViewStatus(res);
+                    showToast(res.message || (res.success ? 'Imported' : 'Failed'), res.success ? 'success' : 'error');
+                    if (res.success) reloadTemuDecreaseAfterViews();
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Import failed';
+                    showScrapeViewStatus(xhr.responseJSON || msg);
+                    showToast(msg, 'error');
+                },
+                complete: function() { $btn.prop('disabled', false); }
+            });
+        });
+
+        // Fetch View 7 / Ads fallback from Temu Ads API (same endpoint as /temu/ads).
+        // Main Views column prefers temu_view_data (sheet/scrape).
         $('#fetch-views-api-btn').on('click', function() {
             const period = (currentCampaignPeriod === 'L7') ? 'L7' : 'L30';
             const label = period === 'L7' ? 'View 7' : 'Views (L30)';
