@@ -6322,7 +6322,14 @@
                     target.$btn.html('<i class="fas fa-check"></i>')
                         .removeClass('btn-primary').addClass('btn-success')
                         .prop('disabled', true);
-                    return { ok: true, marketplace: target.marketplace, message: response.message };
+                    return {
+                        ok: true,
+                        marketplace: target.marketplace,
+                        message: response.message,
+                        price: pushPrice,
+                        $tr: target.$tr,
+                        $btn: target.$btn
+                    };
                 }
                 return {
                     ok: false,
@@ -6339,15 +6346,98 @@
             });
         }
 
-        function reloadOvl30ModalAfterPush() {
-            const currentSku = $('#modalSkuName').text();
-            if (!currentSku || !$('#ovl30DetailsModal').hasClass('show')) return;
-            const currentImage = $('#modal-product-image').attr('src');
-            const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-            const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-            const currentDil = parseFloat($('#modal-header-dil').text());
-            // Refresh data only — do not re-instantiate/show the modal (avoids black backdrop)
-            loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
+        /**
+         * After push: patch the affected row in-place (no full /cvr-master-breakdown reload).
+         * Full reload was making every modal action feel slow.
+         */
+        function patchOvl30RowAfterPush($tr, pushedPrice, marketplace) {
+            if (!$tr || !$tr.length || !(pushedPrice > 0)) return;
+            const mp = String(marketplace || $tr.attr('data-marketplace') || '');
+            const mpLower = mp.toLowerCase();
+            const basePrice = +Number(pushedPrice).toFixed(2);
+
+            $tr.attr('data-price', basePrice);
+
+            // Price cell: Temu/Temu2 display × 1.1765 (same as renderMarketplaceData)
+            const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+            const isTemu = (mpLower === 'temu' || mpLower === 'temu2');
+            const displayPrice = (isTemu && basePrice > 0)
+                ? +(basePrice * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
+                : basePrice;
+            const $priceTd = $tr.children('td').eq(3);
+            const tip = isTemu
+                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + basePrice.toFixed(2))
+                : '';
+            const existingDot = $priceTd.find('.pricing-master-chart-link').prop('outerHTML') || '';
+            $priceTd.html(
+                '<span style="font-weight:700;" title="' + tip.replace(/"/g, '&quot;') + '">$'
+                + displayPrice.toFixed(2) + '</span>' + (existingDot ? (' ' + existingDot) : '')
+            );
+
+            // Pushed By column (last td)
+            const nowLabel = 'Just now';
+            $tr.children('td').last().html(
+                '<span class="pushed-by-dot" title="Pushed ' + nowLabel + '" aria-label="Pushed"></span>'
+            );
+
+            // Keep in-memory modal data in sync
+            ovl30ModalData.forEach(function(item) {
+                if (String(item.marketplace || '') === mp) {
+                    item.price = basePrice;
+                    item.pushed_by = item.pushed_by || 'pushed';
+                    item.pushed_at = nowLabel;
+                }
+            });
+        }
+
+        function patchOvl30LmpCell(marketplace, lmpPrice) {
+            if (!$('#ovl30DetailsModal').hasClass('show')) return;
+            const mp = String(marketplace || '').toLowerCase();
+            if (!mp) return;
+            const $tr = $('#ovl30DetailsTableBody tr').filter(function() {
+                return String($(this).attr('data-marketplace') || '').toLowerCase() === mp;
+            }).first();
+            if (!$tr.length) return;
+            const sku = getModalPrimarySku() || '';
+            const skuAttr = String(sku).replace(/"/g, '&quot;');
+            const $lmpTd = $tr.children('td').eq(11); // LMP column
+            if (!(lmpPrice > 0)) {
+                $lmpTd.html(
+                    '<a href="#" class="lmp-add-btn" data-sku="' + skuAttr + '" data-marketplace="' + mp
+                    + '" title="Add ' + mp + ' LMP"><i class="fas fa-plus-circle"></i></a>'
+                );
+                $tr.attr('data-lmp', '0');
+                return;
+            }
+            const p = +Number(lmpPrice).toFixed(2);
+            $tr.attr('data-lmp', p);
+            $lmpTd.html(
+                '<a href="#" class="lmp-channel-price" data-sku="' + skuAttr + '" data-marketplace="' + mp
+                + '" title="View ' + mp + ' LMP" style="color:#0d6efd;font-weight:600;text-decoration:underline;cursor:pointer;">$'
+                + p.toFixed(2) + '</a>'
+            );
+            ovl30ModalData.forEach(function(item) {
+                if (String(item.marketplace || '').toLowerCase() === mp) {
+                    item.lmp_price = p;
+                    item.lmp_channel = mp;
+                }
+            });
+        }
+
+        /** No full-table reload after push — only patch pushed rows. */
+        function reloadOvl30ModalAfterPush(pushedTargets) {
+            if (!$('#ovl30DetailsModal').hasClass('show')) return;
+            const list = Array.isArray(pushedTargets) ? pushedTargets : [];
+            list.forEach(function(t) {
+                if (!t || !t.ok) return;
+                const $tr = t.$tr && t.$tr.length
+                    ? t.$tr
+                    : $('#ovl30DetailsTableBody tr').filter(function() {
+                        return String($(this).attr('data-marketplace') || '') === String(t.marketplace || '');
+                    }).first();
+                const price = parseFloat(t.price) || parseFloat($tr.attr('data-price')) || 0;
+                patchOvl30RowAfterPush($tr, price, t.marketplace);
+            });
         }
 
         // Single-row push
@@ -6405,7 +6495,7 @@
             }).then(function(result) {
                 if (result.ok) {
                     showToast(result.message || 'Price pushed', 'success');
-                    setTimeout(reloadOvl30ModalAfterPush, 1200);
+                    reloadOvl30ModalAfterPush([result]);
                 } else {
                     showToast(result.message || 'Failed to push price', 'error');
                     btn.html(originalHtml).prop('disabled', false);
@@ -6451,6 +6541,7 @@
             let idx = 0;
             let okCount = 0;
             const errors = [];
+            const okResults = [];
 
             function pushNext() {
                 if (idx >= targets.length) {
@@ -6461,7 +6552,7 @@
                                 + (errors.length ? ('. Failed: ' + errors.join(', ')) : ''),
                             errors.length ? 'error' : 'success'
                         );
-                        setTimeout(reloadOvl30ModalAfterPush, 1200);
+                        reloadOvl30ModalAfterPush(okResults);
                     } else {
                         showToast('Bulk push failed' + (errors.length ? ': ' + errors.join(', ') : ''), 'error');
                         targets.forEach(function(t) {
@@ -6475,8 +6566,10 @@
                 }
                 const target = targets[idx++];
                 pushOvl30PriceToMarketplace(target).then(function(result) {
-                    if (result.ok) okCount++;
-                    else {
+                    if (result.ok) {
+                        okCount++;
+                        okResults.push(result);
+                    } else {
                         errors.push(String(target.marketplace));
                         target.$btn.html('<i class="fas fa-upload"></i>')
                             .removeClass('btn-success').addClass('btn-primary')
@@ -7581,15 +7674,21 @@
 
         function refreshLmpAfterMutation(sku, channel) {
             resetLmpEditState();
+            // Refresh LMP drawer only — do NOT reload full OV L30 breakdown (too slow)
             loadLmpCompetitorsModal(sku, channel, true);
-            const currentSku = $('#modalSkuName').text();
-            if (currentSku) {
-                const currentImage = $('#modal-product-image').attr('src');
-                const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-                const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-                const currentDil = parseFloat($('#modal-header-dil').text());
-                loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
-            }
+            // Patch OV L30 LMP cell from updated cache when available
+            setTimeout(function() {
+                const ch = String(channel || 'amazon').toLowerCase();
+                const rows = (lmpModalCache.rows || []).filter(function(r) {
+                    return r.channel === ch && !r.ignored;
+                });
+                let lowest = null;
+                rows.forEach(function(r) {
+                    const landed = (typeof lmpPricePlusShip === 'function' ? lmpPricePlusShip(r) : null) || r.price;
+                    if (landed > 0 && (lowest == null || landed < lowest)) lowest = landed;
+                });
+                patchOvl30LmpCell(ch, lowest);
+            }, 400);
         }
 
         function saveTemuLmpEntries(sku, entries, done) {
@@ -7669,15 +7768,17 @@
                         });
                         renderLmpMergedTable();
                         showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
-                        // Refresh details modal LMP if open
-                        const currentSku = $('#modalSkuName').text();
-                        if (currentSku) {
-                            const currentImage = $('#modal-product-image').attr('src');
-                            const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-                            const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-                            const currentDil = parseFloat($('#modal-header-dil').text());
-                            loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
-                        }
+                        // Patch OV L30 LMP cell only (no full breakdown reload)
+                        const ch = String(marketplace || '').toLowerCase();
+                        const active = (lmpModalCache.rows || []).filter(function(r) {
+                            return r.channel === ch && !r.ignored;
+                        });
+                        let lowest = null;
+                        active.forEach(function(r) {
+                            const landed = (typeof lmpPricePlusShip === 'function' ? lmpPricePlusShip(r) : null) || r.price;
+                            if (landed > 0 && (lowest == null || landed < lowest)) lowest = landed;
+                        });
+                        patchOvl30LmpCell(ch, lowest);
                     } else {
                         $cb.prop('checked', !ignored);
                         showToast((res && res.error) || 'Failed to update ignore', 'error');
