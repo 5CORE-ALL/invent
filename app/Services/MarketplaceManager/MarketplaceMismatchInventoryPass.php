@@ -227,21 +227,7 @@ final class MarketplaceMismatchInventoryPass
         }
 
         if ($channel === 'amazon') {
-            if (! Schema::hasTable('amazon_listing_statuses')) {
-                return [];
-            }
-
-            return \App\Models\AmazonListingStatus::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->get()
-                ->filter(static fn (\App\Models\AmazonListingStatus $row) => AmazonListingStatusHelper::isLinked($row))
-                ->pluck('sku')
-                ->map(static fn ($sku) => trim((string) $sku))
-                ->filter(static fn (string $sku) => $sku !== '')
-                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
-                ->values()
-                ->all();
+            return AmazonListingStatusHelper::linkedSkus();
         }
 
         if ($channel === 'ebay1' || $channel === 'ebay2' || $channel === 'ebay3') {

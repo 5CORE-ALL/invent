@@ -4,9 +4,12 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\AmazonListingStatus;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shared parsing for amazon_listing_statuses (sku + JSON value).
+ * Also treats amazon_listings_raw (Active catalog report) as a link source.
  */
 final class AmazonListingStatusHelper
 {
@@ -134,6 +137,62 @@ final class AmazonListingStatusHelper
     }
 
     /**
+     * Linked Amazon seller SKUs from listing_statuses + amazon_listings_raw (Active report).
+     *
+     * @return list<string>
+     */
+    public static function linkedSkus(): array
+    {
+        $byNorm = [];
+
+        if (Schema::hasTable('amazon_listing_statuses')) {
+            AmazonListingStatus::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select(['id', 'sku', 'value'])
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm) {
+                    foreach ($rows as $row) {
+                        if (! self::isLinked($row)) {
+                            continue;
+                        }
+                        $sku = trim((string) $row->sku);
+                        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                        if ($sku === '' || $norm === '' || isset($byNorm[$norm])) {
+                            continue;
+                        }
+                        $byNorm[$norm] = $sku;
+                    }
+                });
+        }
+
+        if (Schema::hasTable('amazon_listings_raw')) {
+            DB::table('amazon_listings_raw')
+                ->whereNotNull('seller_sku')
+                ->where('seller_sku', '!=', '')
+                ->whereNotNull('asin1')
+                ->where('asin1', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) ($row->seller_sku ?? ''));
+                        $asin = strtoupper(trim((string) ($row->asin1 ?? '')));
+                        if ($sku === '' || ! preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+                            continue;
+                        }
+                        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                        if ($norm === '' || isset($byNorm[$norm])) {
+                            continue;
+                        }
+                        $byNorm[$norm] = $sku;
+                    }
+                });
+        }
+
+        return array_values($byNorm);
+    }
+
+    /**
      * @param  array<int, string>  $skus
      * @return array<string, AmazonListingStatus>
      */
@@ -158,18 +217,76 @@ final class AmazonListingStatusHelper
 
         $out = [];
         foreach ($rows as $row) {
-            $raw = (string) $row->sku;
-            $out[$raw] = $row;
-            $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
-            if ($norm !== '') {
-                $out[$norm] = $row;
+            self::putMapEntry($out, $row);
+        }
+
+        // Fill gaps from Active catalog report so "Not on Amazon" is not wrong when statuses lag.
+        $missing = [];
+        foreach ($skus as $sku) {
+            if (isset($out[$sku]) || isset($out[strtoupper($sku)])) {
+                continue;
             }
-            $upper = strtoupper(trim($raw));
-            if ($upper !== '') {
-                $out[$upper] = $row;
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '' && isset($out[$norm])) {
+                continue;
+            }
+            $missing[] = $sku;
+        }
+        if ($missing !== [] && Schema::hasTable('amazon_listings_raw')) {
+            $rawRows = DB::table('amazon_listings_raw')
+                ->where(function ($q) use ($missing) {
+                    $q->whereIn('seller_sku', $missing);
+                    foreach ($missing as $sku) {
+                        $q->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [strtoupper($sku)]);
+                    }
+                })
+                ->get(['seller_sku', 'asin1', 'your_price', 'quantity', 'item_name', 'thumbnail_image', 'raw_data']);
+
+            foreach ($rawRows as $raw) {
+                $sku = trim((string) ($raw->seller_sku ?? ''));
+                $asin = strtoupper(trim((string) ($raw->asin1 ?? '')));
+                if ($sku === '' || ! preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+                    continue;
+                }
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+                if ($norm !== '' && isset($out[$norm])) {
+                    continue;
+                }
+
+                $status = new AmazonListingStatus([
+                    'sku' => $sku,
+                    'value' => [
+                        'asin' => $asin,
+                        'buyer_link' => 'https://www.amazon.com/dp/'.$asin,
+                        'listed' => 'Listed',
+                        'listing_status' => 'active',
+                        'price' => $raw->your_price ?? null,
+                        'quantity' => isset($raw->quantity) ? (int) $raw->quantity : null,
+                        'title' => $raw->item_name ?? null,
+                        'image' => $raw->thumbnail_image ?? null,
+                    ],
+                ]);
+                self::putMapEntry($out, $status);
             }
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<string, AmazonListingStatus>  $out
+     */
+    protected static function putMapEntry(array &$out, AmazonListingStatus $row): void
+    {
+        $raw = (string) $row->sku;
+        $out[$raw] = $row;
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($raw);
+        if ($norm !== '') {
+            $out[$norm] = $row;
+        }
+        $upper = strtoupper(trim($raw));
+        if ($upper !== '') {
+            $out[$upper] = $row;
+        }
     }
 }

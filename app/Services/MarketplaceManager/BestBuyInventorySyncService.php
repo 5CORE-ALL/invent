@@ -96,16 +96,11 @@ class BestBuyInventorySyncService
                     $shopifyStock = $this->resolveShopifyQty($shopifyQty, $requested);
                 }
             }
-            if ($shopifyStock === null) {
-                $skipped++;
-                continue;
-            }
 
-            $qty = (int) floor($shopifyStock * ($qtyPercent / 100));
-            if ($maxQty !== null && $maxQty !== '') {
-                $qty = min($qty, (int) $maxQty);
-            }
-            $qty = max(0, $qty);
+            // Match AliExpress/Amazon: missing Shopify qty => push 0 (do not skip and leave stale MP stock).
+            $qty = $shopifyStock === null
+                ? MarketplaceLiveInventoryRules::qtyWhenMissingFromShopify()
+                : MarketplaceLiveInventoryRules::qtyFromLiveShopify($shopifyStock, $qtyPercent, $maxQty);
 
             $apiItems[] = [
                 'sku' => $sku,
@@ -117,7 +112,7 @@ class BestBuyInventorySyncService
             return [
                 'updated' => 0,
                 'failed' => 0,
-                'skipped' => $skipped,
+                'skipped' => $skipped + max(0, count($skus) - $products->count()),
                 'message' => 'No linked Best Buy SKUs found for inventory sync.',
             ];
         }
@@ -199,17 +194,29 @@ class BestBuyInventorySyncService
      */
     protected function fetchLiveShopifyQuantities(array $skus, ?array $shopifyConfig = null): array
     {
+        $live = [];
         try {
-            if ($shopifyConfig) {
-                return $this->shopifyApi->getInventoryQuantitiesBySku($skus, $shopifyConfig);
-            }
-
-            return $this->shopifyApi->getInventoryQuantitiesBySku($skus);
+            unset($shopifyConfig);
+            $live = $this->shopifyApi->getInventoryQuantitiesBySku($skus);
         } catch (\Throwable $e) {
             Log::warning('BestBuyInventorySyncService: live Shopify fetch failed', ['error' => $e->getMessage()]);
-
-            return [];
+            $live = [];
         }
+
+        // Fallback to local Shopify SoT used by mismatch UI when Admin API misses/fails.
+        $local = MarketplaceListingStockResolver::liveSkuShopifyQtyMapForSkus($skus);
+        foreach ($skus as $sku) {
+            if ($this->resolveShopifyQty($live, $sku) !== null) {
+                continue;
+            }
+            $qty = $this->resolveShopifyQty($local, $sku);
+            if ($qty === null) {
+                continue;
+            }
+            $live[strtoupper(trim($sku))] = $qty;
+        }
+
+        return $live;
     }
 
     /**

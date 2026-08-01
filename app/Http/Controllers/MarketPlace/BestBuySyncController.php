@@ -1388,11 +1388,15 @@ class BestBuySyncController extends Controller
 
     protected function isShopifySkuLinkedOnBestBuy(?BestbuyUsaProduct $metric, string $shopifySku): bool
     {
-        if (! $metric || trim((string) $metric->sku ?? $sku) === '') {
+        if (! $metric) {
+            return false;
+        }
+        $metricSku = trim((string) ($metric->sku ?? ''));
+        if ($metricSku === '') {
             return false;
         }
 
-        return ShopifySku::normalizeSkuForShopifyLookup((string) $metric->sku ?? $sku)
+        return ShopifySku::normalizeSkuForShopifyLookup($metricSku)
             === ShopifySku::normalizeSkuForShopifyLookup($shopifySku);
     }
 

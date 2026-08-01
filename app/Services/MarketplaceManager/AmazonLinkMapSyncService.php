@@ -3,15 +3,15 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\AmazonListingStatus;
-use App\Models\ProductStockMapping;
 use App\Services\AmazonSpApiService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Refresh amazon_listing_statuses SKU ↔ ASIN link map from local rows + optional listings pull.
+ * Refresh amazon_listing_statuses SKU ↔ ASIN link map from amazon_listings_raw + optional SP-API pull.
  */
 class AmazonLinkMapSyncService
 {
@@ -70,9 +70,23 @@ class AmazonLinkMapSyncService
 
         if ($reset || $page === 1) {
             $this->resetProgress();
-            if ($this->amazonApi->isConfigured()) {
+            // Prefer existing amazon_listings_raw (scheduled report) — fills "Not on Amazon" gaps quickly.
+            // Full SP-API / report refresh is optional and can be slow; skip on UI sync unless table empty.
+            if ($this->amazonApi->isConfigured() && Schema::hasTable('amazon_listings_raw')) {
+                $rawCount = (int) DB::table('amazon_listings_raw')->count();
+                if ($rawCount === 0) {
+                    $this->syncFromListingsOrInventory();
+                }
+            } elseif ($this->amazonApi->isConfigured()) {
                 $this->syncFromListingsOrInventory();
             }
+            $imported = $this->upsertFromListingsRaw();
+            $this->updateProgress([
+                'running' => true,
+                'page' => 1,
+                'message' => "Imported/updated {$imported} SKU(s) from amazon_listings_raw into amazon_listing_statuses…",
+                'total_upserted' => $imported,
+            ]);
         }
 
         $state = $this->getProgress();
@@ -83,7 +97,7 @@ class AmazonLinkMapSyncService
         $this->updateProgress([
             'running' => true,
             'page' => $page,
-            'message' => "Reading amazon_listing_statuses page {$page}…",
+            'message' => "Enriching amazon_listing_statuses page {$page}…",
         ]);
 
         $query = AmazonListingStatus::query()
@@ -103,11 +117,18 @@ class AmazonLinkMapSyncService
             }
             $value = AmazonListingStatusHelper::valueArray($row);
             $asin = AmazonListingStatusHelper::resolveAsin($row);
-            if ($asin === '' && Schema::hasTable('product_stock_mappings')) {
-                $asin = $this->lookupAsinFromMappings($sku);
+            if ($asin === '') {
+                $asin = $this->lookupAsinFromListingsRaw($sku);
             }
-            if ($asin !== '' && ($value['asin'] ?? '') !== $asin) {
+            $dirty = false;
+            if ($asin !== '' && strtoupper((string) ($value['asin'] ?? '')) !== $asin) {
                 $value['asin'] = $asin;
+                $value['buyer_link'] = $value['buyer_link']
+                    ?? 'https://www.amazon.com/dp/'.$asin;
+                $value['listed'] = $value['listed'] ?? 'Listed';
+                $dirty = true;
+            }
+            if ($dirty) {
                 $row->value = $value;
                 $row->save();
             } else {
@@ -116,11 +137,13 @@ class AmazonLinkMapSyncService
             $pageUpserted++;
         }
 
-        $totalUpserted = (int) ($state['total_upserted'] ?? 0) + $pageUpserted;
+        $baseUpserted = (int) ($state['total_upserted'] ?? 0);
+        // On page 1 the import already counted raw upserts; enrichment pages add enrich count.
+        $totalUpserted = $page === 1 ? max($baseUpserted, $pageUpserted) : ($baseUpserted + $pageUpserted);
         $done = $page >= $totalPage || $rows->isEmpty();
         $message = $done
-            ? "Updated {$totalUpserted} SKU link(s) from amazon_listing_statuses ({$page} page(s), {$totalCount} rows)."
-            : "Page {$page} of {$totalPage}: {$pageUpserted} SKU link(s) saved…";
+            ? "Link map ready: {$totalCount} SKU(s) in amazon_listing_statuses (page {$page}/{$totalPage})."
+            : "Page {$page} of {$totalPage}: enriched {$pageUpserted} SKU link(s)…";
 
         $this->updateProgress([
             'running' => ! $done,
@@ -144,6 +167,91 @@ class AmazonLinkMapSyncService
         ];
     }
 
+    /**
+     * Create/update amazon_listing_statuses from amazon_listings_raw (source of Active Amazon listings).
+     */
+    public function upsertFromListingsRaw(): int
+    {
+        if (! Schema::hasTable('amazon_listings_raw') || ! Schema::hasTable('amazon_listing_statuses')) {
+            return 0;
+        }
+
+        $upserted = 0;
+        DB::table('amazon_listings_raw')
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->orderBy('id')
+            ->chunkById(200, function ($rows) use (&$upserted) {
+                foreach ($rows as $raw) {
+                    $sku = trim((string) ($raw->seller_sku ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+
+                    $asin = $this->asinFromRawRow($raw);
+                    if ($asin === '') {
+                        continue;
+                    }
+
+                    $existing = AmazonListingStatus::query()
+                        ->where('sku', $sku)
+                        ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                        ->first();
+
+                    $value = $existing ? AmazonListingStatusHelper::valueArray($existing) : [];
+                    $value['asin'] = $asin;
+                    $value['buyer_link'] = $value['buyer_link'] ?? ('https://www.amazon.com/dp/'.$asin);
+                    $value['listed'] = $value['listed'] ?? 'Listed';
+
+                    $rawData = [];
+                    if (! empty($raw->raw_data)) {
+                        $decoded = is_array($raw->raw_data)
+                            ? $raw->raw_data
+                            : json_decode((string) $raw->raw_data, true);
+                        $rawData = is_array($decoded) ? $decoded : [];
+                    }
+                    $status = strtolower(trim((string) ($rawData['status'] ?? '')));
+                    if ($status !== '') {
+                        $value['listing_status'] = $status;
+                        if ($status === 'active') {
+                            $value['listed'] = 'Listed';
+                        }
+                    }
+
+                    if (isset($raw->quantity) && $raw->quantity !== null && $raw->quantity !== '') {
+                        $value['quantity'] = (int) $raw->quantity;
+                    } elseif (isset($rawData['quantity']) && $rawData['quantity'] !== '') {
+                        $value['quantity'] = (int) $rawData['quantity'];
+                    }
+                    if (! empty($raw->your_price)) {
+                        $value['price'] = $raw->your_price;
+                    } elseif (! empty($rawData['price'])) {
+                        $value['price'] = $rawData['price'];
+                    }
+                    if (! empty($raw->item_name)) {
+                        $value['title'] = $raw->item_name;
+                    }
+                    if (! empty($raw->thumbnail_image)) {
+                        $value['image'] = $raw->thumbnail_image;
+                    }
+
+                    if ($existing) {
+                        $existing->sku = $sku;
+                        $existing->value = $value;
+                        $existing->save();
+                    } else {
+                        AmazonListingStatus::query()->create([
+                            'sku' => $sku,
+                            'value' => $value,
+                        ]);
+                    }
+                    $upserted++;
+                }
+            });
+
+        return $upserted;
+    }
+
     protected function syncFromListingsOrInventory(): void
     {
         $this->updateProgress([
@@ -163,24 +271,43 @@ class AmazonLinkMapSyncService
         }
     }
 
-    protected function lookupAsinFromMappings(string $sku): string
+    protected function lookupAsinFromListingsRaw(string $sku): string
     {
         if (! Schema::hasTable('amazon_listings_raw')) {
             return '';
         }
 
-        $row = \Illuminate\Support\Facades\DB::table('amazon_listings_raw')
+        $row = DB::table('amazon_listings_raw')
             ->where('seller_sku', $sku)
             ->orWhereRaw('UPPER(TRIM(seller_sku)) = ?', [strtoupper($sku)])
             ->orderByDesc('id')
-            ->first(['asin1', 'asin']);
+            ->first(['asin1', 'raw_data']);
 
-        if (! $row) {
-            return '';
+        return $row ? $this->asinFromRawRow($row) : '';
+    }
+
+    protected function asinFromRawRow(object $raw): string
+    {
+        $asin = strtoupper(trim((string) ($raw->asin1 ?? '')));
+        if (preg_match('/^[A-Z0-9]{10}$/', $asin)) {
+            return $asin;
         }
-        $asin = strtoupper(trim((string) ($row->asin1 ?? $row->asin ?? '')));
 
-        return preg_match('/^[A-Z0-9]{10}$/', $asin) ? $asin : '';
+        $rawData = [];
+        if (! empty($raw->raw_data)) {
+            $decoded = is_array($raw->raw_data)
+                ? $raw->raw_data
+                : json_decode((string) $raw->raw_data, true);
+            $rawData = is_array($decoded) ? $decoded : [];
+        }
+        foreach (['asin1', 'asin', 'ASIN'] as $key) {
+            $candidate = strtoupper(trim((string) ($rawData[$key] ?? '')));
+            if (preg_match('/^[A-Z0-9]{10}$/', $candidate)) {
+                return $candidate;
+            }
+        }
+
+        return '';
     }
 
     public function getProgress(): array

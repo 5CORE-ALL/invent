@@ -1071,27 +1071,13 @@ class AmazonSyncController extends Controller
     }
 
     /**
-     * SKUs in amazon_listing_statuses that map to a real Shopify SKU (not product_id placeholders).
+     * Linked Amazon SKUs from amazon_listing_statuses + amazon_listings_raw (Active report).
      *
      * @return array<int, string>
      */
     protected function linkedAmazonSkus(): array
     {
-        if (! Schema::hasTable('amazon_listing_statuses')) {
-            return [];
-        }
-
-        return AmazonListingStatus::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->get()
-            ->filter(static fn (AmazonListingStatus $row) => AmazonListingStatusHelper::isLinked($row))
-            ->pluck('sku')
-            ->map(static fn ($sku) => trim((string) $sku))
-            ->filter(static fn (string $sku) => $sku !== '')
-            ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
-            ->values()
-            ->all();
+        return AmazonListingStatusHelper::linkedSkus();
     }
 
     /**
