@@ -4425,22 +4425,29 @@ class TemuController extends Controller
      */
     public function uploadTemuLmp(Request $request)
     {
+        // Prefer extension over MIME — browser/OS MIME for CSV/XLSX is often wrong and blocked saves.
         $request->validate([
-            'lmp_file' => 'required|file|mimes:xlsx,xls,csv,txt|max:20480'
+            'lmp_file' => 'required|file|max:20480',
         ]);
 
         try {
+            if (! Schema::hasTable('temu_lmp')) {
+                return back()->with('error', 'temu_lmp table is missing. Run migrations first.');
+            }
+
             $file = $request->file('lmp_file');
             $path = $file->getPathname();
-            $ext = strtolower($file->getClientOriginalExtension());
+            $ext = strtolower((string) $file->getClientOriginalExtension());
+            if (! in_array($ext, ['xlsx', 'xls', 'csv', 'txt', 'tsv'], true)) {
+                return back()->with('error', 'Invalid file type. Use Excel (.xlsx/.xls) or CSV/TSV (.csv/.txt).');
+            }
 
             $rows = [];
-            if (in_array($ext, ['xlsx', 'xls'])) {
+            if (in_array($ext, ['xlsx', 'xls'], true)) {
                 $spreadsheet = IOFactory::load($path);
                 $sheet = $spreadsheet->getActiveSheet();
-                $rows = $sheet->toArray();
+                $rows = $sheet->toArray(null, true, true, false);
             } else {
-                // CSV or TXT (tab-delimited)
                 $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
                 $delimiter = (strpos($lines[0] ?? '', "\t") !== false) ? "\t" : ',';
                 foreach ($lines as $line) {
@@ -4448,44 +4455,107 @@ class TemuController extends Controller
                 }
             }
 
-            if (count($rows) < 2) {
+            if (count($rows) < 1) {
                 return back()->with('error', 'File is empty or has no data rows.');
             }
 
-            // Skip header row; data columns by index: 0=SKU, 1=LMP, 2=LMP Link, 3=LMP2, 4=LMP Link2
-            TemuLmp::truncate();
-            $imported = 0;
-            $errors = [];
+            // Map columns from header when present; fall back to fixed positions.
+            $colMap = ['sku' => 0, 'lmp' => 1, 'lmp_link' => 2, 'lmp_2' => 3, 'lmp_link_2' => 4];
+            $startRow = 0;
+            $header = array_map(static function ($v) {
+                return strtolower(trim((string) $v));
+            }, $rows[0] ?? []);
+            $headerJoined = implode('|', $header);
+            if (str_contains($headerJoined, 'sku') || str_contains($headerJoined, 'lmp')) {
+                $startRow = 1;
+                foreach ($header as $idx => $label) {
+                    if ($label === 'sku' || $label === 'seller sku' || $label === 'contribution sku') {
+                        $colMap['sku'] = $idx;
+                    } elseif (in_array($label, ['lmp', 'lmp 1', 'lmp1', 'price', 'l1'], true)) {
+                        $colMap['lmp'] = $idx;
+                    } elseif (in_array($label, ['lmp link', 'lmp_link', 'lmp link 1', 'link', 'link 1'], true)) {
+                        $colMap['lmp_link'] = $idx;
+                    } elseif (in_array($label, ['lmp 2', 'lmp2', 'lmp_2'], true)) {
+                        $colMap['lmp_2'] = $idx;
+                    } elseif (in_array($label, ['lmp link 2', 'lmp_link_2', 'link 2'], true)) {
+                        $colMap['lmp_link_2'] = $idx;
+                    }
+                }
+            }
 
-            for ($i = 1; $i < count($rows); $i++) {
+            if (count($rows) <= $startRow) {
+                return back()->with('error', 'File is empty or has no data rows.');
+            }
+
+            // Build payload first so a bad file never wipes existing temu_lmp data.
+            $toInsert = [];
+            $errors = [];
+            for ($i = $startRow; $i < count($rows); $i++) {
                 $row = $rows[$i];
-                $sku = isset($row[0]) ? trim((string) $row[0]) : '';
-                if ($sku === '') {
+                $sku = isset($row[$colMap['sku']]) ? trim((string) $row[$colMap['sku']]) : '';
+                if ($sku === '' || strcasecmp($sku, 'SKU') === 0) {
                     continue;
                 }
-                $lmp = isset($row[1]) && $row[1] !== '' ? $this->sanitizePrice($row[1]) : null;
-                $lmpLink = isset($row[2]) && trim((string) $row[2]) !== '' ? trim((string) $row[2]) : null;
-                $lmp2 = isset($row[3]) && $row[3] !== '' ? $this->sanitizePrice($row[3]) : null;
-                $lmpLink2 = isset($row[4]) && trim((string) $row[4]) !== '' ? trim((string) $row[4]) : null;
 
-                try {
-                    TemuLmp::create([
-                        'sku' => $sku,
-                        'lmp' => $lmp,
-                        'lmp_link' => $lmpLink,
-                        'lmp_2' => $lmp2,
-                        'lmp_link_2' => $lmpLink2,
-                    ]);
-                    $imported++;
-                } catch (\Exception $e) {
-                    $errors[] = 'Row ' . ($i + 1) . ': ' . $e->getMessage();
+                $lmpRaw = $row[$colMap['lmp']] ?? null;
+                $lmpLinkRaw = $row[$colMap['lmp_link']] ?? null;
+                $lmp2Raw = $row[$colMap['lmp_2']] ?? null;
+                $lmpLink2Raw = $row[$colMap['lmp_link_2']] ?? null;
+
+                $lmp = ($lmpRaw !== null && $lmpRaw !== '') ? $this->sanitizePrice($lmpRaw) : null;
+                $lmpLink = ($lmpLinkRaw !== null && trim((string) $lmpLinkRaw) !== '') ? trim((string) $lmpLinkRaw) : null;
+                $lmp2 = ($lmp2Raw !== null && $lmp2Raw !== '') ? $this->sanitizePrice($lmp2Raw) : null;
+                $lmpLink2 = ($lmpLink2Raw !== null && trim((string) $lmpLink2Raw) !== '') ? trim((string) $lmpLink2Raw) : null;
+
+                $lmpEntries = [];
+                if ($lmp !== null || $lmpLink !== null) {
+                    $lmpEntries[] = ['price' => $lmp, 'link' => $lmpLink, 'ignored' => false];
                 }
+                if ($lmp2 !== null || $lmpLink2 !== null) {
+                    $lmpEntries[] = ['price' => $lmp2, 'link' => $lmpLink2, 'ignored' => false];
+                }
+
+                $toInsert[] = [
+                    'sku' => $sku,
+                    'lmp' => $lmp,
+                    'lmp_link' => $lmpLink,
+                    'lmp_2' => $lmp2,
+                    'lmp_link_2' => $lmpLink2,
+                    'lmp_entries' => $lmpEntries !== [] ? $lmpEntries : null,
+                    '_row' => $i + 1,
+                ];
             }
+
+            if ($toInsert === []) {
+                return back()->with('error', 'No rows imported. Check that column 1 is SKU (or a header row with SKU / LMP).');
+            }
+
+            $imported = 0;
+            DB::transaction(function () use ($toInsert, &$imported, &$errors) {
+                // delete() is transactional (unlike TRUNCATE on MySQL).
+                TemuLmp::query()->delete();
+
+                foreach ($toInsert as $payload) {
+                    $rowNum = $payload['_row'];
+                    unset($payload['_row']);
+                    try {
+                        TemuLmp::create($payload);
+                        $imported++;
+                    } catch (\Exception $e) {
+                        $errors[] = 'Row ' . $rowNum . ': ' . $e->getMessage();
+                    }
+                }
+
+                if ($imported === 0) {
+                    throw new \RuntimeException('All rows failed to import.');
+                }
+            });
 
             $msg = "Successfully imported $imported Temu LMP records.";
-            if (!empty($errors)) {
+            if (! empty($errors)) {
                 $msg .= ' ' . count($errors) . ' row(s) had errors.';
             }
+
             return back()->with('success', $msg)->with('upload_errors', $errors);
         } catch (\Exception $e) {
             Log::error('Temu LMP upload error: ' . $e->getMessage());
@@ -4499,73 +4569,110 @@ class TemuController extends Controller
      */
     public function saveTemuLmp(Request $request)
     {
-        $request->validate([
-            'sku' => 'required|string|max:255',
-            'lmp_entries' => 'nullable|array',
-            'lmp_entries.*.price' => 'nullable|numeric|min:0',
-            'lmp_entries.*.link' => 'nullable|string|max:2000',
-            'lmp_entries.*.ignored' => 'nullable',
-        ]);
-
-        $sku = trim($request->sku);
-        $rawEntries = $request->input('lmp_entries', []);
-        $lmpEntries = [];
-        foreach ($rawEntries as $e) {
-            $price = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
-                ? $this->sanitizePrice($e['price'])
-                : null;
-            $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim($e['link']) : null;
-            $ignored = filter_var($e['ignored'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            if ($price !== null || $link !== null) {
-                $lmpEntries[] = ['price' => $price, 'link' => $link, 'ignored' => $ignored];
+        try {
+            if (! Schema::hasTable('temu_lmp')) {
+                return response()->json(['success' => false, 'message' => 'temu_lmp table is missing'], 500);
             }
-        }
-        $activeEntries = array_values(array_filter($lmpEntries, function ($e) {
-            return empty($e['ignored']);
-        }));
-        $prices = array_values(array_filter(array_map(function ($e) {
-            return $e['price'] ?? null;
-        }, $activeEntries)));
-        $firstPrice = count($prices) > 0 ? min($prices) : null;
-        $firstLink = null;
-        if ($firstPrice !== null) {
-            foreach ($activeEntries as $e) {
-                if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $firstPrice) {
-                    $firstLink = $e['link'] ?? null;
-                    break;
+
+            $sku = trim((string) $request->input('sku', ''));
+            if ($sku === '') {
+                return response()->json(['success' => false, 'message' => 'SKU is required'], 422);
+            }
+
+            $rawEntries = $request->input('lmp_entries', []);
+            if (! is_array($rawEntries)) {
+                return response()->json(['success' => false, 'message' => 'lmp_entries must be an array'], 422);
+            }
+
+            $lmpEntries = [];
+            foreach ($rawEntries as $e) {
+                if (! is_array($e)) {
+                    continue;
+                }
+                $price = array_key_exists('price', $e) && $e['price'] !== '' && $e['price'] !== null
+                    ? $this->sanitizePrice($e['price'])
+                    : null;
+                $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim((string) $e['link']) : null;
+                // Temu product URLs can exceed 2k with tracking params — store full link (text column).
+                if ($link !== null && strlen($link) > 10000) {
+                    $link = substr($link, 0, 10000);
+                }
+                $ignored = filter_var($e['ignored'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                if ($price !== null || $link !== null) {
+                    $lmpEntries[] = ['price' => $price, 'link' => $link, 'ignored' => $ignored];
                 }
             }
+
+            $activeEntries = array_values(array_filter($lmpEntries, static function ($e) {
+                return empty($e['ignored']);
+            }));
+            $prices = array_values(array_filter(array_map(static function ($e) {
+                return $e['price'] ?? null;
+            }, $activeEntries), static fn ($p) => $p !== null && $p !== ''));
+            $firstPrice = count($prices) > 0 ? min(array_map('floatval', $prices)) : null;
+            $firstLink = null;
+            if ($firstPrice !== null) {
+                foreach ($activeEntries as $e) {
+                    if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $firstPrice) {
+                        $firstLink = $e['link'] ?? null;
+                        break;
+                    }
+                }
+            }
+
+            $normalizeSku = static function ($s) {
+                $s = strtoupper(trim((string) $s));
+                $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+                $s = preg_replace('/\s+/', ' ', $s);
+
+                return $s;
+            };
+
+            $targetNormalized = $normalizeSku($sku);
+            $existing = TemuLmp::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+            if (! $existing) {
+                $existing = TemuLmp::query()
+                    ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
+                    ->get()
+                    ->first(static function ($row) use ($normalizeSku, $targetNormalized) {
+                        return $normalizeSku($row->sku) === $targetNormalized;
+                    });
+            }
+
+            // Clear legacy columns (lmp_2, lmp_link_2) so deleted entries don't reappear on refresh
+            $payload = [
+                'sku' => $sku,
+                'lmp' => $firstPrice,
+                'lmp_link' => $firstLink,
+                'lmp_entries' => $lmpEntries,
+                'lmp_2' => null,
+                'lmp_link_2' => null,
+            ];
+
+            if ($existing) {
+                $existing->update($payload);
+            } else {
+                TemuLmp::create($payload);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP saved successfully',
+                'lmp' => $firstPrice,
+                'count' => count($lmpEntries),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Temu LMP save error: ' . $e->getMessage(), [
+                'sku' => $request->input('sku'),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save LMP: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $normalizeSku = function ($s) {
-            $s = strtoupper(trim($s));
-            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
-            $s = preg_replace('/\s+/', ' ', $s);
-            return $s;
-        };
-
-        $targetNormalized = $normalizeSku($sku);
-        $existing = TemuLmp::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
-            return $normalizeSku($row->sku) === $targetNormalized;
-        });
-
-        // Clear legacy columns (lmp_2, lmp_link_2) so deleted entries don't reappear on refresh
-        $payload = [
-            'sku' => $sku,
-            'lmp' => $firstPrice,
-            'lmp_link' => $firstLink,
-            'lmp_entries' => $lmpEntries,
-            'lmp_2' => null,
-            'lmp_link_2' => null,
-        ];
-
-        if ($existing) {
-            $existing->update($payload);
-        } else {
-            TemuLmp::create($payload);
-        }
-
-        return response()->json(['success' => true, 'message' => 'LMP saved successfully']);
     }
 
 

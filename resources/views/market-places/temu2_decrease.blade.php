@@ -4424,22 +4424,36 @@
                 showToast('Add at least one price or link', 'warning');
                 return;
             }
+            if (!lmpModalSku) {
+                showToast('Missing SKU — reopen the LMP modal', 'error');
+                return;
+            }
             $(this).prop('disabled', true);
             $.ajax({
                 url: '{{ route("temu.lmp.save") }}',
                 method: 'POST',
-                data: {
-                    _token: '{{ csrf_token() }}',
+                contentType: 'application/json',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                data: JSON.stringify({
                     sku: lmpModalSku,
                     lmp_entries: entries
-                },
+                }),
                 success: function(response) {
-                    showToast('LMP saved successfully', 'success');
-                    $('#lmpModal').modal('hide');
-                    if (table) table.replaceData();
+                    if (response && response.success) {
+                        showToast(response.message || 'LMP saved successfully', 'success');
+                        $('#lmpModal').modal('hide');
+                        if (table) table.replaceData();
+                    } else {
+                        showToast((response && (response.message || response.error)) || 'Failed to save LMP', 'error');
+                    }
                 },
-                error: function() {
-                    showToast('Failed to save LMP', 'error');
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || 'Failed to save LMP';
+                    showToast(msg, 'error');
                 },
                 complete: function() {
                     $('#lmpModalSaveBtn').prop('disabled', false);

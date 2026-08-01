@@ -2298,6 +2298,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ url('/price-increase') }}" class="side-nav-link">
+                    <i class="ri-arrow-up-circle-line"></i>
+                    <span>Price Increase</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ url('/sold-master') }}" class="side-nav-link">
                     <i class="ri-shopping-cart-line"></i>
                     <span>Sales by Value</span>

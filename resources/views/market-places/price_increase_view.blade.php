@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Master Analytics ', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Price Increase', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -742,22 +742,42 @@
             font-weight: 700;
         }
 
-        /* Parent SKU dot - P column */
+        /* Parent expand icon - P column (glossy yellow play triangle) */
         .parent-sku-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #17a2b8;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
             cursor: pointer;
-            transition: background-color 0.2s;
+            vertical-align: middle;
+            line-height: 0;
+            transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+            filter: drop-shadow(0 1px 1px rgba(180, 110, 0, 0.35));
+        }
+        .parent-sku-dot svg {
+            width: 14px;
+            height: 14px;
+            display: block;
         }
         .parent-sku-dot:hover {
-            background-color: #0d6efd;
+            filter: drop-shadow(0 2px 3px rgba(180, 110, 0, 0.45));
+            transform: scale(1.08);
+        }
+        .parent-sku-dot.is-expanded {
+            transform: rotate(90deg);
+        }
+        .parent-sku-dot.is-expanded:hover {
+            transform: rotate(90deg) scale(1.08);
         }
         .parent-sku-dot.no-parent {
-            background-color: #dee2e6;
             cursor: default;
+            opacity: 0.35;
+            filter: grayscale(1) drop-shadow(none);
+        }
+        .parent-sku-dot.no-parent:hover {
+            transform: none;
+            filter: grayscale(1) drop-shadow(none);
         }
 
         /* SKU column — keep long SKUs inside the cell (do not overwrite Details) */
@@ -892,8 +912,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Master Analytics',
-        'sub_title' => 'Master Analytics Data with Editable SPRICE',
+        'page_title' => 'Price Increase',
+        'sub_title' => 'Price Increase Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -1342,14 +1362,14 @@
         </div>
     </div>
 
-    <!-- Master Analytics Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
+    <!-- Price Increase Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
     <div class="modal fade p-0" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="pricingMasterChartModalTitle">Master Analytics - Inv (Rolling L30)</span>
+                        <span id="pricingMasterChartModalTitle">Price Increase - Inv (Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="pricingMasterChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -1390,7 +1410,7 @@
                     <div id="pricingMasterChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No daily data for this SKU yet.</p>
-                        <p class="text-muted small mb-0"><strong>Refresh this page (Master Analytics CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
+                        <p class="text-muted small mb-0"><strong>Refresh this page (Price Increase)</strong> once so today’s SKU data is saved, then open the graph again.</p>
                     </div>
                 </div>
             </div>
@@ -1545,9 +1565,9 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both" selected>Both (SKU + Parent)</option>
+                        <option value="both">Both (SKU + Parent)</option>
                         <option value="sku">SKU Only</option>
-                        <option value="parent">Parent Only</option>
+                        <option value="parent" selected>Parent Only</option>
                     </select>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
@@ -1671,6 +1691,24 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
+
+                    {{-- Sprice Rule: SP = Amazon LMP × editable factor (default 0.98) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
+                        id="pi-sprice-lmp-rule"
+                        style="background: #ffc107;"
+                        title="Sprice Rule — set SP = Amazon LMP × factor. Factor is editable (default 0.98). Applies to selected SKUs, or visible parents' children when none selected.">
+                        <button type="button" id="pi-apply-sprice-lmp-rule-btn"
+                            class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
+                            style="background: transparent;">
+                            <i class="fas fa-percentage"></i> Sprice Rule
+                        </button>
+                        <span class="small fw-bold text-dark text-nowrap">LMP ×</span>
+                        <input type="number" id="pi-sprice-lmp-mult-input"
+                            class="form-control form-control-sm text-end"
+                            value="0.98" step="0.01" min="0.01" max="2"
+                            style="width: 72px;"
+                            title="Editable LMP multiplier — autofilled with 0.98">
+                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1981,7 +2019,7 @@
         }
 
         // Deep-link from /ebay-tabulator-view LMP magnifying glass (and others):
-        // /pricing-master-cvr?sku=XXX&inv=&l30=&dil= → open same analytics modal.
+        // /price-increase?sku=XXX&inv=&l30=&dil= → open same analytics modal.
         (function openSkuBreakdownFromQuery() {
             try {
                 const params = new URLSearchParams(window.location.search || '');
@@ -2970,7 +3008,7 @@
                     }
                 }
             },
-            initialSort: [{ column: "parent", dir: "asc" }],
+            initialSort: [{ column: "dil_percent", dir: "desc" }],
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
@@ -3001,6 +3039,7 @@
                     title: "Image",
                     field: "image_path",
                     sorter: "string",
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
@@ -3018,18 +3057,42 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const parent = cell.getValue();
+                        const uid = 'pi' + Math.random().toString(36).slice(2, 9);
+                        const playIcon =
+                            '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+                            '<defs>' +
+                            `<linearGradient id="${uid}g" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">` +
+                            '<stop offset="0%" stop-color="#FFE566"/>' +
+                            '<stop offset="45%" stop-color="#FFC107"/>' +
+                            '<stop offset="100%" stop-color="#F59E0B"/>' +
+                            '</linearGradient>' +
+                            `<linearGradient id="${uid}s" x1="6" y1="3" x2="14" y2="14" gradientUnits="userSpaceOnUse">` +
+                            '<stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75"/>' +
+                            '<stop offset="55%" stop-color="#FFFFFF" stop-opacity="0.12"/>' +
+                            '<stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>' +
+                            '</linearGradient>' +
+                            '</defs>' +
+                            `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}g)"/>` +
+                            `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}s)"/>` +
+                            '<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="none" stroke="#D97706" stroke-opacity="0.35" stroke-width="0.8"/>' +
+                            '</svg>';
                         if (!parent) {
-                            return '<span class="parent-sku-dot no-parent" title="No parent"></span>';
+                            return '<span class="parent-sku-dot no-parent" title="No parent">' + playIcon + '</span>';
                         }
-                        return `<span class="parent-sku-dot parent-sku-dot-btn" 
-                                    data-parent="${parent.replace(/"/g, '&quot;')}" 
-                                    title="Click to view SKUs for parent: ${parent.replace(/"/g, '&quot;')}"></span>`;
+                        const parentEsc = parent.replace(/"/g, '&quot;');
+                        const isExpanded = (typeof dotExpandedParent !== 'undefined' && dotExpandedParent === parent)
+                            || (cell.getRow().getData()._expanded === true);
+                        const expandedCls = isExpanded ? ' is-expanded' : '';
+                        return `<span class="parent-sku-dot parent-sku-dot-btn${expandedCls}"
+                                    data-parent="${parentEsc}"
+                                    title="Click to view SKUs for parent: ${parentEsc}">${playIcon}</span>`;
                     }
                 },
                 {
                     title: "Parent",
-                    field: "parent",
+                    field: "parent_display",
                     sorter: "string",
+                    visible: false,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent",
                     minWidth: 80,
@@ -3038,6 +3101,11 @@
                         const parent = rowData.parent;
                         if (parent === undefined || parent === null || (typeof parent === 'string' && !parent.trim())) return '-';
                         return (typeof parent === 'string' ? parent : String(parent)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                    },
+                    headerFilterFunc: function(headerValue, rowValue, rowData) {
+                        if (!headerValue) return true;
+                        const parent = String(rowData.parent || '');
+                        return parent.toLowerCase().includes(String(headerValue).toLowerCase());
                     }
                 },
                 {
@@ -3201,18 +3269,6 @@
                     minWidth: 70
                 },
                 {
-                    title: "Avg GPFT%",
-                    field: "avg_gpft",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
-                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
-                    },
-                    minWidth: 70
-                },
-                {
                     title: "Avg GROI%",
                     field: "avg_roi",
                     hozAlign: "center",
@@ -3233,14 +3289,14 @@
                     }
                 },
                 {
-                    title: "Avg NPFT%",
-                    field: "avg_pft",
+                    title: "Avg GPFT%",
+                    field: "avg_gpft",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
-                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
-                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
+                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
+                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
                 },
@@ -3263,6 +3319,18 @@
                         else color = '#e83e8c';
                         return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
                     }
+                },
+                {
+                    title: "Avg NPFT%",
+                    field: "avg_pft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
+                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
                 },
                 {
                     title: "Missing L",
@@ -3375,6 +3443,35 @@
                         else if (pct >= 100 && pct <= 150) color = '#28a745';
                         else color = '#e83e8c';
                         return `<span style="${styleForCellColor(color)}">${pct.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: "SP",
+                    field: "amazon_standard_price",
+                    hozAlign: "center",
+                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Manual only; blank unless filled. Dot vs Amazon price.",
+                    editor: "input",
+                    minWidth: 70,
+                    sorter: "number",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary) return '';
+                        const value = cell.getValue();
+                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
+                        const std = parseFloat(value) || 0;
+                        if (!value || std <= 0) return '';
+                        const sku = rowData.sku || '';
+                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
+                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                dot + '</span>';
+                        }
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                            dot + ('$' + std.toFixed(2)) + '</span>';
                     }
                 },
                 {
@@ -3545,6 +3642,26 @@
                         return html;
                     },
                     minWidth: 80
+                },
+                {
+                    title: "Temu Views",
+                    field: "temu_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "L30 Temu ad clicks — same as /temu-decrease Views (temu_metrics.product_clicks_l30).",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseInt(cell.getValue() || 0);
+                        const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                        let html = value === 0
+                            ? '<span style="color: #6c757d;">0</span>'
+                            : `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
+                        if (rowData.is_parent_summary !== true && skuEsc) {
+                            html += ' <button type="button" class="btn btn-sm p-0 temu-views-chart-link align-middle" data-sku="' + skuEsc + '" title="View Temu Views chart (same as /temu-decrease)" style="border:none;background:none;cursor:pointer;padding:0 2px;line-height:1;vertical-align:middle;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#0000FF;"></span></button>';
+                        }
+                        return html;
+                    },
+                    minWidth: 70
                 },
                 {
                     title: "Amz LMP",
@@ -3816,13 +3933,287 @@
             });
         })();
 
-        // Amz SPRICE edited in table: save and recalculate SGPFT, SPFT, SROI
+        /** SP vs Amazon price: reduce / hold / increase → red / yellow / green (same as amazon-tabulator-view). */
+        function priceIncreaseSpChangeDotMeta(sprice, amazonPrice) {
+            const sp = parseFloat(sprice) || 0;
+            const ap = parseFloat(amazonPrice) || 0;
+            if (sp <= 0) return null;
+            if (ap <= 0) {
+                return { kind: 'hold', color: '#ffc107', title: 'Hold' };
+            }
+            const sp2 = sp.toFixed(2);
+            const ap2 = ap.toFixed(2);
+            if (parseFloat(sp2) < parseFloat(ap2)) {
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduced vs Amazon price' };
+            }
+            if (parseFloat(sp2) > parseFloat(ap2)) {
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amazon price' };
+            }
+            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amazon price)' };
+        }
+
+        function priceIncreaseSpChangeDotHtml(sprice, amazonPrice, sku) {
+            const meta = priceIncreaseSpChangeDotMeta(sprice, amazonPrice);
+            if (!meta) return '';
+            const tip = meta.title + ' — SP (Standard Price)';
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+                'background:' + meta.color + ';flex-shrink:0;" title="' + String(tip).replace(/"/g, '&quot;') + '"></span>';
+        }
+
+        // ==================== Sprice Rule (SP = Amazon LMP × factor) ====================
+        const PI_SPRICE_LMP_MULT_KEY = 'price_increase_sprice_lmp_mult';
+        let piSpriceLmpMult = 0.98;
+
+        function getPiSpriceLmpMult() {
+            const n = parseFloat(piSpriceLmpMult);
+            if (isFinite(n) && n > 0 && n <= 2) return n;
+            return 0.98;
+        }
+
+        function formatPiSpriceLmpMult(v) {
+            const n = Number(v);
+            if (!isFinite(n)) return '0.98';
+            return String(+n.toFixed(4));
+        }
+
+        function loadPiSpriceLmpMult() {
+            try {
+                const stored = parseFloat(localStorage.getItem(PI_SPRICE_LMP_MULT_KEY));
+                if (isFinite(stored) && stored > 0 && stored <= 2) {
+                    piSpriceLmpMult = stored;
+                }
+            } catch (e) { /* ignore */ }
+            $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(getPiSpriceLmpMult()));
+        }
+
+        function savePiSpriceLmpMultFromInput() {
+            const raw = parseFloat(String($('#pi-sprice-lmp-mult-input').val() || '').replace(',', '.'));
+            if (!isFinite(raw) || raw <= 0 || raw > 2) {
+                showToast('Enter a multiplier between 0.01 and 2.00', 'error');
+                $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(getPiSpriceLmpMult()));
+                return false;
+            }
+            piSpriceLmpMult = raw;
+            try { localStorage.setItem(PI_SPRICE_LMP_MULT_KEY, String(raw)); } catch (e) { /* ignore */ }
+            $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(raw));
+            return true;
+        }
+
+        function collectSkusForPiSpriceLmpRule() {
+            const out = [];
+            const seen = new Set();
+            const useSelection = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
+
+            function pushSku(sku, lmp) {
+                const key = String(sku || '').trim().toUpperCase();
+                if (!key || key.indexOf('PARENT') === 0 || seen.has(key)) return;
+                const lmpN = parseFloat(lmp) || 0;
+                if (lmpN <= 0) return;
+                seen.add(key);
+                out.push({ sku: String(sku).trim(), lmp: lmpN });
+            }
+
+            function addFromDatasetRow(d) {
+                if (!d || d.is_parent_summary) return;
+                pushSku(d.sku, d.amazon_lmp_price);
+            }
+
+            if (useSelection) {
+                selectedSkus.forEach(function(selSku) {
+                    const key = String(selSku || '').trim().toUpperCase();
+                    if (!key) return;
+                    // Selected parent → all children under that parent
+                    if (key.indexOf('PARENT ') === 0 || (fullDataset || []).some(r =>
+                        r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                    )) {
+                        const parentRow = (fullDataset || []).find(r =>
+                            r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                        );
+                        const parentName = parentRow
+                            ? String(parentRow.parent || '').trim()
+                            : String(selSku || '').replace(/^PARENT\s+/i, '').trim();
+                        (fullDataset || []).forEach(function(r) {
+                            if (r.is_parent_summary) return;
+                            if (String(r.parent || '').trim() === parentName) addFromDatasetRow(r);
+                        });
+                        return;
+                    }
+                    const child = (fullDataset || []).find(r =>
+                        !r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                    );
+                    if (child) addFromDatasetRow(child);
+                });
+            } else if (table) {
+                // No selection: visible rows — parents expand to children; child rows used directly
+                table.getRows('active').forEach(function(r) {
+                    const d = r.getData();
+                    if (!d) return;
+                    if (d.is_parent_summary) {
+                        const parentName = String(d.parent || '').trim();
+                        (fullDataset || []).forEach(function(row) {
+                            if (row.is_parent_summary) return;
+                            if (String(row.parent || '').trim() === parentName) addFromDatasetRow(row);
+                        });
+                    } else {
+                        addFromDatasetRow(d);
+                    }
+                });
+            }
+            return out;
+        }
+
+        loadPiSpriceLmpMult();
+
+        $('#pi-sprice-lmp-mult-input').on('change blur', function() {
+            savePiSpriceLmpMultFromInput();
+        });
+
+        $('#pi-apply-sprice-lmp-rule-btn').on('click', function() {
+            if (!savePiSpriceLmpMultFromInput()) return;
+            const mult = getPiSpriceLmpMult();
+            const multLabel = formatPiSpriceLmpMult(mult);
+            const $btn = $(this);
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+
+            const targets = collectSkusForPiSpriceLmpRule();
+            if (targets.length === 0) {
+                showToast(selectedSkus.size > 0
+                    ? 'No selected SKUs with Amazon LMP > 0'
+                    : 'No visible SKUs with Amazon LMP > 0', 'error');
+                return;
+            }
+
+            const scope = selectedSkus.size > 0 ? 'selected' : 'visible';
+            if (!confirm('Set SP = Amazon LMP × ' + multLabel + ' for ' + targets.length + ' ' + scope + ' SKU(s)?\n\nSaves to the same SP field as /amazon-tabulator-view.')) {
+                return;
+            }
+
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let successCount = 0;
+            let errorCount = 0;
+            let done = 0;
+            const total = targets.length;
+
+            targets.forEach(function(item) {
+                const sp = +Number(item.lmp * mult).toFixed(2);
+                if (!isFinite(sp) || sp <= 0) {
+                    errorCount++;
+                    done++;
+                    if (done >= total) {
+                        $btn.prop('disabled', false).html(btnHtml);
+                        showToast('Sprice Rule done: ' + successCount + ' saved, ' + errorCount + ' failed', errorCount ? 'error' : 'success');
+                    }
+                    return;
+                }
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: {
+                        sku: item.sku,
+                        sprice: sp,
+                        is_standard_price: 1,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        const saved = response.data || sp;
+                        applyStandardPriceToPriceIncreaseRows(item.sku, saved, response.applied_skus);
+                        successCount++;
+                    },
+                    error: function() {
+                        errorCount++;
+                    },
+                    complete: function() {
+                        done++;
+                        if (done >= total) {
+                            $btn.prop('disabled', false).html(btnHtml);
+                            showToast(
+                                'Sprice Rule: SP = LMP × ' + multLabel + ' — ' + successCount + ' saved' +
+                                (errorCount ? (', ' + errorCount + ' failed') : ''),
+                                errorCount ? 'error' : 'success'
+                            );
+                        }
+                    }
+                });
+            });
+        });
+
+        /** Apply STANDARD_PRICE to SKU + any linked SKUs returned by /save-amazon-sprice. */
+        function applyStandardPriceToPriceIncreaseRows(sku, std, appliedSkus) {
+            if (!table) return;
+            const target = String(sku || '').trim().toUpperCase();
+            const appliedSet = new Set(
+                (Array.isArray(appliedSkus) ? appliedSkus : [])
+                    .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                    .filter(Boolean)
+            );
+            if (target) appliedSet.add(target);
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || d.is_parent_summary) return;
+                const rowSku = String(d.sku || '').trim().toUpperCase();
+                if (!rowSku || !appliedSet.has(rowSku)) return;
+                r.update({ amazon_standard_price: std });
+            });
+            // Keep fullDataset in sync so parent/expand views keep the new SP
+            if (Array.isArray(fullDataset)) {
+                fullDataset.forEach(function(row) {
+                    if (!row || row.is_parent_summary) return;
+                    const rowSku = String(row.sku || '').trim().toUpperCase();
+                    if (rowSku && appliedSet.has(rowSku)) {
+                        row.amazon_standard_price = std;
+                    }
+                });
+            }
+        }
+
+        // Amz SPRICE / SP edited in table
         table.on('cellEdited', function(cell) {
-            if (cell.getField() !== 'amazon_sprice') return;
+            const field = cell.getField();
             const row = cell.getRow();
             const rowData = row.getData();
             if (rowData.is_parent_summary === true) return;
             const sku = rowData.sku;
+
+            // SP (Standard Price) — same store as /amazon-tabulator-view via /save-amazon-sprice
+            if (field === 'amazon_standard_price') {
+                const std = parseFloat(cell.getValue());
+                if (!sku || !isFinite(std) || std <= 0) {
+                    row.update({ amazon_standard_price: null });
+                    return;
+                }
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        sprice: std,
+                        is_standard_price: 1,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        const saved = response.data || std;
+                        applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                        const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                        showToast(n > 1
+                            ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
+                            : 'Standard Price (SP) saved', 'success');
+                    },
+                    error: function() {
+                        showToast('Failed to save Standard Price', 'error');
+                    }
+                });
+                return;
+            }
+
+            if (field !== 'amazon_sprice') return;
             const sprice = parseFloat(cell.getValue()) || 0;
             if (sprice <= 0) return;
             const lp = parseFloat(rowData.amazon_lp) || 0;
@@ -6740,14 +7131,15 @@
                 row.parent === parentVal && row.is_parent_summary !== true
             );
 
-            let displayData = [];
-            displayData = displayData.concat(childRows);
+            // Children first, parent blue row last (clear Dil% sort so order is preserved)
+            let displayData = childRows.slice();
             if (parentRow) {
                 parentRow._expanded = true;
                 displayData.push(parentRow);
             }
 
             suppressDataLoadedHandler = true;
+            table.clearSort();
             table.setData(displayData).then(() => {
                 updateSummary();
             });
@@ -6763,7 +7155,10 @@
                 return;
             }
             
-            const parentRows = fullDataset.filter(row => row.is_parent_summary === true);
+            const parentRows = fullDataset
+                .filter(row => row.is_parent_summary === true)
+                .slice()
+                .sort((a, b) => (parseFloat(b.dil_percent) || 0) - (parseFloat(a.dil_percent) || 0));
             const childRows = fullDataset.filter(row => row.is_parent_summary !== true);
             
             console.log('Parents found:', parentRows.length);
@@ -6880,6 +7275,10 @@
                 if (skuVal) table.addFilter("sku", "like", skuVal);
                 const parentVal = $('#parent-search').val();
                 if (parentVal) table.addFilter("parent", "like", parentVal);
+                // Default: Dil% high → low (keep child grouping when a parent is expanded)
+                if (expandedParent === null) {
+                    table.setSort([{ column: "dil_percent", dir: "desc" }]);
+                }
                 updateSummary();
             }).catch(err => {
                 console.error('❌ Error updating table:', err);
@@ -7260,7 +7659,7 @@
 
         $('#remove-filter-btn').on('click', function() {
             $('#inventory-filter').val('more');
-            $('#sku-parent-filter').val('both');
+            $('#sku-parent-filter').val('parent');
             $('#sku-search').val('');
             $('#parent-search').val('');
             // Reset DIL
@@ -7411,6 +7810,13 @@
             });
         }
 
+        function hidePriceIncreaseDefaultColumns() {
+            ['image_path', 'parent_display'].forEach(field => {
+                const col = table.getColumn(field);
+                if (col) col.hide();
+            });
+        }
+
         function applyColumnVisibilityFromServer() {
             $.ajax({
                 url: '/cvr-master-column-visibility',
@@ -7420,6 +7826,8 @@
                         && Object.keys(visibility).length > 0) {
                         Object.keys(visibility).forEach(field => {
                             if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return;
+                            // Price Increase: keep Image / Parent text columns hidden by default
+                            if (field === 'image_path' || field === 'parent_display' || field === 'parent') return;
                             const col = table.getColumn(field);
                             if (col) {
                                 visibility[field] ? col.show() : col.hide();
@@ -7427,10 +7835,12 @@
                         });
                     }
                     forceHideRemovedCvrColumns();
+                    hidePriceIncreaseDefaultColumns();
                     buildColumnDropdown();
                 },
                 error: function() {
                     forceHideRemovedCvrColumns();
+                    hidePriceIncreaseDefaultColumns();
                     buildColumnDropdown();
                 }
             });
@@ -7540,7 +7950,8 @@
         let currentPricingChartParent = '';
         let currentPricingChartAggregate = false;
         let currentPricingChartDays = 30;
-        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views' };
+        let currentPricingChartSource = 'cvr'; // 'cvr' | 'temu_views'
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
 
         $(document).on('click', '.summary-chart-badge', function(e) {
@@ -7548,6 +7959,7 @@
             e.stopPropagation();
             const metric = $(e.currentTarget).attr('data-metric') || $(e.currentTarget).data('metric');
             if (!metric) return;
+            currentPricingChartSource = 'cvr';
             currentPricingChartMetric = metric;
             currentPricingChartSku = '';
             currentPricingChartParent = '';
@@ -7555,7 +7967,7 @@
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Master Analytics - All (Summary) - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('Price Increase - All (Summary) - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
@@ -7571,6 +7983,7 @@
             const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
             const parent = String($(e.currentTarget).attr('data-parent') || $(e.currentTarget).data('parent') || '').trim();
             if (!metric) return;
+            currentPricingChartSource = 'cvr';
             currentPricingChartAggregate = false;
             const isParentChart = parent !== '' || (sku.indexOf('PARENT ') === 0);
             const displayName = isParentChart ? (parent || sku.replace(/^PARENT\s+/i, '')) : sku;
@@ -7586,7 +7999,32 @@
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Master Analytics - ' + displayName + (isParentChart ? ' (Parent)' : '') + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('Price Increase - ' + displayName + (isParentChart ? ' (Parent)' : '') + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartContainer').hide();
+            $('#pricingMasterChartNoData').hide();
+            $('#pricingMasterChartLoading').show();
+            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
+            modal.show();
+            loadPricingMasterChart();
+        });
+
+        // Temu Views chart — same /temu-metrics-history source as /temu-decrease Views dot
+        $(document).on('click', '.temu-views-chart-link', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
+            if (!sku) {
+                showToast('SKU not found for Temu Views chart', 'error');
+                return;
+            }
+            currentPricingChartSource = 'temu_views';
+            currentPricingChartMetric = 'temu_views';
+            currentPricingChartSku = sku;
+            currentPricingChartParent = '';
+            currentPricingChartAggregate = false;
+            currentPricingChartDays = 30;
+            $('#pricingMasterChartRangeSelect').val('30');
+            $('#pricingMasterChartModalTitle').text('Price Increase - ' + sku + ' - Temu Views (Rolling L30)');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
@@ -7607,6 +8045,37 @@
             $('#pricingMasterChartLoading').show();
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
+
+            // Temu Views history from /temu-decrease API
+            if (currentPricingChartSource === 'temu_views') {
+                $.ajax({
+                    url: '/temu-metrics-history',
+                    method: 'GET',
+                    data: { sku: currentPricingChartSku, days: currentPricingChartDays },
+                    success: function(data) {
+                        $('#pricingMasterChartLoading').hide();
+                        const rows = Array.isArray(data) ? data : [];
+                        if (rows.length > 0) {
+                            const mapped = rows.map(function(d) {
+                                return {
+                                    date: d.date_formatted || d.date || '',
+                                    value: parseFloat(d.views) || 0
+                                };
+                            });
+                            $('#pricingMasterChartContainer').show();
+                            renderPricingMasterChart(mapped);
+                        } else {
+                            $('#pricingMasterChartNoData').show();
+                        }
+                    },
+                    error: function() {
+                        $('#pricingMasterChartLoading').hide();
+                        $('#pricingMasterChartNoData').show();
+                    }
+                });
+                return;
+            }
+
             const payload = { metric: currentPricingChartMetric, days: currentPricingChartDays };
             if (currentPricingChartAggregate) {
                 payload.aggregate = 1;
@@ -7656,7 +8125,9 @@
                 if (currentPricingChartMetric === 'price' || currentPricingChartMetric === 'amz_price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                 if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil') return Number(v).toFixed(1) + '%';
                 if (currentPricingChartMetric === 'rating') return Number(v).toFixed(1);
-                if (currentPricingChartMetric === 'total_views') return Math.round(v).toLocaleString('en-US');
+                if (currentPricingChartMetric === 'total_views' || currentPricingChartMetric === 'temu_views') {
+                    return Math.round(v).toLocaleString('en-US');
+                }
                 return Math.round(v).toLocaleString('en-US');
             };
             $('#pricingMasterChartHighest').text(fmtVal(dataMax)).css('color', '#dc3545');

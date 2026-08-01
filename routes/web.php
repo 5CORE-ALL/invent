@@ -3551,6 +3551,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Pricing Master CVR Route (uses CVR Master controller)
     Route::get('/pricing-master-cvr', [CvrMasterController::class, 'pricingMasterCvrView'])->name('pricing.master.cvr');
 
+    // Price Increase Route (same logic / datatable as pricing-master-cvr)
+    Route::get('/price-increase', [CvrMasterController::class, 'priceIncreaseView'])->name('price.increase');
+
     // Sold Master Route (uses CVR Master controller)
     Route::get('/sold-master', [CvrMasterController::class, 'soldMasterView'])->name('sold.master');
 

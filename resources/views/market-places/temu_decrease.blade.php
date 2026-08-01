@@ -222,6 +222,27 @@
             gap: 12px;
             margin-bottom: 0.5rem;
         }
+        /* Keep LMP rows + Save visible: list scrolls inside the modal */
+        #lmpModal .modal-dialog {
+            max-height: calc(100vh - 1.5rem);
+            margin: 0.75rem auto;
+        }
+        #lmpModal .modal-content {
+            max-height: calc(100vh - 1.5rem);
+        }
+        #lmpModal .modal-body {
+            overflow-y: auto;
+            min-height: 0;
+        }
+        #lmpModal .lmp-list-scroll {
+            max-height: min(42vh, 360px);
+            overflow: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.35rem;
+        }
+        #lmpModal .lmp-list-scroll .lmp-link {
+            font-size: 12px;
+        }
         #lmpModal .lmp-l1-outside-badge {
             display: inline-flex;
             flex-direction: column;
@@ -552,13 +573,13 @@
                               class="badge bg-info text-center temu-badge-history"
                               data-badge-metric="total_views" data-badge-label="Views"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Total Views (sum of product_clicks across visible rows) — click to view history"
+                              title="Total Views from Temu Ads API (temu_metrics.product_clicks_l30 / clkCntAll) — click for history"
                               aria-label="Total Views"><i class="fas fa-eye"></i> 0</span>
                         <span id="avg-views-badge"
                               class="badge bg-info text-center temu-badge-history"
                               data-badge-metric="avg_views" data-badge-label="AVG views"
                               style="font-weight:700; color: #111 !important; font-size:14px; padding:4px 8px; cursor: pointer;"
-                              title="Average Views per product — click to view history"
+                              title="Average Views per product from Ads API — click for history"
                               aria-label="Average Views per product"><i class="far fa-eye"></i> 0</span>
                     </div>
                 </div>
@@ -803,6 +824,12 @@
                             </li>
                         </ul>
                     </div>
+                    <button type="button" id="fetch-views-api-btn" class="btn btn-sm btn-outline-primary"
+                        title="Fetch Views from Temu Ads API (temu.searchrec.ad.reports.goods.query → temu_metrics.product_clicks_l30 / View 7)"
+                        aria-label="Fetch Views from Temu Ads API">
+                        <i class="fas fa-sync-alt"></i> Views API
+                    </button>
+                    <span id="fetch-views-api-status" class="small text-muted" style="display:none;"></span>
                     <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary"
                         title="Toggle Ads Section (show only ad-related columns + ads-stats strip)"
                         aria-label="Toggle Ads Section">
@@ -895,7 +922,7 @@
 
     <!-- LMP Modal: Add New + List (like Competitors), lowest LMP highlighted -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-labelledby="lmpModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title" id="lmpModalLabel"><i class="fas fa-link me-2"></i>LMP for <span id="lmpModalSku"></span></h5>
@@ -933,17 +960,18 @@
                                 <span class="lmp-our-price-value" id="lmpModalOurPrice">—</span>
                             </div>
                         </div>
+                        <div class="form-text mt-2 mb-0">Adds to the list below — click <strong>Save</strong> to write to <code>temu_lmp</code>.</div>
                     </div>
                     <div class="lmp-list-header">
-                        <h6 class="mb-0">LMP List</h6>
+                        <h6 class="mb-0">LMP List <span class="badge bg-secondary" id="lmpListCountBadge">0</span></h6>
                         <div class="lmp-l1-outside-badge" title="Lowest non-ignored competitor price (L1)">
                             <span class="lmp-l1-label">L1 Price</span>
                             <span class="lmp-l1-value" id="lmpModalL1Price">—</span>
                         </div>
                     </div>
-                    <div class="table-responsive">
+                    <div class="table-responsive lmp-list-scroll">
                         <table class="table table-sm table-bordered mb-0" id="lmpListTable">
-                            <thead class="table-light">
+                            <thead class="table-light sticky-top">
                                 <tr>
                                     <th style="width: 50px;">#</th>
                                     <th>Price</th>
@@ -4799,19 +4827,23 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        const entries = row.lmp_entries || [];
-                        // L1 = lowest non-ignored entry
+                        const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+                        // L1 = lowest non-ignored entry; fall back to row.lmp / lmp_raw
                         const prices = entries
                             .filter(function(e) { return !e.ignored; })
                             .map(function(e) { const p = e.price; return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null; })
                             .filter(function(p) { return p !== null; });
-                        const lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
+                        let lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
+                        if (lowest === null) {
+                            const fallback = parseFloat(row.lmp_raw != null ? row.lmp_raw : row.lmp);
+                            if (!isNaN(fallback) && fallback > 0) lowest = fallback;
+                        }
                         const display = lowest !== null ? (lowest % 1 === 0 ? lowest.toLocaleString() : lowest.toFixed(2)) : '-';
                         const count = entries.length;
                         const ignoredCount = entries.filter(function(e) { return !!e.ignored; }).length;
                         const title = count > 0
                             ? (display + ' L1 (' + count + ' entries' + (ignoredCount ? ', ' + ignoredCount + ' ignored' : '') + ') - click eye to edit')
-                            : 'Click eye to add LMP';
+                            : (display !== '-' ? (display + ' — click eye to edit') : 'Click eye to add LMP');
                         return '<span class="lmp-display">' + (display !== '-' ? display : '<span style="color: #999;">-</span>') + '</span> <button type="button" class="btn btn-sm btn-link p-0 lmp-eye-btn" data-sku="' + (row.sku || '').replace(/"/g, '&quot;') + '" title="' + title + '"><i class="fas fa-info-circle text-info"></i></button>';
                     },
                     cellClick: function(e, cell) {
@@ -6038,9 +6070,16 @@
             $('#lmpNewLink').val('');
             const tbody = $('#lmpEntriesContainer');
             tbody.empty();
-            const entries = row.lmp_entries || [];
-            const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
-            list.forEach(function(entry) {
+            let entries = Array.isArray(row.lmp_entries) ? row.lmp_entries.slice() : [];
+            // Legacy fallback: lmp / lmp_link when JSON entries are missing
+            if (entries.length === 0) {
+                const legacyPrice = row.lmp_raw != null ? row.lmp_raw : row.lmp;
+                const legacyLink = row.lmp_link || '';
+                if ((legacyPrice !== null && legacyPrice !== undefined && legacyPrice !== '') || legacyLink) {
+                    entries = [{ price: legacyPrice, link: legacyLink, ignored: false }];
+                }
+            }
+            entries.forEach(function(entry) {
                 appendLmpTableRow(
                     tbody,
                     entry.price !== undefined && entry.price !== null ? entry.price : '',
@@ -6051,6 +6090,11 @@
             });
             updateLmpListLayout();
             $('#lmpModal').modal('show');
+            // Ensure list starts at top so L1 rows are visible
+            setTimeout(function() {
+                const scroller = document.querySelector('#lmpModal .lmp-list-scroll');
+                if (scroller) scroller.scrollTop = 0;
+            }, 150);
         }
         function appendLmpTableRow(tbody, price, link, ignored, relayout) {
             const tr = $('<tr class="lmp-entry-row">' +
@@ -6168,9 +6212,11 @@
             }
         }
         function renumberLmpRows() {
+            const n = $('#lmpEntriesContainer .lmp-entry-row').length;
             $('#lmpEntriesContainer .lmp-entry-row').each(function(i) {
                 $(this).find('.lmp-num').text(i + 1);
             });
+            $('#lmpListCountBadge').text(String(n));
         }
         function updateLmpLowestHighlight() {
             let minVal = null;
@@ -6191,6 +6237,7 @@
                 minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">L1</span>');
             }
             $('#lmpModalL1Price').text(minVal !== null ? ('$' + Number(minVal).toFixed(2)) : '—');
+            renumberLmpRows();
         }
         $('#lmpAddRowBtn').on('click', function() {
             const price = $('#lmpNewPrice').val();
@@ -6202,6 +6249,10 @@
             appendLmpTableRow($('#lmpEntriesContainer'), price || '', link || '', false, true);
             $('#lmpNewPrice').val('');
             $('#lmpNewLink').val('');
+            // Scroll new/lowest rows into view inside the list
+            const scroller = document.querySelector('#lmpModal .lmp-list-scroll');
+            if (scroller) scroller.scrollTop = 0;
+            showToast('Added to list — click Save to store', 'info');
         });
         $('#lmpClearFormBtn').on('click', function() {
             $('#lmpNewPrice').val('');
@@ -6225,22 +6276,36 @@
                 showToast('Add at least one price or link', 'warning');
                 return;
             }
+            if (!lmpModalSku) {
+                showToast('Missing SKU — reopen the LMP modal', 'error');
+                return;
+            }
             $(this).prop('disabled', true);
             $.ajax({
                 url: '{{ route("temu.lmp.save") }}',
                 method: 'POST',
-                data: {
-                    _token: '{{ csrf_token() }}',
+                contentType: 'application/json',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                data: JSON.stringify({
                     sku: lmpModalSku,
                     lmp_entries: entries
-                },
+                }),
                 success: function(response) {
-                    showToast('LMP saved successfully', 'success');
-                    $('#lmpModal').modal('hide');
-                    if (table) table.replaceData();
+                    if (response && response.success) {
+                        showToast(response.message || 'LMP saved successfully', 'success');
+                        $('#lmpModal').modal('hide');
+                        if (table) table.replaceData();
+                    } else {
+                        showToast((response && (response.message || response.error)) || 'Failed to save LMP', 'error');
+                    }
                 },
-                error: function() {
-                    showToast('Failed to save LMP', 'error');
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                        || 'Failed to save LMP';
+                    showToast(msg, 'error');
                 },
                 complete: function() {
                     $('#lmpModalSaveBtn').prop('disabled', false);
@@ -6868,6 +6933,57 @@
                 return;
             }
             table.download("csv", "temu_decrease_data_l30.csv");
+        });
+
+        // Fetch Views from Temu Ads API (same endpoint as /temu/ads).
+        // L30 → temu_metrics.product_clicks_l30 (Views column).
+        // L7  → temu_ads_api_reports period=L7 (View 7 column).
+        $('#fetch-views-api-btn').on('click', function() {
+            const period = (currentCampaignPeriod === 'L7') ? 'L7' : 'L30';
+            const label = period === 'L7' ? 'View 7' : 'Views (L30)';
+            if (!confirm('Fetch Temu Ads API for ' + period + ' (updates ' + label + ') for all goods?\nThis may take several minutes.')) {
+                return;
+            }
+            const $btn = $(this);
+            const $status = $('#fetch-views-api-status');
+            $btn.prop('disabled', true);
+            $status.show().html('<i class="fas fa-spinner fa-spin me-1"></i>Fetching ' + period + '…');
+
+            $.ajax({
+                url: '{{ route("temu.ads.refresh") }}',
+                method: 'POST',
+                data: { period: period, _token: '{{ csrf_token() }}' },
+                timeout: 0,
+                success: function(response) {
+                    if (response && response.success) {
+                        $status.html('<span class="text-success">' + (response.message || 'Done') + '</span>');
+                        showToast(response.message || ('Fetched ' + period + ' Views from API'), 'success');
+                        const visibilityState = captureColumnVisibilityState();
+                        table.setData(currentPeriodEndpoint()).then(function() {
+                            applyFilters();
+                            updateCampaignPeriodUi();
+                            applyColumnVisibilityState(visibilityState);
+                            buildColumnDropdown();
+                            if (typeof updateTemuAdsCounts === 'function') updateTemuAdsCounts();
+                        });
+                    } else {
+                        const msg = (response && response.message) || 'Fetch failed';
+                        $status.html('<span class="text-danger">' + msg + '</span>');
+                        showToast(msg, 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                        ? xhr.responseJSON.message
+                        : ('Fetch failed. Try: php artisan temu:fetch-ads-data --period=' + period);
+                    $status.html('<span class="text-danger">' + msg + '</span>');
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                    setTimeout(function() { $status.fadeOut(); }, 8000);
+                }
+            });
         });
 
         // Single-badge history modal: click on a badge opens history for that metric

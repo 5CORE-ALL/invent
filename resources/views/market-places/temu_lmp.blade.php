@@ -104,21 +104,53 @@
                                 </thead>
                                 <tbody>
                                     @forelse($records as $index => $row)
+                                        @php
+                                            $entries = is_array($row->lmp_entries) ? $row->lmp_entries : [];
+                                            $entryCount = count($entries);
+                                            $l1 = $row->lmp;
+                                            $l1Link = $row->lmp_link;
+                                            $l2 = $row->lmp_2;
+                                            $l2Link = $row->lmp_link_2;
+                                            if (($l1 === null || $l1 === '') && $entryCount > 0) {
+                                                $active = array_values(array_filter($entries, fn ($e) => empty($e['ignored'] ?? false)));
+                                                $prices = array_values(array_filter(array_map(fn ($e) => $e['price'] ?? null, $active), fn ($p) => $p !== null && $p !== ''));
+                                                if ($prices !== []) {
+                                                    $l1 = min(array_map('floatval', $prices));
+                                                    foreach ($active as $e) {
+                                                        if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $l1) {
+                                                            $l1Link = $e['link'] ?? $l1Link;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if (($l2 === null || $l2 === '') && count($active) > 1) {
+                                                    $sorted = $active;
+                                                    usort($sorted, fn ($a, $b) => ((float) ($a['price'] ?? PHP_FLOAT_MAX)) <=> ((float) ($b['price'] ?? PHP_FLOAT_MAX)));
+                                                    $l2 = $sorted[1]['price'] ?? null;
+                                                    $l2Link = $sorted[1]['link'] ?? null;
+                                                }
+                                            }
+                                        @endphp
                                         <tr>
                                             <td>{{ $records->firstItem() + $index }}</td>
-                                            <td><strong>{{ $row->sku }}</strong></td>
-                                            <td>{{ $row->lmp !== null ? number_format($row->lmp, 2) : '–' }}</td>
+                                            <td>
+                                                <strong>{{ $row->sku }}</strong>
+                                                @if($entryCount > 0)
+                                                    <span class="badge bg-light text-dark border ms-1" title="lmp_entries count">{{ $entryCount }}</span>
+                                                @endif
+                                            </td>
+                                            <td>{{ $l1 !== null && $l1 !== '' ? number_format((float) $l1, 2) : '–' }}</td>
                                             <td class="text-break" style="max-width: 280px;">
-                                                @if($row->lmp_link)
-                                                    <a href="{{ $row->lmp_link }}" target="_blank" rel="noopener" class="small">Link</a>
+                                                @if($l1Link)
+                                                    <a href="{{ $l1Link }}" target="_blank" rel="noopener" class="small">Link</a>
                                                 @else
                                                     –
                                                 @endif
                                             </td>
-                                            <td>{{ $row->lmp_2 !== null ? number_format($row->lmp_2, 2) : '–' }}</td>
+                                            <td>{{ $l2 !== null && $l2 !== '' ? number_format((float) $l2, 2) : '–' }}</td>
                                             <td class="text-break" style="max-width: 280px;">
-                                                @if($row->lmp_link_2)
-                                                    <a href="{{ $row->lmp_link_2 }}" target="_blank" rel="noopener" class="small">Link</a>
+                                                @if($l2Link)
+                                                    <a href="{{ $l2Link }}" target="_blank" rel="noopener" class="small">Link</a>
                                                 @else
                                                     –
                                                 @endif

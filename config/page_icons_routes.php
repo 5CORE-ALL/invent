@@ -7,6 +7,7 @@
  */
 return [
     'pricing.master.cvr' => 'pricing_cvr',
+    'price.increase' => 'pricing_cvr',
     'cvr.*' => 'pricing_cvr',
     'repricer.amazon-search.*' => 'repricer',
     'repricer.ebay-search.*' => 'repricer',

@@ -401,6 +401,13 @@
                 title="Open Pricing Master CVR"
             >Pricing Master CVR</span>
             <span
+                class="badge fs-6 p-2"
+                style="background-color:#16a34a;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('price.increase') }}'"
+                role="button"
+                title="Open Price Increase"
+            >Price Increase</span>
+            <span
                 class="badge bg-primary text-white fs-6 p-2"
                 style="font-weight:bold;cursor:pointer;"
                 onclick="window.location.href='{{ route('pricing.analysis') }}'"

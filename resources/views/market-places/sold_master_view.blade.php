@@ -4259,12 +4259,19 @@ title: "Dil %",
                     const dataset = chart.data.datasets[0];
                     const meta = chart.getDatasetMeta(0);
                     const ctx = chart.ctx;
+                    const n = meta.data.length;
+                    // For dense daily series, label every Nth point (plus first/last / value changes)
+                    const step = n > 20 ? Math.ceil(n / 12) : 1;
                     ctx.save();
                     ctx.font = 'bold 7px Inter, system-ui, sans-serif';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
                     meta.data.forEach((point, i) => {
                         const val = dataset.data[i];
+                        const prev = i > 0 ? dataset.data[i - 1] : null;
+                        const changed = prev !== null && Number(val) !== Number(prev);
+                        const show = i === 0 || i === n - 1 || changed || (step === 1) || (i % step === 0);
+                        if (!show) return;
                         const x = point.x;
                         const y = point.y;
                         const offsetY = (i % 2 === 0) ? -7 : -14;
@@ -4305,7 +4312,14 @@ title: "Dil %",
                             max: yMax,
                             ticks: { font: { size: 9 }, callback: function(value) { return fmtVal(value); } }
                         },
-                        x: { ticks: { font: { size: 9 }, maxRotation: 45 } }
+                        x: {
+                            ticks: {
+                                font: { size: 9 },
+                                maxRotation: 45,
+                                autoSkip: true,
+                                maxTicksLimit: 16
+                            }
+                        }
                     }
                 }
             });

@@ -144,6 +144,20 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Display Price Increase view (same logic / datatable as pricing-master-cvr)
+     */
+    public function priceIncreaseView(Request $request)
+    {
+        $mode = $request->query("mode");
+        $demo = $request->query("demo");
+
+        return view("market-places.price_increase_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+        ]);
+    }
+
+    /**
      * Get CVR Master data as JSON for tabulator
      * Fetches data from ProductMaster and ShopifySku
      *
@@ -202,8 +216,10 @@ class CvrMasterController extends Controller
             $walmartViewsData = WalmartListingViewsData::whereIn("sku", $skus)->get()->keyBy("sku");
             $walmartDataView = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            // Amazon SPRICE from amazon_data_view (same as modal)
-            $amazonDataViewBySku = AmazonDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Amazon SPRICE / STANDARD_PRICE from amazon_data_view (same store as /amazon-tabulator-view)
+            $amazonDataViewRows = AmazonDataView::whereIn('sku', $skus)->get();
+            $amazonDataViewBySku = $amazonDataViewRows->keyBy('sku');
+            $amazonDataViewBySkuUpper = $amazonDataViewRows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
 
             Log::info('CVR Master - Walmart Data fetched', [
                 'price_data' => $walmartPriceData->count(),
@@ -1659,8 +1675,10 @@ class CvrMasterController extends Controller
                 $temuLmpLink = $temuLmpResolved['link'];
                 $temuLmpCount = $temuLmpResolved['count'];
 
-                $amazonDataViewRow = $amazonDataViewBySku->get($sku);
+                $amazonDataViewRow = $amazonDataViewBySku->get($sku)
+                    ?? $amazonDataViewBySkuUpper->get(strtoupper(trim((string) $sku)));
                 $amazonSprice = null;
+                $amazonStandardPrice = null;
                 $amazonSgpft = null;
                 $amazonSpft = null;
                 $amazonSroi = null;
@@ -1668,6 +1686,9 @@ class CvrMasterController extends Controller
                     $avVal = is_array($amazonDataViewRow->value) ? $amazonDataViewRow->value : (json_decode($amazonDataViewRow->value ?? '{}', true) ?? []);
                     $spr = $avVal['SPRICE'] ?? null;
                     $amazonSprice = ($spr !== null && $spr !== '' && floatval($spr) > 0) ? round(floatval($spr), 2) : null;
+                    // Manual Standard Price (SP) — same field as /amazon-tabulator-view
+                    $std = $avVal['STANDARD_PRICE'] ?? null;
+                    $amazonStandardPrice = (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : null;
                     if (isset($avVal['SGPFT'])) $amazonSgpft = round(floatval($avVal['SGPFT']), 2);
                     if (isset($avVal['SPFT'])) $amazonSpft = round(floatval($avVal['SPFT']), 2);
                     if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
@@ -1693,6 +1714,7 @@ class CvrMasterController extends Controller
                     "inventory" => $inventory,
                     "amazon_price" => $amazonPrice > 0 ? round($amazonPrice, 2) : null,
                     "amazon_sprice" => $amazonSprice,
+                    "amazon_standard_price" => $amazonStandardPrice,
                     "amazon_sgpft" => $amazonSgpft,
                     "amazon_spft" => $amazonSpft,
                     "amazon_sroi" => $amazonSroi,
@@ -1713,6 +1735,8 @@ class CvrMasterController extends Controller
                     "m_l30" => $totalL30,
                     "dil_percent" => $dilPercent,
                     "total_views" => $totalViews,
+                    // Temu 1 Views — same source as /temu-decrease (temu_metrics.product_clicks_l30)
+                    "temu_views" => (int) $temuViews,
                     "avg_cvr" => $avgCVR,
                     "avg_price" => $avgPrice,
                     "avg_roi" => $avgRoi,
@@ -1766,6 +1790,7 @@ class CvrMasterController extends Controller
                 $temuLmpVals = $rows->pluck('temu_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
+                $amazonStandardPriceVals = $rows->pluck('amazon_standard_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
                 $amazonSpftVals = $rows->pluck('amazon_spft')->filter(fn ($v) => $v !== null);
                 $amazonSroiVals = $rows->pluck('amazon_sroi')->filter(fn ($v) => $v !== null);
@@ -1777,6 +1802,7 @@ class CvrMasterController extends Controller
                     'inventory' => $rows->sum('inventory'),
                     'amazon_price' => $amazonPriceVals->isNotEmpty() ? round($amazonPriceVals->avg(), 2) : null,
                     'amazon_sprice' => $amazonSpriceVals->isNotEmpty() ? round($amazonSpriceVals->avg(), 2) : null,
+                    'amazon_standard_price' => $amazonStandardPriceVals->isNotEmpty() ? round($amazonStandardPriceVals->avg(), 2) : null,
                     'amazon_sgpft' => $amazonSgpftVals->isNotEmpty() ? round($amazonSgpftVals->avg(), 2) : null,
                     'amazon_spft' => $amazonSpftVals->isNotEmpty() ? round($amazonSpftVals->avg(), 2) : null,
                     'amazon_sroi' => $amazonSroiVals->isNotEmpty() ? round($amazonSroiVals->avg(), 2) : null,
@@ -1799,6 +1825,7 @@ class CvrMasterController extends Controller
                     'm_l30' => $rows->sum('m_l30'),
                     'dil_percent' => 0, // Calculate after
                     'total_views' => $rows->sum('total_views'),
+                    'temu_views' => (int) $rows->sum('temu_views'),
                     'avg_cvr' => $rows->count() > 0 ? round($rows->avg('avg_cvr'), 2) : 0,
                     'avg_price' => $rows->count() > 0 ? round($rows->avg('avg_price'), 2) : 0,
                     'avg_roi' => $rows->filter(fn ($r) => isset($r->avg_roi) && $r->avg_roi !== null)->isNotEmpty()
@@ -4377,9 +4404,49 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Build a continuous daily chart series for the selected window.
+     * Missing snapshot days are forward-filled from the last known value (0 if none yet).
+     *
+     * @param  array<string, float>  $byDateKey  map of Y-m-d => value
+     * @return array<int, array{date: string, value: float}>
+     */
+    private function fillDailyChartSeries(array $byDateKey, int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->startOfDay();
+        if ($days > 0) {
+            $start = $end->copy()->subDays($days);
+        } else {
+            $keys = array_keys($byDateKey);
+            sort($keys);
+            $start = !empty($keys)
+                ? Carbon::parse($keys[0], $tz)->startOfDay()
+                : $end->copy();
+        }
+
+        $out = [];
+        $last = 0.0;
+        $hasAny = false;
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            if (array_key_exists($key, $byDateKey)) {
+                $last = (float) $byDateKey[$key];
+                $hasAny = true;
+            }
+            $out[] = [
+                'date' => $d->format('M j'),
+                'value' => $hasAny || array_key_exists($key, $byDateKey) ? $last : 0.0,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Get Master Analytics chart data (Rolling L30) for Inv, OV L30, Price, CVR graphs.
      * Data is read from pricing_master_daily_snapshots_sku (SKU-wise, saved on page load/refresh).
      * When "parent" is provided, aggregates data for all SKUs under that parent by snapshot_date.
+     * Returns one point per calendar day (missing days forward-filled).
      */
     public function getPricingMasterChartData(Request $request)
     {
@@ -4406,8 +4473,10 @@ class CvrMasterController extends Controller
                 $query->where('snapshot_date', '>=', $start);
             }
             $rows = $query->get();
-            $data = $rows->map(function ($row) use ($metric) {
-                $value = match ($metric) {
+            $byDateKey = [];
+            foreach ($rows as $row) {
+                $key = Carbon::parse($row->snapshot_date)->toDateString();
+                $byDateKey[$key] = match ($metric) {
                     'inv' => (float) ($row->total_inv ?? 0),
                     'ov_l30' => (float) ($row->total_ov_l30 ?? 0),
                     'price' => $row->avg_price !== null ? (float) $row->avg_price : 0,
@@ -4417,11 +4486,11 @@ class CvrMasterController extends Controller
                         : 0,
                     default => (float) ($row->total_inv ?? 0),
                 };
-                return [
-                    'date' => Carbon::parse($row->snapshot_date)->format('M j'),
-                    'value' => $value,
-                ];
-            })->values()->all();
+            }
+            if (empty($byDateKey)) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+            $data = $this->fillDailyChartSeries($byDateKey, $days);
             return response()->json(['success' => true, 'data' => $data]);
         }
 
@@ -4454,16 +4523,17 @@ class CvrMasterController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
+        $byDateKey = [];
         if ($isParent || $isAggregate) {
             // Aggregate by snapshot_date
             $byDate = $rows->groupBy(function ($row) {
-                return $row->snapshot_date->format('Y-m-d');
+                return Carbon::parse($row->snapshot_date)->format('Y-m-d');
             });
-            $data = collect($byDate)->map(function ($dateRows, $dateStr) use ($metric) {
+            foreach ($byDate as $dateStr => $dateRows) {
                 $invSum = $dateRows->sum('inventory');
                 $l30Sum = $dateRows->sum('overall_l30');
                 $viewsSum = $dateRows->sum('total_views');
-                $value = match ($metric) {
+                $byDateKey[$dateStr] = match ($metric) {
                     'inv' => (float) $invSum,
                     'ov_l30' => (float) $l30Sum,
                     'total_views' => (float) $viewsSum,
@@ -4474,12 +4544,7 @@ class CvrMasterController extends Controller
                     'rating' => (float) $dateRows->avg('rating'),
                     default => (float) $invSum,
                 };
-                return [
-                    'date' => Carbon::parse($dateStr)->format('M j'),
-                    'value' => $value,
-                    '_key' => $dateStr,
-                ];
-            })->sortBy('_key')->map(fn ($d) => ['date' => $d['date'], 'value' => $d['value']])->values()->all();
+            }
         } else {
             $column = match ($metric) {
                 'inv' => 'inventory',
@@ -4492,15 +4557,18 @@ class CvrMasterController extends Controller
                 'total_views' => 'total_views',
                 default => 'inventory',
             };
-            $data = $rows->map(function ($row) use ($column) {
+            foreach ($rows as $row) {
+                $key = Carbon::parse($row->snapshot_date)->toDateString();
                 $val = $row->{$column};
-                $value = $val !== null ? (is_numeric($val) ? (float) $val : 0) : 0;
-                return [
-                    'date' => Carbon::parse($row->snapshot_date)->format('M j'),
-                    'value' => $value,
-                ];
-            })->values()->all();
+                $byDateKey[$key] = $val !== null ? (is_numeric($val) ? (float) $val : 0) : 0;
+            }
         }
+
+        if (empty($byDateKey)) {
+            return response()->json(['success' => true, 'data' => []]);
+        }
+
+        $data = $this->fillDailyChartSeries($byDateKey, $days);
 
         return response()->json(['success' => true, 'data' => $data]);
     }
