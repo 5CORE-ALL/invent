@@ -34,6 +34,7 @@ use App\Models\TemuCampaignReport;
 use App\Models\Temu2CampaignReport;
 use App\Services\TemuShopifySalesService;
 use App\Services\TemuApiService;
+use App\Services\Temu2ApiService;
 use App\Services\TemuSellerViewScraperService;
 use App\Models\TemuBadgeDailyData;
 use App\Models\EbayMetric;
@@ -3887,6 +3888,64 @@ class TemuController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to push price to Temu',
+                'errors' => [['message' => $e->getMessage()]],
+            ], 500);
+        }
+    }
+
+    /**
+     * Push SPRICE / base price to Temu2 via priceorder.change.sku.price API.
+     */
+    public function pushTemu2Price(Request $request, Temu2ApiService $temu2Api)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'price' => 'required|numeric|min:0.01',
+            'goods_id' => 'nullable|string',
+            'sku_id' => 'nullable|string',
+        ]);
+
+        $sku = trim((string) $request->input('sku'));
+        $price = (float) $request->input('price');
+        $goodsId = $request->input('goods_id');
+        $skuId = $request->input('sku_id');
+
+        try {
+            $result = $temu2Api->updateSkuBasePrice(
+                $sku,
+                $price,
+                $goodsId !== null && $goodsId !== '' ? (string) $goodsId : null,
+                $skuId !== null && $skuId !== '' ? (string) $skuId : null
+            );
+
+            if (! ($result['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Temu2 price push failed',
+                    'errors' => [['message' => $result['message'] ?? 'Temu2 price push failed']],
+                ], 400);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'] ?? 'Price pushed to Temu2',
+                'data' => [
+                    'sku' => $sku,
+                    'price' => $price,
+                    'goods_id' => $result['goods_id'] ?? $goodsId,
+                    'sku_id' => $result['sku_id'] ?? $skuId,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Temu2 pushTemu2Price failed', [
+                'sku' => $sku,
+                'price' => $price,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to push price to Temu2',
                 'errors' => [['message' => $e->getMessage()]],
             ], 500);
         }

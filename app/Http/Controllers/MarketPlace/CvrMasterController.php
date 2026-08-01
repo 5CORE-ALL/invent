@@ -105,6 +105,7 @@ use App\Services\WalmartService;
 use App\Services\ReverbApiService;
 use App\Services\TopDawgApiService;
 use App\Services\TemuApiService;
+use App\Services\Temu2ApiService;
 use App\Services\EbayApiService;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayThreeApiService;
@@ -5217,10 +5218,17 @@ class CvrMasterController extends Controller
                     $request->input('goods_id'),
                     $request->input('sku_id')
                 );
+            } elseif ($marketplace === 'temu2') {
+                $response = $this->pushToTemu2(
+                    $sku,
+                    $price,
+                    $request->input('goods_id'),
+                    $request->input('sku_id')
+                );
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, TopDawg, Temu, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, TopDawg, Temu, Temu2, FBA."
                 ], 400);
             }
 
@@ -6170,6 +6178,58 @@ class CvrMasterController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Temu API error: ' . $e->getMessage(),
+                'errors' => [['message' => $e->getMessage()]],
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to Temu2 via Temu2ApiService::updateSkuBasePrice (same SPRICE→base rule as Temu on Price Increase).
+     */
+    private function pushToTemu2($sku, $price, $goodsId = null, $skuId = null)
+    {
+        try {
+            if (!($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid Temu2 price (must be > 0)',
+                ], 400);
+            }
+
+            $result = app(Temu2ApiService::class)->updateSkuBasePrice(
+                (string) $sku,
+                (float) $price,
+                $goodsId !== null && $goodsId !== '' ? (string) $goodsId : null,
+                $skuId !== null && $skuId !== '' ? (string) $skuId : null
+            );
+
+            if (!empty($result['success'])) {
+                $this->savePricePushStatus($sku, 'temu2', 'pushed', $price);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Temu2 for SKU: $sku"),
+                    'result' => $result,
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, 'temu2', 'error', $price);
+
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Failed to push price to Temu2',
+                'errors' => [['message' => $result['message'] ?? 'Failed to push price to Temu2']],
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'temu2', 'error', $price);
+            Log::error('CVR Master - Temu2 push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Temu2 API error: ' . $e->getMessage(),
                 'errors' => [['message' => $e->getMessage()]],
             ], 500);
         }

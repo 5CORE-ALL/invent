@@ -644,6 +644,10 @@
                         <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
                             <i class="fa fa-trash"></i> Clear SPRICE
                         </button>
+                        <button type="button" id="push-temu2-price-btn" class="btn btn-sm btn-success"
+                            title="Push SPRICE→base: (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85">
+                            <i class="fas fa-cloud-upload-alt"></i> Push Prices
+                        </button>
                     </div>
                 </div>
                 <div id="temu-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -1090,6 +1094,20 @@
     const TABULATOR_COLUMN_CHANNEL = 'temu2_decrease';
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     let table = null;
+
+    /**
+     * Temu2 push base from SPRICE (same as /price-increase and /temu-decrease):
+     *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
+     *   if SPRICE ≥ $35 → (Sprice × 0.85)
+     * PFT / ROI / S Temu Prc stay on stored SPRICE — conversion is push-only.
+     */
+    function temuPushBaseFromSprice(sprice) {
+        const s = parseFloat(sprice);
+        if (!isFinite(s) || s <= 0) return null;
+        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
+        if (!(push > 0)) return null;
+        return +push.toFixed(2);
+    }
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -3602,6 +3620,37 @@
                         return `$${sprice.toFixed(2)}`;
                     }
                 },
+                {
+                    title: "Push",
+                    field: "_push",
+                    width: 55,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Push base = (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent) return '';
+                        const sprice = parseFloat(rowData.sprice) || 0;
+                        const pushBase = temuPushBaseFromSprice(sprice);
+                        const pushStatus = rowData.push_status || null;
+                        if (sprice <= 0 || pushBase == null) return '';
+
+                        const sku = rowData.sku || '';
+                        const goodsId = rowData.goods_id || '';
+                        const skuId = rowData.sku_id || '';
+
+                        if (pushStatus === 'pushing') {
+                            return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing to Temu2..."></i>';
+                        }
+                        if (pushStatus === 'pushed') {
+                            return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pushed to Temu2"></i>';
+                        }
+                        if (pushStatus === 'error') {
+                            return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>`;
+                        }
+                        return `<button type="button" class="temu2-push-single-btn" data-sku="${sku}" data-price="${pushBase}" data-goods-id="${goodsId}" data-sku-id="${skuId}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push base $${pushBase.toFixed(2)} to Temu2"><i class="fas fa-upload"></i></button>`;
+                    }
+                },
            
                 {
                     title: "S Temu Prc",
@@ -5222,6 +5271,138 @@
         }
 
         updateCampaignPeriodUi();
+
+        // --- Temu2 price push: SPRICE → base via (×0.85)−2.99 if SPRICE<$35; else ×0.85 ---
+        function pushTemu2PriceForRow(row, price) {
+            const data = row.getData();
+            const sku = data.sku;
+            const goodsId = data.goods_id || '';
+            const skuId = data.sku_id || '';
+            const fromSprice = temuPushBaseFromSprice(data.sprice);
+            const raw = parseFloat(price);
+            let pushPrice = fromSprice;
+            if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
+            if (!sku || !(pushPrice > 0)) {
+                return Promise.reject({ message: 'SKU and price required' });
+            }
+
+            row.update({ push_status: 'pushing' });
+            row.reformat();
+
+            return new Promise(function(resolve, reject) {
+                $.ajax({
+                    url: '/temu2/push-price',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: sku,
+                        price: pushPrice,
+                        goods_id: goodsId,
+                        sku_id: skuId
+                    },
+                    success: function(response) {
+                        if (response && response.success) {
+                            row.update({ push_status: 'pushed' });
+                            row.reformat();
+                            resolve(response);
+                        } else {
+                            row.update({ push_status: 'error' });
+                            row.reformat();
+                            reject({ message: (response && response.message) || 'Push failed' });
+                        }
+                    },
+                    error: function(xhr) {
+                        row.update({ push_status: 'error' });
+                        row.reformat();
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.message
+                            || (xhr.responseJSON.errors && xhr.responseJSON.errors[0] && xhr.responseJSON.errors[0].message)))
+                            || 'Push failed';
+                        reject({ message: msg });
+                    }
+                });
+            });
+        }
+
+        $(document).on('click', '.temu2-push-single-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(this);
+            const sku = $btn.data('sku');
+            const row = table.getRows().find(function(r) {
+                return String(r.getData().sku || '') === String(sku);
+            });
+            if (!row) return;
+            const sprice = parseFloat(row.getData().sprice) || 0;
+            const pushBase = temuPushBaseFromSprice(sprice);
+            if (pushBase == null) {
+                showToast('Cannot push — invalid SPRICE', 'error');
+                return;
+            }
+            if (!confirm(
+                'Push Temu2 base $' + pushBase.toFixed(2)
+                + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.85'
+                + (sprice < 35 ? ' − 2.99' : '')
+                + ') for SKU: ' + sku + '?'
+            )) return;
+
+            pushTemu2PriceForRow(row, sprice).then(function() {
+                showToast('Price pushed to Temu2', 'success');
+                if (typeof updateSummary === 'function') updateSummary();
+            }).catch(function(err) {
+                showToast((err && err.message) || 'Failed to push price', 'error');
+            });
+        });
+
+        $('#push-temu2-price-btn').on('click', function() {
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+            const items = [];
+            table.getRows('active').forEach(function(row) {
+                const d = row.getData();
+                if (d.is_parent) return;
+                const sprice = parseFloat(d.sprice) || 0;
+                const pushBase = temuPushBaseFromSprice(sprice);
+                if (sprice > 0 && pushBase != null && d.push_status !== 'pushed') {
+                    items.push({ row: row, price: sprice, sku: d.sku, pushBase: pushBase });
+                }
+            });
+
+            if (items.length === 0) {
+                showToast('No rows with SPRICE to push (or all already pushed)', 'warning');
+                return;
+            }
+
+            if (!confirm(
+                'Push Temu2 base for ' + items.length + ' SKU(s)?\n'
+                + '(Sprice × 0.85) − 2.99 if SPRICE < $35; else Sprice × 0.85'
+            )) return;
+
+            const $btn = $('#push-temu2-price-btn');
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let ok = 0, fail = 0, i = 0;
+
+            function next() {
+                if (i >= items.length) {
+                    $btn.prop('disabled', false).html(btnHtml);
+                    showToast('Temu2 push done: ' + ok + ' ok, ' + fail + ' failed', fail ? 'warning' : 'success');
+                    if (typeof updateSummary === 'function') updateSummary();
+                    return;
+                }
+                const item = items[i++];
+                pushTemu2PriceForRow(item.row, item.price).then(function() {
+                    ok++;
+                    setTimeout(next, 250);
+                }).catch(function() {
+                    fail++;
+                    setTimeout(next, 250);
+                });
+            }
+            next();
+        });
     });
 </script>
 @endsection

@@ -1349,7 +1349,13 @@
                     <h5 class="modal-title mb-0">
                         <i class="fa fa-shopping-cart me-1"></i> LMP: <span id="lmpSku"></span>
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
+                            title="Pull live LMP prices from SerpApi (Amazon / eBay / Google — same as pricing tabulators)">
+                            <i class="fas fa-cloud-download-alt"></i> Pull
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <div id="lmpDataList">
@@ -1761,7 +1767,7 @@
     let table = null;
 
     /**
-     * Temu push base from SPRICE (Price Increase):
+     * Temu / Temu2 push base from SPRICE (Price Increase):
      *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
      *   if SPRICE ≥ $35 → (Sprice × 0.85)
      * PFT / ROI still use raw SPRICE / channel price — this is push/display conversion only.
@@ -2785,16 +2791,16 @@
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'fba', 'topdawg', 'temu'
+                    'reverb', 'fba', 'topdawg', 'temu', 'temu2'
                 ];
                 const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
                 const hasPushableSprice = parseFloat(item.sprice) > 0;
 
                 // Price in red when LMP is available and LMP < Price
                 const lmpForPrice = parseFloat(item.lmp_price);
-                // Temu Price column: display only × 1.1765 (~1/0.85). GPFT / GROI / NROI / NPFT stay on original price.
+                // Temu / Temu2 Price column: display only × 1.1765 (~1/0.85). GPFT / GROI / NROI / NPFT stay on original price.
                 const TEMU_PRICE_DISPLAY_MULT = 1.1765;
-                const displayPrice = (isTemuMpRow && price > 0)
+                const displayPrice = ((isTemuMpRow || isTemu2MpRow) && price > 0)
                     ? +(price * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
                     : price;
                 // Price vs LMP: ≤90% LMP → purple; 90%–LMP → dark green; > LMP → red
@@ -2813,8 +2819,8 @@
                 const priceCellHtml = !isListed
                     ? '-'
                     : '<span style="' + priceColorStyle + '" title="' +
-                        (isTemuMpRow && price > 0
-                            ? ('Temu Price × 1.1765 (shown). Base calc price: $' + price.toFixed(2))
+                        ((isTemuMpRow || isTemu2MpRow) && price > 0
+                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + price.toFixed(2))
                             : '') +
                       '">$' + displayPrice.toFixed(2) + '</span>';
 
@@ -5880,15 +5886,15 @@
             }
             target.price = price;
             const mpLower = String(target.marketplace || '').toLowerCase();
-            // Temu: push base = (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85
+            // Temu / Temu2: push base = (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85
             let pushPrice = price;
-            if (mpLower === 'temu') {
+            if (mpLower === 'temu' || mpLower === 'temu2') {
                 const converted = temuPushBaseFromSprice(price);
                 if (converted == null) {
                     return $.Deferred().resolve({
                         ok: false,
                         marketplace: target.marketplace,
-                        message: 'Skipped — Temu SPRICE converts to invalid base'
+                        message: 'Skipped — ' + (mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' SPRICE converts to invalid base'
                     }).promise();
                 }
                 pushPrice = converted;
@@ -5906,8 +5912,8 @@
                 const ship = parseFloat(target.$tr.attr('data-ship')) || 0;
                 payload.self_pick_price = Math.max(0, +(price - ship).toFixed(2));
             }
-            // Temu: pass goods_id / sku_id when available (same as /temu-decrease)
-            if (mpLower === 'temu' && target.$tr && target.$tr.length) {
+            // Temu / Temu2: pass goods_id / sku_id when available
+            if ((mpLower === 'temu' || mpLower === 'temu2') && target.$tr && target.$tr.length) {
                 const goodsId = target.$tr.attr('data-goods-id') || target.$btn.data('goods-id') || '';
                 const skuId = target.$tr.attr('data-sku-id') || target.$btn.data('sku-id') || '';
                 if (goodsId) payload.goods_id = goodsId;
@@ -5973,10 +5979,10 @@
             const mpLowerConfirm = String(marketplace || '').toLowerCase();
             let confirmPrice = price;
             let confirmExtra = '';
-            if (mpLowerConfirm === 'temu') {
+            if (mpLowerConfirm === 'temu' || mpLowerConfirm === 'temu2') {
                 const converted = temuPushBaseFromSprice(price);
                 if (converted == null) {
-                    showToast('Cannot push — Temu SPRICE converts to invalid base', 'error');
+                    showToast('Cannot push — ' + (mpLowerConfirm === 'temu2' ? 'Temu2' : 'Temu') + ' SPRICE converts to invalid base', 'error');
                     return;
                 }
                 confirmPrice = converted;
@@ -6185,23 +6191,109 @@
             }, 0);
         }
 
-        function loadLmpCompetitorsModal(sku, marketplace, showAddForm) {
+        /** Channels that support live SerpApi LMP Pull (same as amazon/ebay pricing tabulators). */
+        const LMP_PULLABLE_CHANNELS = ['amazon', 'ebay', 'google'];
+
+        function updateLmpPullBtnTitle(filter) {
+            const $btn = $('#lmpPullApiBtn');
+            if (!$btn.length) return;
+            const ch = String(filter || 'all').toLowerCase();
+            if (ch === 'all') {
+                $btn.attr('title', 'Pull live LMP for Amazon + eBay + Google (SerpApi) — same as pricing tabulators');
+            } else if (LMP_PULLABLE_CHANNELS.indexOf(ch) !== -1) {
+                $btn.attr('title', 'Pull live ' + ch.charAt(0).toUpperCase() + ch.slice(1) + ' LMP prices from SerpApi');
+            } else {
+                $btn.attr('title', 'Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).');
+            }
+        }
+
+        /** Patch main-table LMP columns after a live Pull. */
+        function patchPriceIncreaseLmpFromPull(sku, amazonRes, ebayRes, googleRes) {
+            if (!table || !sku) return;
+            const key = String(sku).trim().toUpperCase();
+            const patch = {};
+            if (amazonRes && amazonRes.lowest_price != null && amazonRes.lowest_price > 0) {
+                patch.amazon_lmp_price = amazonRes.lowest_price;
+            }
+            if (ebayRes && ebayRes.lowest_price != null && ebayRes.lowest_price > 0) {
+                patch.ebay_lmp_price = ebayRes.lowest_price;
+            }
+            if (googleRes && googleRes.lowest_price != null && googleRes.lowest_price > 0) {
+                patch.google_lmp_price = googleRes.lowest_price;
+            }
+            if (!Object.keys(patch).length) return;
+
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || d.is_parent_summary) return;
+                if (String(d.sku || '').trim().toUpperCase() !== key) return;
+                r.update(patch);
+            });
+            if (Array.isArray(fullDataset)) {
+                fullDataset.forEach(function(row) {
+                    if (!row || row.is_parent_summary) return;
+                    if (String(row.sku || '').trim().toUpperCase() !== key) return;
+                    Object.keys(patch).forEach(function(k) { row[k] = patch[k]; });
+                });
+            }
+        }
+
+        /**
+         * Load multi-channel LMP drawer.
+         * Pass options.refresh = true to live-fetch Amazon/eBay/Google via SerpApi
+         * (same pattern as amazon/ebay tabulator #lmpPullApiBtn → ?refresh=1).
+         */
+        function loadLmpCompetitorsModal(sku, marketplace, showAddForm, options) {
+            options = options || {};
+            const refreshFromApi = !!options.refresh;
             resetLmpEditState();
             $('#lmpSku').text(sku);
             if (marketplace === 'macys' || marketplace === 'bestbuyusa') {
                 marketplace = marketplace === 'macys' ? 'macy' : 'bestbuy';
             }
-            const initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu')
-                ? marketplace
-                : 'all';
-            const showAdd = !!showAddForm || initialFilter !== 'all';
+
+            // On Pull, keep the currently selected channel filter when possible
+            let initialFilter;
+            if (refreshFromApi && lmpModalCache && lmpModalCache.sku === sku && lmpModalCache.filter) {
+                initialFilter = lmpModalCache.filter;
+            } else {
+                initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu')
+                    ? marketplace
+                    : 'all';
+            }
+
+            // Live Pull only for Amazon / eBay / Google
+            if (refreshFromApi) {
+                const ch = String(initialFilter || 'all').toLowerCase();
+                if (ch !== 'all' && LMP_PULLABLE_CHANNELS.indexOf(ch) === -1) {
+                    showToast('Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).', 'warning');
+                    const $btn = $('#lmpPullApiBtn');
+                    if ($btn.length) $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Pull');
+                    return;
+                }
+            }
+
+            const showAdd = (refreshFromApi && lmpModalCache && lmpModalCache.sku === sku)
+                ? !!lmpModalCache.showAdd
+                : (!!showAddForm || initialFilter !== 'all');
             $('#lmpModal').data('lmp-marketplace', marketplace || null);
             $('#lmpModal').data('lmp-filter', initialFilter);
             $('#lmpModal').data('lmp-show-add', showAdd);
-            const modal = new bootstrap.Modal(document.getElementById('lmpModal'));
-            modal.show();
+            updateLmpPullBtnTitle(initialFilter);
 
-            $('#lmpDataList').html('<div class="text-center py-5 text-muted"><div class="spinner-border text-primary me-2"></div>Loading competitors...</div>');
+            if (!refreshFromApi) {
+                const modal = new bootstrap.Modal(document.getElementById('lmpModal'));
+                modal.show();
+            }
+
+            const loadingMsg = refreshFromApi
+                ? 'Pulling live LMP prices from SerpApi...'
+                : 'Loading competitors...';
+            $('#lmpDataList').html('<div class="text-center py-5 text-muted"><div class="spinner-border text-primary me-2"></div>' + loadingMsg + '</div>');
+
+            const refreshAmazon = refreshFromApi && (initialFilter === 'all' || initialFilter === 'amazon');
+            const refreshEbay = refreshFromApi && (initialFilter === 'all' || initialFilter === 'ebay');
+            const refreshGoogle = refreshFromApi && (initialFilter === 'all' || initialFilter === 'google');
 
             let amazonData = null;
             let ebayData = null;
@@ -6212,6 +6304,7 @@
             let temuData = null;
             let loaded = 0;
             const totalNeeded = 7;
+            let pullHadError = false;
 
             function tryRender() {
                 loaded++;
@@ -6219,20 +6312,40 @@
                 const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData);
                 lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
                 renderLmpMergedTable();
+                updateLmpPullBtnTitle(initialFilter);
+
+                if (refreshFromApi) {
+                    if (pullHadError) {
+                        showToast('LMP Pull finished with some errors — check the list', 'warning');
+                    } else {
+                        const labels = [];
+                        if (refreshAmazon) labels.push('Amazon');
+                        if (refreshEbay) labels.push('eBay');
+                        if (refreshGoogle) labels.push('Google');
+                        showToast('Pulled live LMP for ' + (labels.join(', ') || 'channels') + ' — ' + sku, 'success');
+                    }
+                    patchPriceIncreaseLmpFromPull(sku, amazonData, ebayData, googleData);
+                }
+
+                const $btn = $('#lmpPullApiBtn');
+                if ($btn.length) {
+                    $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Pull');
+                }
             }
 
-            // Always load Amazon + eBay + Google + BestBuy + Macy + Reverb + Temu so channel filter can switch instantly
+            // Always load all channels so filter tabs work; only Amazon/eBay/Google get ?refresh=1
             $.ajax({
                 url: '/amazon/competitors',
                 method: 'GET',
-                data: { sku: sku },
-                timeout: 10000,
+                data: refreshAmazon ? { sku: sku, refresh: 1 } : { sku: sku },
+                timeout: refreshAmazon ? 90000 : 10000,
                 success: function(res) {
                     amazonData = res.success && res.competitors ? res : null;
                     tryRender();
                 },
                 error: function() {
                     amazonData = null;
+                    if (refreshAmazon) pullHadError = true;
                     tryRender();
                 }
             });
@@ -6240,14 +6353,15 @@
             $.ajax({
                 url: '/ebay-lmp-data',
                 method: 'GET',
-                data: { sku: sku },
-                timeout: 10000,
+                data: refreshEbay ? { sku: sku, refresh: 1 } : { sku: sku },
+                timeout: refreshEbay ? 300000 : 10000,
                 success: function(res) {
                     ebayData = res.success && res.competitors ? res : null;
                     tryRender();
                 },
                 error: function() {
                     ebayData = null;
+                    if (refreshEbay) pullHadError = true;
                     tryRender();
                 }
             });
@@ -6255,14 +6369,15 @@
             $.ajax({
                 url: '/google-lmp-data',
                 method: 'GET',
-                data: { sku: sku },
-                timeout: 10000,
+                data: refreshGoogle ? { sku: sku, refresh: 1 } : { sku: sku },
+                timeout: refreshGoogle ? 90000 : 10000,
                 success: function(res) {
                     googleData = res.success && res.competitors ? res : null;
                     tryRender();
                 },
                 error: function() {
                     googleData = null;
+                    if (refreshGoogle) pullHadError = true;
                     tryRender();
                 }
             });
@@ -6327,6 +6442,28 @@
                 }
             });
         }
+
+        // Pull live LMP (Amazon / eBay / Google) — same as pricing tabulators
+        $(document).on('click', '#lmpPullApiBtn', function() {
+            const sku = (lmpModalCache && lmpModalCache.sku) || $('#lmpSku').text().trim();
+            if (!sku) {
+                showToast('No SKU selected', 'error');
+                return;
+            }
+            const filter = (lmpModalCache && lmpModalCache.filter)
+                || $('#lmpModal').data('lmp-filter')
+                || 'all';
+            const ch = String(filter || 'all').toLowerCase();
+            if (ch !== 'all' && LMP_PULLABLE_CHANNELS.indexOf(ch) === -1) {
+                showToast('Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).', 'warning');
+                return;
+            }
+            const $btn = $(this);
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Pulling...');
+            const marketplace = $('#lmpModal').data('lmp-marketplace') || ch;
+            const showAdd = !!(lmpModalCache && lmpModalCache.showAdd);
+            loadLmpCompetitorsModal(sku, marketplace === 'all' ? null : marketplace, showAdd, { refresh: true });
+        });
 
         /** Parse shipping $ from LMP delivery text. Free / Prime free → 0. Unknown → null. */
         function parseLmpShipCost(delivery) {
@@ -7252,6 +7389,7 @@
             lmpModalCache.filter = filter;
             if (filter !== 'all') lmpModalCache.showAdd = true;
             $('#lmpModal').data('lmp-filter', filter);
+            updateLmpPullBtnTitle(filter);
             renderLmpMergedTable();
         });
         
