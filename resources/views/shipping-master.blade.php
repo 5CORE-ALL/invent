@@ -1138,29 +1138,29 @@
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="wt_decl" data-col-label="Item WT ACT Decl (OZ / LB)" class="th-has-filter item-dim-decl-header" title="Below 1 lb shown in OZ; 1 lb and above shown in LB. Copies ACT when Decl is empty.">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT Decl<br>(OZ / LB)</div>
-                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Item WT ACT Decl">
+                                    <th data-col-key="wt_decl" data-col-label="Itm wt GW Decl" class="th-has-filter item-dim-decl-header" title="Below 1 lb shown in OZ; 1 lb and above shown in LB. Copies ACT when Decl is empty.">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Itm wt GW Decl</div>
+                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Itm wt GW Decl">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="l_decl" data-col-label="Item Length Decl (inch)" class="th-has-filter item-dim-decl-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Length Decl<br>(inch)</div>
+                                    <th data-col-key="l_decl" data-col-label="Item L IN Decl" class="th-has-filter item-dim-decl-header" title="Copies Item Length when Decl is empty">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item L IN Decl</div>
                                         <select id="filterLDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="w_decl" data-col-label="Item Width Decl (inch)" class="th-has-filter item-dim-decl-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Width Decl<br>(inch)</div>
+                                    <th data-col-key="w_decl" data-col-label="Item W IN Decl" class="th-has-filter item-dim-decl-header" title="Copies Item Width when Decl is empty">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item W IN Decl</div>
                                         <select id="filterWDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
-                                    <th data-col-key="h_decl" data-col-label="Item Height Decl (Inch)" class="th-has-filter item-dim-decl-header">
-                                        <div class="th-vertical-label" style="font-size: 9px;">Item Height Decl<br>(Inch)</div>
+                                    <th data-col-key="h_decl" data-col-label="Item H IN Decl" class="th-has-filter item-dim-decl-header" title="Copies Item Height when Decl is empty">
+                                        <div class="th-vertical-label" style="font-size: 9px;">Item H IN Decl</div>
                                         <select id="filterHDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px;">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
@@ -1241,7 +1241,7 @@
                                 <input type="number" step="0.01" class="form-control" id="editWtAct" name="wt_act" placeholder="Enter Item WT ACT (LB)">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWtDecl" class="form-label">Item WT ACT Decl (LB)</label>
+                                <label for="editWtDecl" class="form-label">Itm wt GW Decl</label>
                                 <input type="number" step="0.01" min="0" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Rounds up to next slab (e.g. 1.1 → 2, 14.5 → 20)">
                             </div>
                         </div>
@@ -1262,16 +1262,16 @@
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <label for="editLDecl" class="form-label">Item Length Decl (inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editLDecl" name="l_decl" placeholder="Enter Item Length Decl (inch)">
+                                <label for="editLDecl" class="form-label">Item L IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editLDecl" name="l_decl" placeholder="Enter Item L IN Decl">
                             </div>
                             <div class="col-md-4">
-                                <label for="editWDecl" class="form-label">Item Width Decl (inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editWDecl" name="w_decl" placeholder="Enter Item Width Decl (inch)">
+                                <label for="editWDecl" class="form-label">Item W IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editWDecl" name="w_decl" placeholder="Enter Item W IN Decl">
                             </div>
                             <div class="col-md-4">
-                                <label for="editHDecl" class="form-label">Item Height Decl (Inch)</label>
-                                <input type="number" step="0.01" class="form-control" id="editHDecl" name="h_decl" placeholder="Enter Item Height Decl (Inch)">
+                                <label for="editHDecl" class="form-label">Item H IN Decl</label>
+                                <input type="number" step="0.01" class="form-control" id="editHDecl" name="h_decl" placeholder="Enter Item H IN Decl">
                             </div>
                         </div>
                         <div class="row mb-3">
@@ -1588,7 +1588,7 @@
                             Example: type <strong>6</strong> in Ship → Apply → all SKUs in that LB get <code>ship=6</code>, and outer Ship shows <strong>6</strong>.
                         </div>
                         <div class="text-muted mt-1">
-                            Slabs use <strong>Item WT ACT Decl (LB)</strong> (ACT rounded up to the billable slab).
+                            Slabs use <strong>Itm wt GW Decl</strong> (ACT rounded up to the billable slab).
                             Carriers: Ship, Ship BB, TT 1 Ship, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
                         </div>
                     </div>
@@ -2430,13 +2430,13 @@
                 label_type:      'Label Type',
                 wt_act_kg:       'Item Weight ACT (Kg)',
                 wt_act:          'Item WT ACT (LB)',
-                wt_decl:         'Item WT ACT Decl (LB)',
+                wt_decl:         'Itm wt GW Decl',
                 l:               'Item Length (inch)',
                 w:               'Item Width (inch)',
                 h:               'Item Height (inch)',
-                l_decl:          'Item Length Decl (inch)',
-                w_decl:          'Item Width Decl (inch)',
-                h_decl:          'Item Height Decl (inch)',
+                l_decl:          'Item L IN Decl',
+                w_decl:          'Item W IN Decl',
+                h_decl:          'Item H IN Decl',
                 l_cm:            'Item Length (CM)',
                 w_cm:            'Item Width (CM)',
                 h_cm:            'Item Height (CM)',
@@ -2874,6 +2874,13 @@
                         ['ctn_cbm', 'ctn_qty', 'ctn_cbm_each'].forEach(k => {
                             if (shippingColVisMap[k] !== false) {
                                 shippingColVisMap[k] = false;
+                                cleared = true;
+                            }
+                        });
+                        // Always show Decl dim/wt columns (match /dim-wt-master)
+                        ['wt_decl', 'l_decl', 'w_decl', 'h_decl'].forEach(k => {
+                            if (shippingColVisMap[k] === false) {
+                                shippingColVisMap[k] = true;
                                 cleared = true;
                             }
                         });
@@ -3440,8 +3447,16 @@
                 return Math.ceil(lb - 1e-9);
             }
 
-            /** Declared = ACT weight rounded up to the shipping slab ceiling. */
+            /**
+             * Declared LB for display / slabs:
+             * prefer saved wt_decl; otherwise ACT rounded up to the billable slab.
+             * (Previously always recomputed from ACT, so saved Decl looked like it never persisted.)
+             */
             function itemWeightDeclLbRounded(item) {
+                const declRaw = parseFloat(item?.wt_decl);
+                if (Number.isFinite(declRaw) && declRaw > 0) {
+                    return roundWeightLbUpToSlab(declRaw);
+                }
                 return roundWeightLbUpToSlab(itemWeightActLbResolved(item));
             }
 
@@ -3947,7 +3962,7 @@
             function setupExcelExport() {
                 document.getElementById('downloadExcel').addEventListener('click', function() {
                     // Columns to export (excluding Image, Action, and Parent)
-                    const columns = ["SKU", "Status", "Label Qty", "Type", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Item WT ACT Decl (OZ / LB)", "Length Decl (inch)", "Width Decl (inch)", "Height Decl (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
+                    const columns = ["SKU", "Status", "Label Qty", "Type", "INV", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA SKU", "FBA ship", "FBA manual ship", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Itm wt GW Decl", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN L (CM)", "CTN W (CM)", "CTN H (CM)", "CTN (CBM)", "CTN (QTY)", "CTN (CBM/Each)"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -4020,16 +4035,16 @@
                         "Height (Inch)": {
                             key: "h"
                         },
-                        "Item WT ACT Decl (OZ / LB)": {
+                        "Itm wt GW Decl": {
                             computed: "item_weight_decl"
                         },
-                        "Length Decl (inch)": {
+                        "Item L IN Decl": {
                             computed: "l_decl"
                         },
-                        "Width Decl (inch)": {
+                        "Item W IN Decl": {
                             computed: "w_decl"
                         },
-                        "Height Decl (Inch)": {
+                        "Item H IN Decl": {
                             computed: "h_decl"
                         },
                         "Length (CM)": {
@@ -4161,7 +4176,7 @@
                                     return { wch: 20 }; // Wider for text columns
                                 } else if (["Status"].includes(col)) {
                                     return { wch: 12 };
-                                } else if (["FBA SKU", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Item WT ACT Decl (OZ / LB)", "Length (inch)", "Width (inch)", "Height (Inch)", "Length Decl (inch)", "Width Decl (inch)", "Height Decl (Inch)", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
+                                } else if (["FBA SKU", "Weight ACT (Kg)", "Item WT ACT (OZ / LB)", "Itm wt GW Decl", "Length (inch)", "Width (inch)", "Height (Inch)", "Item L IN Decl", "Item W IN Decl", "Item H IN Decl", "Length (CM)", "Width (CM)", "Height (CM)", "CTN (CBM)", "CTN (CBM/Each)", "Ship", "Ship BB", "TT 1 Ship", "Temu ship", "Temu GOFO", "GOFO", "Fedex", "UPS", "USPS", "UNI", "FBA ship", "FBA manual ship"].includes(col)) {
                                     return { wch: 15 }; // Width for weight and CBM columns
                                 } else {
                                     return { wch: 12 }; // Default width for numeric columns
@@ -4651,10 +4666,14 @@
                 document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
-                // Decl: copy ACT on first open when Decl is empty
-                // Decl weight: round UP to next whole lb when ≥ 1 (e.g. 1.1 → 2)
-                const declLbForEdit = itemWeightDeclLbRounded(product);
-                document.getElementById('editWtDecl').value = declLbForEdit != null ? declLbForEdit : '';
+                // Decl: show saved wt_decl when present; otherwise seed from ACT rounded to slab
+                const declStored = parseFloat(product.wt_decl);
+                if (Number.isFinite(declStored) && declStored > 0) {
+                    document.getElementById('editWtDecl').value = declStored;
+                } else {
+                    const declLbForEdit = roundWeightLbUpToSlab(itemWeightActLbResolved(product));
+                    document.getElementById('editWtDecl').value = declLbForEdit != null ? declLbForEdit : '';
+                }
                 document.getElementById('editL').value = product.l || '';
                 document.getElementById('editW').value = product.w || '';
                 document.getElementById('editH').value = product.h || '';
@@ -4830,9 +4849,15 @@
                         return;
                     }
                     
+                    const productIdRaw = document.getElementById('editProductId').value;
+                    const productId = parseInt(productIdRaw, 10);
+                    if (!Number.isFinite(productId) || productId <= 0) {
+                        throw new Error('Missing product id — reopen Edit and try again.');
+                    }
+
                     const formData = {
                         ...baseFormData,
-                        product_id: document.getElementById('editProductId').value,
+                        product_id: productId,
                         sku: document.getElementById('editSku').value,
                         parent: document.getElementById('editParent').value
                     };
@@ -4841,19 +4866,39 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest'
                         },
                         body: JSON.stringify(formData)
                     });
                     
-                    const data = await response.json();
+                    const data = await response.json().catch(() => ({}));
                     
                     if (!response.ok) {
-                        throw new Error(data.message || 'Failed to save data');
+                        const msg = data.message
+                            || (data.errors ? Object.values(data.errors).flat().join(' ') : null)
+                            || 'Failed to save data';
+                        throw new Error(msg);
                     }
                     
                     showToast('success', 'Shipping Master updated successfully!');
                     
+                    // Patch in-memory row so Decl/ACT show saved values immediately
+                    const sku = formData.sku;
+                    if (Array.isArray(tableData) && sku) {
+                        const target = tableData.find(d =>
+                            String(d.id) === String(productId) || String(d.SKU) === String(sku)
+                        );
+                        if (target) {
+                            Object.keys(baseFormData).forEach(k => {
+                                if (baseFormData[k] !== undefined) target[k] = baseFormData[k];
+                            });
+                            if (baseFormData.label_type) target.label_type = baseFormData.label_type;
+                            if (baseFormData.label_qty !== undefined) target.label_qty = baseFormData.label_qty;
+                        }
+                    }
+
                     const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
                     modal.hide();
                     

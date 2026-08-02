@@ -392,11 +392,57 @@ class EbayThreeApiService
         }
     }
 
-    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
+    public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null, bool $allowItemLevelFallback = true)
     {
-        // First, try to get item details to ensure we have all required fields
-        $itemDetails = $this->getItem($itemId);
-        
+        // Most eBay3 listings are multi-variation. eBay IGNORES item-level StartPrice on
+        // those (ErrorCode 21916618) — price MUST be set on the matching <Variation> SKU.
+        // When SKU is provided, revise via variation path FIRST and skip GetItem to avoid
+        // Trading API call-limit (518) failures that previously caused silent no-ops.
+        $skuTrim = trim((string) $sku);
+        $itemDetails = null;
+        $existingItem = [];
+        $variationSku = null;
+        $isVariationListing = false;
+
+        if ($skuTrim !== '') {
+            $isVariationListing = true;
+            $variationSku = $skuTrim;
+        } else {
+            $itemDetails = $this->getItem($itemId);
+            $existingItem = ($itemDetails && isset($itemDetails['Item'])) ? $itemDetails['Item'] : [];
+
+            $variationRows = [];
+            if (isset($existingItem['Variations']['Variation'])) {
+                $rawVars = $existingItem['Variations']['Variation'];
+                $variationRows = isset($rawVars['SKU']) || isset($rawVars['StartPrice'])
+                    ? [$rawVars]
+                    : (is_array($rawVars) ? $rawVars : []);
+            }
+            $isVariationListing = $variationRows !== [];
+
+            if ($isVariationListing) {
+                return [
+                    'success' => false,
+                    'message' => 'eBay3 variation SKU is required to push price on this multi-variation listing.',
+                    'errors' => [[
+                        'code' => 'VariationSkuRequired',
+                        'message' => 'This eBay3 listing has variations; pass the variation SKU to update its price.',
+                    ]],
+                ];
+            }
+
+            if ($existingItem === []) {
+                return [
+                    'success' => false,
+                    'message' => 'Could not fetch eBay3 item details (GetItem failed). Price was not pushed.',
+                    'errors' => [[
+                        'code' => 'GetItemFailed',
+                        'message' => 'GetItem failed for item ' . $itemId . '. Price was not pushed.',
+                    ]],
+                ];
+            }
+        }
+
         // Build XML body
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $credentials = $xml->addChild('RequesterCredentials');
@@ -413,18 +459,11 @@ class EbayThreeApiService
         $item = $xml->addChild('Item');
         $item->addChild('ItemID', $itemId);
 
-        $existingItem = ($itemDetails && isset($itemDetails['Item'])) ? $itemDetails['Item'] : [];
-
-        // Detect a multi-variation listing. eBay IGNORES the item-level StartPrice for
-        // variation listings — the price MUST be set on the specific <Variation> (matched
-        // by its variation SKU). Otherwise eBay returns Success but the price never changes.
-        $isVariationListing = isset($existingItem['Variations']['Variation']);
-
-        if ($isVariationListing && $sku) {
+        if ($isVariationListing && $variationSku) {
             // Update ONLY the target variation's price (do NOT set item-level StartPrice).
             $variations = $item->addChild('Variations');
             $variation  = $variations->addChild('Variation');
-            $variation->addChild('SKU', $sku);
+            $variation->addChild('SKU', $variationSku);
             $variation->addChild('StartPrice', $price);
             if ($quantity !== null) {
                 $variation->addChild('Quantity', $quantity);
@@ -551,6 +590,47 @@ class EbayThreeApiService
         ]);
 
         if ($ack === 'Success' || $ack === 'Warning') {
+            // ErrorCode 21916618 = item-level StartPrice ignored on variation listings.
+            // Historically this was treated as success while the live price never changed.
+            $warnErrors = $responseArray['Errors'] ?? [];
+            if ($warnErrors !== [] && !isset($warnErrors[0]) && is_array($warnErrors)) {
+                $warnErrors = [$warnErrors];
+            }
+            if (!is_array($warnErrors)) {
+                $warnErrors = [$warnErrors];
+            }
+            foreach ($warnErrors as $warnErr) {
+                if (!is_array($warnErr)) {
+                    continue;
+                }
+                $warnCode = (string) ($warnErr['ErrorCode'] ?? '');
+                $warnMsg = (string) ($warnErr['LongMessage'] ?? $warnErr['ShortMessage'] ?? '');
+                if (
+                    $warnCode === '21916618'
+                    || stripos($warnMsg, 'Item level start price will be ignored') !== false
+                ) {
+                    Log::error('❌ eBay3 price push ignored (variation listing item-level price)', [
+                        'itemId' => $itemId,
+                        'price' => $price,
+                        'sku' => $sku,
+                        'variationSku' => $variationSku,
+                        'ack' => $ack,
+                        'error' => $warnErr,
+                    ]);
+
+                    return [
+                        'success' => false,
+                        'message' => 'eBay ignored the price update because this is a multi-variation listing. Retry with the variation SKU.',
+                        'errors' => [[
+                            'code' => $warnCode ?: '21916618',
+                            'message' => $warnMsg ?: 'Item level start price will be ignored on variation listings.',
+                        ]],
+                        'data' => $responseArray,
+                        'rlogId' => $rlogId,
+                    ];
+                }
+            }
+
             \Illuminate\Support\Facades\Log::info('✅ eBay3 Price Updated Successfully', [
                 'itemId' => $itemId,
                 'price' => $price,
@@ -657,6 +737,30 @@ class EbayThreeApiService
                     'rlogId' => $rlogId
                 ]);
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
+            }
+
+            // Variation revise can fail on true single-SKU listings — retry item-level once.
+            if ($allowItemLevelFallback && $isVariationListing && $skuTrim !== '') {
+                $errText = strtolower(json_encode($errors) ?: '');
+                $looksLikeNonVariation = str_contains($errText, 'variation')
+                    || str_contains($errText, 'not found')
+                    || str_contains($errText, 'invalid');
+                if ($looksLikeNonVariation) {
+                    Log::info('eBay3 variation revise failed — retrying item-level StartPrice', [
+                        'itemId' => $itemId,
+                        'sku' => $skuTrim,
+                        'rlogId' => $rlogId,
+                    ]);
+                    return $this->reviseFixedPriceItem(
+                        $itemId,
+                        $price,
+                        $quantity,
+                        null,
+                        $variationSpecifics,
+                        $variationSpecificsSet,
+                        false
+                    );
+                }
             }
             
             return [

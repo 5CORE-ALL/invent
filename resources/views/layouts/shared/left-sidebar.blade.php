@@ -2312,6 +2312,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ url('/wmpnm-dil') }}" class="side-nav-link">
+                    <i class="ri-bar-chart-grouped-line"></i>
+                    <span>WMPNM Dil</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ url('/sold-master') }}" class="side-nav-link">
                     <i class="ri-shopping-cart-line"></i>
                     <span>Sales by Value</span>

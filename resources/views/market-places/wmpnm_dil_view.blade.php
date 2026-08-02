@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Master Analytics ', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'WMPNM Dil', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -24,9 +24,12 @@
             font-size: 11px;
             font-weight: 600;
         }
+        /* Outer main table: no column-expand grips (resize only inside OV L30 modal) */
+        .tabulator .tabulator-header .tabulator-col-resize-handle {
+            display: none !important;
+        }
 
 
-        
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
@@ -40,15 +43,15 @@
             margin-right: 5px;
         }
 
-        /* OV L30 Modal – light bg with dark text */
+        /* OV L30 Modal – compact, readable UI */
         #ovl30DetailsModal #modal-price-pct-btn {
-            width: 34px;
-            height: 30px;
+            width: 30px;
+            height: 28px;
             padding: 0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 13px;
         }
         #ovl30DetailsModal #modal-price-pct-btn.dropdown-toggle::after {
             display: none;
@@ -61,75 +64,264 @@
         }
         #ovl30DetailsModal .ovl30-prc-row-cb,
         #ovl30DetailsModal #ovl30-select-all-cb {
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
             cursor: pointer;
             margin: 0;
             vertical-align: middle;
         }
         #ovl30DetailsModal .modal-vertical-header th.ovl30-select-th,
-        #ovl30DetailsModal .modal-vertical-header th.ovl30-bulk-push-th {
-            writing-mode: horizontal-tb;
-            transform: none;
-            height: auto;
-            min-height: 48px;
-            padding: 2px !important;
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-bulk-push-th,
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-sprice-suggest-th {
+            padding: 4px 2px !important;
             vertical-align: middle;
             text-align: center;
         }
         #ovl30DetailsModal .ovl30-bulk-push-btn {
-            width: 22px;
-            height: 20px;
+            width: 24px;
+            height: 22px;
             padding: 0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
+            font-size: 11px;
         }
-        #ovl30DetailsModal .modal-header,
+        #ovl30DetailsModal .modal-header {
+            background: #f8fafc !important;
+            color: #0f172a !important;
+            border-bottom: 1px solid #e2e8f0 !important;
+            padding: 0.55rem 0.85rem !important;
+        }
         #ovl30DetailsModal .table thead {
-            background-color: #e2e8f0 !important;
-            color: #000000 !important;
-            border-color: #cbd5e1 !important;
+            background-color: #5FA6AA !important;
+            color: #fff !important;
+            border-color: #4f969a !important;
         }
+        /* Horizontal compact headers — teal from reference */
         #ovl30DetailsModal .modal-vertical-header th {
-            writing-mode: vertical-rl;
+            writing-mode: horizontal-tb !important;
             text-orientation: mixed;
             white-space: nowrap;
-            transform: rotate(180deg);
-            height: calc(var(--ovl30-fs, 11px) * 5.2);
-            min-height: 48px;
+            transform: none !important;
+            height: auto !important;
+            min-height: 0 !important;
             vertical-align: middle;
-            font-size: var(--ovl30-fs, 11px) !important;
+            font-size: 10px !important;
             font-weight: 700;
-            padding: 2px 2px;
-            background-color: #e2e8f0 !important;
-            color: #000000 !important;
-            border-color: #cbd5e1 !important;
+            letter-spacing: 0.01em;
+            padding: 6px 4px !important;
+            background-color: #5FA6AA !important;
+            color: #fff !important;
+            border-color: #4f969a !important;
+            line-height: 1.15;
         }
         #ovl30DetailsModal .modal-vertical-header th span {
-            color: #000000 !important;
+            color: #fff !important;
+            display: inline;
         }
-        /* Exception for M column - keep it horizontal */
         #ovl30DetailsModal .modal-vertical-header th:nth-child(1) {
             writing-mode: horizontal-tb;
             transform: none;
-            height: auto;
-            min-height: 56px;
-        }
-        /* Auto Fill SPRICE button column – keep horizontal */
-        #ovl30DetailsModal .modal-vertical-header th.ovl30-sprice-suggest-th {
-            writing-mode: horizontal-tb;
-            transform: none;
-            height: auto;
-            min-height: 48px;
-            padding: 2px !important;
-            vertical-align: middle;
+            min-width: 72px;
+            text-align: left !important;
         }
         #ovl30DetailsModal .ovl30-sprice-suggest-btn {
-            padding: 2px 5px;
+            padding: 2px 6px;
             line-height: 1;
             font-size: 11px;
+        }
+        #ovl30DetailsModal .ovl30-header-sku {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+        #ovl30DetailsModal .ovl30-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            font-size: 12px;
+            color: #475569;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-stat strong {
+            color: #0f172a;
+            font-weight: 700;
+        }
+        #ovl30DetailsModal .ovl30-toolbar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem 0.65rem;
+            padding: 0.55rem 0.85rem;
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #ovl30DetailsModal .ovl30-tool-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.45rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        #ovl30DetailsModal .ovl30-tool-group label {
+            margin: 0;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-tool-group .form-control {
+            height: 28px;
+            font-size: 12px;
+            padding: 2px 6px;
+        }
+        #ovl30DetailsModal .ovl30-tool-group .btn,
+        #ovl30DetailsModal .ovl30-toolbar > .btn {
+            height: 28px;
+            font-size: 12px;
+            padding: 2px 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-toolbar .form-check {
+            margin: 0;
+            padding: 0.2rem 0.55rem 0.2rem 1.7rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            min-height: 0;
+        }
+        #ovl30DetailsModal .ovl30-toolbar .form-check-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+        }
+        #ovl30DetailsModal #modal-clear-all-sprice-btn {
+            background: #fff;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+        #ovl30DetailsModal #modal-clear-all-sprice-btn:hover {
+            background: #fef2f2;
+            color: #991b1b;
+            border-color: #fca5a5;
+        }
+        #ovl30DetailsModal .modal-footer {
+            padding: 0.45rem 0.85rem;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(1) {
+            font-weight: 700 !important;
+            color: #0f172a !important;
+        }
+        #ovl30DetailsModal #modal-header-lmp-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        /* Fixed column widths so header / totals / body stay aligned */
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-channel { width: 88px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-num { width: 52px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-price { width: 68px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-std-prc { width: 64px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-lmp { width: 64px; }
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-std-prc-th {
+            background: #20c997 !important;
+            color: #000 !important;
+        }
+        #ovl30DetailsModal .editable-std-prc {
+            width: 4em !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            display: inline-block;
+            padding: 1px 4px !important;
+            font-size: inherit !important;
+            height: auto !important;
+            line-height: 1.3 !important;
+            text-align: right;
+        }
+        #ovl30DetailsModal .ovl30-std-prc-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-link { width: 40px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-check { width: 34px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-icon { width: 34px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-sprice { width: 72px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-push { width: 36px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-by { width: 36px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-history { width: 52px; }
+        .ovl30-history-btn {
+            border: none;
+            background: transparent;
+            color: #5FA6AA;
+            padding: 0 4px;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .ovl30-history-btn:hover { color: #3d7f83; }
+        .ovl30-history-btn.has-history { color: #0d6efd; }
+        #ovl30PushHistoryModal {
+            z-index: 1080;
+        }
+        #ovl30PushHistoryModal .table th,
+        #ovl30PushHistoryModal .table td {
+            font-size: 12px;
+            vertical-align: middle;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-select-th,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-select-cell,
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-sprice-suggest-th,
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-bulk-push-th,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-push-cell,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-link-cell,
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-by-cell {
+            text-align: center !important;
+            vertical-align: middle !important;
+            padding-left: 2px !important;
+            padding-right: 2px !important;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable .ovl30-prc-row-cb,
+        #ovl30DetailsModal #ovl30-select-all-cb {
+            display: block;
+            margin: 0 auto;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable .editable-sprice {
+            display: inline-block;
+            margin: 0;
+            vertical-align: middle;
+        }
+        #ovl30DetailsModal .ovl30-sprice-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            width: 100%;
+        }
+        #ovl30DetailsModal .ovl30-sprice-lmp-alert {
+            color: #dc3545;
+            font-size: 11px;
+            line-height: 1;
+            cursor: help;
+            flex-shrink: 0;
+        }
+        #ovl30DetailsModal #ovl30DetailsTable td.ovl30-num-cell,
+        #ovl30DetailsModal #ovl30DetailsTable th.ovl30-num-th {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
         }
 
         /* Playback controls – default (teal/primary) + NPFT (violet) */
@@ -320,17 +512,17 @@
         
         /* Totals row – light background, dark text; same font size as body rows */
         #ovl30DetailsModal .modal-totals-row {
-            background-color: #f1f5f9 !important;
-            font-weight: 700 !important;
+            background-color: #eef2ff !important;
+            font-weight: 600 !important;
             font-size: var(--ovl30-fs, 11px) !important;
             color: #0f172a !important;
-            border-top: 2px solid #cbd5e1 !important;
+            border-top: 1px solid #c7d2fe !important;
         }
         #ovl30DetailsModal .modal-totals-row th {
-            font-weight: 700 !important;
+            font-weight: 600 !important;
             font-size: var(--ovl30-fs, 11px) !important;
             line-height: 1.2;
-            padding: 2px 2px !important;
+            padding: 4px 3px !important;
             color: #0f172a !important;
             border-color: #e2e8f0 !important;
         }
@@ -349,6 +541,8 @@
             display: flex;
             flex-direction: column;
             border-radius: 0;
+            border: 0;
+            box-shadow: none;
         }
         #ovl30DetailsModal .modal-header,
         #ovl30DetailsModal .modal-footer {
@@ -362,60 +556,181 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            padding-bottom: 0.5rem;
+            padding: 0.35rem 0.65rem 0.5rem !important;
         }
         #ovl30DetailsModal .ovl30-table-wrap {
             --ovl30-fs: 11px;
-            --ovl30-header-h: 56px;
+            --ovl30-header-h: 34px;
             flex: 1 1 auto;
             min-height: 0;
             max-height: none;
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
         }
         #ovl30DetailsModal .table tbody {
             background-color: #fff !important;
             color: #0f172a !important;
         }
+        #ovl30DetailsModal .table tbody tr:nth-child(even) {
+            background-color: #fafbfc !important;
+        }
+        #ovl30DetailsModal .table tbody tr:hover {
+            background-color: #f1f5f9 !important;
+        }
         #ovl30DetailsModal #ovl30DetailsTable {
             width: 100%;
-            max-width: 100%;
+            max-width: none;
             table-layout: fixed;
+            margin-bottom: 0;
+            border-color: #e2e8f0;
+        }
+        /* OV L30: column resize grips on header right edge */
+        #ovl30DetailsModal .modal-vertical-header th {
+            position: relative;
+        }
+        #ovl30DetailsModal .ovl30-col-resizer {
+            position: absolute;
+            top: 0;
+            right: -3px;
+            left: auto;
+            width: 8px;
+            height: 100%;
+            cursor: ew-resize;
+            z-index: 6;
+            user-select: none;
+            touch-action: none;
+            background: transparent;
+        }
+        /* No visible gray grip marks — only a blue highlight while resizing */
+        #ovl30DetailsModal .ovl30-col-resizer::before {
+            content: none;
+            display: none;
+        }
+        #ovl30DetailsModal .ovl30-col-resizer:hover,
+        #ovl30DetailsModal .ovl30-col-resizer.is-resizing {
+            background: rgba(13, 110, 253, 0.18);
+        }
+        #ovl30DetailsModal .modal-vertical-header th {
+            border-color: #e2e8f0 !important;
+            border-top: none !important;
+        }
+        #ovl30DetailsModal .table {
+            border-collapse: collapse;
+        }
+        #ovl30DetailsModal .table > :not(caption) > * > * {
+            border-bottom-width: 1px;
+        }
+        #ovl30DetailsModal.ovl30-cols-manual #ovl30DetailsTable {
+            width: max-content;
+            min-width: 100%;
+        }
+        body.ovl30-col-resizing {
+            cursor: ew-resize !important;
+            user-select: none !important;
         }
         #ovl30DetailsModal .table td {
             color: #334155 !important;
-            padding: 1px 2px !important;
+            padding: 4px 3px !important;
             font-size: var(--ovl30-fs) !important;
-            font-weight: 700 !important;
-            line-height: 1.2;
+            font-weight: 600 !important;
+            line-height: 1.25;
             vertical-align: middle;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            border-color: #eef2f6 !important;
         }
-        /* Center all column data (headers, totals, body) */
+        /* Default center; numeric / channel override via cell classes */
         #ovl30DetailsModal .ovl30-table-wrap .table th,
         #ovl30DetailsModal .ovl30-table-wrap .table td {
+            text-align: center;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(1),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(1) {
+            text-align: left !important;
+            padding-left: 8px !important;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(2),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(6),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(7),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(7),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(8),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(8),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(9),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(9),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(10),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(10),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(11),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21) {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23) {
             text-align: center !important;
         }
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-channel-price,
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-add-btn {
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-add-btn {
             font-size: inherit;
             white-space: nowrap;
         }
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-std-prc-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-std-prc-cell {
+            text-align: center !important;
+        }
         #ovl30DetailsModal .table .editable-sprice {
-            width: 3.6em !important;
+            width: 4em !important;
             min-width: 0 !important;
             max-width: 100% !important;
-            height: calc(var(--ovl30-fs) + 8px);
-            padding: 0 2px !important;
+            height: 24px;
+            padding: 0 4px !important;
             font-size: var(--ovl30-fs) !important;
-            font-weight: 700;
+            font-weight: 600;
             text-align: center;
             margin: 0 auto;
             display: inline-block;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
             -moz-appearance: textfield;
             appearance: textfield;
+        }
+        #ovl30DetailsModal .table .editable-sprice:focus {
+            border-color: #93c5fd;
+            outline: 0;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
         }
         #ovl30DetailsModal .table .editable-sprice::-webkit-outer-spin-button,
         #ovl30DetailsModal .table .editable-sprice::-webkit-inner-spin-button {
@@ -427,18 +742,18 @@
             position: sticky;
             top: 0;
             z-index: 11;
-            background-color: #e2e8f0 !important;
-            box-shadow: 0 1px 0 0 #cbd5e1;
+            background-color: #5FA6AA !important;
+            box-shadow: 0 1px 0 0 #4f969a;
         }
         #ovl30DetailsModal .table thead .modal-totals-row th {
             position: sticky;
-            top: var(--ovl30-header-h, 56px);
+            top: var(--ovl30-header-h, 34px);
             z-index: 10;
-            background-color: #f1f5f9 !important;
-            box-shadow: 0 1px 0 0 #e2e8f0;
+            background-color: #e8f4f4 !important;
+            box-shadow: 0 1px 0 0 #c5e0e1;
         }
         #ovl30DetailsModal .table thead .modal-vertical-header th:nth-child(1) {
-            min-height: var(--ovl30-header-h, 56px);
+            min-height: var(--ovl30-header-h, 34px);
         }
         /* Sortable column headers – cursor and sort icon */
         #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable {
@@ -446,7 +761,11 @@
             user-select: none;
         }
         #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable:hover {
-            background-color: #cbd5e1 !important;
+            background-color: #4f969a !important;
+            color: #fff !important;
+        }
+        #ovl30DetailsModal .table thead .modal-vertical-header th.ovl30-sortable:hover span {
+            color: #fff !important;
         }
 
         /* Missing L modal – stacks above the detail modal */
@@ -545,10 +864,19 @@
             opacity: 0.7;
         }
 
-        #ovl30DetailsModal .table td:has(.push-price-btn) {
-            width: 28px;
-            max-width: 32px;
-            padding: 1px 2px !important;
+        /* Chart modal stacks above OV L30 only when both are open (set via JS — do not raise all backdrops) */
+        #pricingMasterChartModal.pi-chart-over-ovl30 { z-index: 1085; }
+
+        #ovl30DetailsModal .table td:has(.push-price-btn),
+        #ovl30DetailsModal .table td.ovl30-push-cell {
+            width: 36px;
+            max-width: 40px;
+            padding: 2px !important;
+        }
+        #ovl30DetailsModal .ovl30-sprice-suggest-btn,
+        #ovl30DetailsModal .ovl30-bulk-push-btn,
+        #ovl30DetailsModal .push-price-btn {
+            margin: 0 auto;
         }
 
         #ovl30DetailsModal .lmp-add-btn {
@@ -719,6 +1047,23 @@
             width: 16px;
             height: 16px;
         }
+        /* Blue 5 Core reference row — same as /ebay-tabulator-view */
+        #lmpModal .lmp-five-core-row,
+        #lmpModal .lmp-five-core-row > td {
+            background-color: #dbeafe !important;
+            color: #1e3a8a;
+            --bs-table-bg-type: #dbeafe;
+            --bs-table-striped-bg: #dbeafe;
+            --bs-table-hover-bg: #bfdbfe;
+            font-weight: 600;
+        }
+        #lmpModal .lmp-five-core-row:hover > td {
+            background-color: #bfdbfe !important;
+        }
+        #lmpModal .lmp-five-core-row .lmp-five-core-price {
+            font-size: 14px;
+            font-weight: 700;
+        }
         #lmpModal .lmp-channel-icon.temu {
             background: #fb7701;
             color: #fff;
@@ -742,22 +1087,42 @@
             font-weight: 700;
         }
 
-        /* Parent SKU dot - P column */
+        /* Parent expand icon - P column (glossy yellow play triangle) */
         .parent-sku-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #17a2b8;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
             cursor: pointer;
-            transition: background-color 0.2s;
+            vertical-align: middle;
+            line-height: 0;
+            transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+            filter: drop-shadow(0 1px 1px rgba(180, 110, 0, 0.35));
+        }
+        .parent-sku-dot svg {
+            width: 14px;
+            height: 14px;
+            display: block;
         }
         .parent-sku-dot:hover {
-            background-color: #0d6efd;
+            filter: drop-shadow(0 2px 3px rgba(180, 110, 0, 0.45));
+            transform: scale(1.08);
+        }
+        .parent-sku-dot.is-expanded {
+            transform: rotate(90deg);
+        }
+        .parent-sku-dot.is-expanded:hover {
+            transform: rotate(90deg) scale(1.08);
         }
         .parent-sku-dot.no-parent {
-            background-color: #dee2e6;
             cursor: default;
+            opacity: 0.35;
+            filter: grayscale(1) drop-shadow(none);
+        }
+        .parent-sku-dot.no-parent:hover {
+            transform: none;
+            filter: grayscale(1) drop-shadow(none);
         }
 
         /* SKU column — keep long SKUs inside the cell (do not overwrite Details) */
@@ -882,6 +1247,197 @@
             max-width: 100%;
         }
 
+        /* Label column (Shipping Master) — blue dot only; modal matches /sales-order-fulfillment */
+        .tabulator .tabulator-header .tabulator-col.pi-label-col {
+            background: #cfe2ff !important;
+        }
+        .pi-label-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pi-label-dims-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6c8cff;
+            box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.22);
+            cursor: pointer;
+            flex-shrink: 0;
+            vertical-align: middle;
+            border: none;
+            padding: 0;
+        }
+        .pi-label-dims-dot:hover {
+            box-shadow: 0 0 0 3px rgba(108, 140, 255, 0.4);
+        }
+        #piLabelDimsModal .modal-dialog {
+            max-width: min(1600px, 96vw);
+            width: 96vw;
+            margin: 1rem auto;
+        }
+        #piLabelDimsModal .modal-header {
+            padding: 1rem 1.5rem;
+            background: #cfe2ff;
+            border-bottom-color: #9ec5fe;
+        }
+        #piLabelDimsModal .modal-title {
+            font-size: 1.5rem;
+            color: #084298;
+        }
+        #piLabelDimsModal .modal-body {
+            padding: 1.5rem 1.75rem;
+            font-size: 1.15rem;
+        }
+        #piLabelDimsModal .modal-footer {
+            padding: 1rem 1.5rem;
+        }
+        #piLabelDimsModal .modal-footer .btn {
+            font-size: 1rem;
+            padding: 0.5rem 1.25rem;
+        }
+        #piLabelDimsModal .pi-label-sku-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        #piLabelDimsModal .pi-label-type-right {
+            margin-left: auto;
+            text-align: right;
+            font-size: 2rem;
+            line-height: 1.3;
+            white-space: nowrap;
+            padding-top: 0.15rem;
+        }
+        #piLabelDimsModal .pi-label-type-right .text-muted {
+            font-size: 2rem;
+            color: #64748b !important;
+        }
+        #piLabelDimsModal #pi-label-dims-type {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        #piLabelDimsModal .pi-label-sku-img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: #f8f9fa;
+            flex-shrink: 0;
+        }
+        #piLabelDimsModal .pi-label-sku-img.is-missing {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #adb5bd;
+            font-size: 0.85rem;
+        }
+        #piLabelDimsModal .pi-label-sku-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            min-width: 0;
+            flex: 1;
+        }
+        #piLabelDimsModal .pi-label-sku-line {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+        }
+        #piLabelDimsModal .pi-label-sku-label {
+            color: #64748b;
+            font-size: 1rem;
+        }
+        #piLabelDimsModal #pi-label-dims-sku {
+            font-size: 2.55rem;
+            font-weight: 700;
+            color: #0f766e;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        #piLabelDimsModal .pi-sku-copy {
+            border: none;
+            background: #f1f5f9;
+            color: #475569;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+            font-size: 1rem;
+        }
+        #piLabelDimsModal .pi-sku-copy:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        #piLabelDimsModal .pi-sku-copy.copied {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        #piLabelDimsModal .pi-label-dims-table {
+            font-size: 1.15rem;
+            margin-bottom: 0;
+        }
+        #piLabelDimsModal .pi-label-dims-table th,
+        #piLabelDimsModal .pi-label-dims-table thead th,
+        #piLabelDimsModal .pi-label-dims-table > :not(caption) > * > th {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 1rem;
+            text-transform: lowercase;
+            color: #000;
+            vertical-align: middle;
+            padding: 0.85rem 0.75rem;
+            --bs-table-bg: #fff9c4;
+            --bs-table-accent-bg: #fff9c4;
+            background-color: #fff9c4 !important;
+        }
+        #piLabelDimsModal .pi-label-dims-table th.pi-dim-decl {
+            --bs-table-bg: #f8d7da;
+            --bs-table-accent-bg: #f8d7da;
+            background-color: #f8d7da !important;
+        }
+        #piLabelDimsModal .pi-label-dims-table td {
+            text-align: center;
+            vertical-align: middle;
+            padding: 1rem 0.75rem;
+            font-size: 1.25rem;
+        }
+        /* CP$ / FRG / LP (Product Master) — blue header bar like PM */
+        #piLabelDimsModal .pi-label-cost-table {
+            font-size: 1.15rem;
+            margin-bottom: 1rem;
+        }
+        #piLabelDimsModal .pi-label-cost-table th {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 1rem;
+            text-transform: uppercase;
+            color: #fff !important;
+            vertical-align: middle;
+            padding: 0.65rem 0.75rem;
+            background: linear-gradient(180deg, #4a90d9 0%, #2c6fbb 100%) !important;
+            border-color: #2c6fbb !important;
+        }
+        #piLabelDimsModal .pi-label-cost-table td {
+            text-align: center;
+            vertical-align: middle;
+            padding: 0.85rem 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
     </style>
 @endsection
 
@@ -892,8 +1448,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Master Analytics',
-        'sub_title' => 'Master Analytics Data with Editable SPRICE',
+        'page_title' => 'WMPNM Dil',
+        'sub_title' => 'WMPNM Dil Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -982,25 +1538,19 @@
     <div class="modal fade" id="ovl30DetailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xxl">
             <div class="modal-content">
-                <div class="modal-header" style="background-color: #e2e8f0; color: #0f172a;">
-                    <div class="modal-title d-flex align-items-center justify-content-between w-100" style="font-size: 2em; color: #0f172a;">
-                        <div class="d-flex align-items-center gap-3">
-                            <i class="fas fa-mouse-pointer me-2"></i> 
-                            <span id="modalSkuName" style="font-weight: bold;">SKU</span>
+                <div class="modal-header">
+                    <div class="modal-title d-flex align-items-center justify-content-between w-100 gap-2 flex-wrap pe-2">
+                        <div class="d-flex align-items-center gap-2 min-w-0">
+                            <i class="fas fa-layer-group text-primary"></i>
+                            <span id="modalSkuName" class="ovl30-header-sku text-truncate">SKU</span>
                         </div>
-                        <div class="d-flex align-items-center gap-3 flex-wrap">
-                            <span>
-                                <strong>Total INV:</strong> <span id="modal-header-inv">0</span>
-                            </span>
-                            <span>
-                                <strong>L30 Sold:</strong> <span id="modal-header-l30">0</span>
-                            </span>
-                            <span>
-                                <strong>Dil %:</strong> <span id="modal-header-dil">0%</span>
-                            </span>
-                            <span class="d-inline-flex align-items-center gap-1" style="font-size: 0.55em;">
-                                <strong class="mb-0">Group:</strong>
-                                <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 70px;"
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="ovl30-stat">INV <strong id="modal-header-inv">0</strong></span>
+                            <span class="ovl30-stat">L30 <strong id="modal-header-l30">0</strong></span>
+                            <span class="ovl30-stat">Dil% <strong id="modal-header-dil">0%</strong></span>
+                            <span class="ovl30-tool-group py-0">
+                                <label for="modal-group-select" class="mb-0">Group</label>
+                                <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
                                     title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                                     <option value="">All</option>
                                     <option value="A">A</option>
@@ -1008,13 +1558,14 @@
                                     <option value="T">T</option>
                                 </select>
                             </span>
-                            <span id="modal-header-lmp-link" style="cursor: pointer; text-decoration: underline;" title="Click to view LMP competitors">
-                                <i class="fas fa-search me-2"></i><strong>LMP</strong>
-                            </span>
+                            <button type="button" id="modal-header-lmp-link" class="btn btn-sm btn-outline-primary"
+                                title="View LMP competitors" style="height: 28px;">
+                                <i class="fas fa-search"></i> LMP
+                            </button>
                             <div class="btn-group">
                                 <button type="button" id="modal-price-pct-btn" class="btn btn-sm btn-primary dropdown-toggle"
                                     data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false"
-                                    title="Prc Mode">
+                                    title="Price change mode">
                                     <i class="fas fa-percent"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end" id="modal-price-pct-dropdown">
@@ -1030,92 +1581,138 @@
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div id="modal-discount-input-container" class="px-3 py-2 border-bottom bg-light" style="display: none;">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span id="modal-selected-channels-count" class="fw-semibold small text-muted">(select channels)</span>
-                        <span id="modal-discount-input-label" class="text-muted small">By how much:</span>
-                        <span id="modal-discount-type-select-wrap">
-                            <select id="modal-discount-type-select" class="form-select form-select-sm" style="width: 120px;">
-                                <option value="percentage">Percentage</option>
-                                <option value="value">Value ($)</option>
-                            </select>
-                        </span>
-                        <input type="text" id="modal-discount-percentage-input" class="form-control form-control-sm"
-                            inputmode="decimal" placeholder="e.g. 10 or 2.50" autocomplete="off" style="width: 120px;">
-                        <button type="button" id="modal-apply-discount-btn" class="btn btn-sm btn-primary">
-                            <i class="fas fa-check"></i> Apply
-                        </button>
-                        <button type="button" id="modal-select-all-channels-btn" class="btn btn-sm btn-outline-secondary">
-                            Select all editable
-                        </button>
-                        <span class="text-muted small mb-0">Group:</span>
-                        <select id="modal-group-select-bar" class="form-select form-select-sm" style="width: auto; min-width: 70px;"
+                <div id="modal-discount-input-container" class="ovl30-toolbar" style="display: none;">
+                    <span id="modal-selected-channels-count" class="fw-semibold small text-muted">(select channels)</span>
+                    <span id="modal-discount-input-label" class="text-muted small">By how much:</span>
+                    <span id="modal-discount-type-select-wrap">
+                        <select id="modal-discount-type-select" class="form-select form-select-sm" style="width: 120px; height: 28px;">
+                            <option value="percentage">Percentage</option>
+                            <option value="value">Value ($)</option>
+                        </select>
+                    </span>
+                    <input type="text" id="modal-discount-percentage-input" class="form-control form-control-sm"
+                        inputmode="decimal" placeholder="e.g. 10 or 2.50" autocomplete="off" style="width: 110px; height: 28px;">
+                    <button type="button" id="modal-apply-discount-btn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                    <button type="button" id="modal-select-all-channels-btn" class="btn btn-sm btn-outline-secondary">
+                        Select all editable
+                    </button>
+                    <span class="ovl30-tool-group py-0">
+                        <label for="modal-group-select-bar" class="mb-0">Group</label>
+                        <select id="modal-group-select-bar" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
                             title="A=Amazon+others (excludes Temu, Doba, B2B); D=Doba; T=Temu">
                             <option value="">All</option>
                             <option value="A">A</option>
                             <option value="D">D</option>
                             <option value="T">T</option>
                         </select>
-                    </div>
+                    </span>
                 </div>
                 {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
-                <div id="modal-target-controls" class="px-3 py-2 border-bottom bg-light">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
-                            title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
-                            <label for="modal-target-roi-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
-                                <span aria-hidden="true">🎯</span> ROI%:
-                            </label>
-                            <input type="number" id="modal-target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width: 60px;"
-                                title="Target ROI% for selected channels">
-                            <button type="button" id="modal-apply-target-roi-btn" class="btn btn-sm btn-success"
-                                title="Apply Target ROI% to selected channels" aria-label="Apply Target ROI">
-                                <i class="fas fa-calculator"></i>
-                            </button>
-                        </div>
-                        <div class="d-inline-flex align-items-center gap-1 p-1 border rounded bg-white"
-                            title="Target GPFT% — SPRICE = (LP + Ship) / (margin − GPFT%/100) on selected channels">
-                            <label for="modal-target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap mb-0">
-                                <span aria-hidden="true">🎯</span> GPFT%:
-                            </label>
-                            <input type="number" id="modal-target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width: 60px;"
-                                title="Target GPFT% for selected channels (must be &lt; channel margin %)">
-                            <button type="button" id="modal-apply-target-gpft-btn" class="btn btn-sm btn-success"
-                                title="Apply Target GPFT% to selected channels" aria-label="Apply Target GPFT">
-                                <i class="fas fa-calculator"></i>
-                            </button>
-                        </div>
-                        <div class="form-check form-check-inline mb-0 ms-1 p-1 border rounded bg-white"
-                            title="When checked, the same SPRICE is saved on all child SKUs under the same parent, and Push sends that price to those siblings on each marketplace. Never applies 0.">
-                            <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
-                            <label class="form-check-label small fw-bold" for="modal-siblings-apply-cb">
-                                Siblings Apply
-                                <span id="modal-siblings-count" class="text-muted fw-normal"></span>
-                            </label>
-                        </div>
-                        <span class="text-muted small">Applies to selected channels (checkbox). Uses each channel’s margin.</span>
+                <div id="modal-target-controls" class="ovl30-toolbar">
+                    <div class="ovl30-tool-group"
+                        title="Apply this SPRICE to all checked channels. Doba &amp; TopDawg get 25% less (×0.75).">
+                        <label for="modal-bulk-sprice-input">SPRICE</label>
+                        <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
+                            placeholder="0.00" step="0.01" min="0" style="width: 78px;"
+                            title="SPRICE applied to selected channels (Doba &amp; TopDawg = 25% less)">
+                        <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
+                            title="Apply SPRICE to checked channels (Doba &amp; TopDawg −25%)" aria-label="Apply SPRICE">
+                            Apply
+                        </button>
                     </div>
+                    <div class="ovl30-tool-group"
+                        title="Target ROI% — SPRICE = (LP × (1 + ROI%/100) + Ship) / margin on selected channels">
+                        <label for="modal-target-roi-input">ROI%</label>
+                        <input type="number" id="modal-target-roi-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 58px;"
+                            title="Target ROI% for selected channels">
+                        <button type="button" id="modal-apply-target-roi-btn" class="btn btn-sm btn-success"
+                            title="Apply Target ROI% to selected channels" aria-label="Apply Target ROI">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="Target GPFT% — SPRICE = (LP + Ship) / (margin − GPFT%/100) on selected channels">
+                        <label for="modal-target-gpft-input">GPFT%</label>
+                        <input type="number" id="modal-target-gpft-input" class="form-control form-control-sm text-end"
+                            placeholder="30" step="0.1" style="width: 58px;"
+                            title="Target GPFT% for selected channels (must be &lt; channel margin %)">
+                        <button type="button" id="modal-apply-target-gpft-btn" class="btn btn-sm btn-success"
+                            title="Apply Target GPFT% to selected channels" aria-label="Apply Target GPFT">
+                            <i class="fas fa-calculator"></i>
+                        </button>
+                    </div>
+                    <div class="form-check"
+                        title="When checked, the same SPRICE is saved on all child SKUs under the same parent, and Push sends that price to those siblings on each marketplace. Never applies 0.">
+                        <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
+                        <label class="form-check-label" for="modal-siblings-apply-cb">
+                            Siblings
+                            <span id="modal-siblings-count" class="text-muted fw-normal"></span>
+                        </label>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="Add this $ amount to current SPRICE on selected channels (uses Price if SPRICE is empty). With Siblings checked, also applies to sibling SKUs including INV 0.">
+                        <label for="modal-sprice-bump-input">+$</label>
+                        <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
+                            placeholder="1" step="0.01" style="width: 58px;"
+                            title="Increase SPRICE by this dollar amount on selected channels (+ siblings when checked, including INV 0)">
+                        <button type="button" id="modal-apply-sprice-bump-btn" class="btn btn-sm btn-outline-primary"
+                            title="Add $ to SPRICE on checked channels (and siblings if checked)" aria-label="Apply SPRICE increase">
+                            Apply
+                        </button>
+                    </div>
+                    <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm"
+                        title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
+                        <i class="fas fa-eraser"></i> Clear All SPRICE
+                    </button>
                 </div>
-                <div class="modal-body" style="background-color: #fff;">
+                <div class="modal-body">
                     <div class="table-responsive ovl30-table-wrap">
                         <table class="table table-bordered table-hover mb-0" id="ovl30DetailsTable">
-                            <thead style="background-color: #e2e8f0; color: #0f172a;">
+                            <colgroup>
+                                <col class="ovl30-col-channel">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-icon">
+                                <col class="ovl30-col-price">
+                                <col class="ovl30-col-std-prc">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-lmp">
+                                <col class="ovl30-col-link">
+                                <col class="ovl30-col-check">
+                                <col class="ovl30-col-icon">
+                                <col class="ovl30-col-sprice">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-num">
+                                <col class="ovl30-col-push">
+                                <col class="ovl30-col-by">
+                                <col class="ovl30-col-history">
+                            </colgroup>
+                            <thead>
                                 <tr class="modal-vertical-header">
-                                    <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Sort by Marketplace"><span>M</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="Sort by L30"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th title="Missing Listings – click dot to view channels with no price"><span>Missing L</span></th>
-                                    <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Sort by Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="views" data-dir="desc" title="Sort by Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="cvr" data-dir="desc" title="Sort by CVR%"><span>CVR%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="gpft" data-dir="desc" title="Sort by GPFT%"><span>GPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="npft" data-dir="desc" title="Sort by NPFT%"><span>NPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="ad" data-dir="asc" title="Sort by Ads% (channel Ads% from All Marketplace Master)"><span>Ads%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th>LMP</th>
-                                    <th>Links</th>
+                                    <th class="ovl30-sortable" data-sort="marketplace" data-dir="asc" title="Marketplace"><span>Channel</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
+                                    <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-std-prc-th" title="Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Manual only; blank unless filled."><span>STD PRC</span></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="gpft" data-dir="desc" title="GPFT%"><span>GPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="nroi" data-dir="desc" title="NROI% = (Gross Profit − Ads $) ÷ LP × 100"><span>NROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="npft" data-dir="desc" title="NPFT%"><span>NPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable ovl30-metric-col" data-sort="ad" data-dir="asc" title="Ads% from All Marketplace Master"><span>Ads</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th title="Lowest Marketplace Price"><span>LMP</span></th>
+                                    <th title="Listing links"><span>Link</span></th>
                                     <th class="ovl30-select-th" title="Select channels (respects Group filter)">
                                         <input type="checkbox" id="ovl30-select-all-cb" title="Select as per filter">
                                     </th>
@@ -1124,35 +1721,49 @@
                                             <i class="fas fa-magic"></i>
                                         </button>
                                     </th>
-                                    <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Sort by SPRICE"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="Sort by SROI%"><span>SROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="Sort by SGPFT%"><span>SGPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="Sort by SPFT%"><span>SPFT%</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="sgpft" data-dir="desc" title="SGPFT%"><span>SGPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-sortable" data-sort="spft" data-dir="desc" title="SPFT%"><span>SPFT</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-bulk-push-th" title="Bulk push SPRICE to selected / visible marketplaces">
                                         <button type="button" class="btn btn-sm btn-primary ovl30-bulk-push-btn" id="ovl30-bulk-push-btn"
                                             title="Bulk Push — pushes SPRICE marketplace-wise (selected channels, or all visible if none selected)">
                                             <i class="fas fa-upload"></i>
                                         </button>
                                     </th>
-                                    <th>Pushed By</th>
+                                    <th title="Last pushed by"><span>By</span></th>
+                                    <th title="Push history — date, price, user for this marketplace"><span>Hist</span></th>
                                 </tr>
                                 <tr class="modal-totals-row">
-                                    <th><img id="modal-product-image" src="" alt="" style="width: 50px; height: 50px; object-fit: cover; display: none;"></th>
+                                    <th><img id="modal-product-image" src="" alt="" style="width: 36px; height: 36px; object-fit: cover; border-radius: 4px; display: none;"></th>
                                     <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-center">
                                         <span class="missing-l-dot" data-sku=""
                                             style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc3545;cursor:pointer;border:1px solid #a00211;"
                                             title="View missing listings for this SKU"></span>
                                     </th>
-                                    <th class="text-end" id="modal-total-price">$0.00</th>
-                                    <th class="text-end" id="modal-total-views">0</th>
-                                    <th class="text-end" id="modal-avg-cvr">0%</th>
-                                    <th class="text-end" id="modal-avg-groi">0%</th>
-                                    <th class="text-end" id="modal-avg-gpft">0%</th>
-                                    <th class="text-end" id="modal-avg-nroi">0%</th>
-                                    <th class="text-end" id="modal-avg-npft">0%</th>
-                                    <th class="text-end" id="modal-avg-ad">0%</th>
+                                    <th class="text-end">
+                                        <span id="modal-total-price">$0.00</span>
+                                        <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-price-chart-dot"
+                                            data-metric="price" data-sku=""
+                                            style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"
+                                            title="View Price history (Rolling L30)"></i>
+                                    </th>
+                                    <th class="ovl30-std-prc-th"></th>
+                                    <th class="text-end ovl30-metric-col" id="modal-total-views">0</th>
+                                    <th class="text-end ovl30-metric-col">
+                                        <span id="modal-avg-cvr">0%</span>
+                                        <i class="fas fa-circle pricing-master-chart-link ms-1" id="modal-cvr-chart-dot"
+                                            data-metric="cvr" data-sku=""
+                                            style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;"
+                                            title="View CVR history (Rolling L30)"></i>
+                                    </th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-groi">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-gpft">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-nroi">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-npft">0%</th>
+                                    <th class="text-end ovl30-metric-col" id="modal-avg-ad">0%</th>
                                     <th></th>
                                     <th></th>
                                     <th></th>
@@ -1164,12 +1775,13 @@
                                     <th class="text-end" id="modal-avg-spft">0%</th>
                                     <th></th>
                                     <th></th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="22" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="24" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1178,6 +1790,42 @@
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OV L30 Push History (per marketplace) -->
+    <div class="modal fade" id="ovl30PushHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#5FA6AA;color:#fff;">
+                    <h6 class="modal-title mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        Push History — <span id="ovl30PushHistoryMarketplace">Channel</span>
+                        <span class="fw-normal opacity-75"> / <span id="ovl30PushHistorySku"></span></span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Marketplace</th>
+                                    <th class="text-end">Price</th>
+                                    <th>User</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ovl30PushHistoryBody">
+                                <tr><td colspan="4" class="text-center text-muted py-3">No push history</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -1329,7 +1977,13 @@
                     <h5 class="modal-title mb-0">
                         <i class="fa fa-shopping-cart me-1"></i> LMP: <span id="lmpSku"></span>
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        <button type="button" id="lmpPullApiBtn" class="btn btn-sm btn-light"
+                            title="Pull live LMP prices from SerpApi (Amazon / eBay / Google — same as pricing tabulators)">
+                            <i class="fas fa-cloud-download-alt"></i> Pull
+                        </button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <div id="lmpDataList">
@@ -1342,14 +1996,98 @@
         </div>
     </div>
 
-    <!-- Master Analytics Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
+    {{-- Label details modal (Shipping Master) — same as /sales-order-fulfillment --}}
+    <div class="modal fade" id="piLabelDimsModal" tabindex="-1" aria-labelledby="piLabelDimsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-semibold mb-0" id="piLabelDimsModalLabel">Label details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="pi-label-sku-row">
+                        <img id="pi-label-dims-img" class="pi-label-sku-img d-none" alt="SKU image" src="">
+                        <div id="pi-label-dims-img-missing" class="pi-label-sku-img is-missing">No image</div>
+                        <div class="pi-label-sku-meta">
+                            <div class="pi-label-sku-line">
+                                <span class="pi-label-sku-label">SKU:</span>
+                                <code id="pi-label-dims-sku">—</code>
+                                <button type="button" class="pi-sku-copy" id="pi-label-dims-sku-copy" title="Copy SKU" aria-label="Copy SKU">
+                                    <i class="fas fa-copy" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="pi-label-type-right">
+                            <span class="text-muted">Type:</span>
+                            <span id="pi-label-dims-type" class="ms-1">—</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <span class="fw-semibold">Label Qty:</span>
+                        <span id="pi-label-dims-qty" class="ms-1">—</span>
+                    </div>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-bordered pi-label-cost-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th title="Cost Price (Product Master)">CP$</th>
+                                    <th title="Freight — Product Master FRGHT (CBM × 200)">FRG</th>
+                                    <th title="Landed Price (Product Master)">LP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="pi-label-dims-cp">—</td>
+                                    <td id="pi-label-dims-frg">—</td>
+                                    <td id="pi-label-dims-lp">—</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered pi-label-dims-table">
+                            <thead>
+                                <tr>
+                                    <th class="pi-dim-act">itm wt gw</th>
+                                    <th class="pi-dim-act">item l in</th>
+                                    <th class="pi-dim-act">item w in</th>
+                                    <th class="pi-dim-act">item h in</th>
+                                    <th class="pi-dim-decl">itm wt gw<br>decl</th>
+                                    <th class="pi-dim-decl">item l in<br>decl</th>
+                                    <th class="pi-dim-decl">item w in<br>decl</th>
+                                    <th class="pi-dim-decl">item h in<br>decl</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="pi-label-dims-wt-act">—</td>
+                                    <td id="pi-label-dims-l">—</td>
+                                    <td id="pi-label-dims-w">—</td>
+                                    <td id="pi-label-dims-h">—</td>
+                                    <td id="pi-label-dims-wt-decl">—</td>
+                                    <td id="pi-label-dims-l-decl">—</td>
+                                    <td id="pi-label-dims-w-decl">—</td>
+                                    <td id="pi-label-dims-h-decl">—</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WMPNM Dil Rolling L30 Chart Modal (Inv, OV L30, Price, CVR) -->
     <div class="modal fade p-0" id="pricingMasterChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
             <div class="modal-content" style="overflow: hidden;">
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;">
                         <i class="fas fa-chart-area me-1"></i>
-                        <span id="pricingMasterChartModalTitle">Master Analytics - Inv (Rolling L30)</span>
+                        <span id="pricingMasterChartModalTitle">WMPNM Dil - Inv (Rolling L30)</span>
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="pricingMasterChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
@@ -1390,7 +2128,7 @@
                     <div id="pricingMasterChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
                         <p class="text-muted small mb-0">No daily data for this SKU yet.</p>
-                        <p class="text-muted small mb-0"><strong>Refresh this page (Master Analytics CVR)</strong> once so today’s SKU data is saved, then open the graph again.</p>
+                        <p class="text-muted small mb-0"><strong>Refresh this page (WMPNM Dil)</strong> once so today’s SKU data is saved, then open the graph again.</p>
                     </div>
                 </div>
             </div>
@@ -1545,9 +2283,9 @@
 
                     <!-- SKU/Parent Filter -->
                     <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="both" selected>Both (SKU + Parent)</option>
+                        <option value="both">Both (SKU + Parent)</option>
                         <option value="sku">SKU Only</option>
-                        <option value="parent">Parent Only</option>
+                        <option value="parent" selected>Parent Only</option>
                     </select>
 
                     <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
@@ -1671,6 +2409,26 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
+
+                    {{-- Sprice Rule: SP = Amazon LMP × editable factor (default 0.98) --}}
+                    <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded"
+                        id="pi-sprice-lmp-rule"
+                        style="background: #ffc107;"
+                        title="Sprice Rule — set SP = Amazon LMP × factor. Factor is editable (default 0.98). Applies to selected SKUs, or visible parents' children when none selected.">
+                        <button type="button" id="pi-apply-sprice-lmp-rule-btn"
+                            class="btn btn-sm btn-warning border-0 py-0 px-2 fw-bold text-dark"
+                            style="background: transparent;">
+                            <i class="fas fa-percentage"></i> Sprice Rule
+                        </button>
+                        <span class="small fw-bold text-dark text-nowrap">LMP ×</span>
+                        <input type="number" id="pi-sprice-lmp-mult-input"
+                            class="form-control form-control-sm text-end"
+                            value="0.98" step="0.01" min="0.01" max="2"
+                            style="width: 72px;"
+                            title="Editable LMP multiplier — autofilled with 0.98">
+                    </div>
+
+                    {{-- Temu Clear/Push removed from outer toolbar — use OV L30 modal Temu push instead --}}
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1686,11 +2444,16 @@
             </div>
         </div>
     </div>
+
+    {{-- Audit modal — same tables/APIs as /amz-cvr-issues --}}
+    @include('market-places.partials.amz_cvr_audit_modals')
 @endsection
 
 @section('script-bottom')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ asset('js/amz-cvr-audit.js') }}"></script>
 <script>
+    window.__authUserName = @json(optional(auth()->user())->name ?? optional(auth()->user())->email ?? 'You');
     /**
      * ========================================
      * CVR MASTER - TABULATOR VIEW
@@ -1711,6 +2474,146 @@
      */
 
     let table = null;
+
+    /**
+     * Temu / Temu2 push base from SPRICE (WMPNM Dil):
+     *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
+     *   if SPRICE ≥ $35 → (Sprice × 0.85)
+     * PFT / ROI still use raw SPRICE / channel price — this is push/display conversion only.
+     */
+    function temuPushBaseFromSprice(sprice) {
+        const s = parseFloat(sprice);
+        if (!isFinite(s) || s <= 0) return null;
+        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
+        if (!(push > 0)) return null;
+        return +push.toFixed(2);
+    }
+
+    // ==================== LABEL DETAILS MODAL (Shipping Master) ====================
+
+    function piLabelDimsDisplay(v) {
+        if (v === null || v === undefined || v === '') {
+            return '—';
+        }
+        return String(v);
+    }
+
+    function piCopyTextToClipboard(text, btn) {
+        const value = (text || '').toString();
+        if (!value) {
+            return;
+        }
+        const done = function() {
+            if (!btn) return;
+            btn.classList.add('copied');
+            btn.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
+            setTimeout(function() {
+                btn.classList.remove('copied');
+                btn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+            }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(function() {
+                window.prompt('Copy:', value);
+            });
+        } else {
+            window.prompt('Copy:', value);
+            done();
+        }
+    }
+
+    function openPiLabelDimsModal(row) {
+        const modalEl = document.getElementById('piLabelDimsModal');
+        if (!modalEl || typeof bootstrap === 'undefined') {
+            return;
+        }
+        const data = row || {};
+        const sku = (data.sku || '').toString().trim();
+        const skuEl = document.getElementById('pi-label-dims-sku');
+        const typeEl = document.getElementById('pi-label-dims-type');
+        const qtyEl = document.getElementById('pi-label-dims-qty');
+        const imgEl = document.getElementById('pi-label-dims-img');
+        const imgMissingEl = document.getElementById('pi-label-dims-img-missing');
+        if (skuEl) skuEl.textContent = sku || '—';
+        if (typeEl) typeEl.textContent = (data.label || '').toString().trim() || '—';
+        if (qtyEl) qtyEl.textContent = piLabelDimsDisplay(data.label_qty);
+
+        const imageUrl = (data.sku_image || data.image_path || '').toString().trim();
+        if (imgEl && imgMissingEl) {
+            if (imageUrl) {
+                imgEl.src = imageUrl;
+                imgEl.alt = sku ? ('Image for ' + sku) : 'SKU image';
+                imgEl.classList.remove('d-none');
+                imgMissingEl.classList.add('d-none');
+                imgEl.onerror = function() {
+                    imgEl.classList.add('d-none');
+                    imgEl.removeAttribute('src');
+                    imgMissingEl.classList.remove('d-none');
+                };
+            } else {
+                imgEl.classList.add('d-none');
+                imgEl.removeAttribute('src');
+                imgMissingEl.classList.remove('d-none');
+            }
+        }
+
+        // FRG = Product Master FRGHT (stored, else CBM×200 from ACT dims)
+        let frg = data.frght;
+        if (frg === null || frg === undefined || frg === '') {
+            const l = parseFloat(data.l);
+            const w = parseFloat(data.w);
+            const h = parseFloat(data.h);
+            if (isFinite(l) && isFinite(w) && isFinite(h)) {
+                const cbm = (((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000);
+                frg = +(cbm * 200).toFixed(2);
+            }
+        }
+        const lpVal = (data.lp != null && data.lp !== '')
+            ? data.lp
+            : (data.amazon_lp != null ? data.amazon_lp : '');
+
+        const map = {
+            'pi-label-dims-cp': data.cp,
+            'pi-label-dims-frg': frg,
+            'pi-label-dims-lp': lpVal,
+            'pi-label-dims-wt-act': data.wt_act,
+            'pi-label-dims-l': data.l,
+            'pi-label-dims-w': data.w,
+            'pi-label-dims-h': data.h,
+            'pi-label-dims-wt-decl': data.wt_decl,
+            'pi-label-dims-l-decl': data.l_decl,
+            'pi-label-dims-w-decl': data.w_decl,
+            'pi-label-dims-h-decl': data.h_decl,
+        };
+        Object.keys(map).forEach(function(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const v = map[id];
+            if (v === null || v === undefined || v === '') {
+                el.textContent = '—';
+                return;
+            }
+            // Money-ish fields: show 2 decimals when numeric
+            if ((id === 'pi-label-dims-cp' || id === 'pi-label-dims-frg' || id === 'pi-label-dims-lp')
+                && isFinite(parseFloat(v))) {
+                el.textContent = parseFloat(v).toFixed(2);
+                return;
+            }
+            el.textContent = piLabelDimsDisplay(v);
+        });
+
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    document.getElementById('pi-label-dims-sku-copy')?.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        const skuEl = document.getElementById('pi-label-dims-sku');
+        const sku = (skuEl?.textContent || '').trim();
+        if (!sku || sku === '—') {
+            return;
+        }
+        piCopyTextToClipboard(sku, ev.currentTarget);
+    });
     
     // ==================== UTILITY FUNCTIONS ====================
     
@@ -1740,7 +2643,11 @@
         // OVL30 Details modal sort state (column header click)
         let ovl30ModalSortBy = 'l30_desc';
 
-        $(document).on('click', '#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable', function() {
+        let ovl30JustResizedCol = false;
+        $(document).on('click', '#ovl30DetailsModal .modal-vertical-header th.ovl30-sortable', function(e) {
+            // Ignore click after a column resize drag
+            if ($(e.target).closest('.ovl30-col-resizer').length) return;
+            if (ovl30JustResizedCol) return;
             const sortField = $(this).data('sort');
             const currentVal = (ovl30ModalSortBy || 'l30_desc').toString();
             const [currentField, currentDir] = currentVal.split('_');
@@ -1937,8 +2844,23 @@
             new bootstrap.Modal(missingLModalEl, { backdrop: false }).show();
         });
 
+        let ovl30BreakdownXhr = null;
+        let ovl30BreakdownReqId = 0;
+        let ovl30ModalClosedByUser = false;
+
         function loadMarketplaceBreakdown(sku, imagePath, inv, l30, dil) {
+            ovl30ModalClosedByUser = false;
+            const reqId = ++ovl30BreakdownReqId;
+
+            // Cancel any in-flight breakdown so closing/reopening doesn't stack "Loading..." loops
+            if (ovl30BreakdownXhr && typeof ovl30BreakdownXhr.abort === 'function') {
+                try { ovl30BreakdownXhr.abort(); } catch (e) { /* ignore */ }
+                ovl30BreakdownXhr = null;
+            }
+
             $('#modalSkuName').text(sku);
+            // Wire totals-row Price / CVR chart dots to this SKU
+            $('#modal-price-chart-dot, #modal-cvr-chart-dot').attr('data-sku', sku || '');
             syncModalGroupSelects('');
             // Fresh SKU → clear siblings checkbox so it isn't accidentally left on from prior SKU
             $('#modal-siblings-apply-cb').prop('checked', false);
@@ -1966,22 +2888,52 @@
             ovl30ModalDil = isFinite(dilValue) ? dilValue : 0;
             
             showModalLoading(sku);
-            
-            const modal = new bootstrap.Modal(document.getElementById('ovl30DetailsModal'));
-            modal.show();
+
+            // Reuse existing instance — `new Modal().show()` on an already-open modal
+            // stacks orphan .modal-backdrop layers and leaves a black screen after close/refresh.
+            // Never re-show while the user is closing / already dismissed this open.
+            const modalEl = document.getElementById('ovl30DetailsModal');
+            if (modalEl && !ovl30ModalClosedByUser) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                if (!modalEl.classList.contains('show')) {
+                    modal.show();
+                }
+            }
             
             // Fetch marketplace breakdown and FBA data
-            $.ajax({
+            ovl30BreakdownXhr = $.ajax({
                 url: '/cvr-master-breakdown?sku=' + encodeURIComponent(sku),
                 method: 'GET',
                 headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                success: function(data) { renderMarketplaceData(data); },
-                error: function(xhr) { showModalError('Failed to load data'); }
+                success: function(data) {
+                    if (reqId !== ovl30BreakdownReqId || ovl30ModalClosedByUser) return;
+                    if (!$('#ovl30DetailsModal').hasClass('show')) return;
+                    renderMarketplaceData(data);
+                },
+                error: function(xhr, status) {
+                    if (status === 'abort') return;
+                    if (reqId !== ovl30BreakdownReqId || ovl30ModalClosedByUser) return;
+                    if (!$('#ovl30DetailsModal').hasClass('show')) return;
+                    showModalError('Failed to load data');
+                },
+                complete: function() {
+                    if (reqId === ovl30BreakdownReqId) ovl30BreakdownXhr = null;
+                }
             });
         }
 
+        /** Remove leftover Bootstrap backdrops when no modal is open (fixes black screen). */
+        function cleanupOrphanModalBackdrops() {
+            if (document.querySelector('.modal.show')) return;
+            document.querySelectorAll('.modal-backdrop').forEach(function(el) { el.remove(); });
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('overflow');
+            document.body.style.removeProperty('padding-right');
+        }
+
         // Deep-link from /ebay-tabulator-view LMP magnifying glass (and others):
-        // /pricing-master-cvr?sku=XXX&inv=&l30=&dil= → open same analytics modal.
+        // /wmpnm-dil?sku=XXX&inv=&l30=&dil= → open same analytics modal once.
+        // Clear ?sku= from the URL immediately so close/refresh does not keep reopening.
         (function openSkuBreakdownFromQuery() {
             try {
                 const params = new URLSearchParams(window.location.search || '');
@@ -1991,16 +2943,28 @@
                 const l30 = parseInt(params.get('l30'), 10) || 0;
                 const dil = parseFloat(params.get('dil')) || 0;
                 const image = params.get('image') || '';
-                $(function() {
+
+                // Strip deep-link params BEFORE opening (prevents reopen loops on close/reload)
+                if (window.history && window.history.replaceState) {
+                    const url = new URL(window.location.href);
+                    ['sku', 'openSku', 'inv', 'l30', 'dil', 'image'].forEach(function(k) {
+                        url.searchParams.delete(k);
+                    });
+                    window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
+                }
+
+                let opened = false;
+                function openOnce() {
+                    if (opened) return;
+                    opened = true;
                     loadMarketplaceBreakdown(sku, image, inv, l30, dil);
-                    if (window.history && window.history.replaceState) {
-                        const url = new URL(window.location.href);
-                        ['sku', 'openSku', 'inv', 'l30', 'dil', 'image'].forEach(function(k) {
-                            url.searchParams.delete(k);
-                        });
-                        window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
-                    }
-                });
+                }
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', openOnce, { once: true });
+                } else {
+                    // Defer one tick so Bootstrap/modal DOM is ready; still only once
+                    setTimeout(openOnce, 0);
+                }
             } catch (err) {
                 console.warn('openSkuBreakdownFromQuery failed', err);
             }
@@ -2009,7 +2973,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="22" class="text-center text-muted py-4">
+                    <td colspan="24" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -2020,7 +2984,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="22" class="text-center text-muted py-4">
+                    <td colspan="24" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -2030,7 +2994,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="22" class="text-center text-danger py-4">
+                    <td colspan="24" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -2106,6 +3070,7 @@
                     const parent = row && row.parent ? String(row.parent).trim() : '';
                     if (parent) {
                         const parentNorm = parent.toUpperCase();
+                        // Include ALL siblings under parent — even INV 0
                         modalSiblingSkus = fullDataset
                             .filter(function(r) {
                                 return !r.is_parent_summary
@@ -2124,6 +3089,7 @@
                 data: { sku: sku },
                 success: function(res) {
                     if (res && res.success && Array.isArray(res.siblings)) {
+                        // API is source of truth (includes INV 0 SKUs not on the filtered table)
                         modalSiblingSkus = res.siblings;
                         updateModalSiblingsCountUi();
                     }
@@ -2133,6 +3099,51 @@
                     updateModalSiblingsCountUi();
                 }
             });
+        }
+
+        /** Save SPRICE for a specific SKU/marketplace (used for siblings, including INV 0). */
+        function saveSpriceForSkuMarketplace(sku, marketplace, sprice, metrics, done) {
+            metrics = metrics || {};
+            $.ajax({
+                url: '/cvr-master-save-suggested-data',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    marketplace: marketplace,
+                    sprice: sprice,
+                    sgpft: metrics.sgpft || 0,
+                    spft: metrics.spft || 0,
+                    sroi: metrics.sroi || 0,
+                    amazon_margin: metrics.margin || 0.80,
+                    apply_siblings: 0, // already iterating siblings ourselves
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(res) { if (done) done(!!(res && (res.success !== false)), res); },
+                error: function() { if (done) done(false); }
+            });
+        }
+
+        /** Apply same SPRICE to every sibling SKU (includes INV 0). */
+        function applySpriceToSiblingSkus(marketplace, sprice, metrics, done) {
+            const list = (modalSiblingSkus || []).map(String).map(function(s) { return s.trim(); }).filter(Boolean);
+            if (!list.length || !(sprice > 0) || !marketplace) {
+                if (done) done(0);
+                return;
+            }
+            let i = 0;
+            let ok = 0;
+            function next() {
+                if (i >= list.length) {
+                    if (done) done(ok);
+                    return;
+                }
+                const sibSku = list[i++];
+                saveSpriceForSkuMarketplace(sibSku, marketplace, sprice, metrics, function(success) {
+                    if (success) ok++;
+                    next();
+                });
+            }
+            next();
         }
 
         $(document).on('change', '#modal-siblings-apply-cb', function() {
@@ -2415,19 +3426,127 @@
             });
         }
 
-        /** Largest font size that fits all columns in the modal width, then stretch table to 100%. */
+        // v2: invalidate old vertical-header widths that break horizontal alignment
+        const OVL30_COL_WIDTHS_KEY = 'wmpnmDil_ovl30_col_widths_v1';
+        let ovl30ManualColWidths = false;
+        try {
+            localStorage.removeItem('wmpnmDil_ovl30_col_widths_legacy');
+            localStorage.removeItem('wmpnmDil_ovl30_col_widths_legacy_v2');
+        } catch (e) {}
+
+        function loadOvl30SavedColWidths() {
+            try {
+                const raw = localStorage.getItem(OVL30_COL_WIDTHS_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return (parsed && typeof parsed === 'object') ? parsed : null;
+            } catch (e) { return null; }
+        }
+        function saveOvl30ColWidths(map) {
+            try { localStorage.setItem(OVL30_COL_WIDTHS_KEY, JSON.stringify(map || {})); } catch (e) {}
+        }
+        function applyOvl30ColWidths(map) {
+            if (!map) return;
+            const $ths = $('#ovl30DetailsTable thead tr.modal-vertical-header th');
+            $ths.each(function(idx) {
+                const w = parseInt(map[idx], 10);
+                if (!w || w < 24) return;
+                $(this).css({ width: w + 'px', minWidth: w + 'px', maxWidth: w + 'px' });
+                $('#ovl30DetailsTable tbody td:nth-child(' + (idx + 1) + '), #ovl30DetailsTable thead tr.modal-totals-row th:nth-child(' + (idx + 1) + ')')
+                    .css({ width: w + 'px', minWidth: w + 'px', maxWidth: w + 'px' });
+            });
+        }
+        function collectOvl30ColWidths() {
+            const map = {};
+            $('#ovl30DetailsTable thead tr.modal-vertical-header th').each(function(idx) {
+                const w = Math.round($(this).outerWidth());
+                if (w > 0) map[idx] = w;
+            });
+            return map;
+        }
+        function setOvl30ManualWidthMode(on) {
+            ovl30ManualColWidths = !!on;
+            $('#ovl30DetailsModal').toggleClass('ovl30-cols-manual', ovl30ManualColWidths);
+            const tableEl = document.getElementById('ovl30DetailsTable');
+            if (!tableEl) return;
+            if (ovl30ManualColWidths) {
+                tableEl.style.width = 'max-content';
+                tableEl.style.minWidth = '100%';
+                tableEl.style.tableLayout = 'fixed';
+            }
+        }
+        function applyWidthToOvl30Col(colIdx, newW) {
+            const $th = $('#ovl30DetailsTable thead tr.modal-vertical-header th').eq(colIdx);
+            $th.css({ width: newW + 'px', minWidth: newW + 'px', maxWidth: newW + 'px' });
+            $('#ovl30DetailsTable tbody td:nth-child(' + (colIdx + 1) + '), #ovl30DetailsTable thead tr.modal-totals-row th:nth-child(' + (colIdx + 1) + ')')
+                .css({ width: newW + 'px', minWidth: newW + 'px', maxWidth: newW + 'px' });
+        }
+
+        function initOvl30ColResizers() {
+            $('#ovl30DetailsTable thead tr.modal-vertical-header th').each(function() {
+                const $th = $(this);
+                if ($th.find('.ovl30-col-resizer').length) return;
+                $th.append('<div class="ovl30-col-resizer" title="Drag to resize column"></div>');
+            });
+        }
+
+        // Drag ◂▸ grips on OV L30 headers (same look/feel as Tabulator)
+        (function bindOvl30ColResize() {
+            let resizing = false;
+            let startX = 0;
+            let startW = 0;
+            let colIdx = -1;
+
+            $(document).on('mousedown', '#ovl30DetailsModal .ovl30-col-resizer', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $th = $(this).closest('th');
+                resizing = true;
+                startX = e.pageX;
+                startW = $th.outerWidth();
+                colIdx = $th.index();
+                $(this).addClass('is-resizing');
+                $('body').addClass('ovl30-col-resizing');
+                setOvl30ManualWidthMode(true);
+            });
+            $(document).on('mousemove.ovl30Resize', function(e) {
+                if (!resizing || colIdx < 0) return;
+                applyWidthToOvl30Col(colIdx, Math.max(28, Math.round(startW + (e.pageX - startX))));
+            });
+            $(document).on('mouseup.ovl30Resize', function() {
+                if (!resizing) return;
+                resizing = false;
+                $('body').removeClass('ovl30-col-resizing');
+                $('#ovl30DetailsModal .ovl30-col-resizer').removeClass('is-resizing');
+                saveOvl30ColWidths(collectOvl30ColWidths());
+                ovl30JustResizedCol = true;
+                setTimeout(function() { ovl30JustResizedCol = false; }, 0);
+                colIdx = -1;
+            });
+        })();
+
+        /** Largest font size that fits all columns in the modal width, then stretch table to 100%.
+         *  Skipped when user has manually resized columns (Tabulator-like widths win). */
         function autoFitOvl30TableFont() {
             const wrap = document.querySelector('#ovl30DetailsModal .ovl30-table-wrap');
             const tableEl = document.getElementById('ovl30DetailsTable');
             if (!wrap || !tableEl || !$('#ovl30DetailsModal').hasClass('show')) return;
+
+            initOvl30ColResizers();
+
+            // Restore / keep manual widths — do not crush them with autofit
+            const saved = loadOvl30SavedColWidths();
+            if (ovl30ManualColWidths || (saved && Object.keys(saved).length)) {
+                setOvl30ManualWidthMode(true);
+                applyOvl30ColWidths(saved || collectOvl30ColWidths());
+                return;
+            }
 
             const avail = wrap.clientWidth;
             if (avail < 80) return;
 
             const applyFs = (fs) => {
                 wrap.style.setProperty('--ovl30-fs', fs + 'px');
-                const headerH = Math.max(48, Math.round(fs * 5.2));
-                wrap.style.setProperty('--ovl30-header-h', headerH + 'px');
             };
 
             // Measure natural width at each font size; pick largest that fits screen
@@ -2435,7 +3554,7 @@
             tableEl.style.tableLayout = 'auto';
 
             let best = 8;
-            for (let fs = 8; fs <= 16; fs += 0.5) {
+            for (let fs = 8; fs <= 14; fs += 0.5) {
                 applyFs(fs);
                 void tableEl.offsetWidth;
                 if (tableEl.scrollWidth <= avail + 1) {
@@ -2447,6 +3566,11 @@
             applyFs(best);
             tableEl.style.width = '100%';
             tableEl.style.tableLayout = 'fixed';
+            // Sticky totals offset = actual horizontal header height
+            const headerRow = tableEl.querySelector('thead tr.modal-vertical-header');
+            const headerH = headerRow ? Math.ceil(headerRow.getBoundingClientRect().height) : 34;
+            wrap.style.setProperty('--ovl30-header-h', Math.max(28, headerH) + 'px');
+            initOvl30ColResizers();
         }
 
         let ovl30AutoFitTimer = null;
@@ -2473,7 +3597,11 @@
                 showModalEmpty($('#modalSkuName').text());
                 return;
             }
-            const sorted = toRender.slice();
+            const sorted = toRender.slice().filter(function(item) {
+                const mp = String(item.marketplace || '').toLowerCase();
+                // Walmart / Tiendamia removed from /wmpnm-dil
+                return mp !== 'walmart' && mp !== 'tiendamia';
+            });
             sorted.sort(getOvl30SortCompare());
             data = sorted;
 
@@ -2502,9 +3630,13 @@
             let snroiCount = 0;
             
             data.forEach(item => {
-                const isListed = item.is_listed !== false;
-                const rowClass = !isListed ? 'table-secondary' : '';
-                const textClass = !isListed ? 'text-muted fst-italic' : '';
+                // Hide only when backend marks channel as not listed
+                const isListed = !(item.is_listed === false || item.is_listed === 0
+                    || item.is_listed === '0' || item.is_listed === 'false');
+                if (!isListed) return;
+
+                const rowClass = '';
+                const textClass = '';
                 
                 // Calculate CVR% (L30 / Views * 100). null/undefined views → N/A (channel has no view data)
                 const viewsMissing = item.views === null || item.views === undefined || item.views === '';
@@ -2538,11 +3670,17 @@
                 }
 
                 // SPRICE and calculated values
-                const sprice = parseFloat(item.sprice || 0);
                 const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
                 // PPower/TopDawg: ship excluded from all formulas
                 const ship = (isPpMp || isTdMp) ? 0 : parseFloat(item.ship || 0);
+                // SB2B: always SPRICE = (Price × 0.75) − Ship
+                const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
+                let sprice = parseFloat(item.sprice || 0);
+                if (isSb2bMp && price > 0) {
+                    sprice = Math.max(0.01, Math.round(((price * 0.75) - ship) * 100) / 100);
+                    item.sprice = sprice;
+                }
                 // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
                 const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
                 const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
@@ -2593,7 +3731,7 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -2719,35 +3857,60 @@
                 
                 // Push button when channel has API price push available and row is listed
                 const pushableChannels = [
-                    'amazon', 'doba', 'walmart',
+                    'amazon', 'doba',
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'fba', 'topdawg'
+                    'reverb', 'fba', 'topdawg', 'temu', 'temu2'
                 ];
-                const canPushPrice = pushableChannels.includes(
-                    String(item.marketplace || '').toLowerCase().replace(/\s+/g, '')
-                ) && isListed;
+                const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
                 const hasPushableSprice = parseFloat(item.sprice) > 0;
 
                 // Price in red when LMP is available and LMP < Price
                 const lmpForPrice = parseFloat(item.lmp_price);
+                // Temu / Temu2 Price column: display only × 1.1765 (~1/0.85). GPFT / GROI / NROI / NPFT stay on original price.
+                const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+                const displayPrice = ((isTemuMpRow || isTemu2MpRow) && price > 0)
+                    ? +(price * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
+                    : price;
                 // Price vs LMP: ≤90% LMP → purple; 90%–LMP → dark green; > LMP → red
                 let priceColorStyle = '';
-                if (isListed && price > 0 && lmpForPrice > 0) {
+                if (isListed && displayPrice > 0 && lmpForPrice > 0) {
                     const lmp90 = lmpForPrice * 0.90;
-                    if (price > lmpForPrice) {
+                    if (displayPrice > lmpForPrice) {
                         priceColorStyle = 'color:#a00211;font-weight:700;';
-                    } else if (price <= lmp90) {
+                    } else if (displayPrice <= lmp90) {
                         priceColorStyle = 'color:#4e0dab;font-weight:700;';
                     } else {
                         // Between LMP×0.90 and LMP (inclusive of LMP)
                         priceColorStyle = 'color:#006400;font-weight:700;';
                     }
                 }
+                // Rolling history dots — same chart modal as main-table Price / CVR columns
+                const chartSkuEsc = String(getModalPrimarySku() || item.sku || '')
+                    .replace(/"/g, '&quot;');
+                const priceChartMetric = mpLower === 'amazon' ? 'amz_price' : 'price';
+                const priceChartDot = (isListed && chartSkuEsc)
+                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="' + priceChartMetric
+                        + '" data-sku="' + chartSkuEsc
+                        + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"'
+                        + ' title="View ' + (priceChartMetric === 'amz_price' ? 'Amz Price' : 'Price')
+                        + ' history (Rolling L30)"></i>'
+                    : '';
+                const cvrChartDot = (isListed && chartSkuEsc && !viewsMissing)
+                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr"'
+                        + ' data-sku="' + chartSkuEsc
+                        + '" style="cursor:pointer;color:#ff9c00;font-size:8px;vertical-align:middle;"'
+                        + ' title="View CVR history (Rolling L30)"></i>'
+                    : '';
+
                 const priceCellHtml = !isListed
                     ? '-'
-                    : '<span style="' + priceColorStyle + '">$' + price.toFixed(2) + '</span>';
+                    : '<span style="' + priceColorStyle + '" title="' +
+                        ((isTemuMpRow || isTemu2MpRow) && price > 0
+                            ? ((isTemu2MpRow ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + price.toFixed(2))
+                            : '') +
+                      '">$' + displayPrice.toFixed(2) + '</span>' + priceChartDot;
 
                 const pushedByTip = item.pushed_by
                     ? String(item.pushed_by + (item.pushed_at ? ' ' + item.pushed_at : '')).replace(/"/g, '&quot;')
@@ -2755,6 +3918,19 @@
                 const pushedByCell = item.pushed_by
                     ? '<span class="pushed-by-dot" title="' + pushedByTip + '" aria-label="' + pushedByTip + '"></span>'
                     : '<span class="text-muted">-</span>';
+
+                const pushHistory = Array.isArray(item.push_history) ? item.push_history : [];
+                const histCount = pushHistory.length;
+                const histTitle = histCount
+                    ? (histCount + ' push record(s) — click to view')
+                    : 'No push history yet';
+                const historyCell = '<button type="button" class="ovl30-history-btn'
+                    + (histCount ? ' has-history' : '')
+                    + '" data-marketplace="' + String(item.marketplace || '').replace(/"/g, '&quot;') + '"'
+                    + ' title="' + histTitle.replace(/"/g, '&quot;') + '">'
+                    + '<i class="fas fa-history"></i>'
+                    + (histCount ? (' <span class="small">' + histCount + '</span>') : '')
+                    + '</button>';
                 
                 const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
                 html += `
@@ -2765,13 +3941,32 @@
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
-                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
-                        <td class="text-end ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' : '-'))}</td>
-                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
-                        <td class="text-end ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(adsDisplay) + '%</span>' : '-'}</td>
+                        <td class="text-center ovl30-std-prc-cell ${textClass}">
+                            ${(() => {
+                                // STD PRC = Amazon STANDARD_PRICE only (same as /amazon-tabulator-view SP)
+                                if (mpLower !== 'amazon' || !isListed) return '-';
+                                const std = parseFloat(item.standard_price) || 0;
+                                const skuEsc = String(getModalPrimarySku() || item.sku || '')
+                                    .replace(/"/g, '&quot;');
+                                const dot = std > 0
+                                    ? priceIncreaseSpChangeDotHtml(std, price, skuEsc)
+                                    : '';
+                                const valAttr = std > 0 ? std.toFixed(2) : '';
+                                return '<span class="ovl30-std-prc-wrap">'
+                                    + dot
+                                    + '<input type="number" class="form-control form-control-sm editable-std-prc" '
+                                    + 'value="' + valAttr + '" step="0.01" min="0" '
+                                    + 'placeholder="" title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' + cvrChartDot : '-'))}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed && gpft !== 0 ? '<span style="' + gpftStyle + '">' + Math.round(gpft) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(nroiColor) + '">' + Math.round(nroi) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed ? '<span style="' + npftStyle + '">' + Math.round(npft) + '%</span>' : '-'}</td>
+                        <td class="text-end ovl30-metric-col ${textClass}">${isListed ? '<span style="' + styleForCellColor(adColor) + ';font-weight:600;">' + Math.round(adsDisplay) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">
                             ${(() => {
                                 if (!isListed) return '-';
@@ -2801,7 +3996,7 @@
                                     + '</a>';
                             })()}
                         </td>
-                        <td class="text-center ${textClass}" style="white-space: nowrap;">
+                        <td class="text-center ovl30-link-cell ${textClass}" style="white-space: nowrap;">
                             ${(item.buyer_link || item.seller_link) ? 
                                 (item.buyer_link ? '<a href="' + item.buyer_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Buyer link" style="color:#0d6efd;font-weight:700;text-decoration:none;padding:0 2px;">B</a>' : '') +
                                 (item.seller_link ? '<a href="' + item.seller_link + '" target="_blank" rel="noopener" class="ovl30-link-bs" title="Seller link" style="color:#495057;font-weight:700;text-decoration:none;padding:0 2px;">S</a>' : '')
@@ -2815,11 +4010,27 @@
                                     + ' title="Select channel">'
                                 : ''}
                         </td>
-                        <td class="text-center ${textClass}">-</td>
-                        <td class="text-end ${textClass}">
-                            ${isEditable && isListed ? 
-                                '<input type="number" class="form-control form-control-sm editable-sprice" value="' + sprice.toFixed(2) + '" step="0.01">' 
-                                : (sprice > 0 ? '$' + sprice.toFixed(2) : '-')}
+                        <td class="text-center ovl30-suggest-cell ${textClass}">-</td>
+                        <td class="text-end ovl30-sprice-cell ${textClass}">
+                            ${(() => {
+                                const lmpVal = parseFloat(item.lmp_price) || 0;
+                                const showAlert = sprice > 0 && lmpVal > 0 && sprice > lmpVal;
+                                const alertHtml = showAlert
+                                    ? '<i class="fas fa-exclamation-triangle ovl30-sprice-lmp-alert" title="SPRICE $'
+                                        + sprice.toFixed(2) + ' &gt; LMP $' + lmpVal.toFixed(2) + '"></i>'
+                                    : '';
+                                if (isEditable && isListed) {
+                                    return '<span class="ovl30-sprice-wrap">'
+                                        + '<input type="number" class="form-control form-control-sm editable-sprice" value="'
+                                        + sprice.toFixed(2) + '" step="0.01">'
+                                        + alertHtml
+                                        + '</span>';
+                                }
+                                if (sprice > 0) {
+                                    return '<span class="ovl30-sprice-wrap">$' + sprice.toFixed(2) + alertHtml + '</span>';
+                                }
+                                return '-';
+                            })()}
                         </td>
                         <td class="text-end ${textClass}">
                             <span class="calculated-sroi" style="${styleForCellColor(sroiColor)}">${Math.round(sroi)}%</span>
@@ -2835,7 +4046,7 @@
                         <td class="text-end ${textClass}">
                             <span class="calculated-spft" style="${styleForCellColor(spftColor)}">${Math.round(spft)}%</span>
                         </td>
-                        <td class="text-center ${textClass}">
+                        <td class="text-center ovl30-push-cell ${textClass}">
                             ${canPushPrice ? 
                                 '<button class="btn btn-sm btn-primary push-price-btn" ' +
                                 'data-sku="' + item.sku + '" ' +
@@ -2847,7 +4058,8 @@
                                 '<i class="fas fa-upload"></i></button>' 
                                 : '-'}
                         </td>
-                        <td class="text-center ${textClass}">${pushedByCell}</td>
+                        <td class="text-center ovl30-by-cell ${textClass}">${pushedByCell}</td>
+                        <td class="text-center ovl30-history-cell ${textClass}">${historyCell}</td>
                     </tr>
                 `;
             });
@@ -2960,6 +4172,10 @@
             ajaxURL: "/cvr-master-data-json",
             ajaxSorting: false,
             layout: "fitDataFill",
+            columnDefaults: {
+                resizable: false,
+                minWidth: 40
+            },
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
@@ -2972,7 +4188,7 @@
                     }
                 }
             },
-            initialSort: [{ column: "parent", dir: "asc" }],
+            initialSort: [{ column: "dil_percent", dir: "asc" }],
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
@@ -3003,6 +4219,7 @@
                     title: "Image",
                     field: "image_path",
                     sorter: "string",
+                    visible: false,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
@@ -3020,18 +4237,42 @@
                     hozAlign: "center",
                     formatter: function(cell) {
                         const parent = cell.getValue();
+                        const uid = 'pi' + Math.random().toString(36).slice(2, 9);
+                        const playIcon =
+                            '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+                            '<defs>' +
+                            `<linearGradient id="${uid}g" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">` +
+                            '<stop offset="0%" stop-color="#FFE566"/>' +
+                            '<stop offset="45%" stop-color="#FFC107"/>' +
+                            '<stop offset="100%" stop-color="#F59E0B"/>' +
+                            '</linearGradient>' +
+                            `<linearGradient id="${uid}s" x1="6" y1="3" x2="14" y2="14" gradientUnits="userSpaceOnUse">` +
+                            '<stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75"/>' +
+                            '<stop offset="55%" stop-color="#FFFFFF" stop-opacity="0.12"/>' +
+                            '<stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>' +
+                            '</linearGradient>' +
+                            '</defs>' +
+                            `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}g)"/>` +
+                            `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}s)"/>` +
+                            '<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="none" stroke="#D97706" stroke-opacity="0.35" stroke-width="0.8"/>' +
+                            '</svg>';
                         if (!parent) {
-                            return '<span class="parent-sku-dot no-parent" title="No parent"></span>';
+                            return '<span class="parent-sku-dot no-parent" title="No parent">' + playIcon + '</span>';
                         }
-                        return `<span class="parent-sku-dot parent-sku-dot-btn" 
-                                    data-parent="${parent.replace(/"/g, '&quot;')}" 
-                                    title="Click to view SKUs for parent: ${parent.replace(/"/g, '&quot;')}"></span>`;
+                        const parentEsc = parent.replace(/"/g, '&quot;');
+                        const isExpanded = (typeof dotExpandedParent !== 'undefined' && dotExpandedParent === parent)
+                            || (cell.getRow().getData()._expanded === true);
+                        const expandedCls = isExpanded ? ' is-expanded' : '';
+                        return `<span class="parent-sku-dot parent-sku-dot-btn${expandedCls}"
+                                    data-parent="${parentEsc}"
+                                    title="Click to view SKUs for parent: ${parentEsc}">${playIcon}</span>`;
                     }
                 },
                 {
                     title: "Parent",
-                    field: "parent",
+                    field: "parent_display",
                     sorter: "string",
+                    visible: false,
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent",
                     minWidth: 80,
@@ -3040,6 +4281,11 @@
                         const parent = rowData.parent;
                         if (parent === undefined || parent === null || (typeof parent === 'string' && !parent.trim())) return '-';
                         return (typeof parent === 'string' ? parent : String(parent)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                    },
+                    headerFilterFunc: function(headerValue, rowValue, rowData) {
+                        if (!headerValue) return true;
+                        const parent = String(rowData.parent || '');
+                        return parent.toLowerCase().includes(String(headerValue).toLowerCase());
                     }
                 },
                 {
@@ -3089,6 +4335,31 @@
                                data-l30="${value}"
                                data-dil="${dilPercent}"
                                title="View breakdown for ${sku}"></i>`;
+                    }
+                },
+                {
+                    title: "Hist",
+                    field: "push_history_count",
+                    headerSort: false,
+                    hozAlign: "center",
+                    minWidth: 52,
+                    headerTooltip: "Push history — date, marketplace, price, user",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary === true) return '';
+                        const sku = rowData.sku || '';
+                        const histCount = parseInt(cell.getValue() || rowData.push_history_count || 0, 10) || 0;
+                        const histTitle = histCount
+                            ? (histCount + ' push record(s) — click to view')
+                            : 'Push history — click to view';
+                        const skuEsc = String(sku).replace(/"/g, '&quot;');
+                        return '<button type="button" class="ovl30-history-btn outer-push-history-btn'
+                            + (histCount ? ' has-history' : '')
+                            + '" data-sku="' + skuEsc + '"'
+                            + ' title="' + histTitle.replace(/"/g, '&quot;') + '">'
+                            + '<i class="fas fa-history"></i>'
+                            + (histCount ? (' <span class="small">' + histCount + '</span>') : '')
+                            + '</button>';
                     }
                 },
                 {
@@ -3149,7 +4420,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: "number",
-                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Temu 2, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Temu, Temu 2, Macy's, Reverb, etc. — Walmart & Tiendamia excluded). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sw = parseFloat(cell.getValue() || 0);
@@ -3183,6 +4454,34 @@
                     minWidth: 60
                 },
                 {
+                    title: "Label",
+                    field: "label",
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    headerSort: false,
+                    cssClass: "pi-label-col",
+                    headerTooltip: "Shipping Master Label. Click the blue dot for Label Qty & dimensions.",
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData() || {};
+                        const wrap = document.createElement('span');
+                        wrap.className = 'pi-label-cell';
+                        const dot = document.createElement('button');
+                        dot.type = 'button';
+                        dot.className = 'pi-label-dims-dot';
+                        dot.title = 'View Label Qty & dimensions';
+                        dot.setAttribute('aria-label', 'View Label Qty and dimensions');
+                        dot.addEventListener('click', function(ev) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            openPiLabelDimsModal(data);
+                        });
+                        wrap.appendChild(dot);
+                        return wrap;
+                    },
+                    minWidth: 50,
+                    width: 55
+                },
+                {
                     title: "Avg Price",
                     field: "avg_price",
                     hozAlign: "center",
@@ -3199,18 +4498,6 @@
                             html += ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="price" data-sku="' + skuEscPrice + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;" title="View Price graph (Rolling L30)"></i>';
                         }
                         return html;
-                    },
-                    minWidth: 70
-                },
-                {
-                    title: "Avg GPFT%",
-                    field: "avg_gpft",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
-                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
                 },
@@ -3235,14 +4522,14 @@
                     }
                 },
                 {
-                    title: "Avg NPFT%",
-                    field: "avg_pft",
+                    title: "Avg GPFT%",
+                    field: "avg_gpft",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
-                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
-                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
+                        // <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
+                        return `<span style="${styleForGpftValue(value)}">${Math.round(value)}%</span>`;
                     },
                     minWidth: 70
                 },
@@ -3265,6 +4552,18 @@
                         else color = '#e83e8c';
                         return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
                     }
+                },
+                {
+                    title: "Avg NPFT%",
+                    field: "avg_pft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
+                        return `<span style="${styleForNpftValue(value)}">${Math.round(value)}%</span>`;
+                    },
+                    minWidth: 70
                 },
                 {
                     title: "Missing L",
@@ -3377,6 +4676,61 @@
                         else if (pct >= 100 && pct <= 150) color = '#28a745';
                         else color = '#e83e8c';
                         return `<span style="${styleForCellColor(color)}">${pct.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: "SP",
+                    field: "amazon_standard_price",
+                    hozAlign: "center",
+                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Manual only; blank unless filled. Dot vs Amazon price.",
+                    editor: "input",
+                    minWidth: 70,
+                    sorter: "number",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary) return '';
+                        const value = cell.getValue();
+                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
+                        const std = parseFloat(value) || 0;
+                        if (!value || std <= 0) return '';
+                        const sku = rowData.sku || '';
+                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
+                        if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                                dot + '</span>';
+                        }
+                        return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
+                            dot + ('$' + std.toFixed(2)) + '</span>';
+                    }
+                },
+                {
+                    title: "Audit",
+                    field: "audit",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 70,
+                    minWidth: 60,
+                    headerTooltip: "Open audit modal — same as /amz-cvr-issues (amz_cvr_audit_histories)",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary) return '';
+                        const sku = String(d.sku || '').replace(/"/g, '&quot;');
+                        if (!sku || sku.indexOf('PARENT') !== -1) return '';
+                        return '<button type="button" class="amz-cvr-audit-btn" data-sku="'
+                            + sku + '" title="Open audit"><i class="fa fa-search"></i></button>';
+                    },
+                    cellClick: function(e, cell) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || !d.sku || String(d.sku).indexOf('PARENT') !== -1) return;
+                        if (window.AmzCvrAudit && typeof window.AmzCvrAudit.open === 'function') {
+                            window.AmzCvrAudit.open(d);
+                        }
                     }
                 },
                 {
@@ -3549,6 +4903,100 @@
                     minWidth: 80
                 },
                 {
+                    title: "Temu Views",
+                    field: "temu_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "L30 Temu ad clicks — same as /temu-decrease Views (temu_metrics.product_clicks_l30).",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = parseInt(cell.getValue() || 0);
+                        const skuEsc = (rowData.sku || '').replace(/"/g, '&quot;');
+                        let html = value === 0
+                            ? '<span style="color: #6c757d;">0</span>'
+                            : `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
+                        if (rowData.is_parent_summary !== true && skuEsc) {
+                            html += ' <button type="button" class="btn btn-sm p-0 temu-views-chart-link align-middle" data-sku="' + skuEsc + '" title="View Temu Views chart (same as /temu-decrease)" style="border:none;background:none;cursor:pointer;padding:0 2px;line-height:1;vertical-align:middle;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#0000FF;"></span></button>';
+                        }
+                        return html;
+                    },
+                    minWidth: 70
+                },
+                {
+                    title: "Temu S PRC",
+                    field: "temu_sprice",
+                    hozAlign: "center",
+                    sorter: "number",
+                    editor: "input",
+                    headerTooltip: "Temu Suggested Price (base/supplier) — same as /temu-decrease S PRC. Saved to temu_data_view.",
+                    editable: function(cell) {
+                        const d = cell.getRow().getData();
+                        return d.is_parent_summary !== true && d.sku && String(d.sku).indexOf('PARENT') === -1;
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary) {
+                            const v = cell.getValue();
+                            if (v == null || v === '' || parseFloat(v) <= 0) return '';
+                            return '<span style="font-weight:600;">$' + parseFloat(v).toFixed(2) + '</span>';
+                        }
+                        const value = cell.getValue();
+                        const currentPrice = parseFloat(rowData.temu_base_price) || 0;
+                        const spriceNum = (value != null && value !== '') ? parseFloat(value) : NaN;
+                        const sprice = isNaN(spriceNum) ? 0 : spriceNum;
+                        if (value == null || value === '' || isNaN(spriceNum) || sprice <= 0) return '';
+                        if (currentPrice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) return '';
+                        return '$' + sprice.toFixed(2);
+                    },
+                    minWidth: 80
+                },
+                {
+                    title: "S Temu Prc",
+                    field: "stemu_price_display",
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Temu push base from SPRICE: (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary) return '';
+                        const pushBase = temuPushBaseFromSprice(rowData.temu_sprice);
+                        if (pushBase == null) return '';
+                        return '<span style="font-weight:600;">$' + pushBase.toFixed(2) + '</span>';
+                    },
+                    minWidth: 80
+                },
+                {
+                    title: "Temu Push",
+                    field: "_temu_push",
+                    width: 60,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Push Temu base = (Sprice×0.85)−2.99 if SPRICE&lt;$35; else Sprice×0.85",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.is_parent_summary) return '';
+                        const sprice = parseFloat(rowData.temu_sprice) || 0;
+                        const pushBase = temuPushBaseFromSprice(sprice);
+                        const pushStatus = rowData.temu_push_status || null;
+                        if (sprice <= 0 || pushBase == null) return '';
+
+                        const sku = String(rowData.sku || '').replace(/"/g, '&quot;');
+                        const goodsId = String(rowData.temu_goods_id || '').replace(/"/g, '&quot;');
+                        const skuId = String(rowData.temu_sku_id || '').replace(/"/g, '&quot;');
+
+                        if (pushStatus === 'pushing') {
+                            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing to Temu..."></i>';
+                        }
+                        if (pushStatus === 'pushed') {
+                            return '<i class="fa-solid fa-check-double" style="color:#28a745;" title="Pushed to Temu"></i>';
+                        }
+                        if (pushStatus === 'error') {
+                            return '<button type="button" class="pi-temu-push-single-btn" data-sku="' + sku + '" data-price="' + pushBase + '" data-goods-id="' + goodsId + '" data-sku-id="' + skuId + '" style="border:none;background:none;color:#dc3545;cursor:pointer;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
+                        }
+                        return '<button type="button" class="pi-temu-push-single-btn" data-sku="' + sku + '" data-price="' + pushBase + '" data-goods-id="' + goodsId + '" data-sku-id="' + skuId + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;" title="Push base $' + pushBase.toFixed(2) + ' to Temu"><i class="fas fa-upload"></i></button>';
+                    }
+                },
+                {
                     title: "Amz LMP",
                     field: "amazon_lmp_price",
                     visible: false,
@@ -3632,7 +5080,7 @@
                     visible: false,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — shown instead of raw Temu LMP",
+                    headerTooltip: "Direct Temu LMP (raw competitor price — no Recovery calculation)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
@@ -3647,7 +5095,7 @@
                         }
                         const avgPrice = parseFloat(rowData.avg_price || 0);
                         const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;" title="Temu Recovery">$${price.toFixed(2)}</a>`;
+                        return `<a href="#" class="lmp-price-link" data-sku="${sku}" data-marketplace="temu" style="${styleForCellColor(color)} text-decoration: none; cursor: pointer;" title="Temu LMP (direct)">$${price.toFixed(2)}</a>`;
                     },
                     minWidth: 70
                 },
@@ -3818,13 +5266,607 @@
             });
         })();
 
-        // Amz SPRICE edited in table: save and recalculate SGPFT, SPFT, SROI
+        /** SP vs Amazon price: reduce / hold / increase → red / yellow / green (same as amazon-tabulator-view). */
+        function priceIncreaseSpChangeDotMeta(sprice, amazonPrice) {
+            const sp = parseFloat(sprice) || 0;
+            const ap = parseFloat(amazonPrice) || 0;
+            if (sp <= 0) return null;
+            if (ap <= 0) {
+                return { kind: 'hold', color: '#ffc107', title: 'Hold' };
+            }
+            const sp2 = sp.toFixed(2);
+            const ap2 = ap.toFixed(2);
+            if (parseFloat(sp2) < parseFloat(ap2)) {
+                return { kind: 'reduce', color: '#dc3545', title: 'Reduced vs Amazon price' };
+            }
+            if (parseFloat(sp2) > parseFloat(ap2)) {
+                return { kind: 'increase', color: '#28a745', title: 'Increase vs Amazon price' };
+            }
+            return { kind: 'hold', color: '#ffc107', title: 'Hold (matches Amazon price)' };
+        }
+
+        function priceIncreaseSpChangeDotHtml(sprice, amazonPrice, sku) {
+            const meta = priceIncreaseSpChangeDotMeta(sprice, amazonPrice);
+            if (!meta) return '';
+            const tip = meta.title + ' — SP (Standard Price)';
+            return '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+                'background:' + meta.color + ';flex-shrink:0;" title="' + String(tip).replace(/"/g, '&quot;') + '"></span>';
+        }
+
+        // ==================== Sprice Rule (SP = Amazon LMP × factor) ====================
+        const PI_SPRICE_LMP_MULT_KEY = 'wmpnm_dil_sprice_lmp_mult';
+        let piSpriceLmpMult = 0.98;
+
+        function getPiSpriceLmpMult() {
+            const n = parseFloat(piSpriceLmpMult);
+            if (isFinite(n) && n > 0 && n <= 2) return n;
+            return 0.98;
+        }
+
+        function formatPiSpriceLmpMult(v) {
+            const n = Number(v);
+            if (!isFinite(n)) return '0.98';
+            return String(+n.toFixed(4));
+        }
+
+        function loadPiSpriceLmpMult() {
+            try {
+                const stored = parseFloat(localStorage.getItem(PI_SPRICE_LMP_MULT_KEY));
+                if (isFinite(stored) && stored > 0 && stored <= 2) {
+                    piSpriceLmpMult = stored;
+                }
+            } catch (e) { /* ignore */ }
+            $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(getPiSpriceLmpMult()));
+        }
+
+        function savePiSpriceLmpMultFromInput() {
+            const raw = parseFloat(String($('#pi-sprice-lmp-mult-input').val() || '').replace(',', '.'));
+            if (!isFinite(raw) || raw <= 0 || raw > 2) {
+                showToast('Enter a multiplier between 0.01 and 2.00', 'error');
+                $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(getPiSpriceLmpMult()));
+                return false;
+            }
+            piSpriceLmpMult = raw;
+            try { localStorage.setItem(PI_SPRICE_LMP_MULT_KEY, String(raw)); } catch (e) { /* ignore */ }
+            $('#pi-sprice-lmp-mult-input').val(formatPiSpriceLmpMult(raw));
+            return true;
+        }
+
+        function collectSkusForPiSpriceLmpRule() {
+            const out = [];
+            const seen = new Set();
+            const useSelection = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
+
+            function pushSku(sku, lmp) {
+                const key = String(sku || '').trim().toUpperCase();
+                if (!key || key.indexOf('PARENT') === 0 || seen.has(key)) return;
+                const lmpN = parseFloat(lmp) || 0;
+                if (lmpN <= 0) return;
+                seen.add(key);
+                out.push({ sku: String(sku).trim(), lmp: lmpN });
+            }
+
+            function addFromDatasetRow(d) {
+                if (!d || d.is_parent_summary) return;
+                pushSku(d.sku, d.amazon_lmp_price);
+            }
+
+            if (useSelection) {
+                selectedSkus.forEach(function(selSku) {
+                    const key = String(selSku || '').trim().toUpperCase();
+                    if (!key) return;
+                    // Selected parent → all children under that parent
+                    if (key.indexOf('PARENT ') === 0 || (fullDataset || []).some(r =>
+                        r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                    )) {
+                        const parentRow = (fullDataset || []).find(r =>
+                            r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                        );
+                        const parentName = parentRow
+                            ? String(parentRow.parent || '').trim()
+                            : String(selSku || '').replace(/^PARENT\s+/i, '').trim();
+                        (fullDataset || []).forEach(function(r) {
+                            if (r.is_parent_summary) return;
+                            if (String(r.parent || '').trim() === parentName) addFromDatasetRow(r);
+                        });
+                        return;
+                    }
+                    const child = (fullDataset || []).find(r =>
+                        !r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                    );
+                    if (child) addFromDatasetRow(child);
+                });
+            } else if (table) {
+                // No selection: visible rows — parents expand to children; child rows used directly
+                table.getRows('active').forEach(function(r) {
+                    const d = r.getData();
+                    if (!d) return;
+                    if (d.is_parent_summary) {
+                        const parentName = String(d.parent || '').trim();
+                        (fullDataset || []).forEach(function(row) {
+                            if (row.is_parent_summary) return;
+                            if (String(row.parent || '').trim() === parentName) addFromDatasetRow(row);
+                        });
+                    } else {
+                        addFromDatasetRow(d);
+                    }
+                });
+            }
+            return out;
+        }
+
+        loadPiSpriceLmpMult();
+
+        $('#pi-sprice-lmp-mult-input').on('change blur', function() {
+            savePiSpriceLmpMultFromInput();
+        });
+
+        $('#pi-apply-sprice-lmp-rule-btn').on('click', function() {
+            if (!savePiSpriceLmpMultFromInput()) return;
+            const mult = getPiSpriceLmpMult();
+            const multLabel = formatPiSpriceLmpMult(mult);
+            const $btn = $(this);
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+
+            const targets = collectSkusForPiSpriceLmpRule();
+            if (targets.length === 0) {
+                showToast(selectedSkus.size > 0
+                    ? 'No selected SKUs with Amazon LMP > 0'
+                    : 'No visible SKUs with Amazon LMP > 0', 'error');
+                return;
+            }
+
+            const scope = selectedSkus.size > 0 ? 'selected' : 'visible';
+            if (!confirm('Set SP = Amazon LMP × ' + multLabel + ' for ' + targets.length + ' ' + scope + ' SKU(s)?\n\nSaves to the same SP field as /amazon-tabulator-view.')) {
+                return;
+            }
+
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let successCount = 0;
+            let errorCount = 0;
+            let done = 0;
+            const total = targets.length;
+
+            targets.forEach(function(item) {
+                const sp = +Number(item.lmp * mult).toFixed(2);
+                if (!isFinite(sp) || sp <= 0) {
+                    errorCount++;
+                    done++;
+                    if (done >= total) {
+                        $btn.prop('disabled', false).html(btnHtml);
+                        showToast('Sprice Rule done: ' + successCount + ' saved, ' + errorCount + ' failed', errorCount ? 'error' : 'success');
+                    }
+                    return;
+                }
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: {
+                        sku: item.sku,
+                        sprice: sp,
+                        is_standard_price: 1,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        const saved = response.data || sp;
+                        applyStandardPriceToPriceIncreaseRows(item.sku, saved, response.applied_skus);
+                        successCount++;
+                    },
+                    error: function() {
+                        errorCount++;
+                    },
+                    complete: function() {
+                        done++;
+                        if (done >= total) {
+                            $btn.prop('disabled', false).html(btnHtml);
+                            showToast(
+                                'Sprice Rule: SP = LMP × ' + multLabel + ' — ' + successCount + ' saved' +
+                                (errorCount ? (', ' + errorCount + ' failed') : ''),
+                                errorCount ? 'error' : 'success'
+                            );
+                        }
+                    }
+                });
+            });
+        });
+
+        // ==================== Temu SPRICE / Push (same as /temu-decrease) ====================
+        function collectPiTemuSpriceRows() {
+            const out = [];
+            const seen = new Set();
+            const useSelection = typeof selectedSkus !== 'undefined' && selectedSkus.size > 0;
+
+            function addChild(d) {
+                if (!d || d.is_parent_summary) return;
+                const key = String(d.sku || '').trim().toUpperCase();
+                if (!key || key.indexOf('PARENT') === 0 || seen.has(key)) return;
+                seen.add(key);
+                out.push(d);
+            }
+
+            if (useSelection) {
+                selectedSkus.forEach(function(selSku) {
+                    const key = String(selSku || '').trim().toUpperCase();
+                    if (!key) return;
+                    if (key.indexOf('PARENT ') === 0 || (fullDataset || []).some(r =>
+                        r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                    )) {
+                        const parentRow = (fullDataset || []).find(r =>
+                            r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                        );
+                        const parentName = parentRow
+                            ? String(parentRow.parent || '').trim()
+                            : String(selSku || '').replace(/^PARENT\s+/i, '').trim();
+                        (fullDataset || []).forEach(function(r) {
+                            if (r.is_parent_summary) return;
+                            if (String(r.parent || '').trim() === parentName) addChild(r);
+                        });
+                        return;
+                    }
+                    const child = (fullDataset || []).find(r =>
+                        !r.is_parent_summary && String(r.sku || '').trim().toUpperCase() === key
+                    );
+                    if (child) addChild(child);
+                });
+            } else if (table) {
+                table.getRows('active').forEach(function(r) {
+                    const d = r.getData();
+                    if (!d) return;
+                    if (d.is_parent_summary) {
+                        const parentName = String(d.parent || '').trim();
+                        (fullDataset || []).forEach(function(row) {
+                            if (row.is_parent_summary) return;
+                            if (String(row.parent || '').trim() === parentName) addChild(row);
+                        });
+                    } else {
+                        addChild(d);
+                    }
+                });
+            }
+            return out;
+        }
+
+        function findPiTableRowBySku(sku) {
+            if (!table || !sku) return null;
+            const key = String(sku).trim().toUpperCase();
+            return (table.getRows() || []).find(function(r) {
+                return String(r.getData().sku || '').trim().toUpperCase() === key;
+            }) || null;
+        }
+
+        function pushPiTemuPriceForRow(row, price) {
+            const data = row.getData();
+            const sku = data.sku;
+            const goodsId = data.temu_goods_id || '';
+            const skuId = data.temu_sku_id || '';
+            // Accept either raw SPRICE or already-converted base; always normalize via formula
+            const raw = parseFloat(price);
+            const fromSprice = temuPushBaseFromSprice(data.temu_sprice);
+            // Prefer convert-from-SPRICE; fall back to provided price if already a push base
+            let pushPrice = fromSprice;
+            if (pushPrice == null && isFinite(raw) && raw > 0) pushPrice = +raw.toFixed(2);
+            if (!sku || !(pushPrice > 0)) {
+                return Promise.reject({ message: 'SKU and price required' });
+            }
+
+            row.update({ temu_push_status: 'pushing' });
+            row.reformat();
+
+            return new Promise(function(resolve, reject) {
+                $.ajax({
+                    url: '/temu/push-price',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: sku,
+                        price: pushPrice,
+                        goods_id: goodsId,
+                        sku_id: skuId
+                    },
+                    success: function(response) {
+                        if (response && response.success) {
+                            row.update({ temu_push_status: 'pushed' });
+                            row.reformat();
+                            if (Array.isArray(fullDataset)) {
+                                const key = String(sku).trim().toUpperCase();
+                                fullDataset.forEach(function(r) {
+                                    if (!r || r.is_parent_summary) return;
+                                    if (String(r.sku || '').trim().toUpperCase() === key) {
+                                        r.temu_push_status = 'pushed';
+                                    }
+                                });
+                            }
+                            resolve(response);
+                        } else {
+                            row.update({ temu_push_status: 'error' });
+                            row.reformat();
+                            reject({ message: (response && response.message) || 'Push failed' });
+                        }
+                    },
+                    error: function(xhr) {
+                        row.update({ temu_push_status: 'error' });
+                        row.reformat();
+                        const msg = (xhr.responseJSON && (xhr.responseJSON.message
+                            || (xhr.responseJSON.errors && xhr.responseJSON.errors[0] && xhr.responseJSON.errors[0].message)))
+                            || 'Push failed';
+                        reject({ message: msg });
+                    }
+                });
+            });
+        }
+
+        $(document).on('click', '.pi-temu-push-single-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(this);
+            const sku = $btn.data('sku');
+            const row = findPiTableRowBySku(sku);
+            if (!row) return;
+            const sprice = parseFloat(row.getData().temu_sprice) || 0;
+            const pushBase = temuPushBaseFromSprice(sprice);
+            if (pushBase == null) {
+                showToast('Cannot push — invalid Temu SPRICE', 'error');
+                return;
+            }
+            if (!confirm(
+                'Push Temu base $' + pushBase.toFixed(2)
+                + ' (from SPRICE $' + sprice.toFixed(2) + ' × 0.85'
+                + (sprice < 35 ? ' − 2.99' : '')
+                + ') for SKU: ' + sku + '?'
+            )) return;
+
+            pushPiTemuPriceForRow(row, sprice).then(function() {
+                showToast('Price pushed to Temu', 'success');
+            }).catch(function(err) {
+                showToast((err && err.message) || 'Failed to push price', 'error');
+            });
+        });
+
+        $('#pi-push-temu-price-btn').on('click', function() {
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+            const items = [];
+            const rows = collectPiTemuSpriceRows();
+            rows.forEach(function(d) {
+                const sprice = parseFloat(d.temu_sprice) || 0;
+                const pushBase = temuPushBaseFromSprice(sprice);
+                if (sprice <= 0 || pushBase == null || d.temu_push_status === 'pushed') return;
+                const row = findPiTableRowBySku(d.sku);
+                if (row) items.push({ row: row, price: sprice, sku: d.sku, pushBase: pushBase });
+            });
+
+            if (items.length === 0) {
+                showToast('No rows with Temu SPRICE to push (or all already pushed)', 'warning');
+                return;
+            }
+            if (!confirm(
+                'Push Temu base for ' + items.length + ' SKU(s)?\n'
+                + '(Sprice × 0.85) − 2.99 if SPRICE < $35; else Sprice × 0.85'
+            )) return;
+
+            const $btn = $('#pi-push-temu-price-btn');
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let ok = 0, fail = 0, i = 0;
+
+            function next() {
+                if (i >= items.length) {
+                    $btn.prop('disabled', false).html(btnHtml);
+                    showToast('Temu push done: ' + ok + ' ok, ' + fail + ' failed', fail ? 'warning' : 'success');
+                    return;
+                }
+                const item = items[i++];
+                pushPiTemuPriceForRow(item.row, item.price).then(function() {
+                    ok++;
+                    setTimeout(next, 250);
+                }).catch(function() {
+                    fail++;
+                    setTimeout(next, 250);
+                });
+            }
+            next();
+        });
+
+        $('#pi-clear-temu-sprice-btn').on('click', function() {
+            if (!table) {
+                showToast('Table not ready', 'error');
+                return;
+            }
+            const rows = collectPiTemuSpriceRows().filter(function(d) {
+                return (parseFloat(d.temu_sprice) || 0) > 0;
+            });
+            if (rows.length === 0) {
+                showToast('No Temu SPRICE to clear', 'warning');
+                return;
+            }
+            if (!confirm('Clear Temu SPRICE for ' + rows.length + ' SKU(s)?')) return;
+
+            const $btn = $('#pi-clear-temu-sprice-btn');
+            const btnHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            let ok = 0, fail = 0, done = 0;
+
+            rows.forEach(function(d) {
+                $.ajax({
+                    url: '/cvr-master-save-suggested-data',
+                    method: 'POST',
+                    data: {
+                        sku: d.sku,
+                        marketplace: 'temu',
+                        sprice: 0,
+                        sgpft: 0,
+                        spft: 0,
+                        sroi: 0,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function() {
+                        ok++;
+                        const row = findPiTableRowBySku(d.sku);
+                        if (row) {
+                            row.update({ temu_sprice: null, temu_push_status: null });
+                            row.reformat();
+                        }
+                        if (Array.isArray(fullDataset)) {
+                            const key = String(d.sku || '').trim().toUpperCase();
+                            fullDataset.forEach(function(r) {
+                                if (!r || r.is_parent_summary) return;
+                                if (String(r.sku || '').trim().toUpperCase() === key) {
+                                    r.temu_sprice = null;
+                                    r.temu_push_status = null;
+                                }
+                            });
+                        }
+                    },
+                    error: function() { fail++; },
+                    complete: function() {
+                        done++;
+                        if (done >= rows.length) {
+                            $btn.prop('disabled', false).html(btnHtml);
+                            showToast('Cleared Temu SPRICE: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''), fail ? 'warning' : 'success');
+                        }
+                    }
+                });
+            });
+        });
+
+        /** Apply STANDARD_PRICE to SKU + any linked SKUs returned by /save-amazon-sprice. */
+        function applyStandardPriceToPriceIncreaseRows(sku, std, appliedSkus) {
+            if (!table) return;
+            const target = String(sku || '').trim().toUpperCase();
+            const appliedSet = new Set(
+                (Array.isArray(appliedSkus) ? appliedSkus : [])
+                    .map(function(s) { return String(s || '').trim().toUpperCase(); })
+                    .filter(Boolean)
+            );
+            if (target) appliedSet.add(target);
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || d.is_parent_summary) return;
+                const rowSku = String(d.sku || '').trim().toUpperCase();
+                if (!rowSku || !appliedSet.has(rowSku)) return;
+                r.update({ amazon_standard_price: std });
+            });
+            // Keep fullDataset in sync so parent/expand views keep the new SP
+            if (Array.isArray(fullDataset)) {
+                fullDataset.forEach(function(row) {
+                    if (!row || row.is_parent_summary) return;
+                    const rowSku = String(row.sku || '').trim().toUpperCase();
+                    if (rowSku && appliedSet.has(rowSku)) {
+                        row.amazon_standard_price = std;
+                    }
+                });
+            }
+        }
+
+        // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid SP in sync
+        document.addEventListener('lmp-modal-sp-saved', function(e) {
+            const d = e && e.detail ? e.detail : {};
+            applyStandardPriceToPriceIncreaseRows(d.sku, d.standard_price, d.applied_skus);
+        });
+
+        // Amz SPRICE / SP edited in table
         table.on('cellEdited', function(cell) {
-            if (cell.getField() !== 'amazon_sprice') return;
+            const field = cell.getField();
             const row = cell.getRow();
             const rowData = row.getData();
             if (rowData.is_parent_summary === true) return;
             const sku = rowData.sku;
+
+            // SP (Standard Price) — same store as /amazon-tabulator-view via /save-amazon-sprice
+            if (field === 'amazon_standard_price') {
+                const std = parseFloat(cell.getValue());
+                if (!sku || !isFinite(std) || std <= 0) {
+                    row.update({ amazon_standard_price: null });
+                    return;
+                }
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        sprice: std,
+                        is_standard_price: 1,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        const saved = response.data || std;
+                        applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                        const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                        showToast(n > 1
+                            ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
+                            : 'Standard Price (SP) saved', 'success');
+                    },
+                    error: function() {
+                        showToast('Failed to save Standard Price', 'error');
+                    }
+                });
+                return;
+            }
+
+            // Temu S PRC — same as /temu-decrease via /temu-pricing/save-sprice
+            if (field === 'temu_sprice') {
+                const newSprice = parseFloat(cell.getValue());
+                if (!sku) return;
+                if (!isFinite(newSprice) || newSprice <= 0) {
+                    row.update({ temu_sprice: null, temu_push_status: null });
+                    row.reformat();
+                    // Clear stored SPRICE (same keys as /temu-decrease)
+                    $.ajax({
+                        url: '/cvr-master-save-suggested-data',
+                        method: 'POST',
+                        data: {
+                            sku: sku,
+                            marketplace: 'temu',
+                            sprice: 0,
+                            sgpft: 0,
+                            spft: 0,
+                            sroi: 0,
+                            _token: '{{ csrf_token() }}'
+                        }
+                    });
+                    return;
+                }
+                row.update({ temu_sprice: +newSprice.toFixed(2), temu_push_status: null });
+                row.reformat();
+                $.ajax({
+                    url: '/temu-pricing/save-sprice',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: sku,
+                        sprice: newSprice
+                    },
+                    success: function() {
+                        if (Array.isArray(fullDataset)) {
+                            fullDataset.forEach(function(r) {
+                                if (!r || r.is_parent_summary) return;
+                                if (String(r.sku || '').trim().toUpperCase() === String(sku).trim().toUpperCase()) {
+                                    r.temu_sprice = +newSprice.toFixed(2);
+                                    r.temu_push_status = null;
+                                }
+                            });
+                        }
+                        showToast('Temu SPRICE saved', 'success');
+                    },
+                    error: function() {
+                        showToast('Failed to save Temu SPRICE', 'error');
+                    }
+                });
+                return;
+            }
+
+            if (field !== 'amazon_sprice') return;
             const sprice = parseFloat(cell.getValue()) || 0;
             if (sprice <= 0) return;
             const lp = parseFloat(rowData.amazon_lp) || 0;
@@ -4008,6 +6050,25 @@
             });
         });
 
+        /** Red triangle when SPRICE > LMP (OV L30 modal). */
+        function updateOvl30SpriceLmpAlert($row) {
+            if (!$row || !$row.length) return;
+            const $wrap = $row.find('.ovl30-sprice-wrap');
+            if (!$wrap.length) return;
+            const $input = $row.find('.editable-sprice');
+            const sprice = $input.length
+                ? (parseFloat(String($input.val() || '').replace(/[$,\s]/g, '')) || 0)
+                : 0;
+            const lmp = parseFloat($row.attr('data-lmp')) || 0;
+            $wrap.find('.ovl30-sprice-lmp-alert').remove();
+            if (sprice > 0 && lmp > 0 && sprice > lmp) {
+                $wrap.append(
+                    '<i class="fas fa-exclamation-triangle ovl30-sprice-lmp-alert" title="SPRICE $'
+                    + sprice.toFixed(2) + ' > LMP $' + lmp.toFixed(2) + '"></i>'
+                );
+            }
+        }
+
         // Real-time calculation when SPRICE changes (OVL30 modal – same formula as main table)
         $(document).on('input', '.editable-sprice', function() {
             const input = $(this);
@@ -4035,6 +6096,8 @@
             const $spftSpan = row.find('.calculated-spft');
             const $roiSpan = row.find('.calculated-sroi');
             const $snroiSpan = row.find('.calculated-snroi');
+
+            updateOvl30SpriceLmpAlert(row);
             
             if (sprice > 0) {
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
@@ -4077,6 +6140,79 @@
             }
         });
         
+        // STD PRC (Standard Price) — same store/API as /amazon-tabulator-view SP
+        $(document).on('blur', '.editable-std-prc', function() {
+            const input = $(this);
+            const row = input.closest('tr');
+            const sku = getModalPrimarySku() || row.attr('data-sku');
+            const mp = String(row.attr('data-marketplace') || '').toLowerCase();
+            if (mp !== 'amazon' || !sku || String(sku).indexOf('PARENT') !== -1) return;
+
+            const raw = String(input.val() || '').trim();
+            if (raw === '') return; // leave blank — do not clear on empty blur
+            const std = parseFloat(raw);
+            if (!isFinite(std) || std <= 0) {
+                input.val('');
+                return;
+            }
+
+            input.css('border-color', '#20c997');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: sku,
+                    sprice: std,
+                    is_standard_price: 1,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                    // Keep modal in-memory data + main grid SP column in sync
+                    if (Array.isArray(ovl30ModalData)) {
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
+                                item.standard_price = saved;
+                            }
+                        });
+                    }
+                    if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
+                        applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                    }
+                    const amazonPrice = parseFloat(row.attr('data-price')) || 0;
+                    const $wrap = input.closest('.ovl30-std-prc-wrap');
+                    const dotHtml = priceIncreaseSpChangeDotHtml(saved, amazonPrice, sku);
+                    $wrap.html(
+                        (dotHtml || '')
+                        + '<input type="number" class="form-control form-control-sm editable-std-prc" '
+                        + 'value="' + saved.toFixed(2) + '" step="0.01" min="0" '
+                        + 'title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                    );
+                    $wrap.find('.editable-std-prc').css('border-color', '#28a745');
+                    setTimeout(function() {
+                        $wrap.find('.editable-std-prc').css('border-color', '');
+                    }, 800);
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    showToast(n > 1
+                        ? ('STD PRC saved for ' + n + ' linked SKUs')
+                        : 'STD PRC saved', 'success');
+                },
+                error: function() {
+                    input.css('border-color', '#dc3545');
+                    showToast('Failed to save STD PRC', 'error');
+                }
+            });
+        });
+        $(document).on('keydown', '.editable-std-prc', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $(this).blur();
+            }
+        });
+
         // Auto-save on blur
         $(document).on('blur', '.editable-sprice', function() {
             const input = $(this);
@@ -4169,7 +6305,77 @@
             return Math.max(0.01, parseFloat(newPrice.toFixed(2)));
         }
 
-        function saveModalSpriceForRow($row, sprice, done) {
+        /**
+         * Clear SPRICE on every editable marketplace row for the open SKU.
+         * This SKU only — siblings never get 0 (same rule as Prc Mode → Clear SPRICE).
+         */
+        function clearAllMarketplaceSpriceInModal() {
+            const sku = getModalPrimarySku();
+            if (!sku || sku.toUpperCase() === 'NOT LISTED') {
+                showToast('No SKU loaded in modal', 'error');
+                return;
+            }
+            const $rows = [];
+            $('#ovl30DetailsTableBody tr').each(function() {
+                const $tr = $(this);
+                if (!$tr.find('.editable-sprice').length) return;
+                // Only clear rows that currently have a SPRICE (or any editable listed row)
+                const mp = String($tr.attr('data-marketplace') || '');
+                if (!mp) return;
+                $rows.push($tr);
+            });
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows to clear', 'warning');
+                return;
+            }
+            if (!confirm(
+                'Clear SPRICE on ALL ' + $rows.length + ' marketplace(s) for SKU: ' + sku + '?\n\n'
+                + 'This SKU only — siblings are never cleared to 0.'
+            )) return;
+
+            const $btn = $('#modal-clear-all-sprice-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
+            let doneCount = 0;
+            let okCount = 0;
+
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                $tr.find('.editable-sprice').val('').trigger('input');
+                saveModalSpriceForRow($tr, 0, function(ok) {
+                    if (ok) {
+                        okCount++;
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '') === mp) {
+                                item.sprice = 0;
+                                item.sgpft = 0;
+                                item.sroi = 0;
+                                item.spft = 0;
+                            }
+                        });
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('Cleared SPRICE on ' + okCount + '/' + $rows.length + ' marketplace(s)')
+                                : 'Failed to clear SPRICE',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('click', '#modal-clear-all-sprice-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            clearAllMarketplaceSpriceInModal();
+        });
+
+        function saveModalSpriceForRow($row, sprice, done, opts) {
+            opts = opts || {};
             const sku = getModalPrimarySku() || $row.attr('data-sku');
             const marketplace = $row.attr('data-marketplace');
             const lp = parseFloat($row.attr('data-lp')) || 0;
@@ -4203,6 +6409,10 @@
                 return;
             }
 
+            const applySiblings = (opts.applySiblings !== undefined)
+                ? (opts.applySiblings && sprice > 0 ? 1 : 0)
+                : siblingsApplyPayload(sprice);
+
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
@@ -4214,7 +6424,7 @@
                     spft: spft,
                     sroi: sroi,
                     amazon_margin: margin,
-                    apply_siblings: siblingsApplyPayload(sprice),
+                    apply_siblings: applySiblings,
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
@@ -4273,9 +6483,21 @@
             );
         });
 
+        $('#ovl30DetailsModal').on('hide.bs.modal', function() {
+            // User closed — stop in-flight load so it cannot re-show / flip back to "Loading..."
+            ovl30ModalClosedByUser = true;
+            ovl30BreakdownReqId++;
+            if (ovl30BreakdownXhr && typeof ovl30BreakdownXhr.abort === 'function') {
+                try { ovl30BreakdownXhr.abort(); } catch (e) { /* ignore */ }
+                ovl30BreakdownXhr = null;
+            }
+        });
+
         $('#ovl30DetailsModal').on('hidden.bs.modal', function() {
             exitModalPricePctMode(false);
             syncModalGroupSelects('');
+            // After push-reload used to stack backdrops; clear any leftover black screen
+            setTimeout(cleanupOrphanModalBackdrops, 50);
         });
 
         $(document).on('click', '#modal-apply-discount-btn', function() {
@@ -4396,6 +6618,222 @@
             if (e.key === 'Enter') {
                 e.preventDefault();
                 $('#modal-apply-discount-btn').trigger('click');
+            }
+        });
+
+        // ==================== BULK SPRICE (same value on checked; Doba & TopDawg = 25% less; SB2B = Price×0.75 − Ship) ====================
+        function isBulkSprice25OffChannel(mpLower) {
+            return mpLower === 'doba' || mpLower === 'topdawg';
+        }
+        function isBulkSpriceSb2bChannel(mpLower) {
+            return mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b';
+        }
+
+        function applyModalBulkSprice() {
+            const rawInput = $('#modal-bulk-sprice-input').val();
+            const basePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (rawInput === '' || rawInput == null || !isFinite(basePrice) || !(basePrice > 0)) {
+                showToast('Please enter a SPRICE greater than 0', 'error');
+                $('#modal-bulk-sprice-input').focus();
+                return;
+            }
+            if (modalSelectedChannels.size === 0) {
+                showToast('Please select at least one channel (checkbox)', 'error');
+                return;
+            }
+            const $rows = collectModalTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows selected', 'error');
+                return;
+            }
+
+            const reducedPrice = +(basePrice * 0.75).toFixed(2); // 25% less for Doba & TopDawg
+            if (!confirm(
+                'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' selected channel(s)'
+                + '?\n\nDoba & TopDawg get 25% less: $' + reducedPrice.toFixed(2)
+                + '\nSB2B = (Price × 0.75) − Ship'
+                + siblingsApplyLabel()
+            )) return;
+
+            const $btn = $('#modal-apply-bulk-sprice-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            let doneCount = 0;
+            let okCount = 0;
+            let siblingsOk = 0;
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                const mpLower = mp.toLowerCase();
+                let newPrice = +basePrice.toFixed(2);
+                if (isBulkSprice25OffChannel(mpLower)) {
+                    newPrice = reducedPrice;
+                } else if (isBulkSpriceSb2bChannel(mpLower)) {
+                    // Always: SPRICE = (channel Price × 0.75) − Ship
+                    const channelPrice = parseFloat($tr.attr('data-price')) || 0;
+                    const rowShip = parseFloat($tr.attr('data-ship')) || 0;
+                    const p = channelPrice > 0 ? channelPrice : basePrice;
+                    newPrice = Math.max(0.01, +((p * 0.75) - rowShip).toFixed(2));
+                }
+                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
+                    if (ok) {
+                        okCount++;
+                        if (res && res.siblings_count) {
+                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
+                        }
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '') === mp) {
+                                item.sprice = newPrice;
+                            }
+                        });
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('SPRICE applied to ' + okCount + ' channel(s)'
+                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
+                                    + '. Doba & TopDawg = $' + reducedPrice.toFixed(2) + ' (−25%). Use Push to go live.')
+                                : 'Failed to save SPRICE',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('click', '#modal-apply-bulk-sprice-btn', function(e) {
+            e.preventDefault();
+            applyModalBulkSprice();
+        });
+        $(document).on('keydown', '#modal-bulk-sprice-input', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyModalBulkSprice();
+            }
+        });
+
+        // ==================== +$ BUMP SPRICE (add fixed $ to current SPRICE) ====================
+        function applyModalSpriceBump() {
+            const rawInput = $('#modal-sprice-bump-input').val();
+            const bump = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (rawInput === '' || rawInput == null || !isFinite(bump) || bump === 0) {
+                showToast('Enter a $ amount to add (e.g. 1 or 2)', 'error');
+                $('#modal-sprice-bump-input').focus();
+                return;
+            }
+            if (modalSelectedChannels.size === 0) {
+                showToast('Please select at least one channel (checkbox)', 'error');
+                return;
+            }
+            const $rows = collectModalTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows selected', 'error');
+                return;
+            }
+
+            const bumpLabel = (bump > 0 ? '+' : '') + '$' + Math.abs(bump).toFixed(2);
+            const withSiblings = isModalSiblingsApply();
+
+            function runBump() {
+                if (!confirm(
+                    'Increase SPRICE by ' + bumpLabel + ' on ' + $rows.length + ' selected channel(s)'
+                    + siblingsApplyLabel()
+                    + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same new SPRICE.' : '')
+                    + '?'
+                )) return;
+
+                const $btn = $('#modal-apply-sprice-bump-btn');
+                const origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+                let doneCount = 0;
+                let okCount = 0;
+                let skipped = 0;
+                let siblingsOk = 0;
+
+                function finishIfDone() {
+                    if (doneCount !== $rows.length) return;
+                    $btn.prop('disabled', false).html(origHtml);
+                    showToast(
+                        okCount
+                            ? ('SPRICE ' + bumpLabel + ' applied to ' + okCount + ' channel(s)'
+                                + (skipped ? ' (' + skipped + ' skipped)' : '')
+                                + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
+                                + '. Use Push to go live.')
+                            : (skipped === $rows.length
+                                ? 'Selected channels have no SPRICE/Price to increase'
+                                : 'Failed to save SPRICE'),
+                        okCount ? 'success' : 'error'
+                    );
+                }
+
+                $rows.forEach(function($tr) {
+                    const mp = String($tr.attr('data-marketplace') || '');
+                    const $input = $tr.find('.editable-sprice');
+                    const currentSprice = parseFloat(String($input.val() || '').replace(/[$,\s]/g, '')) || 0;
+                    const basePrice = parseFloat($tr.attr('data-price')) || 0;
+                    // Prefer current SPRICE; fall back to live Price if SPRICE empty
+                    const base = currentSprice > 0 ? currentSprice : basePrice;
+                    if (!(base > 0)) {
+                        skipped++;
+                        doneCount++;
+                        finishIfDone();
+                        return;
+                    }
+                    const newPrice = Math.max(0.01, +(base + bump).toFixed(2));
+                    const lp = parseFloat($tr.attr('data-lp')) || 0;
+                    const ship = parseFloat($tr.attr('data-ship')) || 0;
+                    const margin = parseFloat($tr.attr('data-margin')) || 0.80;
+                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
+                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+
+                    $input.val(newPrice.toFixed(2)).trigger('input');
+                    // Primary SKU only here; siblings (incl. INV 0) saved explicitly below
+                    saveModalSpriceForRow($tr, newPrice, function(ok) {
+                        if (ok) {
+                            okCount++;
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
+                            });
+                        }
+
+                        // Explicitly apply same new SPRICE to every sibling (including INV 0)
+                        if (ok && withSiblings && modalSiblingSkus.length) {
+                            applySpriceToSiblingSkus(mp, newPrice, metrics, function(sibOk) {
+                                siblingsOk = Math.max(siblingsOk, sibOk || 0);
+                                doneCount++;
+                                finishIfDone();
+                            });
+                        } else {
+                            doneCount++;
+                            finishIfDone();
+                        }
+                    }, { applySiblings: false });
+                });
+            }
+
+            // Refresh sibling list from API first so INV 0 siblings are included
+            if (withSiblings) {
+                const sku = getModalPrimarySku();
+                refreshModalSiblingSkus(sku);
+                setTimeout(runBump, 350);
+            } else {
+                runBump();
+            }
+        }
+
+        $(document).on('click', '#modal-apply-sprice-bump-btn', function(e) {
+            e.preventDefault();
+            applyModalSpriceBump();
+        });
+        $(document).on('keydown', '#modal-sprice-bump-input', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyModalSpriceBump();
             }
         });
 
@@ -4805,10 +7243,10 @@
 
                 const mp = (item.marketplace || '').toLowerCase();
                 const editableChannels = [
-                    'amazon', 'doba', 'walmart',
+                    'amazon', 'doba',
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'temu', 'temu2', 'tiktok', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
+                    'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
                 ];
                 const editable = editableChannels.includes(mp);
@@ -5069,19 +7507,39 @@
                 }).promise();
             }
             target.price = price;
-            const mpLower = String(target.marketplace || '').toLowerCase().replace(/\s+/g, '');
+            const mpLower = String(target.marketplace || '').toLowerCase();
+            // Temu / Temu2: push base = (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85
+            let pushPrice = price;
+            if (mpLower === 'temu' || mpLower === 'temu2') {
+                const converted = temuPushBaseFromSprice(price);
+                if (converted == null) {
+                    return $.Deferred().resolve({
+                        ok: false,
+                        marketplace: target.marketplace,
+                        message: 'Skipped — ' + (mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' SPRICE converts to invalid base'
+                    }).promise();
+                }
+                pushPrice = converted;
+                target.price = converted;
+            }
             const payload = {
                 sku: target.sku,
-                price: price,
-                // Compact marketplace key so "Ebay 3" / "eBay3" both hit ebay3 push path
-                marketplace: mpLower || target.marketplace,
-                apply_siblings: siblingsApplyPayload(price),
+                price: pushPrice,
+                marketplace: target.marketplace,
+                apply_siblings: siblingsApplyPayload(pushPrice),
                 _token: '{{ csrf_token() }}'
             };
             // Doba: Self Pick = SPRICE − Ship (same as /doba-tabulator)
             if (mpLower === 'doba' && target.$tr && target.$tr.length) {
                 const ship = parseFloat(target.$tr.attr('data-ship')) || 0;
                 payload.self_pick_price = Math.max(0, +(price - ship).toFixed(2));
+            }
+            // Temu / Temu2: pass goods_id / sku_id when available
+            if ((mpLower === 'temu' || mpLower === 'temu2') && target.$tr && target.$tr.length) {
+                const goodsId = target.$tr.attr('data-goods-id') || target.$btn.data('goods-id') || '';
+                const skuId = target.$tr.attr('data-sku-id') || target.$btn.data('sku-id') || '';
+                if (goodsId) payload.goods_id = goodsId;
+                if (skuId) payload.sku_id = skuId;
             }
             return $.ajax({
                 url: '/cvr-master-push-price',
@@ -5093,7 +7551,14 @@
                     target.$btn.html('<i class="fas fa-check"></i>')
                         .removeClass('btn-primary').addClass('btn-success')
                         .prop('disabled', true);
-                    return { ok: true, marketplace: target.marketplace, message: response.message };
+                    return {
+                        ok: true,
+                        marketplace: target.marketplace,
+                        message: response.message,
+                        price: pushPrice,
+                        $tr: target.$tr,
+                        $btn: target.$btn
+                    };
                 }
                 return {
                     ok: false,
@@ -5110,13 +7575,212 @@
             });
         }
 
-        function reloadOvl30ModalAfterPush() {
-            const currentSku = $('#modalSkuName').text();
-            const currentImage = $('#modal-product-image').attr('src');
-            const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-            const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-            const currentDil = parseFloat($('#modal-header-dil').text());
-            loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
+        /**
+         * After push: patch the affected row in-place (no full /cvr-master-breakdown reload).
+         * Full reload was making every modal action feel slow.
+         */
+        function patchOvl30RowAfterPush($tr, pushedPrice, marketplace) {
+            if (!$tr || !$tr.length || !(pushedPrice > 0)) return;
+            const mp = String(marketplace || $tr.attr('data-marketplace') || '');
+            const mpLower = mp.toLowerCase();
+            const basePrice = +Number(pushedPrice).toFixed(2);
+
+            $tr.attr('data-price', basePrice);
+
+            // Price cell: Temu/Temu2 display × 1.1765 (same as renderMarketplaceData)
+            const TEMU_PRICE_DISPLAY_MULT = 1.1765;
+            const isTemu = (mpLower === 'temu' || mpLower === 'temu2');
+            const displayPrice = (isTemu && basePrice > 0)
+                ? +(basePrice * TEMU_PRICE_DISPLAY_MULT).toFixed(2)
+                : basePrice;
+            const $priceTd = $tr.children('td').eq(3);
+            const tip = isTemu
+                ? ((mpLower === 'temu2' ? 'Temu2' : 'Temu') + ' Price × 1.1765 (shown). Base calc price: $' + basePrice.toFixed(2))
+                : '';
+            const existingDot = $priceTd.find('.pricing-master-chart-link').prop('outerHTML') || '';
+            $priceTd.html(
+                '<span style="font-weight:700;" title="' + tip.replace(/"/g, '&quot;') + '">$'
+                + displayPrice.toFixed(2) + '</span>' + (existingDot ? (' ' + existingDot) : '')
+            );
+
+            // Pushed By column (second-to-last); History is last
+            const nowLabel = 'Just now';
+            const $tds = $tr.children('td');
+            $tds.filter('.ovl30-by-cell').html(
+                '<span class="pushed-by-dot" title="Pushed ' + nowLabel + '" aria-label="Pushed"></span>'
+            );
+
+            // Keep in-memory modal data in sync + prepend history entry
+            const userName = (window.__authUserName || 'You');
+            const atIso = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            ovl30ModalData.forEach(function(item) {
+                if (String(item.marketplace || '') === mp) {
+                    item.price = basePrice;
+                    item.pushed_by = item.pushed_by || userName;
+                    item.pushed_at = nowLabel;
+                    item.pushed_price = basePrice;
+                    if (!Array.isArray(item.push_history)) item.push_history = [];
+                    item.push_history.unshift({
+                        price: basePrice,
+                        by: userName,
+                        at: atIso,
+                        marketplace: mp,
+                    });
+                    const count = item.push_history.length;
+                    $tds.filter('.ovl30-history-cell').html(
+                        '<button type="button" class="ovl30-history-btn has-history" data-marketplace="'
+                        + String(mp).replace(/"/g, '&quot;') + '" title="' + count + ' push record(s) — click to view">'
+                        + '<i class="fas fa-history"></i> <span class="small">' + count + '</span></button>'
+                    );
+                }
+            });
+        }
+
+        function renderOvl30PushHistoryRows(history, fallbackMarketplace) {
+            const mp = String(fallbackMarketplace || '');
+            if (!history || !history.length) {
+                return '<tr><td colspan="4" class="text-center text-muted py-3">No push history yet</td></tr>';
+            }
+            let html = '';
+            history.forEach(function(h) {
+                const price = (h.price != null && isFinite(parseFloat(h.price)))
+                    ? ('$' + parseFloat(h.price).toFixed(2))
+                    : '-';
+                html += '<tr>'
+                    + '<td>' + String(h.at || '-').replace(/</g, '&lt;') + '</td>'
+                    + '<td>' + String(h.marketplace || mp || '-').replace(/</g, '&lt;') + '</td>'
+                    + '<td class="text-end fw-semibold">' + price + '</td>'
+                    + '<td>' + String(h.by || '-').replace(/</g, '&lt;') + '</td>'
+                    + '</tr>';
+            });
+            return html;
+        }
+
+        function showOvl30PushHistoryModal(marketplaceLabel, sku, history) {
+            $('#ovl30PushHistoryMarketplace').text(marketplaceLabel || 'Channel');
+            $('#ovl30PushHistorySku').text(sku || '-');
+            $('#ovl30PushHistoryBody').html(renderOvl30PushHistoryRows(history, marketplaceLabel));
+            const el = document.getElementById('ovl30PushHistoryModal');
+            if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+        }
+
+        function openOvl30PushHistory(marketplace) {
+            const mp = String(marketplace || '');
+            const sku = getModalPrimarySku() || $('#modalSkuName').text() || '';
+            const item = (ovl30ModalData || []).find(function(r) {
+                return String(r.marketplace || '') === mp;
+            });
+            const history = (item && Array.isArray(item.push_history)) ? item.push_history : [];
+            showOvl30PushHistoryModal(mp || 'Channel', sku, history);
+        }
+
+        function openOuterSkuPushHistory(sku, $btn) {
+            const skuKey = String(sku || '').trim();
+            if (!skuKey) return;
+            $('#ovl30PushHistoryMarketplace').text('All channels');
+            $('#ovl30PushHistorySku').text(skuKey);
+            $('#ovl30PushHistoryBody').html(
+                '<tr><td colspan="4" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin me-1"></i>Loading…</td></tr>'
+            );
+            const el = document.getElementById('ovl30PushHistoryModal');
+            if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+            $.ajax({
+                url: '/cvr-master-push-history',
+                method: 'GET',
+                data: { sku: skuKey },
+                success: function(resp) {
+                    const history = (resp && Array.isArray(resp.history)) ? resp.history : [];
+                    const displaySku = (resp && resp.sku) ? resp.sku : skuKey;
+                    showOvl30PushHistoryModal('All channels', displaySku, history);
+                    const count = history.length;
+                    if ($btn && $btn.length) {
+                        $btn.toggleClass('has-history', count > 0);
+                        $btn.attr('title', count
+                            ? (count + ' push record(s) — click to view')
+                            : 'No push history yet');
+                        $btn.html(
+                            '<i class="fas fa-history"></i>'
+                            + (count ? (' <span class="small">' + count + '</span>') : '')
+                        );
+                        try {
+                            const row = (typeof table !== 'undefined' && table)
+                                ? table.getRows().find(function(r) {
+                                    return String((r.getData() || {}).sku || '') === skuKey;
+                                })
+                                : null;
+                            if (row) row.update({ push_history_count: count });
+                        } catch (e) { /* ignore */ }
+                    }
+                },
+                error: function() {
+                    $('#ovl30PushHistoryBody').html(
+                        '<tr><td colspan="4" class="text-center text-danger py-3">Failed to load push history</td></tr>'
+                    );
+                }
+            });
+        }
+
+        $(document).on('click', '#ovl30DetailsModal .ovl30-history-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openOvl30PushHistory($(this).attr('data-marketplace') || $(this).data('marketplace'));
+        });
+
+        $(document).on('click', '.outer-push-history-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $btn = $(this);
+            openOuterSkuPushHistory($btn.attr('data-sku') || $btn.data('sku'), $btn);
+        });
+
+        function patchOvl30LmpCell(marketplace, lmpPrice) {
+            if (!$('#ovl30DetailsModal').hasClass('show')) return;
+            const mp = String(marketplace || '').toLowerCase();
+            if (!mp) return;
+            const $tr = $('#ovl30DetailsTableBody tr').filter(function() {
+                return String($(this).attr('data-marketplace') || '').toLowerCase() === mp;
+            }).first();
+            if (!$tr.length) return;
+            const sku = getModalPrimarySku() || '';
+            const skuAttr = String(sku).replace(/"/g, '&quot;');
+            const $lmpTd = $tr.children('td').eq(11); // LMP column
+            if (!(lmpPrice > 0)) {
+                $lmpTd.html(
+                    '<a href="#" class="lmp-add-btn" data-sku="' + skuAttr + '" data-marketplace="' + mp
+                    + '" title="Add ' + mp + ' LMP"><i class="fas fa-plus-circle"></i></a>'
+                );
+                $tr.attr('data-lmp', '0');
+                return;
+            }
+            const p = +Number(lmpPrice).toFixed(2);
+            $tr.attr('data-lmp', p);
+            $lmpTd.html(
+                '<a href="#" class="lmp-channel-price" data-sku="' + skuAttr + '" data-marketplace="' + mp
+                + '" title="View ' + mp + ' LMP" style="color:#0d6efd;font-weight:600;text-decoration:underline;cursor:pointer;">$'
+                + p.toFixed(2) + '</a>'
+            );
+            ovl30ModalData.forEach(function(item) {
+                if (String(item.marketplace || '').toLowerCase() === mp) {
+                    item.lmp_price = p;
+                    item.lmp_channel = mp;
+                }
+            });
+        }
+
+        /** No full-table reload after push — only patch pushed rows. */
+        function reloadOvl30ModalAfterPush(pushedTargets) {
+            if (!$('#ovl30DetailsModal').hasClass('show')) return;
+            const list = Array.isArray(pushedTargets) ? pushedTargets : [];
+            list.forEach(function(t) {
+                if (!t || !t.ok) return;
+                const $tr = t.$tr && t.$tr.length
+                    ? t.$tr
+                    : $('#ovl30DetailsTableBody tr').filter(function() {
+                        return String($(this).attr('data-marketplace') || '') === String(t.marketplace || '');
+                    }).first();
+                const price = parseFloat(t.price) || parseFloat($tr.attr('data-price')) || 0;
+                patchOvl30RowAfterPush($tr, price, t.marketplace);
+            });
         }
 
         // Single-row push
@@ -5126,8 +7790,7 @@
             if (btn.prop('disabled')) return;
             const row = btn.closest('tr');
             const sku = getModalPrimarySku() || String(btn.attr('data-sku') || row.attr('data-sku') || '');
-            const marketplaceRaw = btn.attr('data-marketplace') || btn.data('marketplace') || row.attr('data-marketplace');
-            const marketplace = String(marketplaceRaw || '').toLowerCase().replace(/\s+/g, '') || marketplaceRaw;
+            const marketplace = btn.attr('data-marketplace') || btn.data('marketplace') || row.attr('data-marketplace');
             const priceInput = row.find('.editable-sprice');
             const price = parseOvl30PushPrice(priceInput.val());
 
@@ -5141,8 +7804,23 @@
                 return;
             }
 
+            const mpLowerConfirm = String(marketplace || '').toLowerCase();
+            let confirmPrice = price;
+            let confirmExtra = '';
+            if (mpLowerConfirm === 'temu' || mpLowerConfirm === 'temu2') {
+                const converted = temuPushBaseFromSprice(price);
+                if (converted == null) {
+                    showToast('Cannot push — ' + (mpLowerConfirm === 'temu2' ? 'Temu2' : 'Temu') + ' SPRICE converts to invalid base', 'error');
+                    return;
+                }
+                confirmPrice = converted;
+                confirmExtra = ' (from SPRICE $' + price.toFixed(2)
+                    + ' × 0.85' + (price < 35 ? ' − 2.99' : '') + ')';
+            }
+
             if (!confirm(
-                'Push price $' + price.toFixed(2) + ' to ' + String(marketplace).toUpperCase()
+                'Push price $' + confirmPrice.toFixed(2) + confirmExtra
+                + ' to ' + String(marketplace).toUpperCase()
                 + ' for SKU: ' + sku + siblingsApplyLabel() + '?'
             )) {
                 return;
@@ -5160,7 +7838,7 @@
             }).then(function(result) {
                 if (result.ok) {
                     showToast(result.message || 'Price pushed', 'success');
-                    setTimeout(reloadOvl30ModalAfterPush, 1200);
+                    reloadOvl30ModalAfterPush([result]);
                 } else {
                     showToast(result.message || 'Failed to push price', 'error');
                     btn.html(originalHtml).prop('disabled', false);
@@ -5206,6 +7884,7 @@
             let idx = 0;
             let okCount = 0;
             const errors = [];
+            const okResults = [];
 
             function pushNext() {
                 if (idx >= targets.length) {
@@ -5216,7 +7895,7 @@
                                 + (errors.length ? ('. Failed: ' + errors.join(', ')) : ''),
                             errors.length ? 'error' : 'success'
                         );
-                        setTimeout(reloadOvl30ModalAfterPush, 1200);
+                        reloadOvl30ModalAfterPush(okResults);
                     } else {
                         showToast('Bulk push failed' + (errors.length ? ': ' + errors.join(', ') : ''), 'error');
                         targets.forEach(function(t) {
@@ -5230,8 +7909,10 @@
                 }
                 const target = targets[idx++];
                 pushOvl30PriceToMarketplace(target).then(function(result) {
-                    if (result.ok) okCount++;
-                    else {
+                    if (result.ok) {
+                        okCount++;
+                        okResults.push(result);
+                    } else {
                         errors.push(String(target.marketplace));
                         target.$btn.html('<i class="fas fa-upload"></i>')
                             .removeClass('btn-success').addClass('btn-primary')
@@ -5341,23 +8022,114 @@
             }, 0);
         }
 
-        function loadLmpCompetitorsModal(sku, marketplace, showAddForm) {
+        /** Channels that support live SerpApi LMP Pull (same as amazon/ebay pricing tabulators). */
+        const LMP_PULLABLE_CHANNELS = ['amazon', 'ebay', 'google'];
+
+        function updateLmpPullBtnTitle(filter) {
+            const $btn = $('#lmpPullApiBtn');
+            if (!$btn.length) return;
+            const ch = String(filter || 'all').toLowerCase();
+            if (ch === 'all') {
+                $btn.attr('title', 'Pull live LMP for Amazon + eBay + Google (SerpApi) — same as pricing tabulators');
+            } else if (LMP_PULLABLE_CHANNELS.indexOf(ch) !== -1) {
+                $btn.attr('title', 'Pull live ' + ch.charAt(0).toUpperCase() + ch.slice(1) + ' LMP prices from SerpApi');
+            } else {
+                $btn.attr('title', 'Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).');
+            }
+        }
+
+        /** Patch main-table LMP columns after a live Pull. */
+        function patchPriceIncreaseLmpFromPull(sku, amazonRes, ebayRes, googleRes) {
+            if (!table || !sku) return;
+            const key = String(sku).trim().toUpperCase();
+            const patch = {};
+            if (amazonRes && amazonRes.lowest_price != null && amazonRes.lowest_price > 0) {
+                patch.amazon_lmp_price = amazonRes.lowest_price;
+            }
+            if (ebayRes && ebayRes.lowest_price != null && ebayRes.lowest_price > 0) {
+                patch.ebay_lmp_price = ebayRes.lowest_price;
+            }
+            if (googleRes && googleRes.lowest_price != null && googleRes.lowest_price > 0) {
+                patch.google_lmp_price = googleRes.lowest_price;
+            }
+            if (!Object.keys(patch).length) return;
+
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || d.is_parent_summary) return;
+                if (String(d.sku || '').trim().toUpperCase() !== key) return;
+                r.update(patch);
+            });
+            if (Array.isArray(fullDataset)) {
+                fullDataset.forEach(function(row) {
+                    if (!row || row.is_parent_summary) return;
+                    if (String(row.sku || '').trim().toUpperCase() !== key) return;
+                    Object.keys(patch).forEach(function(k) { row[k] = patch[k]; });
+                });
+            }
+        }
+
+        /**
+         * Load multi-channel LMP drawer.
+         * Pass options.refresh = true to live-fetch Amazon/eBay/Google via SerpApi
+         * (same pattern as amazon/ebay tabulator #lmpPullApiBtn → ?refresh=1).
+         */
+        function loadLmpCompetitorsModal(sku, marketplace, showAddForm, options) {
+            options = options || {};
+            const refreshFromApi = !!options.refresh;
             resetLmpEditState();
             $('#lmpSku').text(sku);
             if (marketplace === 'macys' || marketplace === 'bestbuyusa') {
                 marketplace = marketplace === 'macys' ? 'macy' : 'bestbuy';
             }
-            const initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu')
-                ? marketplace
-                : 'all';
-            const showAdd = !!showAddForm || initialFilter !== 'all';
+
+            // On Pull, keep the currently selected channel filter when possible
+            let initialFilter;
+            if (refreshFromApi && lmpModalCache && lmpModalCache.sku === sku && lmpModalCache.filter) {
+                initialFilter = lmpModalCache.filter;
+            } else {
+                initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu')
+                    ? marketplace
+                    : 'all';
+            }
+
+            // Live Pull only for Amazon / eBay / Google
+            if (refreshFromApi) {
+                const ch = String(initialFilter || 'all').toLowerCase();
+                if (ch !== 'all' && LMP_PULLABLE_CHANNELS.indexOf(ch) === -1) {
+                    showToast('Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).', 'warning');
+                    const $btn = $('#lmpPullApiBtn');
+                    if ($btn.length) $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Pull');
+                    return;
+                }
+            }
+
+            const showAdd = (refreshFromApi && lmpModalCache && lmpModalCache.sku === sku)
+                ? !!lmpModalCache.showAdd
+                : (!!showAddForm || initialFilter !== 'all');
             $('#lmpModal').data('lmp-marketplace', marketplace || null);
             $('#lmpModal').data('lmp-filter', initialFilter);
             $('#lmpModal').data('lmp-show-add', showAdd);
-            const modal = new bootstrap.Modal(document.getElementById('lmpModal'));
-            modal.show();
+            updateLmpPullBtnTitle(initialFilter);
 
-            $('#lmpDataList').html('<div class="text-center py-5 text-muted"><div class="spinner-border text-primary me-2"></div>Loading competitors...</div>');
+            if (!refreshFromApi) {
+                const lmpEl = document.getElementById('lmpModal');
+                if (lmpEl) {
+                    const modal = bootstrap.Modal.getOrCreateInstance(lmpEl);
+                    if (!lmpEl.classList.contains('show')) {
+                        modal.show();
+                    }
+                }
+            }
+
+            const loadingMsg = refreshFromApi
+                ? 'Pulling live LMP prices from SerpApi...'
+                : 'Loading competitors...';
+            $('#lmpDataList').html('<div class="text-center py-5 text-muted"><div class="spinner-border text-primary me-2"></div>' + loadingMsg + '</div>');
+
+            const refreshAmazon = refreshFromApi && (initialFilter === 'all' || initialFilter === 'amazon');
+            const refreshEbay = refreshFromApi && (initialFilter === 'all' || initialFilter === 'ebay');
+            const refreshGoogle = refreshFromApi && (initialFilter === 'all' || initialFilter === 'google');
 
             let amazonData = null;
             let ebayData = null;
@@ -5368,6 +8140,7 @@
             let temuData = null;
             let loaded = 0;
             const totalNeeded = 7;
+            let pullHadError = false;
 
             function tryRender() {
                 loaded++;
@@ -5375,20 +8148,40 @@
                 const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData);
                 lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
                 renderLmpMergedTable();
+                updateLmpPullBtnTitle(initialFilter);
+
+                if (refreshFromApi) {
+                    if (pullHadError) {
+                        showToast('LMP Pull finished with some errors — check the list', 'warning');
+                    } else {
+                        const labels = [];
+                        if (refreshAmazon) labels.push('Amazon');
+                        if (refreshEbay) labels.push('eBay');
+                        if (refreshGoogle) labels.push('Google');
+                        showToast('Pulled live LMP for ' + (labels.join(', ') || 'channels') + ' — ' + sku, 'success');
+                    }
+                    patchPriceIncreaseLmpFromPull(sku, amazonData, ebayData, googleData);
+                }
+
+                const $btn = $('#lmpPullApiBtn');
+                if ($btn.length) {
+                    $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Pull');
+                }
             }
 
-            // Always load Amazon + eBay + Google + BestBuy + Macy + Reverb + Temu so channel filter can switch instantly
+            // Always load all channels so filter tabs work; only Amazon/eBay/Google get ?refresh=1
             $.ajax({
                 url: '/amazon/competitors',
                 method: 'GET',
-                data: { sku: sku },
-                timeout: 10000,
+                data: refreshAmazon ? { sku: sku, refresh: 1 } : { sku: sku },
+                timeout: refreshAmazon ? 90000 : 10000,
                 success: function(res) {
                     amazonData = res.success && res.competitors ? res : null;
                     tryRender();
                 },
                 error: function() {
                     amazonData = null;
+                    if (refreshAmazon) pullHadError = true;
                     tryRender();
                 }
             });
@@ -5396,14 +8189,15 @@
             $.ajax({
                 url: '/ebay-lmp-data',
                 method: 'GET',
-                data: { sku: sku },
-                timeout: 10000,
+                data: refreshEbay ? { sku: sku, refresh: 1 } : { sku: sku },
+                timeout: refreshEbay ? 300000 : 10000,
                 success: function(res) {
                     ebayData = res.success && res.competitors ? res : null;
                     tryRender();
                 },
                 error: function() {
                     ebayData = null;
+                    if (refreshEbay) pullHadError = true;
                     tryRender();
                 }
             });
@@ -5411,14 +8205,15 @@
             $.ajax({
                 url: '/google-lmp-data',
                 method: 'GET',
-                data: { sku: sku },
-                timeout: 10000,
+                data: refreshGoogle ? { sku: sku, refresh: 1 } : { sku: sku },
+                timeout: refreshGoogle ? 90000 : 10000,
                 success: function(res) {
                     googleData = res.success && res.competitors ? res : null;
                     tryRender();
                 },
                 error: function() {
                     googleData = null;
+                    if (refreshGoogle) pullHadError = true;
                     tryRender();
                 }
             });
@@ -5484,6 +8279,28 @@
             });
         }
 
+        // Pull live LMP (Amazon / eBay / Google) — same as pricing tabulators
+        $(document).on('click', '#lmpPullApiBtn', function() {
+            const sku = (lmpModalCache && lmpModalCache.sku) || $('#lmpSku').text().trim();
+            if (!sku) {
+                showToast('No SKU selected', 'error');
+                return;
+            }
+            const filter = (lmpModalCache && lmpModalCache.filter)
+                || $('#lmpModal').data('lmp-filter')
+                || 'all';
+            const ch = String(filter || 'all').toLowerCase();
+            if (ch !== 'all' && LMP_PULLABLE_CHANNELS.indexOf(ch) === -1) {
+                showToast('Live Pull is available for Amazon, eBay, and Google. Select one of those channels (or All).', 'warning');
+                return;
+            }
+            const $btn = $(this);
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Pulling...');
+            const marketplace = $('#lmpModal').data('lmp-marketplace') || ch;
+            const showAdd = !!(lmpModalCache && lmpModalCache.showAdd);
+            loadLmpCompetitorsModal(sku, marketplace === 'all' ? null : marketplace, showAdd, { refresh: true });
+        });
+
         /** Parse shipping $ from LMP delivery text. Free / Prime free → 0. Unknown → null. */
         function parseLmpShipCost(delivery) {
             if (delivery == null || delivery === '') return null;
@@ -5544,18 +8361,6 @@
             const ship = getLmpRowShipCost(row);
             if (ship === null) return price;
             return price + ship;
-        }
-
-        /**
-         * Temu LMP Recovery (Temu only):
-         * price ≤ $27 → (Price × 0.85) + 2.99
-         * price > $27 → Price × 0.85
-         */
-        function temuLmpRecovery(price) {
-            const p = parseFloat(price);
-            if (!(p > 0)) return null;
-            if (p <= 27) return +((p * 0.85) + 2.99).toFixed(2);
-            return +(p * 0.85).toFixed(2);
         }
 
         function lmpChannelIconHtml(channel) {
@@ -5776,6 +8581,104 @@
             return rows;
         }
 
+        /**
+         * Our listing for the blue 5 Core LMP row (same idea as /ebay-tabulator-view).
+         * Prefer OV L30 breakdown price when available; else main-table fields.
+         */
+        function getLmpOurListing(sku, channel) {
+            const ch = String(channel || 'ebay').toLowerCase();
+            const skuKey = String(sku || '').trim();
+            let price = 0;
+            let link = '';
+            let image = '';
+            let itemId = '';
+            let title = '5 Core — ' + skuKey;
+
+            // 1) OV L30 modal breakdown (most accurate per-channel price / links)
+            if (Array.isArray(ovl30ModalData) && ovl30ModalData.length) {
+                const mpAliases = {
+                    ebay: ['ebay', 'ebay1', 'ebayone'],
+                    amazon: ['amazon'],
+                    temu: ['temu'],
+                };
+                const aliases = mpAliases[ch] || [ch];
+                const hit = ovl30ModalData.find(function(item) {
+                    return aliases.indexOf(String(item.marketplace || '').toLowerCase()) !== -1
+                        && parseFloat(item.price) > 0;
+                });
+                if (hit) {
+                    price = parseFloat(hit.price) || 0;
+                    link = hit.buyer_link || hit.seller_link || '';
+                    image = hit.image_path || hit.image || '';
+                }
+            }
+
+            // 2) Main Tabulator / fullDataset row
+            let rowData = null;
+            if (!(price > 0) || !image) {
+                if (typeof table !== 'undefined' && table && table.getRows) {
+                    const r = (table.getRows() || []).find(function(row) {
+                        const d = row.getData();
+                        return String(d.sku || '').trim() === skuKey;
+                    });
+                    if (r) rowData = r.getData();
+                }
+                if (!rowData && Array.isArray(fullDataset)) {
+                    rowData = fullDataset.find(function(r) {
+                        return String(r.sku || '').trim() === skuKey && r.is_parent_summary !== true;
+                    }) || null;
+                }
+                if (rowData) {
+                    if (!(price > 0)) {
+                        if (ch === 'ebay') price = parseFloat(rowData.ebay1_price) || 0;
+                        else if (ch === 'amazon') price = parseFloat(rowData.amazon_price) || 0;
+                        else if (ch === 'temu') price = parseFloat(rowData.temu_price) || parseFloat(rowData.temu_base_price) || 0;
+                    }
+                    if (!image) image = rowData.image_path || rowData.image || '';
+                    if (ch === 'ebay') itemId = rowData.ebay1_item_id ? String(rowData.ebay1_item_id) : '';
+                }
+            }
+
+            if (!link && ch === 'ebay' && itemId) {
+                link = 'https://www.ebay.com/itm/' + itemId;
+            }
+            if (!title || title === '5 Core — ') title = '5 Core — ' + (skuKey || 'our listing');
+
+            return { price: price, link: link, image: image, itemId: itemId, title: title, channel: ch };
+        }
+
+        function buildLmpFiveCoreRowHtml(our) {
+            const price = parseFloat(our.price) || 0;
+            if (!(price > 0)) return '';
+            const thumb = our.image
+                ? '<img src="' + String(our.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
+                : '';
+            const linkHtml = our.link
+                ? ' <a href="' + String(our.link).replace(/"/g, '&quot;') + '" target="_blank" class="text-primary ms-1" title="Open our listing"><i class="fa fa-external-link"></i></a>'
+                : '';
+            const chIcon = lmpChannelIconHtml(our.channel || 'ebay');
+            const priceCell = '<div class="d-flex align-items-center">'
+                + thumb + chIcon
+                + '<span class="lmp-five-core-price">$' + price.toFixed(2) + '</span>'
+                + ' <span class="badge bg-primary ms-1">Ours</span>'
+                + linkHtml
+                + '</div>';
+            const psCell = '<strong class="lmp-five-core-price">$' + price.toFixed(2) + '</strong>'
+                + ' <span class="badge bg-primary ms-1">5 CORE</span>';
+            const titleEsc = String(our.title || '5 Core (our listing)').replace(/"/g, '&quot;');
+            return '<tr class="lmp-five-core-row" title="Our 5 Core listing — sorted by price to show market level">'
+                + '<td class="text-center text-muted small">—</td>'
+                + '<td class="text-center text-muted small">—</td>'
+                + '<td>' + priceCell + '</td>'
+                + '<td class="text-muted">-</td>'
+                + '<td class="text-muted">-</td>'
+                + '<td><span class="badge bg-primary">Ours</span></td>'
+                + '<td title="' + titleEsc + '">' + psCell + '</td>'
+                + '<td class="text-center text-muted small">—</td>'
+                + '<td class="text-muted small">' + titleEsc + '</td>'
+                + '</tr>';
+        }
+
         function renderLmpMergedTable() {
             const sku = lmpModalCache.sku;
             const filter = lmpModalCache.filter || 'all';
@@ -5873,11 +8776,9 @@
                 badgeParts.push('<span class="badge" style="background:#d9281d;color:#fff;">Reverb $' + reverbLowest.toFixed(2) + '</span>');
             }
             if (temuLowest != null) {
-                // Outside badge: Temu Recovery (not raw price)
-                const temuRecoveryBadge = temuLmpRecovery(temuLowest);
-                const temuBadgeVal = temuRecoveryBadge != null ? temuRecoveryBadge : temuLowest;
-                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;" title="Temu Recovery from L1 $'
-                    + temuLowest.toFixed(2) + '">Temu $' + temuBadgeVal.toFixed(2) + '</span>');
+                // Direct Temu LMP (raw L1 — no Recovery calculation)
+                badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;" title="Temu LMP (direct)">'
+                    + 'Temu $' + temuLowest.toFixed(2) + '</span>');
             }
             if (badgeParts.length) {
                 html += '<div class="lmp-lowest-badges">' + badgeParts.join('') + '</div>';
@@ -5889,7 +8790,15 @@
                 html += buildLmpAddFormHtml(sku, addChannel || 'amazon');
             }
 
-            if (!rows.length) {
+            // 5 Core our-listing row — same as /ebay-tabulator-view (insert at our price level)
+            // Show for eBay (primary), and Amazon/Temu when those filters are active.
+            const fiveCoreChannel = (filter === 'ebay' || filter === 'amazon' || filter === 'temu')
+                ? filter
+                : (filter === 'all' ? 'ebay' : null);
+            const ourListing = fiveCoreChannel ? getLmpOurListing(sku, fiveCoreChannel) : { price: 0 };
+            const fiveCoreHtml = buildLmpFiveCoreRowHtml(ourListing);
+
+            if (!rows.length && !fiveCoreHtml) {
                 const labelMap = { all: 'Amazon, eBay, Google, BestBuy, Macy, Reverb, or Temu', amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
                 const label = labelMap[filter] || 'competitors';
                 html += '<div class="alert alert-info mb-0 py-2 px-2"><i class="fa fa-info-circle"></i> No ' + label + ' competitors found</div>';
@@ -5898,22 +8807,41 @@
                 return;
             }
 
-            // Recovery column only on Temu LMP tab (before Price)
-            const showTemuRecoveryCol = (filter === 'temu');
+            let toolbar = '<div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">';
+            toolbar += '<div class="small text-muted mb-0">Select competitors, then delete</div>';
+            if (rows.length > 0) {
+                toolbar += '<button type="button" class="btn btn-sm btn-danger" id="lmp-bulk-delete-btn" disabled>'
+                    + '<i class="fa fa-trash"></i> Delete Selected</button>';
+            }
+            toolbar += '</div>';
+            html += toolbar;
+
             html += '<div class="table-responsive"><table class="table table-hover table-bordered table-sm"><thead class="table-light">'
-                + '<tr><th>#</th>'
-                + (showTemuRecoveryCol
-                    ? '<th title="Temu Recovery: ≤$27 → (Price×0.85)+2.99; &gt;$27 → Price×0.85">Recovery</th>'
-                    : '')
+                + '<tr>'
+                + '<th class="text-center" style="width:36px;" title="Select for bulk delete">'
+                + '<input type="checkbox" class="form-check-input" id="lmp-select-all-cb" title="Select all">'
+                + '</th>'
+                + '<th>#</th>'
                 + '<th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
                 + '</thead><tbody>';
 
-            rows.forEach(function(row, i) {
-                const sn = 'L' + (i + 1);
-                const lowest = channelLowest[row.channel];
+            let fiveCoreInserted = false;
+            const ourPrice = parseFloat(ourListing.price) || 0;
+            let lIndex = 0;
+
+            rows.forEach(function(row) {
                 const landed = lmpPricePlusShip(row) || row.price;
+                // Insert 5 Core just before the first competitor at/above our price (never counts as L1)
+                if (!fiveCoreInserted && fiveCoreHtml && ourPrice > 0 && landed >= ourPrice) {
+                    html += fiveCoreHtml;
+                    fiveCoreInserted = true;
+                }
+
+                lIndex++;
+                const sn = 'L' + lIndex;
+                const lowest = channelLowest[row.channel];
                 const isLowest = !row.ignored && lowest != null && Math.abs(landed - lowest) < 0.01;
                 const thumb = row.image
                     ? '<img src="' + String(row.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
@@ -5928,14 +8856,6 @@
                     + '<span style="font-weight:600;">$' + row.price.toFixed(2) + '</span>'
                     + linkHtml
                     + '</div>';
-                let recoveryCell = '';
-                if (showTemuRecoveryCol) {
-                    const rec = (row.channel === 'temu') ? temuLmpRecovery(row.price) : null;
-                    recoveryCell = (rec != null)
-                        ? '<span style="font-weight:700;color:#fb7701;" title="From Price $'
-                            + row.price.toFixed(2) + '">$' + rec.toFixed(2) + '</span>'
-                        : '<span class="text-muted">-</span>';
-                }
                 const ratingCell = row.rating != null
                     ? '<span><i class="fa fa-star text-warning"></i> ' + row.rating.toFixed(1) + '</span>'
                     : '<span class="text-muted">-</span>';
@@ -5967,24 +8887,32 @@
                 const titleAttr = (row.title || row.source || '').replace(/"/g, '&quot;');
                 const linkAttr = String(row.link || '').replace(/"/g, '&quot;');
                 const extAttr = String(row.extId || '').replace(/"/g, '&quot;');
+                const skuAttr = String(sku || '').replace(/"/g, '&quot;');
+                const selectCb = '<input type="checkbox" class="form-check-input lmp-row-cb" title="Select for delete"'
+                    + ' data-id="' + String(row.id).replace(/"/g, '&quot;') + '"'
+                    + ' data-marketplace="' + row.channel + '"'
+                    + ' data-sku="' + skuAttr + '"'
+                    + ' data-price="' + row.price + '"'
+                    + ' data-ext-id="' + extAttr + '"'
+                    + ' data-link="' + linkAttr + '">';
                 const editBtn = '<button type="button" class="btn btn-sm btn-outline-warning edit-lmp-row-btn me-1" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
-                    + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
+                    + '" data-sku="' + skuAttr
                     + '" data-price="' + row.price
                     + '" data-link="' + linkAttr
                     + '" data-ext-id="' + extAttr
                     + '" title="Edit price"><i class="fa fa-edit"></i></button>';
                 const delBtn = '<button type="button" class="btn btn-sm btn-danger delete-lmp-row-btn" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
-                    + '" data-sku="' + String(sku || '').replace(/"/g, '&quot;')
+                    + '" data-sku="' + skuAttr
                     + '" data-price="' + row.price
                     + '" data-ext-id="' + extAttr
                     + '" data-link="' + linkAttr
                     + '" title="Delete"><i class="fa fa-trash"></i></button>';
                 const rowClass = (row.ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '');
                 html += '<tr class="' + rowClass + '" title="' + titleAttr + '">'
+                    + '<td class="text-center align-middle">' + selectCb + '</td>'
                     + '<td>' + sn + '</td>'
-                    + (showTemuRecoveryCol ? ('<td class="text-end">' + recoveryCell + '</td>') : '')
                     + '<td>' + priceCell + '</td>'
                     + '<td>' + ratingCell + '</td>'
                     + '<td>' + reviewsCell + '</td>'
@@ -5995,9 +8923,14 @@
                     + '</tr>';
             });
 
+            if (!fiveCoreInserted && fiveCoreHtml) {
+                html += fiveCoreHtml;
+            }
+
             html += '</tbody></table></div>';
             $('#lmpDataList').html(html);
             applyLmpEditFormState();
+            updateLmpBulkDeleteUi();
         }
 
         function buildLmpAddFormHtml(sku, channel) {
@@ -6108,15 +9041,21 @@
 
         function refreshLmpAfterMutation(sku, channel) {
             resetLmpEditState();
+            // Refresh LMP drawer only — do NOT reload full OV L30 breakdown (too slow)
             loadLmpCompetitorsModal(sku, channel, true);
-            const currentSku = $('#modalSkuName').text();
-            if (currentSku) {
-                const currentImage = $('#modal-product-image').attr('src');
-                const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-                const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-                const currentDil = parseFloat($('#modal-header-dil').text());
-                loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
-            }
+            // Patch OV L30 LMP cell from updated cache when available
+            setTimeout(function() {
+                const ch = String(channel || 'amazon').toLowerCase();
+                const rows = (lmpModalCache.rows || []).filter(function(r) {
+                    return r.channel === ch && !r.ignored;
+                });
+                let lowest = null;
+                rows.forEach(function(r) {
+                    const landed = (typeof lmpPricePlusShip === 'function' ? lmpPricePlusShip(r) : null) || r.price;
+                    if (landed > 0 && (lowest == null || landed < lowest)) lowest = landed;
+                });
+                patchOvl30LmpCell(ch, lowest);
+            }, 400);
         }
 
         function saveTemuLmpEntries(sku, entries, done) {
@@ -6196,15 +9135,17 @@
                         });
                         renderLmpMergedTable();
                         showToast(res.message || (ignored ? 'Ignored for L1' : 'Included in L1'), 'success');
-                        // Refresh details modal LMP if open
-                        const currentSku = $('#modalSkuName').text();
-                        if (currentSku) {
-                            const currentImage = $('#modal-product-image').attr('src');
-                            const currentInv = $('#modal-header-inv').text().replace(/,/g, '');
-                            const currentL30 = $('#modal-header-l30').text().replace(/,/g, '');
-                            const currentDil = parseFloat($('#modal-header-dil').text());
-                            loadMarketplaceBreakdown(currentSku, currentImage, currentInv, currentL30, currentDil);
-                        }
+                        // Patch OV L30 LMP cell only (no full breakdown reload)
+                        const ch = String(marketplace || '').toLowerCase();
+                        const active = (lmpModalCache.rows || []).filter(function(r) {
+                            return r.channel === ch && !r.ignored;
+                        });
+                        let lowest = null;
+                        active.forEach(function(r) {
+                            const landed = (typeof lmpPricePlusShip === 'function' ? lmpPricePlusShip(r) : null) || r.price;
+                            if (landed > 0 && (lowest == null || landed < lowest)) lowest = landed;
+                        });
+                        patchOvl30LmpCell(ch, lowest);
                     } else {
                         $cb.prop('checked', !ignored);
                         showToast((res && res.error) || 'Failed to update ignore', 'error');
@@ -6408,6 +9349,7 @@
             lmpModalCache.filter = filter;
             if (filter !== 'all') lmpModalCache.showAdd = true;
             $('#lmpModal').data('lmp-filter', filter);
+            updateLmpPullBtnTitle(filter);
             renderLmpMergedTable();
         });
         
@@ -6426,6 +9368,184 @@
             if (sku) loadLmpCompetitorsModal(sku, marketplace);
         });
 
+        function updateLmpBulkDeleteUi() {
+            const $cbs = $('#lmpModal .lmp-row-cb');
+            const $checked = $cbs.filter(':checked');
+            const total = $cbs.length;
+            const selected = $checked.length;
+            const $all = $('#lmp-select-all-cb');
+            if ($all.length) {
+                $all.prop('checked', total > 0 && selected === total);
+                $all.prop('indeterminate', selected > 0 && selected < total);
+            }
+            const $btn = $('#lmp-bulk-delete-btn');
+            if ($btn.length) {
+                $btn.prop('disabled', selected === 0)
+                    .html(selected > 0
+                        ? '<i class="fa fa-trash"></i> Delete Selected (' + selected + ')'
+                        : '<i class="fa fa-trash"></i> Delete Selected');
+            }
+        }
+
+        function collectCheckedLmpRows() {
+            return $('#lmpModal .lmp-row-cb:checked').map(function() {
+                const $el = $(this);
+                return {
+                    id: $el.attr('data-id') || $el.data('id'),
+                    marketplace: ($el.attr('data-marketplace') || $el.data('marketplace') || '').toLowerCase(),
+                    sku: $el.attr('data-sku') || $el.data('sku') || $('#lmpSku').text(),
+                    price: $el.attr('data-price') || $el.data('price'),
+                    extId: $el.attr('data-ext-id') || $el.data('ext-id') || '',
+                    link: $el.attr('data-link') || $el.data('link') || '',
+                };
+            }).get().filter(function(r) { return r.id || r.extId; });
+        }
+
+        function deleteLmpApiRow(item) {
+            const marketplace = (item.marketplace || '').toLowerCase();
+            const id = item.id;
+            const extId = item.extId || '';
+            const url = marketplace === 'amazon' ? '/amazon/lmp/delete'
+                : (marketplace === 'google' ? '/google-lmp-delete'
+                    : (marketplace === 'bestbuy' ? '/bestbuy-lmp-delete'
+                        : (marketplace === 'macy' ? '/macy-lmp-delete'
+                            : (marketplace === 'reverb' ? '/reverb-lmp-delete' : '/ebay-lmp-delete'))));
+            const payload = { id: id, _token: '{{ csrf_token() }}' };
+            if ((marketplace === 'ebay' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb') && extId) {
+                payload.item_id = extId;
+            }
+            if (marketplace === 'amazon' && extId) payload.asin = extId;
+            if (marketplace === 'google' && extId) payload.product_id = extId;
+            return $.ajax({
+                url: url,
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: payload,
+            });
+        }
+
+        function deleteLmpSelectedRows(items, opts) {
+            opts = opts || {};
+            const list = (items || []).filter(function(r) { return r && (r.id || r.extId); });
+            if (!list.length) {
+                showToast('Select at least one competitor to delete', 'warning');
+                return;
+            }
+            const label = opts.confirmLabel || (list.length === 1
+                ? 'Delete this competitor from LMP? This cannot be undone.'
+                : 'Delete ' + list.length + ' selected competitors from LMP? This cannot be undone.');
+            if (!confirm(label)) return;
+
+            const $bulkBtn = $('#lmp-bulk-delete-btn');
+            const bulkHtml = $bulkBtn.html();
+            $bulkBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Deleting...');
+            $('#lmpModal .delete-lmp-row-btn, #lmpModal .lmp-row-cb, #lmp-select-all-cb').prop('disabled', true);
+
+            const sku = list[0].sku || $('#lmpSku').text();
+            const refreshChannel = (lmpModalCache.filter && lmpModalCache.filter !== 'all')
+                ? lmpModalCache.filter
+                : (list[0].marketplace || 'amazon');
+
+            const temuItems = list.filter(function(r) { return r.marketplace === 'temu'; });
+            const apiItems = list.filter(function(r) { return r.marketplace !== 'temu'; });
+            let success = 0;
+            let failed = 0;
+
+            function finish() {
+                $bulkBtn.prop('disabled', false).html(bulkHtml);
+                if (failed === 0) {
+                    showToast(success === 1
+                        ? 'Competitor deleted successfully'
+                        : success + ' competitors deleted successfully', 'success');
+                } else {
+                    showToast('Deleted ' + success + ' of ' + list.length + ' (' + failed + ' failed)', 'error');
+                }
+                if (success > 0) {
+                    refreshLmpAfterMutation(sku, refreshChannel);
+                } else {
+                    $('#lmpModal .delete-lmp-row-btn, #lmpModal .lmp-row-cb, #lmp-select-all-cb').prop('disabled', false);
+                    updateLmpBulkDeleteUi();
+                }
+            }
+
+            function runApiDeletes(done) {
+                let i = 0;
+                function next() {
+                    if (i >= apiItems.length) {
+                        done();
+                        return;
+                    }
+                    const item = apiItems[i++];
+                    deleteLmpApiRow(item)
+                        .done(function(response) {
+                            if (response && response.success) success++;
+                            else failed++;
+                        })
+                        .fail(function() { failed++; })
+                        .always(next);
+                }
+                next();
+            }
+
+            function runTemuDeletes(done) {
+                if (!temuItems.length) {
+                    done();
+                    return;
+                }
+                let removedCount = 0;
+                withTemuLmpEntries(sku, function(entries) {
+                    const indices = [];
+                    temuItems.forEach(function(item) {
+                        const idx = findTemuEntryIndex(entries, item.id, item.price, item.link);
+                        if (idx >= 0 && indices.indexOf(idx) === -1) indices.push(idx);
+                    });
+                    if (!indices.length) return false;
+                    // Delete high→low so earlier indices stay valid
+                    indices.sort(function(a, b) { return b - a; });
+                    indices.forEach(function(idx) { entries.splice(idx, 1); });
+                    removedCount = indices.length;
+                    return entries;
+                }, function(ok) {
+                    if (ok) {
+                        success += removedCount;
+                        failed += (temuItems.length - removedCount);
+                    } else {
+                        failed += temuItems.length;
+                    }
+                    done();
+                });
+            }
+
+            runTemuDeletes(function() {
+                runApiDeletes(finish);
+            });
+        }
+
+        $(document).on('change', '#lmp-select-all-cb', function() {
+            const checked = $(this).is(':checked');
+            $('#lmpModal .lmp-row-cb').prop('checked', checked);
+            updateLmpBulkDeleteUi();
+        });
+
+        $(document).on('change', '#lmpModal .lmp-row-cb', function() {
+            updateLmpBulkDeleteUi();
+        });
+
+        $(document).on('click', '#lmp-bulk-delete-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const selected = collectCheckedLmpRows();
+            if (!selected.length) {
+                showToast('Select at least one competitor to delete', 'warning');
+                return;
+            }
+            deleteLmpSelectedRows(selected, {
+                confirmLabel: selected.length === 1
+                    ? 'Delete the selected competitor from LMP? This cannot be undone.'
+                    : 'Delete ' + selected.length + ' selected competitors from LMP? This cannot be undone.'
+            });
+        });
+
         $(document).on('click', '#lmpModal .delete-lmp-row-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -6439,61 +9559,37 @@
             const link = btn.attr('data-link') || btn.closest('tr').find('a.text-primary').attr('href') || '';
             const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
             const label = labelMap[marketplace] || marketplace;
+
+            const selected = collectCheckedLmpRows();
+            if (selected.length > 1) {
+                const hasClicked = selected.some(function(r) {
+                    return String(r.id) === String(id) && r.marketplace === marketplace;
+                });
+                if (!hasClicked && (id || extId)) {
+                    selected.push({ id: id, marketplace: marketplace, sku: sku, price: price, extId: extId, link: link });
+                }
+                deleteLmpSelectedRows(selected, {
+                    confirmLabel: 'Delete ' + selected.length + ' selected competitors from LMP? This cannot be undone.'
+                });
+                return;
+            }
+
             if (!id && !extId) {
                 showToast('Cannot delete — missing competitor id', 'error');
                 return;
             }
-            if (!confirm('Delete this ' + label + ' competitor ($' + (price ? parseFloat(price).toFixed(2) : '') + ') from LMP? This cannot be undone.')) return;
 
-            const originalHtml = btn.html();
-            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
-
-            function afterDelete(ok, msg) {
-                if (ok) {
-                    showToast(msg || 'Competitor deleted', 'success');
-                    refreshLmpAfterMutation(sku, marketplace);
-                } else {
-                    btn.prop('disabled', false).html(originalHtml);
-                    showToast(msg || 'Failed to delete', 'error');
-                }
-            }
-
-            if (marketplace === 'temu') {
-                withTemuLmpEntries(sku, function(entries) {
-                    const idx = findTemuEntryIndex(entries, id, price, link);
-                    if (idx < 0) return false;
-                    entries.splice(idx, 1);
-                    return entries;
-                }, afterDelete);
-                return;
-            }
-
-            const url = marketplace === 'amazon' ? '/amazon/lmp/delete'
-                : (marketplace === 'google' ? '/google-lmp-delete'
-                    : (marketplace === 'bestbuy' ? '/bestbuy-lmp-delete'
-                        : (marketplace === 'macy' ? '/macy-lmp-delete'
-                            : (marketplace === 'reverb' ? '/reverb-lmp-delete' : '/ebay-lmp-delete'))));
-            const payload = {
+            deleteLmpSelectedRows([{
                 id: id,
-                _token: '{{ csrf_token() }}'
-            };
-            // eBay/Amazon/Google/BestBuy/Macy/Reverb: pass listing key so backend can clear linked-SKU copies
-            if ((marketplace === 'ebay' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb') && extId) payload.item_id = extId;
-            if (marketplace === 'amazon' && extId) payload.asin = extId;
-            if (marketplace === 'google' && extId) payload.product_id = extId;
-
-            $.ajax({
-                url: url,
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: payload,
-                success: function(response) {
-                    afterDelete(!!response.success, response.message || response.error);
-                },
-                error: function(xhr) {
-                    const msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to delete competitor';
-                    afterDelete(false, msg);
-                }
+                marketplace: marketplace,
+                sku: sku,
+                price: price,
+                extId: extId,
+                link: link,
+            }], {
+                confirmLabel: 'Delete this ' + label + ' competitor ($'
+                    + (price ? parseFloat(price).toFixed(2) : '')
+                    + ') from LMP? This cannot be undone.'
             });
         });
 
@@ -6744,14 +9840,15 @@
                 row.parent === parentVal && row.is_parent_summary !== true
             );
 
-            let displayData = [];
-            displayData = displayData.concat(childRows);
+            // Children first, parent blue row last (clear Dil% sort so order is preserved)
+            let displayData = childRows.slice();
             if (parentRow) {
                 parentRow._expanded = true;
                 displayData.push(parentRow);
             }
 
             suppressDataLoadedHandler = true;
+            table.clearSort();
             table.setData(displayData).then(() => {
                 updateSummary();
             });
@@ -6767,7 +9864,10 @@
                 return;
             }
             
-            const parentRows = fullDataset.filter(row => row.is_parent_summary === true);
+            const parentRows = fullDataset
+                .filter(row => row.is_parent_summary === true)
+                .slice()
+                .sort((a, b) => (parseFloat(a.dil_percent) || 0) - (parseFloat(b.dil_percent) || 0));
             const childRows = fullDataset.filter(row => row.is_parent_summary !== true);
             
             console.log('Parents found:', parentRows.length);
@@ -6884,6 +9984,10 @@
                 if (skuVal) table.addFilter("sku", "like", skuVal);
                 const parentVal = $('#parent-search').val();
                 if (parentVal) table.addFilter("parent", "like", parentVal);
+                // Default: Dil% low → high (keep child grouping when a parent is expanded)
+                if (expandedParent === null) {
+                    table.setSort([{ column: "dil_percent", dir: "asc" }]);
+                }
                 updateSummary();
             }).catch(err => {
                 console.error('❌ Error updating table:', err);
@@ -7264,7 +10368,7 @@
 
         $('#remove-filter-btn').on('click', function() {
             $('#inventory-filter').val('more');
-            $('#sku-parent-filter').val('both');
+            $('#sku-parent-filter').val('parent');
             $('#sku-search').val('');
             $('#parent-search').val('');
             // Reset DIL
@@ -7415,6 +10519,19 @@
             });
         }
 
+        function hidePriceIncreaseDefaultColumns() {
+            ['image_path', 'parent_display'].forEach(field => {
+                const col = table.getColumn(field);
+                if (col) col.hide();
+            });
+            // Always show Label (Shipping Master) column after Dil %
+            const labelCol = table.getColumn('label');
+            if (labelCol) labelCol.show();
+            // Always show Audit (same as /amz-cvr-issues)
+            const auditCol = table.getColumn('audit');
+            if (auditCol) auditCol.show();
+        }
+
         function applyColumnVisibilityFromServer() {
             $.ajax({
                 url: '/cvr-master-column-visibility',
@@ -7424,6 +10541,8 @@
                         && Object.keys(visibility).length > 0) {
                         Object.keys(visibility).forEach(field => {
                             if (CVR_HIDDEN_FROM_COLUMN_MENU.indexOf(field) !== -1) return;
+                            // WMPNM Dil: keep Image / Parent text columns hidden by default
+                            if (field === 'image_path' || field === 'parent_display' || field === 'parent') return;
                             const col = table.getColumn(field);
                             if (col) {
                                 visibility[field] ? col.show() : col.hide();
@@ -7431,10 +10550,12 @@
                         });
                     }
                     forceHideRemovedCvrColumns();
+                    hidePriceIncreaseDefaultColumns();
                     buildColumnDropdown();
                 },
                 error: function() {
                     forceHideRemovedCvrColumns();
+                    hidePriceIncreaseDefaultColumns();
                     buildColumnDropdown();
                 }
             });
@@ -7544,14 +10665,54 @@
         let currentPricingChartParent = '';
         let currentPricingChartAggregate = false;
         let currentPricingChartDays = 30;
-        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views' };
+        let currentPricingChartSource = 'cvr'; // 'cvr' | 'temu_views'
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
+
+        /**
+         * Open chart modal safely. When OV L30 is already open, stack chart above it
+         * without trapping the OV L30 modal under a raised backdrop.
+         */
+        function showPricingMasterChartModal() {
+            const chartEl = document.getElementById('pricingMasterChartModal');
+            if (!chartEl) return;
+            const ovl30Open = $('#ovl30DetailsModal').hasClass('show');
+            chartEl.classList.toggle('pi-chart-over-ovl30', ovl30Open);
+            const existing = bootstrap.Modal.getInstance(chartEl);
+            const modal = existing || new bootstrap.Modal(chartEl);
+            modal.show();
+            if (ovl30Open) {
+                // Raise only the newest backdrop (chart's), leave OV L30 backdrop alone
+                setTimeout(function() {
+                    const backs = document.querySelectorAll('.modal-backdrop');
+                    if (backs.length) {
+                        backs[backs.length - 1].style.zIndex = '1080';
+                        backs[backs.length - 1].classList.add('pi-chart-backdrop');
+                    }
+                }, 10);
+            }
+            loadPricingMasterChart();
+        }
+
+        $(document).on('hidden.bs.modal', '#pricingMasterChartModal', function() {
+            this.classList.remove('pi-chart-over-ovl30');
+            document.querySelectorAll('.modal-backdrop.pi-chart-backdrop').forEach(function(el) {
+                el.classList.remove('pi-chart-backdrop');
+                el.style.zIndex = '';
+            });
+            setTimeout(cleanupOrphanModalBackdrops, 50);
+        });
+
+        $(document).on('hidden.bs.modal', '#lmpModal, #spriceDetailsModal, #missingListingsModal, #remarkHistoryModal, #spriceSuggestModal', function() {
+            setTimeout(cleanupOrphanModalBackdrops, 50);
+        });
 
         $(document).on('click', '.summary-chart-badge', function(e) {
             e.preventDefault();
             e.stopPropagation();
             const metric = $(e.currentTarget).attr('data-metric') || $(e.currentTarget).data('metric');
             if (!metric) return;
+            currentPricingChartSource = 'cvr';
             currentPricingChartMetric = metric;
             currentPricingChartSku = '';
             currentPricingChartParent = '';
@@ -7559,13 +10720,11 @@
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Master Analytics - All (Summary) - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('WMPNM Dil - All (Summary) - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
-            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
-            modal.show();
-            loadPricingMasterChart();
+            showPricingMasterChartModal();
         });
 
         $(document).on('click', '.pricing-master-chart-link', function(e) {
@@ -7575,6 +10734,7 @@
             const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
             const parent = String($(e.currentTarget).attr('data-parent') || $(e.currentTarget).data('parent') || '').trim();
             if (!metric) return;
+            currentPricingChartSource = 'cvr';
             currentPricingChartAggregate = false;
             const isParentChart = parent !== '' || (sku.indexOf('PARENT ') === 0);
             const displayName = isParentChart ? (parent || sku.replace(/^PARENT\s+/i, '')) : sku;
@@ -7590,13 +10750,34 @@
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
-            $('#pricingMasterChartModalTitle').text('Master Analytics - ' + displayName + (isParentChart ? ' (Parent)' : '') + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
+            $('#pricingMasterChartModalTitle').text('WMPNM Dil - ' + displayName + (isParentChart ? ' (Parent)' : '') + ' - ' + label + ' (Rolling ' + pricingChartRangeLabel(30) + ')');
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
             $('#pricingMasterChartLoading').show();
-            const modal = new bootstrap.Modal(document.getElementById('pricingMasterChartModal'));
-            modal.show();
-            loadPricingMasterChart();
+            showPricingMasterChartModal();
+        });
+
+        // Temu Views chart — same /temu-metrics-history source as /temu-decrease Views dot
+        $(document).on('click', '.temu-views-chart-link', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
+            if (!sku) {
+                showToast('SKU not found for Temu Views chart', 'error');
+                return;
+            }
+            currentPricingChartSource = 'temu_views';
+            currentPricingChartMetric = 'temu_views';
+            currentPricingChartSku = sku;
+            currentPricingChartParent = '';
+            currentPricingChartAggregate = false;
+            currentPricingChartDays = 30;
+            $('#pricingMasterChartRangeSelect').val('30');
+            $('#pricingMasterChartModalTitle').text('WMPNM Dil - ' + sku + ' - Temu Views (Rolling L30)');
+            $('#pricingMasterChartContainer').hide();
+            $('#pricingMasterChartNoData').hide();
+            $('#pricingMasterChartLoading').show();
+            showPricingMasterChartModal();
         });
 
         $(document).on('change', '#pricingMasterChartRangeSelect', function() {
@@ -7611,6 +10792,37 @@
             $('#pricingMasterChartLoading').show();
             $('#pricingMasterChartContainer').hide();
             $('#pricingMasterChartNoData').hide();
+
+            // Temu Views history from /temu-decrease API
+            if (currentPricingChartSource === 'temu_views') {
+                $.ajax({
+                    url: '/temu-metrics-history',
+                    method: 'GET',
+                    data: { sku: currentPricingChartSku, days: currentPricingChartDays },
+                    success: function(data) {
+                        $('#pricingMasterChartLoading').hide();
+                        const rows = Array.isArray(data) ? data : [];
+                        if (rows.length > 0) {
+                            const mapped = rows.map(function(d) {
+                                return {
+                                    date: d.date_formatted || d.date || '',
+                                    value: parseFloat(d.views) || 0
+                                };
+                            });
+                            $('#pricingMasterChartContainer').show();
+                            renderPricingMasterChart(mapped);
+                        } else {
+                            $('#pricingMasterChartNoData').show();
+                        }
+                    },
+                    error: function() {
+                        $('#pricingMasterChartLoading').hide();
+                        $('#pricingMasterChartNoData').show();
+                    }
+                });
+                return;
+            }
+
             const payload = { metric: currentPricingChartMetric, days: currentPricingChartDays };
             if (currentPricingChartAggregate) {
                 payload.aggregate = 1;
@@ -7660,7 +10872,9 @@
                 if (currentPricingChartMetric === 'price' || currentPricingChartMetric === 'amz_price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
                 if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil') return Number(v).toFixed(1) + '%';
                 if (currentPricingChartMetric === 'rating') return Number(v).toFixed(1);
-                if (currentPricingChartMetric === 'total_views') return Math.round(v).toLocaleString('en-US');
+                if (currentPricingChartMetric === 'total_views' || currentPricingChartMetric === 'temu_views') {
+                    return Math.round(v).toLocaleString('en-US');
+                }
                 return Math.round(v).toLocaleString('en-US');
             };
             $('#pricingMasterChartHighest').text(fmtVal(dataMax)).css('color', '#dc3545');
@@ -7757,6 +10971,59 @@
                         }
                     }
                 }
+            });
+        }
+
+        // ==================== Audit (same as /amz-cvr-issues) ====================
+        window.AmzCvrAuditBridge = {
+            getTable: function() { return table; },
+            rowSku: function(row) { return String((row && row.sku) || '').trim(); },
+            rowParent: function(row) { return String((row && row.parent) || '').trim(); },
+            rowInv: function(row) { return parseFloat(row && row.inventory) || 0; },
+            rowViews: function(row) { return parseFloat(row && row.total_views) || 0; },
+            rowCvr: function(row) { return parseFloat(row && row.avg_cvr) || 0; },
+            rowPrice: function(row) { return parseFloat(row && row.amazon_price) || 0; },
+            getSelectedSkus: function() { return []; }
+        };
+        @php
+            $piAuditAssigneeEmails = [
+                'pricing' => 'pricing1@5core.com',
+                'compliance' => 'mgr-content@5core.com',
+                'missing_listing' => 'ecomm6@5core.com',
+                'advertisement' => 'mgr-advertisement@5core.com',
+            ];
+            $piAuditAssigneeUsers = \App\Models\User::query()
+                ->where(function ($q) use ($piAuditAssigneeEmails) {
+                    foreach ($piAuditAssigneeEmails as $email) {
+                        $q->orWhereRaw('LOWER(email) = ?', [strtolower($email)]);
+                    }
+                })
+                ->get(['id', 'name', 'email']);
+            $piAuditAssigneeMap = [];
+            foreach ($piAuditAssigneeEmails as $key => $email) {
+                $user = $piAuditAssigneeUsers->first(
+                    fn ($u) => strtolower((string) $u->email) === strtolower($email)
+                );
+                $piAuditAssigneeMap[$key] = [
+                    'label' => match ($key) {
+                        'pricing' => 'Pricing Issue',
+                        'compliance' => 'Compliance Issue',
+                        'missing_listing' => 'Missing listing Issue',
+                        'advertisement' => 'Advertisement Issue',
+                        default => ucfirst(str_replace('_', ' ', $key)) . ' Issue',
+                    },
+                    'email' => $email,
+                    'user_id' => $user ? (int) $user->id : null,
+                    'name' => $user ? (string) $user->name : null,
+                    'custom' => false,
+                ];
+            }
+        @endphp
+        if (window.AmzCvrAudit && typeof window.AmzCvrAudit.init === 'function') {
+            window.AmzCvrAudit.init({
+                taskStoreUrl: @json(route('tasks.store')),
+                historyStoreUrl: @json(route('amz.cvr.issues.history.store')),
+                builtInAssignees: @json($piAuditAssigneeMap)
             });
         }
     });

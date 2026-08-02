@@ -27,6 +27,7 @@ use App\Models\EbayPriorityReport;
 use App\Models\Ebay3PriorityReport;
 use App\Models\Ebay3GeneralReport;
 use App\Models\AmazonDataView;
+use App\Models\AmzCvrAuditHistory;
 use App\Models\TemuDataView;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2DailyData;
@@ -155,6 +156,20 @@ class CvrMasterController extends Controller
         $demo = $request->query("demo");
 
         return view("market-places.price_increase_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+        ]);
+    }
+
+    /**
+     * Display WMPNM Dil view (copy of price-increase; same datatable /cvr-master-data-json)
+     */
+    public function wmpnmDilView(Request $request)
+    {
+        $mode = $request->query("mode");
+        $demo = $request->query("demo");
+
+        return view("market-places.wmpnm_dil_view", [
             "mode" => $mode,
             "demo" => $demo,
         ]);
@@ -955,6 +970,18 @@ class CvrMasterController extends Controller
             // Process data (skip PARENT rows from database)
             $result = [];
 
+            $scalarShip = static function (array $vals, string $key) {
+                if (! array_key_exists($key, $vals) || $vals[$key] === null || $vals[$key] === '') {
+                    return null;
+                }
+                $v = $vals[$key];
+                if (is_numeric($v)) {
+                    return 0 + $v;
+                }
+
+                return trim((string) $v);
+            };
+
             foreach ($productMasterRows as $productMaster) {
                 $sku = $productMaster->sku;
 
@@ -1465,15 +1492,16 @@ class CvrMasterController extends Controller
                 $reverbViews = $reverbProduct ? intval($reverbProduct->views ?? 0) : 0;
                 $dobaViews = $dobaMetric ? intval($dobaMetric->impressions ?? 0) : 0;
                 
-                // Total Views (sum of all marketplace views)
+                // Total Views (sum of all marketplace views) — Walmart excluded from this page
                 $totalViews = $amazonViews + $ebay1Views + $ebay2Views + $ebay3Views + $temuViews + $temu2Views
-                              + $walmartViews + $tiktokViews + $bbViews + $sb2cViews
+                              + $tiktokViews + $bbViews + $sb2cViews
                               + $macyViews + $reverbViews + $dobaViews + $sheinViews + $tdViews; // AliExpress has no views tracked
                 // Get L30 from all marketplaces
                 $ebay1L30 = $ebay1Metric ? intval($ebay1Metric->ebay_l30 ?? 0) : 0;
                 $ebay2L30 = $ebay2Metric ? intval($ebay2Metric->ebay_l30 ?? 0) : 0;
                 $ebay3L30 = $ebay3Metric ? intval($ebay3Metric->ebay_l30 ?? 0) : 0;
-                $walmartL30 = $walmartOrderTotals->get($sku) ? intval($walmartOrderTotals->get($sku)->total_qty ?? 0) : 0;
+                // Walmart / Tiendamia excluded from SW L30 on this page
+                $walmartL30 = 0;
                 // $tiktokL30 already set from tiktok_orders above
                 $bbL30 = $bestbuyProduct ? intval($bestbuyProduct->m_l30 ?? 0) : 0;
                 $sb2cL30 = 0; // Shopify B2C L30 is in overall_l30 (already counted)
@@ -1481,9 +1509,9 @@ class CvrMasterController extends Controller
                 $reverbL30 = $reverbProduct ? intval($reverbProduct->r_l30 ?? 0) : 0;
                 $dobaL30 = $dobaMetric ? intval($dobaMetric->quantity_l30 ?? 0) : 0;
                 
-                // Total L30 across all marketplaces
+                // Total L30 across marketplaces (Walmart / Tiendamia excluded)
                 $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + $temu2L30
-                           + $walmartL30 + $tiktokL30 + $bbL30 + $sb2cL30
+                           + $tiktokL30 + $bbL30 + $sb2cL30
                            + $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30 + $tdL30;
                 
                 // Calculate Avg CVR using CVR formula: (Total L30 / Total Views) × 100
@@ -1497,7 +1525,7 @@ class CvrMasterController extends Controller
                 if ($ebay3Price > 0) $prices[] = $ebay3Price;
                 if ($temuPrice > 0) $prices[] = $temuPrice;
                 if ($temu2Price > 0) $prices[] = $temu2Price;
-                if ($walmartPrice > 0) $prices[] = $walmartPrice;
+                // Walmart excluded from this page
                 if ($tiktokPrice > 0) $prices[] = $tiktokPrice;
                 if ($bbPrice > 0) $prices[] = $bbPrice;
                 if ($sb2cPrice > 0) $prices[] = $sb2cPrice;
@@ -1517,7 +1545,7 @@ class CvrMasterController extends Controller
                 if ($ebay3Price > 0) $gpftValues[] = $ebay3GPFT;
                 if ($temuPrice > 0) $gpftValues[] = $temuGPFT;
                 if ($temu2Price > 0) $gpftValues[] = $temu2GPFT;
-                if ($walmartPrice > 0) $gpftValues[] = $walmartGPFT;
+                // Walmart excluded from this page
                 if ($tiktokPrice > 0) $gpftValues[] = $tiktokGPFT;
                 if ($bbPrice > 0) $gpftValues[] = $bbGPFT;
                 if ($sb2cPrice > 0) $gpftValues[] = $sb2cGPFT;
@@ -1530,7 +1558,8 @@ class CvrMasterController extends Controller
                 if ($tdPrice > 0) $gpftValues[] = $tdGPFT;
                 
                 // Sales-weighted Ads%: (Σ ad spend $) ÷ (Σ sales $) × 100
-                // for marketplaces with ads (Amazon, Temu, Temu 2, Walmart, TikTok) that have sales
+                // for marketplaces with ads (Amazon, Temu, Temu 2, TikTok) that have sales
+                // Walmart excluded from this page
                 $totalAdsAmount = 0.0;
                 $totalAdSalesAmount = 0.0;
                 if ($amazonRevenue > 0) {
@@ -1549,10 +1578,6 @@ class CvrMasterController extends Controller
                     $totalAdsAmount += $temu2AdSpend;
                     $totalAdSalesAmount += $temu2Revenue;
                 }
-                if ($wL30 > 0) {
-                    $totalAdsAmount += $walmartAdSpend;
-                    $totalAdSalesAmount += $wL30;
-                }
 
                 // Collect all PFT values
                 $pftValues = [];
@@ -1562,7 +1587,7 @@ class CvrMasterController extends Controller
                 if ($ebay3Price > 0) $pftValues[] = $ebay3PFT;
                 if ($temuPrice > 0) $pftValues[] = $temuPFT;
                 if ($temu2Price > 0) $pftValues[] = $temu2PFT;
-                if ($walmartPrice > 0) $pftValues[] = $walmartPFT;
+                // Walmart excluded from this page
                 if ($tiktokPrice > 0) $pftValues[] = $tiktokPFT;
                 if ($bbPrice > 0) $pftValues[] = $bbPFT;
                 if ($sb2cPrice > 0) $pftValues[] = $sb2cPFT;
@@ -1607,10 +1632,7 @@ class CvrMasterController extends Controller
                         $roiValues[] = $temu2Groi;
                         $nroiValues[] = $temu2Groi;
                     }
-                    if ($walmartPrice > 0) {
-                        $roiValues[] = ($walmartGPFT * $walmartPrice) / $lp;
-                        $nroiValues[] = ($walmartPFT * $walmartPrice) / $lp;
-                    }
+                    // Walmart excluded from this page
                     if ($tiktokPrice > 0) {
                         // GROI uses tt_ship; NROI = dollar-ads style via NPFT (GPFT − TACOS)
                         $tiktokGroi = (($tiktokPrice * $tiktokPercentage - $lp - $ttShip) / $lp) * 100;
@@ -1731,9 +1753,9 @@ class CvrMasterController extends Controller
                 $temuDataViewRow = $temuDataViewBySku->get($sku)
                     ?? $temuDataViewBySkuUpper->get(strtoupper(trim((string) $sku)));
                 $temuSprice = null;
-                // Approx push-history count for outer Hist column (amazon/temu/walmart already loaded)
+                // Approx push-history count for outer Hist column (amazon/temu; Walmart excluded from this page)
                 $pushHistoryCount = 0;
-                foreach ([$amazonDataViewRow, $temuDataViewRow, $walmartDataView->get($sku)] as $dvHistRow) {
+                foreach ([$amazonDataViewRow, $temuDataViewRow] as $dvHistRow) {
                     if (!$dvHistRow) {
                         continue;
                     }
@@ -1768,6 +1790,12 @@ class CvrMasterController extends Controller
                     $missingChannelPrices[] = $ebay2Price;
                 }
                 $missingL = in_array(true, array_map(fn($p) => floatval($p) <= 0, $missingChannelPrices));
+
+                // Shipping Master Label fields (same source as /sales-order-fulfillment Label column)
+                $labelType = isset($values['label_type']) ? trim((string) $values['label_type']) : '';
+                if ($labelType === '') {
+                    $labelType = 'STD';
+                }
 
                 $result[] = (object) [
                     "sku" => $sku,
@@ -1837,8 +1865,54 @@ class CvrMasterController extends Controller
                     "remark_solved" => $remarkSolved,
                     "missing_l" => $missingL,
                     "push_history_count" => $pushHistoryCount,
+                    "label" => $labelType,
+                    "label_qty" => $scalarShip($values, 'label_qty'),
+                    "wt_act" => $scalarShip($values, 'wt_act'),
+                    "l" => $scalarShip($values, 'l'),
+                    "w" => $scalarShip($values, 'w'),
+                    "h" => $scalarShip($values, 'h'),
+                    "wt_decl" => $scalarShip($values, 'wt_decl'),
+                    "l_decl" => $scalarShip($values, 'l_decl'),
+                    "w_decl" => $scalarShip($values, 'w_decl'),
+                    "h_decl" => $scalarShip($values, 'h_decl'),
+                    // CP$ / FRG / LP — Product Master (Label details modal)
+                    "cp" => $scalarShip($values, 'cp'),
+                    "frght" => (function () use ($values, $scalarShip) {
+                        $stored = $scalarShip($values, 'frght');
+                        if ($stored !== null && $stored !== '' && is_numeric($stored)) {
+                            return round((float) $stored, 2);
+                        }
+                        $l = $scalarShip($values, 'l');
+                        $w = $scalarShip($values, 'w');
+                        $h = $scalarShip($values, 'h');
+                        if (! is_numeric($l) || ! is_numeric($w) || ! is_numeric($h)) {
+                            return null;
+                        }
+                        $cbm = (((float) $l * 2.54) * ((float) $w * 2.54) * ((float) $h * 2.54)) / 1000000;
+
+                        return round($cbm * 200, 2);
+                    })(),
+                    "lp" => $lp > 0 ? round($lp, 2) : $scalarShip($values, 'lp'),
+                    "sku_image" => $imagePath,
                 ];
             }
+
+            // Audit history — same table/source as /amz-cvr-issues (amz_cvr_audit_histories)
+            $auditBySku = $this->amzCvrAuditHistoryBySku(
+                collect($result)->pluck('sku')->filter()->unique()->values()->all()
+            );
+            foreach ($result as &$rowObj) {
+                $skuKey = trim((string) ($rowObj->sku ?? ''));
+                $history = $auditBySku[$skuKey] ?? [];
+                $rowObj->audit_history = $history;
+                $rowObj->audit_history_latest = $history[0] ?? null;
+                $rowObj->audit_history_ts = isset($history[0]['sort_ts']) ? (int) $history[0]['sort_ts'] : 0;
+                $rowObj->audit_history_dates = array_values(array_unique(array_filter(array_map(
+                    static fn ($h) => $h['date_key'] ?? null,
+                    $history
+                ))));
+            }
+            unset($rowObj);
 
             // Group by parent and create synthetic parent rows (like Amazon)
             $groupedByParent = collect($result)->groupBy('parent');
@@ -1941,6 +2015,24 @@ class CvrMasterController extends Controller
                         ? round($rows->filter(fn ($r) => isset($r->listing_quality_score) && is_numeric($r->listing_quality_score) && $r->listing_quality_score > 0)->avg('listing_quality_score'), 1) : null,
                     'is_parent_summary' => true,
                     'push_history_count' => 0,
+                    'label' => null,
+                    'label_qty' => null,
+                    'wt_act' => null,
+                    'l' => null,
+                    'w' => null,
+                    'h' => null,
+                    'wt_decl' => null,
+                    'l_decl' => null,
+                    'w_decl' => null,
+                    'h_decl' => null,
+                    'cp' => null,
+                    'frght' => null,
+                    'lp' => null,
+                    'sku_image' => null,
+                    'audit_history' => [],
+                    'audit_history_latest' => null,
+                    'audit_history_ts' => 0,
+                    'audit_history_dates' => [],
                 ];
 
                 // Calculate parent DIL%
@@ -2576,6 +2668,7 @@ class CvrMasterController extends Controller
             // Get Amazon suggested data from amazon_data_view
             $amazonDataView = AmazonDataView::where('sku', $fullSku)->first();
             $amazonSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $amazonStandardPrice = null;
             $amazonPushedBy = null;
             $amazonPushedAt = null;
             if ($amazonDataView) {
@@ -2588,6 +2681,11 @@ class CvrMasterController extends Controller
                         'sroi' => $val['SROI'] ?? 0,
                         'spft' => $val['SPFT'] ?? 0,
                     ];
+                    // STANDARD_PRICE — same as /amazon-tabulator-view SP column
+                    $stdRaw = $val['STANDARD_PRICE'] ?? null;
+                    if (is_numeric($stdRaw) && (float) $stdRaw > 0) {
+                        $amazonStandardPrice = round((float) $stdRaw, 2);
+                    }
                     // Get pushed by information
                     $amazonPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
                     $amazonPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
@@ -2618,6 +2716,7 @@ class CvrMasterController extends Controller
                 'sgpft' => $amazonSuggested['sgpft'],
                 'sroi' => $amazonSuggested['sroi'],
                 'spft' => $amazonSuggested['spft'],
+                'standard_price' => $amazonStandardPrice,
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => 0.80,
@@ -2776,7 +2875,9 @@ class CvrMasterController extends Controller
             ];
 
             // eBay 3 — fixed 85% margin + channel Ads% on every row (same as /ebay3-tabulator-view)
-            $ebay3Data = Ebay3Metric::where('sku', $fullSku)->first();
+            $ebay3SkuNorm = strtoupper(trim((string) $fullSku));
+            $ebay3Data = Ebay3Metric::where('sku', $fullSku)->first()
+                ?? Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [$ebay3SkuNorm])->first();
             $ebay3Margin = 0.85;
             $ebay3Price = $ebay3Data->ebay_price ?? 0;
             $ebay3L30 = $ebay3Data->ebay_l30 ?? 0;
@@ -2788,9 +2889,17 @@ class CvrMasterController extends Controller
                 ? (float) $ebay3Ctrl->getEbaythreeMasterAdsPercent()
                 : 0.0;
             $ebay3NPFT = round($ebay3GPFT - $ebay3AD, 2);
-            
-            $ebay3DataView = $ebay3Data ? EbayThreeDataView::where('sku', $fullSku)->first() : null;
+            $ebay3ListedSku = $ebay3Data ? (string) ($ebay3Data->sku ?: $fullSku) : null;
+
+            $ebay3DataView = null;
+            if ($ebay3ListedSku) {
+                $ebay3DataView = EbayThreeDataView::where('sku', $ebay3ListedSku)->first()
+                    ?? EbayThreeDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($ebay3ListedSku))])->first()
+                    ?? EbayThreeDataView::where('sku', $fullSku)->first();
+            }
             $ebay3Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $ebay3PushedBy = null;
+            $ebay3PushedAt = null;
             if ($ebay3DataView) {
                 $val = is_array($ebay3DataView->value) ? $ebay3DataView->value : json_decode($ebay3DataView->value, true);
                 if (is_array($val)) {
@@ -2807,12 +2916,21 @@ class CvrMasterController extends Controller
                         // SPFT = SGPFT − Ads% (same as /ebay3-tabulator-view)
                         'spft' => $ebay3Sprice > 0 ? round($ebay3Sgpft - $ebay3AD, 2) : floatval($val['SPFT'] ?? 0),
                     ];
+                    $ebay3PushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $ebay3PushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    if ($ebay3PushedAt) {
+                        try {
+                            $ebay3PushedAt = Carbon::parse($ebay3PushedAt)->format('jM');
+                        } catch (\Exception $e) {
+                            $ebay3PushedAt = null;
+                        }
+                    }
                 }
             }
             
             $breakdownData[] = [
                 'marketplace' => 'Ebay3',
-                'sku' => $ebay3Data ? $fullSku : 'Not Listed',
+                'sku' => $ebay3ListedSku ?: 'Not Listed',
                 'price' => $ebay3Price,
                 'views' => $ebay3Data ? intval($ebay3Data->views ?? 0) : null,
                 'l30' => $ebay3L30,
@@ -2828,9 +2946,9 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $ebay3Margin,
-                'pushed_by' => null,
-                'pushed_at' => null,
-                'buyer_link' => ($ebay3Links = $getListingLinks(EbayThreeListingStatus::class, $fullSku))[0],
+                'pushed_by' => $ebay3PushedBy,
+                'pushed_at' => $ebay3PushedAt,
+                'buyer_link' => ($ebay3Links = $getListingLinks(EbayThreeListingStatus::class, $ebay3ListedSku ?: $fullSku))[0],
                 'seller_link' => $ebay3Links[1],
             ];
 
@@ -3141,22 +3259,26 @@ class CvrMasterController extends Controller
             $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first();
             $sb2bMargin = $sb2bMarketplace ? ($sb2bMarketplace->percentage / 100) : 0.95;
             
-            // GPFT% / GROI% — same as Business Analytics (/shopify-b2b-pricing): no Ship
-            // GPFT = (Price × Margin − LP) / Price × 100
-            // GROI (modal) = (Price × Margin − LP) / LP × 100  (ship passed as 0)
-            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp) / $sb2bPrice) * 100 : 0;
+            // GPFT% / GROI% — include Ship (aligned with SPRICE = Price×0.75 − Ship)
+            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp - $ship) / $sb2bPrice) * 100 : 0;
             $sb2bNPFT = $sb2bGPFT;
+
+            // Always calculate SPRICE = (Price × 0.75) − Ship
+            $sb2bCalcSprice = $sb2bPrice > 0
+                ? max(0.01, round(($sb2bPrice * 0.75) - $ship, 2))
+                : 0;
             
             $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
-            $sb2bSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $sb2bSuggested = ['sprice' => $sb2bCalcSprice, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             $sb2bPushedBy = null;
             $sb2bPushedAt = null;
             if ($sb2bDataView) {
                 $val = is_array($sb2bDataView->value) ? $sb2bDataView->value : json_decode($sb2bDataView->value, true);
                 if (is_array($val)) {
-                    $sb2bSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
-                                      'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
-                    // Get pushed by information
+                    // Keep push metadata; SPRICE itself is always recalculated from Price/Ship
+                    $sb2bSuggested['sgpft'] = floatval($val['SGPFT'] ?? 0);
+                    $sb2bSuggested['sroi'] = floatval($val['SROI'] ?? 0);
+                    $sb2bSuggested['spft'] = floatval($val['SPFT'] ?? 0);
                     $sb2bPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
                     $sb2bPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
                     // Format pushed at timestamp
@@ -3168,6 +3290,13 @@ class CvrMasterController extends Controller
                         }
                     }
                 }
+            }
+            // Recalculate SGPFT/SROI from always-calculated SPRICE for modal display
+            if ($sb2bCalcSprice > 0) {
+                $sb2bGross = ($sb2bCalcSprice * $sb2bMargin) - $lp - $ship;
+                $sb2bSuggested['sgpft'] = ($sb2bGross / $sb2bCalcSprice) * 100;
+                $sb2bSuggested['spft'] = $sb2bSuggested['sgpft'];
+                $sb2bSuggested['sroi'] = $lp > 0 ? ($sb2bGross / $lp) * 100 : 0;
             }
             
             $breakdownData[] = [
@@ -3181,12 +3310,12 @@ class CvrMasterController extends Controller
                 'tacos_ch' => $getChannelTACOS('ShopifyB2B'),
                 'npft' => $sb2bNPFT,
                 'is_listed' => true,
-                'sprice' => $sb2bSuggested['sprice'],
+                'sprice' => $sb2bCalcSprice,
                 'sgpft' => $sb2bSuggested['sgpft'],
                 'sroi' => $sb2bSuggested['sroi'],
                 'spft' => $sb2bSuggested['spft'],
                 'lp' => $lp,
-                'ship' => 0, // B2B formulas exclude Ship (Business Analytics / shopify-b2b-pricing)
+                'ship' => $ship,
                 'margin' => $sb2bMargin,
                 'pushed_by' => $sb2bPushedBy,
                 'pushed_at' => $sb2bPushedAt,
@@ -3607,71 +3736,7 @@ class CvrMasterController extends Controller
                 'seller_link' => $bestbuyLinks[1],
             ];
 
-            // Tiendamia — same sources/formulas as /tiendamia-pricing:
-            // Price = tiendamia_price_uploads (sheet, exact offer_sku/product_sku) first,
-            // else tiendamia_products.price. L30 from product (UPPER sku).
-            $tmSkuTrimmed = trim((string) $fullSku);
-            $tmSkuUpper = strtoupper($tmSkuTrimmed);
-
-            $tiendamiaSheetRow = TiendamiaPriceUpload::whereNotNull('price')
-                ->where(function ($q) use ($tmSkuTrimmed) {
-                    $q->where('offer_sku', $tmSkuTrimmed)
-                        ->orWhere('product_sku', $tmSkuTrimmed);
-                })
-                ->first();
-
-            $tiendamiaProduct = TiendamiaProduct::where('sku', $tmSkuUpper)->first()
-                ?? TiendamiaProduct::whereRaw('UPPER(TRIM(sku)) = ?', [$tmSkuUpper])->first();
-
-            $tiendamiaMarketplace = MarketplacePercentage::where('marketplace', 'Tiendamia')->first();
-            $tiendamiaMargin = $tiendamiaMarketplace ? ((float) $tiendamiaMarketplace->percentage / 100) : 0.83;
-
-            $tiendamiaPrice = $tiendamiaSheetRow
-                ? floatval($tiendamiaSheetRow->price ?? 0)
-                : ($tiendamiaProduct ? floatval($tiendamiaProduct->price ?? 0) : 0);
-            $tiendamiaL30 = $tiendamiaProduct ? intval($tiendamiaProduct->m_l30 ?? 0) : 0;
-            $tiendamiaGPFT = $tiendamiaPrice > 0
-                ? round((($tiendamiaPrice * $tiendamiaMargin - $lp - $ship) / $tiendamiaPrice) * 100, 2)
-                : 0;
-            $tiendamiaNPFT = $tiendamiaGPFT;
-
-            $tiendamiaDataView = TiendamiaDataView::where('sku', $fullSku)->first()
-                ?? TiendamiaDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$tmSkuUpper])->first();
-            $tiendamiaSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
-            if ($tiendamiaDataView) {
-                $val = is_array($tiendamiaDataView->value) ? $tiendamiaDataView->value :
-                       json_decode($tiendamiaDataView->value, true);
-                if (is_array($val)) {
-                    $tiendamiaSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
-                                           'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
-                }
-            }
-
-            $hasTiendamiaData = ($tiendamiaProduct || $tiendamiaSheetRow) && ($tiendamiaL30 > 0 || $tiendamiaPrice > 0);
-
-            $breakdownData[] = [
-                'marketplace' => 'Tiendamia',
-                'sku' => $hasTiendamiaData ? $fullSku : 'Not Listed',
-                'price' => $tiendamiaPrice,
-                'views' => null, // Tiendamia has no views metric
-                'l30' => $tiendamiaL30,
-                'gpft' => $tiendamiaGPFT,
-                'ad' => 0,
-                'tacos_ch' => 0,
-                'npft' => $tiendamiaNPFT,
-                'is_listed' => $hasTiendamiaData,
-                'sprice' => $tiendamiaSuggested['sprice'],
-                'sgpft' => $tiendamiaSuggested['sgpft'],
-                'sroi' => $tiendamiaSuggested['sroi'],
-                'spft' => $tiendamiaSuggested['spft'],
-                'lp' => $lp,
-                'ship' => $ship,
-                'margin' => $tiendamiaMargin,
-                'pushed_by' => null,
-                'pushed_at' => null,
-                'buyer_link' => ($tiendamiaLinks = $getListingLinks(TiendamiaListingStatus::class, $fullSku))[0],
-                'seller_link' => $tiendamiaLinks[1],
-            ];
+            // Tiendamia excluded from this page (not shown in OV L30 breakdown / SW L30)
 
             // Shein — same sources/formulas as /shein-pricing (API)
             $sheinMarketplacePerc = MarketplacePercentage::where('marketplace', 'Shein')->first();
@@ -4490,6 +4555,68 @@ class CvrMasterController extends Controller
      * @param  array<string, float>  $byDateKey  map of Y-m-d => value
      * @return array<int, array{date: string, value: float}>
      */
+    /**
+     * Latest audit history rows keyed by SKU — same source as /amz-cvr-issues.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function amzCvrAuditHistoryBySku(array $skus): array
+    {
+        if ($skus === [] || ! Schema::hasTable('amz_cvr_audit_histories')) {
+            return [];
+        }
+
+        try {
+            $grouped = [];
+            AmzCvrAuditHistory::query()
+                ->whereIn('sku', $skus)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->get()
+                ->each(function (AmzCvrAuditHistory $row) use (&$grouped) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '') {
+                        return;
+                    }
+                    if (! isset($grouped[$sku])) {
+                        $grouped[$sku] = [];
+                    }
+                    if (count($grouped[$sku]) >= 10) {
+                        return;
+                    }
+                    $dt = $row->created_at;
+                    $grouped[$sku][] = [
+                        'id' => (int) $row->id,
+                        'sku' => (string) $row->sku,
+                        'user' => (string) ($row->user_name ?: 'Unknown'),
+                        'user_id' => $row->user_id ? (int) $row->user_id : null,
+                        'task_count' => (int) $row->task_count,
+                        'cvr_l30' => $row->cvr_l30 !== null ? round((float) $row->cvr_l30, 2) : null,
+                        'date_key' => $dt ? $dt->format('Y-m-d') : '',
+                        'date_label' => $dt ? strtoupper($dt->format('j M')) : '',
+                        'created_at' => $dt ? $dt->toIso8601String() : null,
+                        'sort_ts' => $dt ? $dt->getTimestamp() : 0,
+                    ];
+                });
+
+            foreach ($grouped as $sku => $rows) {
+                usort($grouped[$sku], static function (array $a, array $b): int {
+                    return ((int) ($b['sort_ts'] ?? 0)) <=> ((int) ($a['sort_ts'] ?? 0))
+                        ?: ((int) ($b['id'] ?? 0)) <=> ((int) ($a['id'] ?? 0));
+                });
+            }
+
+            return $grouped;
+        } catch (\Throwable $e) {
+            Log::warning('Price Increase: failed loading amz CVR audit history', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
     private function fillDailyChartSeries(array $byDateKey, int $days): array
     {
         $tz = 'America/Los_Angeles';
@@ -4743,7 +4870,7 @@ class CvrMasterController extends Controller
             'ebay2' => 'eBay2',
             'ebay3' => 'eBay3',
             'doba' => 'Doba',
-            'walmart' => 'Walmart',
+            // Walmart / Tiendamia excluded from this page
             'shopify' => 'Shopify',
             'sb2b' => 'SB2B',
             'tiktok' => 'TikTok',
@@ -5241,7 +5368,8 @@ class CvrMasterController extends Controller
 
             $sku = strtoupper(trim($request->input('sku')));
             $rawPrice = $request->input('price');
-            $marketplace = strtolower($request->input('marketplace'));
+            // Normalize "Ebay 3" / "eBay3" / "ebaythree" → compact lowercase keys
+            $marketplace = preg_replace('/\s+/', '', strtolower(trim((string) $request->input('marketplace'))));
 
             // Never push when price is null / empty / zero
             if ($rawPrice === null || $rawPrice === '' || !is_numeric($rawPrice)) {
@@ -6077,9 +6205,14 @@ class CvrMasterController extends Controller
     private function pushToEbay3($sku, $price)
     {
         try {
+            $skuNorm = strtoupper(trim((string) $sku));
             $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
             if (!$ebayMetric) {
-                $ebayMetric = Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                $ebayMetric = Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])->first();
+            }
+            if (!$ebayMetric && $skuNorm !== '') {
+                // Same fallback as eBay2 — some rows store OPEN BOX / USED prefixes.
+                $ebayMetric = Ebay3Metric::where('sku', 'LIKE', '%' . $sku . '%')->first();
             }
 
             if (!$ebayMetric || !$ebayMetric->item_id) {
@@ -6090,23 +6223,29 @@ class CvrMasterController extends Controller
                 ], 404);
             }
 
+            // Prefer the metric's exact SKU casing so variation listings match on eBay.
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
+
             $result = (new EbayThreeApiService())->reviseFixedPriceItem(
                 $ebayMetric->item_id,
                 $price,
                 null,
-                $sku
+                $apiSku
             );
 
             if (!empty($result['success'])) {
-                $this->savePricePushStatus($sku, 'ebay3', 'pushed', $price);
+                // Keep /pricing-master-cvr modal in sync after reload (same as eBay2).
+                $ebayMetric->ebay_price = $price;
+                $ebayMetric->save();
+                $this->savePricePushStatus($apiSku, 'ebay3', 'pushed', $price);
                 return response()->json([
                     'success' => true,
-                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay3 for SKU: $sku",
+                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay3 for SKU: $apiSku",
                     'result' => $result,
                 ]);
             }
 
-            $this->savePricePushStatus($sku, 'ebay3', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
+            $this->savePricePushStatus($apiSku, 'ebay3', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
             $errors = $result['errors'] ?? [['message' => 'Failed to update price']];
             $firstMsg = is_array($errors[0] ?? null)
                 ? ($errors[0]['message'] ?? $errors[0]['LongMessage'] ?? 'Failed to update eBay3 price')
@@ -6751,7 +6890,8 @@ class CvrMasterController extends Controller
 
     /**
      * Bulk change price for selected SKUs across all marketplaces.
-     * - Doba & Shopify B2B: 25% discount (price * 0.75); B2B excludes Ship
+     * - Doba: 25% discount (price * 0.75)
+     * - Shopify B2B: always SPRICE/price = (base × 0.75) − Ship
      * - Others (Amazon, Walmart, Shopify B2C): Full price
      */
     public function bulkChangePrice(Request $request)
@@ -6805,8 +6945,26 @@ class CvrMasterController extends Controller
 
         foreach ($skuPrices as $sku => $basePrice) {
             $dobaPrice = round($basePrice * 0.75, 2);
-            // B2B excludes Ship from pricing formulas (same as Business Analytics)
-            $sb2bPrice = max(0.01, round($basePrice * 0.75, 2));
+            // SB2B: always (Price × 0.75) − Ship
+            $sb2bShip = 0.0;
+            $pmForShip = ProductMaster::where('sku', $sku)->first();
+            if ($pmForShip) {
+                $pmVals = is_array($pmForShip->Values)
+                    ? $pmForShip->Values
+                    : (is_string($pmForShip->Values) ? json_decode($pmForShip->Values, true) : []);
+                if (is_array($pmVals)) {
+                    foreach ($pmVals as $k => $v) {
+                        if (strtolower((string) $k) === 'ship') {
+                            $sb2bShip = floatval($v);
+                            break;
+                        }
+                    }
+                }
+                if ($sb2bShip <= 0 && isset($pmForShip->ship)) {
+                    $sb2bShip = floatval($pmForShip->ship);
+                }
+            }
+            $sb2bPrice = max(0.01, round(($basePrice * 0.75) - $sb2bShip, 2));
 
             foreach ($pushableMarketplaces as $mp) {
                 $price = match ($mp) {

@@ -806,6 +806,9 @@
 
     @include('layouts.shared/footer-scripts')
 
+    {{-- Shared SP (Standard Price) box for all LMP competitor modals --}}
+    <script src="{{ asset('js/lmp-modal-sp.js') }}"></script>
+
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
     {{-- Shared DAR quick-entry modal (opened from the topbar on every page).

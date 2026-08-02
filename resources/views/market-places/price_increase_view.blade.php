@@ -233,7 +233,29 @@
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-channel { width: 88px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-num { width: 52px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-price { width: 68px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-std-prc { width: 64px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-lmp { width: 64px; }
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-std-prc-th {
+            background: #20c997 !important;
+            color: #000 !important;
+        }
+        #ovl30DetailsModal .editable-std-prc {
+            width: 4em !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            display: inline-block;
+            padding: 1px 4px !important;
+            font-size: inherit !important;
+            height: auto !important;
+            line-height: 1.3 !important;
+            text-align: right;
+        }
+        #ovl30DetailsModal .ovl30-std-prc-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-link { width: 40px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-check { width: 34px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-icon { width: 34px; }
@@ -651,8 +673,8 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
@@ -660,28 +682,34 @@
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21) {
             text-align: right !important;
             font-variant-numeric: tabular-nums;
         }
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23) {
             text-align: center !important;
         }
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-channel-price,
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-add-btn {
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-add-btn {
             font-size: inherit;
             white-space: nowrap;
+        }
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-std-prc-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-std-prc-cell {
+            text-align: center !important;
         }
         #ovl30DetailsModal .table .editable-sprice {
             width: 4em !important;
@@ -1219,6 +1247,197 @@
             max-width: 100%;
         }
 
+        /* Label column (Shipping Master) — blue dot only; modal matches /sales-order-fulfillment */
+        .tabulator .tabulator-header .tabulator-col.pi-label-col {
+            background: #cfe2ff !important;
+        }
+        .pi-label-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pi-label-dims-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6c8cff;
+            box-shadow: 0 0 0 2px rgba(108, 140, 255, 0.22);
+            cursor: pointer;
+            flex-shrink: 0;
+            vertical-align: middle;
+            border: none;
+            padding: 0;
+        }
+        .pi-label-dims-dot:hover {
+            box-shadow: 0 0 0 3px rgba(108, 140, 255, 0.4);
+        }
+        #piLabelDimsModal .modal-dialog {
+            max-width: min(1600px, 96vw);
+            width: 96vw;
+            margin: 1rem auto;
+        }
+        #piLabelDimsModal .modal-header {
+            padding: 1rem 1.5rem;
+            background: #cfe2ff;
+            border-bottom-color: #9ec5fe;
+        }
+        #piLabelDimsModal .modal-title {
+            font-size: 1.5rem;
+            color: #084298;
+        }
+        #piLabelDimsModal .modal-body {
+            padding: 1.5rem 1.75rem;
+            font-size: 1.15rem;
+        }
+        #piLabelDimsModal .modal-footer {
+            padding: 1rem 1.5rem;
+        }
+        #piLabelDimsModal .modal-footer .btn {
+            font-size: 1rem;
+            padding: 0.5rem 1.25rem;
+        }
+        #piLabelDimsModal .pi-label-sku-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+        #piLabelDimsModal .pi-label-type-right {
+            margin-left: auto;
+            text-align: right;
+            font-size: 2rem;
+            line-height: 1.3;
+            white-space: nowrap;
+            padding-top: 0.15rem;
+        }
+        #piLabelDimsModal .pi-label-type-right .text-muted {
+            font-size: 2rem;
+            color: #64748b !important;
+        }
+        #piLabelDimsModal #pi-label-dims-type {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        #piLabelDimsModal .pi-label-sku-img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: #f8f9fa;
+            flex-shrink: 0;
+        }
+        #piLabelDimsModal .pi-label-sku-img.is-missing {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #adb5bd;
+            font-size: 0.85rem;
+        }
+        #piLabelDimsModal .pi-label-sku-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            min-width: 0;
+            flex: 1;
+        }
+        #piLabelDimsModal .pi-label-sku-line {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+        }
+        #piLabelDimsModal .pi-label-sku-label {
+            color: #64748b;
+            font-size: 1rem;
+        }
+        #piLabelDimsModal #pi-label-dims-sku {
+            font-size: 2.55rem;
+            font-weight: 700;
+            color: #0f766e;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        #piLabelDimsModal .pi-sku-copy {
+            border: none;
+            background: #f1f5f9;
+            color: #475569;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+            font-size: 1rem;
+        }
+        #piLabelDimsModal .pi-sku-copy:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        #piLabelDimsModal .pi-sku-copy.copied {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+        #piLabelDimsModal .pi-label-dims-table {
+            font-size: 1.15rem;
+            margin-bottom: 0;
+        }
+        #piLabelDimsModal .pi-label-dims-table th,
+        #piLabelDimsModal .pi-label-dims-table thead th,
+        #piLabelDimsModal .pi-label-dims-table > :not(caption) > * > th {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 1rem;
+            text-transform: lowercase;
+            color: #000;
+            vertical-align: middle;
+            padding: 0.85rem 0.75rem;
+            --bs-table-bg: #fff9c4;
+            --bs-table-accent-bg: #fff9c4;
+            background-color: #fff9c4 !important;
+        }
+        #piLabelDimsModal .pi-label-dims-table th.pi-dim-decl {
+            --bs-table-bg: #f8d7da;
+            --bs-table-accent-bg: #f8d7da;
+            background-color: #f8d7da !important;
+        }
+        #piLabelDimsModal .pi-label-dims-table td {
+            text-align: center;
+            vertical-align: middle;
+            padding: 1rem 0.75rem;
+            font-size: 1.25rem;
+        }
+        /* CP$ / FRG / LP (Product Master) — blue header bar like PM */
+        #piLabelDimsModal .pi-label-cost-table {
+            font-size: 1.15rem;
+            margin-bottom: 1rem;
+        }
+        #piLabelDimsModal .pi-label-cost-table th {
+            font-weight: 700;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 1rem;
+            text-transform: uppercase;
+            color: #fff !important;
+            vertical-align: middle;
+            padding: 0.65rem 0.75rem;
+            background: linear-gradient(180deg, #4a90d9 0%, #2c6fbb 100%) !important;
+            border-color: #2c6fbb !important;
+        }
+        #piLabelDimsModal .pi-label-cost-table td {
+            text-align: center;
+            vertical-align: middle;
+            padding: 0.85rem 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
     </style>
 @endsection
 
@@ -1457,6 +1676,7 @@
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-icon">
                                 <col class="ovl30-col-price">
+                                <col class="ovl30-col-std-prc">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
@@ -1483,6 +1703,7 @@
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
+                                    <th class="ovl30-std-prc-th" title="Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Manual only; blank unless filled."><span>STD PRC</span></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1529,6 +1750,7 @@
                                             style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"
                                             title="View Price history (Rolling L30)"></i>
                                     </th>
+                                    <th class="ovl30-std-prc-th"></th>
                                     <th class="text-end ovl30-metric-col" id="modal-total-views">0</th>
                                     <th class="text-end ovl30-metric-col">
                                         <span id="modal-avg-cvr">0%</span>
@@ -1559,7 +1781,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="23" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="24" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1769,6 +1991,90 @@
                             <div class="spinner-border text-primary me-2"></div>Loading competitors...
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Label details modal (Shipping Master) — same as /sales-order-fulfillment --}}
+    <div class="modal fade" id="piLabelDimsModal" tabindex="-1" aria-labelledby="piLabelDimsModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-semibold mb-0" id="piLabelDimsModalLabel">Label details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="pi-label-sku-row">
+                        <img id="pi-label-dims-img" class="pi-label-sku-img d-none" alt="SKU image" src="">
+                        <div id="pi-label-dims-img-missing" class="pi-label-sku-img is-missing">No image</div>
+                        <div class="pi-label-sku-meta">
+                            <div class="pi-label-sku-line">
+                                <span class="pi-label-sku-label">SKU:</span>
+                                <code id="pi-label-dims-sku">—</code>
+                                <button type="button" class="pi-sku-copy" id="pi-label-dims-sku-copy" title="Copy SKU" aria-label="Copy SKU">
+                                    <i class="fas fa-copy" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="pi-label-type-right">
+                            <span class="text-muted">Type:</span>
+                            <span id="pi-label-dims-type" class="ms-1">—</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <span class="fw-semibold">Label Qty:</span>
+                        <span id="pi-label-dims-qty" class="ms-1">—</span>
+                    </div>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-bordered pi-label-cost-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th title="Cost Price (Product Master)">CP$</th>
+                                    <th title="Freight — Product Master FRGHT (CBM × 200)">FRG</th>
+                                    <th title="Landed Price (Product Master)">LP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="pi-label-dims-cp">—</td>
+                                    <td id="pi-label-dims-frg">—</td>
+                                    <td id="pi-label-dims-lp">—</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered pi-label-dims-table">
+                            <thead>
+                                <tr>
+                                    <th class="pi-dim-act">itm wt gw</th>
+                                    <th class="pi-dim-act">item l in</th>
+                                    <th class="pi-dim-act">item w in</th>
+                                    <th class="pi-dim-act">item h in</th>
+                                    <th class="pi-dim-decl">itm wt gw<br>decl</th>
+                                    <th class="pi-dim-decl">item l in<br>decl</th>
+                                    <th class="pi-dim-decl">item w in<br>decl</th>
+                                    <th class="pi-dim-decl">item h in<br>decl</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="pi-label-dims-wt-act">—</td>
+                                    <td id="pi-label-dims-l">—</td>
+                                    <td id="pi-label-dims-w">—</td>
+                                    <td id="pi-label-dims-h">—</td>
+                                    <td id="pi-label-dims-wt-decl">—</td>
+                                    <td id="pi-label-dims-l-decl">—</td>
+                                    <td id="pi-label-dims-w-decl">—</td>
+                                    <td id="pi-label-dims-h-decl">—</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -2138,10 +2444,14 @@
             </div>
         </div>
     </div>
+
+    {{-- Audit modal — same tables/APIs as /amz-cvr-issues --}}
+    @include('market-places.partials.amz_cvr_audit_modals')
 @endsection
 
 @section('script-bottom')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ asset('js/amz-cvr-audit.js') }}"></script>
 <script>
     window.__authUserName = @json(optional(auth()->user())->name ?? optional(auth()->user())->email ?? 'You');
     /**
@@ -2178,6 +2488,132 @@
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }
+
+    // ==================== LABEL DETAILS MODAL (Shipping Master) ====================
+
+    function piLabelDimsDisplay(v) {
+        if (v === null || v === undefined || v === '') {
+            return '—';
+        }
+        return String(v);
+    }
+
+    function piCopyTextToClipboard(text, btn) {
+        const value = (text || '').toString();
+        if (!value) {
+            return;
+        }
+        const done = function() {
+            if (!btn) return;
+            btn.classList.add('copied');
+            btn.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
+            setTimeout(function() {
+                btn.classList.remove('copied');
+                btn.innerHTML = '<i class="fas fa-copy" aria-hidden="true"></i>';
+            }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).then(done).catch(function() {
+                window.prompt('Copy:', value);
+            });
+        } else {
+            window.prompt('Copy:', value);
+            done();
+        }
+    }
+
+    function openPiLabelDimsModal(row) {
+        const modalEl = document.getElementById('piLabelDimsModal');
+        if (!modalEl || typeof bootstrap === 'undefined') {
+            return;
+        }
+        const data = row || {};
+        const sku = (data.sku || '').toString().trim();
+        const skuEl = document.getElementById('pi-label-dims-sku');
+        const typeEl = document.getElementById('pi-label-dims-type');
+        const qtyEl = document.getElementById('pi-label-dims-qty');
+        const imgEl = document.getElementById('pi-label-dims-img');
+        const imgMissingEl = document.getElementById('pi-label-dims-img-missing');
+        if (skuEl) skuEl.textContent = sku || '—';
+        if (typeEl) typeEl.textContent = (data.label || '').toString().trim() || '—';
+        if (qtyEl) qtyEl.textContent = piLabelDimsDisplay(data.label_qty);
+
+        const imageUrl = (data.sku_image || data.image_path || '').toString().trim();
+        if (imgEl && imgMissingEl) {
+            if (imageUrl) {
+                imgEl.src = imageUrl;
+                imgEl.alt = sku ? ('Image for ' + sku) : 'SKU image';
+                imgEl.classList.remove('d-none');
+                imgMissingEl.classList.add('d-none');
+                imgEl.onerror = function() {
+                    imgEl.classList.add('d-none');
+                    imgEl.removeAttribute('src');
+                    imgMissingEl.classList.remove('d-none');
+                };
+            } else {
+                imgEl.classList.add('d-none');
+                imgEl.removeAttribute('src');
+                imgMissingEl.classList.remove('d-none');
+            }
+        }
+
+        // FRG = Product Master FRGHT (stored, else CBM×200 from ACT dims)
+        let frg = data.frght;
+        if (frg === null || frg === undefined || frg === '') {
+            const l = parseFloat(data.l);
+            const w = parseFloat(data.w);
+            const h = parseFloat(data.h);
+            if (isFinite(l) && isFinite(w) && isFinite(h)) {
+                const cbm = (((l * 2.54) * (w * 2.54) * (h * 2.54)) / 1000000);
+                frg = +(cbm * 200).toFixed(2);
+            }
+        }
+        const lpVal = (data.lp != null && data.lp !== '')
+            ? data.lp
+            : (data.amazon_lp != null ? data.amazon_lp : '');
+
+        const map = {
+            'pi-label-dims-cp': data.cp,
+            'pi-label-dims-frg': frg,
+            'pi-label-dims-lp': lpVal,
+            'pi-label-dims-wt-act': data.wt_act,
+            'pi-label-dims-l': data.l,
+            'pi-label-dims-w': data.w,
+            'pi-label-dims-h': data.h,
+            'pi-label-dims-wt-decl': data.wt_decl,
+            'pi-label-dims-l-decl': data.l_decl,
+            'pi-label-dims-w-decl': data.w_decl,
+            'pi-label-dims-h-decl': data.h_decl,
+        };
+        Object.keys(map).forEach(function(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const v = map[id];
+            if (v === null || v === undefined || v === '') {
+                el.textContent = '—';
+                return;
+            }
+            // Money-ish fields: show 2 decimals when numeric
+            if ((id === 'pi-label-dims-cp' || id === 'pi-label-dims-frg' || id === 'pi-label-dims-lp')
+                && isFinite(parseFloat(v))) {
+                el.textContent = parseFloat(v).toFixed(2);
+                return;
+            }
+            el.textContent = piLabelDimsDisplay(v);
+        });
+
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    document.getElementById('pi-label-dims-sku-copy')?.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        const skuEl = document.getElementById('pi-label-dims-sku');
+        const sku = (skuEl?.textContent || '').trim();
+        if (!sku || sku === '—') {
+            return;
+        }
+        piCopyTextToClipboard(sku, ev.currentTarget);
+    });
     
     // ==================== UTILITY FUNCTIONS ====================
     
@@ -2537,7 +2973,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="23" class="text-center text-muted py-4">
+                    <td colspan="24" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -2548,7 +2984,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="23" class="text-center text-muted py-4">
+                    <td colspan="24" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -2558,7 +2994,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="23" class="text-center text-danger py-4">
+                    <td colspan="24" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -2991,9 +3427,12 @@
         }
 
         // v2: invalidate old vertical-header widths that break horizontal alignment
-        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths_v2';
+        const OVL30_COL_WIDTHS_KEY = 'priceIncrease_ovl30_col_widths_v3';
         let ovl30ManualColWidths = false;
-        try { localStorage.removeItem('priceIncrease_ovl30_col_widths'); } catch (e) {}
+        try {
+            localStorage.removeItem('priceIncrease_ovl30_col_widths');
+            localStorage.removeItem('priceIncrease_ovl30_col_widths_v2');
+        } catch (e) {}
 
         function loadOvl30SavedColWidths() {
             try {
@@ -3158,7 +3597,11 @@
                 showModalEmpty($('#modalSkuName').text());
                 return;
             }
-            const sorted = toRender.slice();
+            const sorted = toRender.slice().filter(function(item) {
+                const mp = String(item.marketplace || '').toLowerCase();
+                // Walmart / Tiendamia removed from /price-increase
+                return mp !== 'walmart' && mp !== 'tiendamia';
+            });
             sorted.sort(getOvl30SortCompare());
             data = sorted;
 
@@ -3227,11 +3670,17 @@
                 }
 
                 // SPRICE and calculated values
-                const sprice = parseFloat(item.sprice || 0);
                 const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
                 // PPower/TopDawg: ship excluded from all formulas
                 const ship = (isPpMp || isTdMp) ? 0 : parseFloat(item.ship || 0);
+                // SB2B: always SPRICE = (Price × 0.75) − Ship
+                const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
+                let sprice = parseFloat(item.sprice || 0);
+                if (isSb2bMp && price > 0) {
+                    sprice = Math.max(0.01, Math.round(((price * 0.75) - ship) * 100) / 100);
+                    item.sprice = sprice;
+                }
                 // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
                 const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
                 const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
@@ -3282,7 +3731,7 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -3408,7 +3857,7 @@
                 
                 // Push button when channel has API price push available and row is listed
                 const pushableChannels = [
-                    'amazon', 'doba', 'walmart',
+                    'amazon', 'doba',
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'bestbuy', 'bestbuyusa', 'macy', 'macys',
@@ -3492,6 +3941,25 @@
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
+                        <td class="text-center ovl30-std-prc-cell ${textClass}">
+                            ${(() => {
+                                // STD PRC = Amazon STANDARD_PRICE only (same as /amazon-tabulator-view SP)
+                                if (mpLower !== 'amazon' || !isListed) return '-';
+                                const std = parseFloat(item.standard_price) || 0;
+                                const skuEsc = String(getModalPrimarySku() || item.sku || '')
+                                    .replace(/"/g, '&quot;');
+                                const dot = std > 0
+                                    ? priceIncreaseSpChangeDotHtml(std, price, skuEsc)
+                                    : '';
+                                const valAttr = std > 0 ? std.toFixed(2) : '';
+                                return '<span class="ovl30-std-prc-wrap">'
+                                    + dot
+                                    + '<input type="number" class="form-control form-control-sm editable-std-prc" '
+                                    + 'value="' + valAttr + '" step="0.01" min="0" '
+                                    + 'placeholder="" title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                                    + '</span>';
+                            })()}
+                        </td>
                         <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' + cvrChartDot : '-'))}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
@@ -3952,7 +4420,7 @@
                     hozAlign: "center",
                     minWidth: 80,
                     sorter: "number",
-                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Walmart, Temu, Temu 2, Macy's, Reverb, etc.). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
+                    headerTooltip: "SW L30: total L30 summed across marketplace channels (Amazon, eBay, Temu, Temu 2, Macy's, Reverb, etc. — Walmart & Tiendamia excluded). Per-channel values appear in the SKU detail modal. Green when SW L30 equals OV L30; red otherwise.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sw = parseFloat(cell.getValue() || 0);
@@ -3984,6 +4452,34 @@
                         return html;
                     },
                     minWidth: 60
+                },
+                {
+                    title: "Label",
+                    field: "label",
+                    hozAlign: "center",
+                    headerHozAlign: "center",
+                    headerSort: false,
+                    cssClass: "pi-label-col",
+                    headerTooltip: "Shipping Master Label. Click the blue dot for Label Qty & dimensions.",
+                    formatter: function(cell) {
+                        const data = cell.getRow().getData() || {};
+                        const wrap = document.createElement('span');
+                        wrap.className = 'pi-label-cell';
+                        const dot = document.createElement('button');
+                        dot.type = 'button';
+                        dot.className = 'pi-label-dims-dot';
+                        dot.title = 'View Label Qty & dimensions';
+                        dot.setAttribute('aria-label', 'View Label Qty and dimensions');
+                        dot.addEventListener('click', function(ev) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            openPiLabelDimsModal(data);
+                        });
+                        wrap.appendChild(dot);
+                        return wrap;
+                    },
+                    minWidth: 50,
+                    width: 55
                 },
                 {
                     title: "Avg Price",
@@ -4209,6 +4705,32 @@
                         }
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
+                    }
+                },
+                {
+                    title: "Audit",
+                    field: "audit",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 70,
+                    minWidth: 60,
+                    headerTooltip: "Open audit modal — same as /amz-cvr-issues (amz_cvr_audit_histories)",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary) return '';
+                        const sku = String(d.sku || '').replace(/"/g, '&quot;');
+                        if (!sku || sku.indexOf('PARENT') !== -1) return '';
+                        return '<button type="button" class="amz-cvr-audit-btn" data-sku="'
+                            + sku + '" title="Open audit"><i class="fa fa-search"></i></button>';
+                    },
+                    cellClick: function(e, cell) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent_summary || !d.sku || String(d.sku).indexOf('PARENT') !== -1) return;
+                        if (window.AmzCvrAudit && typeof window.AmzCvrAudit.open === 'function') {
+                            window.AmzCvrAudit.open(d);
+                        }
                     }
                 },
                 {
@@ -5244,6 +5766,12 @@
             }
         }
 
+        // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid SP in sync
+        document.addEventListener('lmp-modal-sp-saved', function(e) {
+            const d = e && e.detail ? e.detail : {};
+            applyStandardPriceToPriceIncreaseRows(d.sku, d.standard_price, d.applied_skus);
+        });
+
         // Amz SPRICE / SP edited in table
         table.on('cellEdited', function(cell) {
             const field = cell.getField();
@@ -5612,6 +6140,79 @@
             }
         });
         
+        // STD PRC (Standard Price) — same store/API as /amazon-tabulator-view SP
+        $(document).on('blur', '.editable-std-prc', function() {
+            const input = $(this);
+            const row = input.closest('tr');
+            const sku = getModalPrimarySku() || row.attr('data-sku');
+            const mp = String(row.attr('data-marketplace') || '').toLowerCase();
+            if (mp !== 'amazon' || !sku || String(sku).indexOf('PARENT') !== -1) return;
+
+            const raw = String(input.val() || '').trim();
+            if (raw === '') return; // leave blank — do not clear on empty blur
+            const std = parseFloat(raw);
+            if (!isFinite(std) || std <= 0) {
+                input.val('');
+                return;
+            }
+
+            input.css('border-color', '#20c997');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: sku,
+                    sprice: std,
+                    is_standard_price: 1,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                    // Keep modal in-memory data + main grid SP column in sync
+                    if (Array.isArray(ovl30ModalData)) {
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
+                                item.standard_price = saved;
+                            }
+                        });
+                    }
+                    if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
+                        applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                    }
+                    const amazonPrice = parseFloat(row.attr('data-price')) || 0;
+                    const $wrap = input.closest('.ovl30-std-prc-wrap');
+                    const dotHtml = priceIncreaseSpChangeDotHtml(saved, amazonPrice, sku);
+                    $wrap.html(
+                        (dotHtml || '')
+                        + '<input type="number" class="form-control form-control-sm editable-std-prc" '
+                        + 'value="' + saved.toFixed(2) + '" step="0.01" min="0" '
+                        + 'title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                    );
+                    $wrap.find('.editable-std-prc').css('border-color', '#28a745');
+                    setTimeout(function() {
+                        $wrap.find('.editable-std-prc').css('border-color', '');
+                    }, 800);
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    showToast(n > 1
+                        ? ('STD PRC saved for ' + n + ' linked SKUs')
+                        : 'STD PRC saved', 'success');
+                },
+                error: function() {
+                    input.css('border-color', '#dc3545');
+                    showToast('Failed to save STD PRC', 'error');
+                }
+            });
+        });
+        $(document).on('keydown', '.editable-std-prc', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $(this).blur();
+            }
+        });
+
         // Auto-save on blur
         $(document).on('blur', '.editable-sprice', function() {
             const input = $(this);
@@ -6020,9 +6621,12 @@
             }
         });
 
-        // ==================== BULK SPRICE (same value on checked; Doba & TopDawg = 25% less) ====================
+        // ==================== BULK SPRICE (same value on checked; Doba & TopDawg = 25% less; SB2B = Price×0.75 − Ship) ====================
         function isBulkSprice25OffChannel(mpLower) {
             return mpLower === 'doba' || mpLower === 'topdawg';
+        }
+        function isBulkSpriceSb2bChannel(mpLower) {
+            return mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b';
         }
 
         function applyModalBulkSprice() {
@@ -6047,6 +6651,7 @@
             if (!confirm(
                 'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' selected channel(s)'
                 + '?\n\nDoba & TopDawg get 25% less: $' + reducedPrice.toFixed(2)
+                + '\nSB2B = (Price × 0.75) − Ship'
                 + siblingsApplyLabel()
             )) return;
 
@@ -6060,7 +6665,16 @@
             $rows.forEach(function($tr) {
                 const mp = String($tr.attr('data-marketplace') || '');
                 const mpLower = mp.toLowerCase();
-                const newPrice = isBulkSprice25OffChannel(mpLower) ? reducedPrice : +basePrice.toFixed(2);
+                let newPrice = +basePrice.toFixed(2);
+                if (isBulkSprice25OffChannel(mpLower)) {
+                    newPrice = reducedPrice;
+                } else if (isBulkSpriceSb2bChannel(mpLower)) {
+                    // Always: SPRICE = (channel Price × 0.75) − Ship
+                    const channelPrice = parseFloat($tr.attr('data-price')) || 0;
+                    const rowShip = parseFloat($tr.attr('data-ship')) || 0;
+                    const p = channelPrice > 0 ? channelPrice : basePrice;
+                    newPrice = Math.max(0.01, +((p * 0.75) - rowShip).toFixed(2));
+                }
                 $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
                 saveModalSpriceForRow($tr, newPrice, function(ok, res) {
                     if (ok) {
@@ -6629,10 +7243,10 @@
 
                 const mp = (item.marketplace || '').toLowerCase();
                 const editableChannels = [
-                    'amazon', 'doba', 'walmart',
+                    'amazon', 'doba',
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'temu', 'temu2', 'tiktok', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
+                    'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
                 ];
                 const editable = editableChannels.includes(mp);
@@ -9910,6 +10524,12 @@
                 const col = table.getColumn(field);
                 if (col) col.hide();
             });
+            // Always show Label (Shipping Master) column after Dil %
+            const labelCol = table.getColumn('label');
+            if (labelCol) labelCol.show();
+            // Always show Audit (same as /amz-cvr-issues)
+            const auditCol = table.getColumn('audit');
+            if (auditCol) auditCol.show();
         }
 
         function applyColumnVisibilityFromServer() {
@@ -10351,6 +10971,59 @@
                         }
                     }
                 }
+            });
+        }
+
+        // ==================== Audit (same as /amz-cvr-issues) ====================
+        window.AmzCvrAuditBridge = {
+            getTable: function() { return table; },
+            rowSku: function(row) { return String((row && row.sku) || '').trim(); },
+            rowParent: function(row) { return String((row && row.parent) || '').trim(); },
+            rowInv: function(row) { return parseFloat(row && row.inventory) || 0; },
+            rowViews: function(row) { return parseFloat(row && row.total_views) || 0; },
+            rowCvr: function(row) { return parseFloat(row && row.avg_cvr) || 0; },
+            rowPrice: function(row) { return parseFloat(row && row.amazon_price) || 0; },
+            getSelectedSkus: function() { return []; }
+        };
+        @php
+            $piAuditAssigneeEmails = [
+                'pricing' => 'pricing1@5core.com',
+                'compliance' => 'mgr-content@5core.com',
+                'missing_listing' => 'ecomm6@5core.com',
+                'advertisement' => 'mgr-advertisement@5core.com',
+            ];
+            $piAuditAssigneeUsers = \App\Models\User::query()
+                ->where(function ($q) use ($piAuditAssigneeEmails) {
+                    foreach ($piAuditAssigneeEmails as $email) {
+                        $q->orWhereRaw('LOWER(email) = ?', [strtolower($email)]);
+                    }
+                })
+                ->get(['id', 'name', 'email']);
+            $piAuditAssigneeMap = [];
+            foreach ($piAuditAssigneeEmails as $key => $email) {
+                $user = $piAuditAssigneeUsers->first(
+                    fn ($u) => strtolower((string) $u->email) === strtolower($email)
+                );
+                $piAuditAssigneeMap[$key] = [
+                    'label' => match ($key) {
+                        'pricing' => 'Pricing Issue',
+                        'compliance' => 'Compliance Issue',
+                        'missing_listing' => 'Missing listing Issue',
+                        'advertisement' => 'Advertisement Issue',
+                        default => ucfirst(str_replace('_', ' ', $key)) . ' Issue',
+                    },
+                    'email' => $email,
+                    'user_id' => $user ? (int) $user->id : null,
+                    'name' => $user ? (string) $user->name : null,
+                    'custom' => false,
+                ];
+            }
+        @endphp
+        if (window.AmzCvrAudit && typeof window.AmzCvrAudit.init === 'function') {
+            window.AmzCvrAudit.init({
+                taskStoreUrl: @json(route('tasks.store')),
+                historyStoreUrl: @json(route('amz.cvr.issues.history.store')),
+                builtInAssignees: @json($piAuditAssigneeMap)
             });
         }
     });

@@ -1028,33 +1028,16 @@ class CategoryController extends Controller
                 $values = [];
             }
 
-            // Update the specific fields in Values
-            if (isset($validated['wt_act'])) {
-                $values['wt_act'] = $validated['wt_act'];
-            }
-            if (isset($validated['wt_act_kg'])) {
-                $values['wt_act_kg'] = $validated['wt_act_kg'];
-            }
-            if (isset($validated['wt_decl'])) {
-                $values['wt_decl'] = $validated['wt_decl'];
-            }
-            if (isset($validated['l'])) {
-                $values['l'] = $validated['l'];
-            }
-            if (isset($validated['w'])) {
-                $values['w'] = $validated['w'];
-            }
-            if (isset($validated['h'])) {
-                $values['h'] = $validated['h'];
-            }
-            if (isset($validated['l_decl'])) {
-                $values['l_decl'] = $validated['l_decl'];
-            }
-            if (isset($validated['w_decl'])) {
-                $values['w_decl'] = $validated['w_decl'];
-            }
-            if (isset($validated['h_decl'])) {
-                $values['h_decl'] = $validated['h_decl'];
+            // Update the specific fields in Values (array_key_exists so 0 is kept; null clears)
+            $assignNumeric = static function (array &$values, array $validated, string $key): void {
+                if (! array_key_exists($key, $validated)) {
+                    return;
+                }
+                $v = $validated[$key];
+                $values[$key] = ($v === null || $v === '') ? null : (is_numeric($v) ? (0 + $v) : $v);
+            };
+            foreach (['wt_act', 'wt_act_kg', 'wt_decl', 'l', 'w', 'h', 'l_decl', 'w_decl', 'h_decl'] as $dimKey) {
+                $assignNumeric($values, $validated, $dimKey);
             }
             if (isset($validated['l_cm'])) {
                 $values['l_cm'] = $validated['l_cm'];
@@ -1162,6 +1145,8 @@ class CategoryController extends Controller
                 'message' => 'Dim & Wt Master updated successfully',
                 'data' => $product,
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error updating Dim & Wt Master: '.$e->getMessage());
 
@@ -1223,13 +1208,13 @@ class CategoryController extends Controller
             'fba_manual_ship' => 'FBA manual ship',
             'wt_act' => 'Item WT ACT (LB)',
             'wt_act_kg' => 'Item Weight ACT (Kg)',
-            'wt_decl' => 'Item WT ACT Decl (OZ / LB)',
+            'wt_decl' => 'Itm wt GW Decl',
             'l' => 'Item Length (inch)',
             'w' => 'Item Width (inch)',
             'h' => 'Item Height (inch)',
-            'l_decl' => 'Item Length Decl (inch)',
-            'w_decl' => 'Item Width Decl (inch)',
-            'h_decl' => 'Item Height Decl (inch)',
+            'l_decl' => 'Item L IN Decl',
+            'w_decl' => 'Item W IN Decl',
+            'h_decl' => 'Item H IN Decl',
             'l_cm' => 'Item Length (CM)',
             'w_cm' => 'Item Width (CM)',
             'h_cm' => 'Item Height (CM)',

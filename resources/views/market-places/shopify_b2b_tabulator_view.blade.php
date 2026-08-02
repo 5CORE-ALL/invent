@@ -735,18 +735,19 @@
     }
 
     /**
-     * Net ROI (NROI% / SNROI) — B2B unit formula (no Ship):
-     *   ((Price × 0.95 − LP − Price × Ads%/100) / LP) × 100
-     * Ads% = channel Ads badge (TCOS). `ship` arg kept for call-site compat; ignored.
+     * Net ROI (NROI% / SNROI) — B2B unit formula (includes Ship):
+     *   ((Price × 0.95 − LP − Ship − Price × Ads%/100) / LP) × 100
+     * Ads% = channel Ads badge (TCOS).
      */
     function shopifyComputeNetRoi(price, lp, ship, adsPct) {
         price = parseFloat(price);
         lp = parseFloat(lp);
+        ship = parseFloat(ship) || 0;
         if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return 0;
         const ads = (adsPct != null && isFinite(parseFloat(adsPct)))
             ? parseFloat(adsPct)
             : shopifyChannelAdsPct();
-        const grossPft = (price * 0.95) - lp; // B2B: no Ship
+        const grossPft = (price * 0.95) - lp - ship;
         const adSpend = price * (ads / 100);
         return ((grossPft - adSpend) / lp) * 100;
     }
@@ -1147,11 +1148,11 @@
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                 const ads  = shopifyChannelAdsPct();
 
-                const candidate = (lp * roiMultiplier) / SHOPIFY_B2B_MARGIN; // no Ship
+                const candidate = (lp + ship) * roiMultiplier / SHOPIFY_B2B_MARGIN;
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp; // no Ship
+                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp - ship;
                 const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                 const snpft = sgpft - ads;
                 const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1229,11 +1230,11 @@
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                 const ads  = shopifyChannelAdsPct();
 
-                const candidate = lp / denom; // no Ship
+                const candidate = (lp + ship) / denom;
                 const newSprice = +candidate.toFixed(2);
                 if (!isFinite(newSprice) || newSprice <= 0) return;
 
-                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp; // no Ship
+                const grossProfit = (newSprice * SHOPIFY_B2B_MARGIN) - lp - ship;
                 const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                 const snpft = sgpft - ads;
                 const sroi  = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1593,7 +1594,7 @@
                         const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                         const ads = shopifyChannelAdsPct();
 
-                        const grossProfit = (newSprice * percentage) - lp; // no Ship
+                        const grossProfit = (newSprice * percentage) - lp - ship;
                         const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                         const snpft = sgpft - ads;
                         const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
@@ -1657,15 +1658,17 @@
                         const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                         const ads = shopifyChannelAdsPct();
                         
-                        const grossProfit = (amazonPrice * percentage) - lp; // no Ship
-                        const sgpft = amazonPrice > 0 ? (grossProfit / amazonPrice) * 100 : 0;
+                        // Always: SPRICE = (A Price × 0.75) − Ship
+                        const calcSprice = Math.max(0.01, +((amazonPrice * 0.75) - ship).toFixed(2));
+                        const grossProfit = (calcSprice * percentage) - lp - ship;
+                        const sgpft = calcSprice > 0 ? (grossProfit / calcSprice) * 100 : 0;
                         const snpft = sgpft - ads;
                         const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
-                        const snroi = shopifyComputeSnroi(amazonPrice, lp, ship, ads);
+                        const snroi = shopifyComputeSnroi(calcSprice, lp, ship, ads);
                         
                         // Update the row with SPRICE and calculated values
                         row.update({
-                            SPRICE: amazonPrice,
+                            SPRICE: calcSprice,
                             SGPFT: sgpft,
                             SNPFT: snpft,
                             SROI: sroi,
@@ -1676,7 +1679,7 @@
                         // Store update for backend saving
                         updates.push({
                             sku: sku,
-                            sprice: amazonPrice
+                            sprice: calcSprice
                         });
                         
                         updatedCount++;
@@ -2615,8 +2618,8 @@
                 const ship = parseFloat(rowData['Ship_productmaster']) || 0;
                 const ads = shopifyChannelAdsPct();
                 
-                // SGPFT = ((SPRICE × 95%) - LP) / SPRICE × 100  (B2B: no Ship)
-                const grossProfit = (newSprice * percentage) - lp; // no Ship
+                // SGPFT = ((SPRICE × 95%) - LP - Ship) / SPRICE × 100
+                const grossProfit = (newSprice * percentage) - lp - ship;
                 const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
                 
                 // SNPFT = SGPFT - ADS

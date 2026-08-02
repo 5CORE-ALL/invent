@@ -1314,6 +1314,49 @@ class OverallAmazonController extends Controller
         }
     }
 
+    /**
+     * Resolve STANDARD_PRICE for a SKU (and Sku Link LMP siblings).
+     * Used by the shared LMP modal SP box across marketplace pages.
+     */
+    public function getAmazonStandardPrice(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        if ($sku === '') {
+            return response()->json(['error' => 'SKU is required.'], 400);
+        }
+
+        $groupSkus = $this->expandLinkedLmpSkuGroup($sku);
+        if ($groupSkus === []) {
+            $groupSkus = [$sku];
+        }
+
+        $standardPrice = null;
+        foreach ($groupSkus as $memberSku) {
+            $display = trim((string) $memberSku);
+            if ($display === '') {
+                continue;
+            }
+            $amazonDataView = AmazonDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($display)])->first();
+            if (! $amazonDataView) {
+                continue;
+            }
+            $val = is_array($amazonDataView->value)
+                ? $amazonDataView->value
+                : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $standardPrice = round((float) $std, 2);
+                break;
+            }
+        }
+
+        return response()->json([
+            'sku' => $sku,
+            'standard_price' => $standardPrice,
+            'group_skus' => $groupSkus,
+        ]);
+    }
+
     public function saveSpriceToDatabase(Request $request)
     {
         Log::info('Saving Amazon pricing data', $request->all());

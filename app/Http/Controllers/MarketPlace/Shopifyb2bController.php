@@ -255,9 +255,9 @@ class Shopifyb2bController extends Controller
             $b2bL30 = $processedItem['B2B L30'];
             $ovL30 = $processedItem['L30'];
 
-            // B2B: no Ship in profit formulas — GPFT/GROI use (Price × Margin − LP) only
+            // Include Ship — aligned with SPRICE = (Price × 0.75) − Ship
             if ($price > 0) {
-                $grossProfit = ($price * $percentageValue) - $lp;
+                $grossProfit = ($price * $percentageValue) - $lp - floatval($ship);
                 $processedItem['GPFT%'] = ($grossProfit / $price) * 100;
                 $processedItem['ROI%'] = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;
                 if ($b2bL30 > 0) {
@@ -285,7 +285,7 @@ class Shopifyb2bController extends Controller
             $processedItem['ADS%'] = 0;
 
             if ($price > 0 && floatval($lp) > 0) {
-                $unitGross = ($price * $percentageValue) - floatval($lp);
+                $unitGross = ($price * $percentageValue) - floatval($lp) - floatval($ship);
                 $adSpendUnit = $price * ($channelAdsPct / 100);
                 $processedItem['NROI%'] = (($unitGross - $adSpendUnit) / floatval($lp)) * 100;
             } else {
@@ -299,28 +299,25 @@ class Shopifyb2bController extends Controller
             $processedItem['SNROI'] = 0;
             $processedItem['SPRICE_STATUS'] = null;
 
+            // Always calculate SPRICE = (Price × 0.75) − Ship
+            if ($price > 0) {
+                $calcSprice = max(0.01, round(($price * 0.75) - floatval($ship), 2));
+                $processedItem['SPRICE'] = $calcSprice;
+                $sGross = ($calcSprice * $percentageValue) - floatval($lp) - floatval($ship);
+                $processedItem['SGPFT'] = $calcSprice > 0 ? ($sGross / $calcSprice) * 100 : 0;
+                $processedItem['SNPFT'] = (float) $processedItem['SGPFT'] - $channelAdsPct;
+                $processedItem['SROI'] = floatval($lp) > 0 ? ($sGross / floatval($lp)) * 100 : 0;
+                $adSpendUnit = $calcSprice * ($channelAdsPct / 100);
+                $processedItem['SNROI'] = floatval($lp) > 0
+                    ? (($sGross - $adSpendUnit) / floatval($lp)) * 100
+                    : 0;
+            }
+
             if (isset($shopifyB2bViewData[$sku])) {
                 $valuesArr = is_array($shopifyB2bViewData[$sku]->value)
                     ? $shopifyB2bViewData[$sku]->value
                     : (json_decode($shopifyB2bViewData[$sku]->value, true) ?: []);
-
-                $processedItem['SPRICE'] = isset($valuesArr['SPRICE']) ? floatval($valuesArr['SPRICE']) : 0;
-                $processedItem['SGPFT'] = isset($valuesArr['SGPFT']) ? floatval($valuesArr['SGPFT']) : 0;
-                $processedItem['SNPFT'] = isset($valuesArr['SNPFT']) ? floatval($valuesArr['SNPFT']) : (isset($valuesArr['SPFT']) ? floatval($valuesArr['SPFT']) : 0);
-                $processedItem['SROI'] = isset($valuesArr['SROI']) ? floatval($valuesArr['SROI']) : 0;
                 $processedItem['SPRICE_STATUS'] = $valuesArr['SPRICE_STATUS'] ?? null;
-
-                $sprice = (float) $processedItem['SPRICE'];
-                if ($sprice > 0 && floatval($lp) > 0) {
-                    $sGrossUnit = ($sprice * $percentageValue) - floatval($lp);
-                    $adSpendUnit = $sprice * ($channelAdsPct / 100);
-                    $processedItem['SNROI'] = (($sGrossUnit - $adSpendUnit) / floatval($lp)) * 100;
-                    if (isset($processedItem['SGPFT'])) {
-                        $processedItem['SNPFT'] = (float) $processedItem['SGPFT'] - $channelAdsPct;
-                    }
-                } elseif (isset($valuesArr['SNROI'])) {
-                    $processedItem['SNROI'] = floatval($valuesArr['SNROI']);
-                }
             }
 
             $linkedLmpSkus = $this->shopifyB2bLinkedLmpSkusFor($lmpGroupService, (string) $sku);
@@ -561,10 +558,20 @@ class Shopifyb2bController extends Controller
             : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
 
         $lp = $values['lp'] ?? ($productMaster->lp ?? 0);
+        $ship = 0.0;
+        foreach ($values as $k => $v) {
+            if (strtolower((string) $k) === 'ship') {
+                $ship = floatval($v);
+                break;
+            }
+        }
+        if ($ship <= 0 && isset($productMaster->ship)) {
+            $ship = floatval($productMaster->ship);
+        }
 
         $percentage = $this->getShopifyB2bMargin();
-        // B2B: no Ship in SPRICE metrics
-        $grossProfit = ($sprice * $percentage) - $lp;
+        // SPRICE metrics include Ship (aligned with SPRICE = Price×0.75 − Ship)
+        $grossProfit = ($sprice * $percentage) - $lp - $ship;
 
         $sgpft = $sprice > 0 ? ($grossProfit / $sprice) * 100 : 0;
         $sroi = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;

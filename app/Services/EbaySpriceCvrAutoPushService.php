@@ -462,6 +462,9 @@ class EbaySpriceCvrAutoPushService
         if ($ok) {
             if ($channel === 'ebay2') {
                 Ebay2Metric::where('sku', $sku)->update(['ebay_price' => $price]);
+            } elseif ($channel === 'ebay3') {
+                Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->update(['ebay_price' => $price]);
             }
             $this->savePushStatus($channel, $sku, 'pushed');
 

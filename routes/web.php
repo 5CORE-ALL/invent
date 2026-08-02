@@ -3648,6 +3648,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Price Increase Route (same logic / datatable as pricing-master-cvr)
     Route::get('/price-increase', [CvrMasterController::class, 'priceIncreaseView'])->name('price.increase');
 
+    // WMPNM Dil (copy of price-increase; same datatable /cvr-master-data-json)
+    Route::get('/wmpnm-dil', [CvrMasterController::class, 'wmpnmDilView'])->name('wmpnm.dil');
+
     // Sold Master Route (uses CVR Master controller)
     Route::get('/sold-master', [CvrMasterController::class, 'soldMasterView'])->name('sold.master');
 
@@ -4200,6 +4203,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-variation', [OverallAmazonController::class, 'saveVariationToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
+    Route::get('/amazon-standard-price', [OverallAmazonController::class, 'getAmazonStandardPrice']);
     Route::post('/amazon-clear-sprice', [OverallAmazonController::class, 'clearAmazonSprice']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice'])->name('apply.amazon.price');
     Route::post('/push-shopify-b2c-price', [OverallAmazonController::class, 'pushShopifyB2CPrice'])->name('push.shopify.b2c.price');

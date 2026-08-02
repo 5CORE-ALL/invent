@@ -1625,6 +1625,9 @@ class EbayThreeController extends Controller
             $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $sku);
 
             if (isset($result['success']) && $result['success']) {
+                // Keep local metric price in sync so /pricing-master-cvr + tabulator show the new price.
+                $ebayMetric->ebay_price = $priceFloat;
+                $ebayMetric->save();
                 $this->saveSpriceStatus($sku, 'pushed');
                 Log::info('[EbayThreeController] eBay3 price push successful via microservice', [
                     'sku'     => $sku,
