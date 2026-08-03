@@ -3264,20 +3264,23 @@ class TemuController extends Controller
                 }
                 $lmpEntries = $this->dedupeTemuLmpEntries($lmpEntries);
                 $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($sku)] ?? null;
-                // L1 = lowest non-ignored entry (ignored competitors stay in the list)
+                // L1 = lowest non-ignored entry (Price + Delivery); ignored stay in the list
                 $activeEntries = array_values(array_filter($lmpEntries, function ($e) {
                     return empty($e['ignored']);
                 }));
-                $prices = array_values(array_filter(array_map(function ($e) {
-                    $p = $e['price'] ?? null;
-                    return $p !== null && $p !== '' ? (float) $p : null;
-                }, $activeEntries)));
+                $prices = [];
+                foreach ($activeEntries as $e) {
+                    $eff = $this->temuLmpEntryEffectivePrice($e);
+                    if ($eff !== null) {
+                        $prices[] = $eff;
+                    }
+                }
                 $lmp = count($prices) > 0 ? min($prices) : null;
                 $lmp_link = null;
                 if ($lmp !== null) {
                     foreach ($activeEntries as $e) {
-                        $p = $e['price'] ?? null;
-                        if ($p !== null && $p !== '' && (float) $p === (float) $lmp) {
+                        $eff = $this->temuLmpEntryEffectivePrice($e);
+                        if ($eff !== null && abs($eff - (float) $lmp) < 0.00001) {
                             $lmp_link = $e['link'] ?? null;
                             break;
                         }
@@ -4792,28 +4795,43 @@ class TemuController extends Controller
                 $price = array_key_exists('price', $e) && $e['price'] !== '' && $e['price'] !== null
                     ? $this->sanitizePrice($e['price'])
                     : null;
+                $deliveryRaw = array_key_exists('delivery', $e) && $e['delivery'] !== '' && $e['delivery'] !== null
+                    ? $this->sanitizePrice($e['delivery'])
+                    : null;
+                $delivery = ($deliveryRaw !== null && (float) $deliveryRaw > 0) ? (float) $deliveryRaw : 0.0;
                 $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim((string) $e['link']) : null;
                 // Temu product URLs can exceed 2k with tracking params — store full link (text column).
                 if ($link !== null && strlen($link) > 10000) {
                     $link = substr($link, 0, 10000);
                 }
                 $ignored = filter_var($e['ignored'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                if ($price !== null || $link !== null) {
-                    $lmpEntries[] = ['price' => $price, 'link' => $link, 'ignored' => $ignored];
+                if ($price !== null || $link !== null || $delivery > 0) {
+                    $lmpEntries[] = [
+                        'price' => $price,
+                        'delivery' => $delivery,
+                        'link' => $link,
+                        'ignored' => $ignored,
+                    ];
                 }
             }
 
             $activeEntries = array_values(array_filter($lmpEntries, static function ($e) {
                 return empty($e['ignored']);
             }));
-            $prices = array_values(array_filter(array_map(static function ($e) {
-                return $e['price'] ?? null;
-            }, $activeEntries), static fn ($p) => $p !== null && $p !== ''));
-            $firstPrice = count($prices) > 0 ? min(array_map('floatval', $prices)) : null;
+            // L1 / stored lmp = Price + Delivery (Delivery defaults to 0)
+            $effectivePrices = [];
+            foreach ($activeEntries as $e) {
+                $eff = $this->temuLmpEntryEffectivePrice($e);
+                if ($eff !== null) {
+                    $effectivePrices[] = $eff;
+                }
+            }
+            $firstPrice = count($effectivePrices) > 0 ? min($effectivePrices) : null;
             $firstLink = null;
             if ($firstPrice !== null) {
                 foreach ($activeEntries as $e) {
-                    if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $firstPrice) {
+                    $eff = $this->temuLmpEntryEffectivePrice($e);
+                    if ($eff !== null && abs($eff - (float) $firstPrice) < 0.00001) {
                         $firstLink = $e['link'] ?? null;
                         break;
                     }
@@ -5669,6 +5687,30 @@ class TemuController extends Controller
         }
 
         return $normalized;
+    }
+
+    /**
+     * Effective competitor LMP for one entry = Price + Delivery.
+     *
+     * @param  array{price?: mixed, delivery?: mixed}|null  $entry
+     */
+    private function temuLmpEntryEffectivePrice(?array $entry): ?float
+    {
+        if (! is_array($entry)) {
+            return null;
+        }
+        $price = $entry['price'] ?? null;
+        if ($price === null || $price === '' || ! is_numeric($price)) {
+            return null;
+        }
+        $p = (float) $price;
+        if (! ($p > 0) && $p !== 0.0) {
+            return null;
+        }
+        $delivery = $entry['delivery'] ?? 0;
+        $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+
+        return round($p + $d, 2);
     }
 
     /**

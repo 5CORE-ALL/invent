@@ -86,6 +86,9 @@
         #lmpModal .lmp-add-form-fields .lmp-field-price {
             flex: 0 0 100px;
         }
+        #lmpModal .lmp-add-form-fields .lmp-field-delivery {
+            flex: 0 0 90px;
+        }
         #lmpModal .lmp-add-form-fields .lmp-field-link {
             flex: 1 1 auto;
             min-width: 120px;
@@ -991,6 +994,10 @@
                                     <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
                                     <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewPrice" placeholder="e.g. 29.99">
                                 </div>
+                                <div class="lmp-field-delivery">
+                                    <label class="form-label small mb-0" title="Added to Price for LMP / L1">Delivery</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewDelivery" placeholder="0.00">
+                                </div>
                                 <div class="lmp-field-link">
                                     <label class="form-label small mb-0">Product Link</label>
                                     <input type="text" class="form-control form-control-sm" id="lmpNewLink" placeholder="https://...">
@@ -1020,6 +1027,7 @@
                                 <tr>
                                     <th style="width: 50px;">#</th>
                                     <th>Price</th>
+                                    <th style="width: 90px;" title="Added to Price for LMP / L1">Delivery</th>
                                     <th>Link</th>
                                     <th style="width: 70px;" class="text-center" title="Ignore for L1 — product stays in list">Ignore</th>
                                     <th style="width: 80px;">Actions</th>
@@ -5011,7 +5019,13 @@
                         // L1 = lowest non-ignored entry; fall back to row.lmp / lmp_raw
                         const prices = entries
                             .filter(function(e) { return !e.ignored; })
-                            .map(function(e) { const p = e.price; return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null; })
+                            .map(function(e) {
+                                const p = e.price;
+                                if (p === null || p === undefined || p === '' || isNaN(parseFloat(p))) return null;
+                                const d = parseFloat(e.delivery);
+                                const delivery = (!isNaN(d) && d > 0) ? d : 0;
+                                return parseFloat(p) + delivery;
+                            })
                             .filter(function(p) { return p !== null; });
                         let lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
                         if (lowest === null) {
@@ -6248,6 +6262,7 @@
             lmpModalBuyerLink = String(row.buyer_link || '').trim();
 
             $('#lmpNewPrice').val('');
+            $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
             const tbody = $('#lmpEntriesContainer');
             tbody.empty();
@@ -6257,13 +6272,14 @@
                 const legacyPrice = row.lmp_raw != null ? row.lmp_raw : row.lmp;
                 const legacyLink = row.lmp_link || '';
                 if ((legacyPrice !== null && legacyPrice !== undefined && legacyPrice !== '') || legacyLink) {
-                    entries = [{ price: legacyPrice, link: legacyLink, ignored: false }];
+                    entries = [{ price: legacyPrice, delivery: 0, link: legacyLink, ignored: false }];
                 }
             }
             entries.forEach(function(entry) {
                 appendLmpTableRow(
                     tbody,
                     entry.price !== undefined && entry.price !== null ? entry.price : '',
+                    entry.delivery !== undefined && entry.delivery !== null ? entry.delivery : '',
                     entry.link || '',
                     !!entry.ignored,
                     false
@@ -6277,14 +6293,16 @@
                 if (scroller) scroller.scrollTop = 0;
             }, 150);
         }
-        function appendLmpTableRow(tbody, price, link, ignored, relayout) {
+        function appendLmpTableRow(tbody, price, delivery, link, ignored, relayout) {
             const tr = $('<tr class="lmp-entry-row">' +
                 '<td class="lmp-num text-center align-middle"></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
-                '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
+                '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" style="max-width:90px" placeholder="0.00" title="Added to Price for LMP"></td>' +
+                '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
                 '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore" title="Ignore for L1"></td>' +
                 '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
+            tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
             tr.find('.lmp-ignore').prop('checked', !!ignored);
             if (ignored) tr.addClass('lmp-ignored');
@@ -6317,22 +6335,28 @@
                 tr.toggleClass('lmp-ignored', $(this).is(':checked'));
                 updateLmpLowestHighlight();
             })
-            .on('input.lmpActions', '.lmp-price, .lmp-link', function() {
+            .on('input.lmpActions', '.lmp-price, .lmp-delivery, .lmp-link', function() {
                 scheduleLmpListLayout();
             });
+        /** Effective LMP for sorting / L1 = Price + Delivery. */
         function getLmpEntryPrice(tr) {
             const val = $(tr).find('.lmp-price').val();
             const num = val !== '' && val != null ? parseFloat(val) : NaN;
-            return isNaN(num) ? null : num;
+            if (isNaN(num)) return null;
+            const dVal = $(tr).find('.lmp-delivery').val();
+            const delivery = dVal !== '' && dVal != null ? parseFloat(dVal) : 0;
+            return num + (isNaN(delivery) || delivery < 0 ? 0 : delivery);
         }
         /** Sort competitor rows by price, insert blue 5 Core row at our price position, renumber + LOWEST. */
         function updateLmpListLayout() {
             clearTimeout(lmpLayoutTimer);
             const tbody = $('#lmpEntriesContainer');
             const $active = $(document.activeElement);
-            const activeIsLmpInput = $active.hasClass('lmp-price') || $active.hasClass('lmp-link');
+            const activeIsLmpInput = $active.hasClass('lmp-price') || $active.hasClass('lmp-delivery') || $active.hasClass('lmp-link');
             const activeRow = activeIsLmpInput ? $active.closest('tr.lmp-entry-row')[0] : null;
-            const activeClass = activeIsLmpInput && $active.hasClass('lmp-price') ? 'lmp-price' : 'lmp-link';
+            let activeClass = 'lmp-link';
+            if (activeIsLmpInput && $active.hasClass('lmp-price')) activeClass = 'lmp-price';
+            else if (activeIsLmpInput && $active.hasClass('lmp-delivery')) activeClass = 'lmp-delivery';
             const selStart = activeIsLmpInput ? $active[0].selectionStart : null;
             const selEnd = activeIsLmpInput ? $active[0].selectionEnd : null;
 
@@ -6360,6 +6384,7 @@
                     '<td class="lmp-num text-center align-middle">—</td>' +
                     '<td class="align-middle"><span class="lmp-five-core-price">$' + lmpModalOurPrice.toFixed(2) + '</span> ' +
                     '<span class="badge bg-primary">5 CORE</span></td>' +
+                    '<td class="align-middle text-muted small">—</td>' +
                     '<td class="align-middle">' + linkCell + '</td>' +
                     '<td class="align-middle text-center text-muted small">—</td>' +
                     '<td class="align-middle text-muted small">buyer</td></tr>');
@@ -6422,13 +6447,15 @@
         }
         $('#lmpAddRowBtn').on('click', function() {
             const price = $('#lmpNewPrice').val();
+            const delivery = $('#lmpNewDelivery').val();
             const link = $('#lmpNewLink').val();
             if (!price && !link) {
                 showToast('Enter Price or Link', 'warning');
                 return;
             }
-            appendLmpTableRow($('#lmpEntriesContainer'), price || '', link || '', false, true);
+            appendLmpTableRow($('#lmpEntriesContainer'), price || '', delivery || '', link || '', false, true);
             $('#lmpNewPrice').val('');
+            $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
             // Scroll new/lowest rows into view inside the list
             const scroller = document.querySelector('#lmpModal .lmp-list-scroll');
@@ -6437,17 +6464,21 @@
         });
         $('#lmpClearFormBtn').on('click', function() {
             $('#lmpNewPrice').val('');
+            $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
         });
         $('#lmpModalSaveBtn').on('click', function() {
             const entries = [];
             $('#lmpEntriesContainer .lmp-entry-row').each(function() {
                 const price = $(this).find('.lmp-price').val();
+                const delivery = $(this).find('.lmp-delivery').val();
                 const link = $(this).find('.lmp-link').val();
                 const ignored = $(this).find('.lmp-ignore').is(':checked');
-                if (price || link) {
+                if (price || link || delivery) {
+                    const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
                     entries.push({
                         price: price ? parseFloat(price) : null,
+                        delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
                         link: link ? link.trim() : null,
                         ignored: ignored
                     });

@@ -669,11 +669,15 @@
                     <div class="border rounded p-3 mb-3 bg-light">
                         <h6 class="mb-3"><i class="fas fa-plus text-success me-1"></i> Add New LMP</h6>
                         <div class="row g-2 align-items-end">
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <label class="form-label small mb-0">Price <span class="text-danger">*</span></label>
                                 <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewPrice" placeholder="e.g. 29.99">
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-2">
+                                <label class="form-label small mb-0" title="Added to Price for LMP / L1">Delivery</label>
+                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="lmpNewDelivery" placeholder="0.00">
+                            </div>
+                            <div class="col-md-5">
                                 <label class="form-label small mb-0">Product Link</label>
                                 <input type="text" class="form-control form-control-sm" id="lmpNewLink" placeholder="https://...">
                             </div>
@@ -690,6 +694,7 @@
                                 <tr>
                                     <th style="width: 50px;">#</th>
                                     <th>Price</th>
+                                    <th style="width: 90px;" title="Added to Price for LMP / L1">Delivery</th>
                                     <th>Link</th>
                                     <th style="width: 80px;">Actions</th>
                                 </tr>
@@ -2232,7 +2237,10 @@
                 .filter(function(e) { return !e || !e.ignored; })
                 .map(function(e) {
                     const p = e && e.price;
-                    return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null;
+                    if (p === null || p === undefined || p === '' || isNaN(parseFloat(p))) return null;
+                    const d = parseFloat(e.delivery);
+                    const delivery = (!isNaN(d) && d > 0) ? d : 0;
+                    return parseFloat(p) + delivery;
                 })
                 .filter(function(p) { return p !== null && p > 0; });
             if (prices.length > 0) return Math.min.apply(null, prices);
@@ -4391,23 +4399,39 @@
             lmpModalSku = sku || '';
             $('#lmpModalSku').text(lmpModalSku);
             $('#lmpNewPrice').val('');
+            $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
             const tbody = $('#lmpEntriesContainer');
             tbody.empty();
             const list = Array.isArray(entries) && entries.length > 0 ? entries : [];
             list.forEach(function(entry) {
-                appendLmpTableRow(tbody, entry.price !== undefined && entry.price !== null ? entry.price : '', entry.link || '');
+                appendLmpTableRow(
+                    tbody,
+                    entry.price !== undefined && entry.price !== null ? entry.price : '',
+                    entry.delivery !== undefined && entry.delivery !== null ? entry.delivery : '',
+                    entry.link || ''
+                );
             });
             updateLmpLowestHighlight();
             $('#lmpModal').modal('show');
         }
-        function appendLmpTableRow(tbody, price, link) {
+        function getTemu2LmpEffectivePrice(tr) {
+            const val = $(tr).find('.lmp-price').val();
+            const num = val !== '' && val != null ? parseFloat(val) : NaN;
+            if (isNaN(num)) return null;
+            const dVal = $(tr).find('.lmp-delivery').val();
+            const delivery = dVal !== '' && dVal != null ? parseFloat(dVal) : 0;
+            return num + (isNaN(delivery) || delivery < 0 ? 0 : delivery);
+        }
+        function appendLmpTableRow(tbody, price, delivery, link) {
             const tr = $('<tr class="lmp-entry-row">' +
                 '<td class="lmp-num text-center align-middle"></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
-                '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:220px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
+                '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" style="max-width:90px" placeholder="0.00" title="Added to Price for LMP"></td>' +
+                '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
                 '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
+            tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
             tbody.append(tr);
             tr.find('.lmp-remove-row').on('click', function(e) {
@@ -4416,7 +4440,7 @@
                 renumberLmpRows();
                 updateLmpLowestHighlight();
             });
-            tr.find('.lmp-price, .lmp-link').on('input', function() { updateLmpLowestHighlight(); });
+            tr.find('.lmp-price, .lmp-delivery, .lmp-link').on('input', function() { updateLmpLowestHighlight(); });
             tr.find('.lmp-open-link').on('click', function(e) {
                 e.preventDefault();
                 const href = (tr.find('.lmp-link').val() || '').trim();
@@ -4436,9 +4460,8 @@
                 const tr = $(this);
                 tr.removeClass('table-dark');
                 tr.find('.lmp-lowest-badge').empty();
-                const val = tr.find('.lmp-price').val();
-                const num = val !== '' && val != null ? parseFloat(val) : null;
-                if (num !== null && !isNaN(num)) {
+                const num = getTemu2LmpEffectivePrice(tr);
+                if (num !== null) {
                     if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
                 }
             });
@@ -4449,25 +4472,36 @@
         }
         $('#lmpAddRowBtn').on('click', function() {
             const price = $('#lmpNewPrice').val();
+            const delivery = $('#lmpNewDelivery').val();
             const link = $('#lmpNewLink').val();
             if (!price && !link) {
                 showToast('Enter Price or Link', 'warning');
                 return;
             }
-            appendLmpTableRow($('#lmpEntriesContainer'), price || '', link || '');
+            appendLmpTableRow($('#lmpEntriesContainer'), price || '', delivery || '', link || '');
             $('#lmpNewPrice').val('');
+            $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
         });
         $('#lmpClearFormBtn').on('click', function() {
             $('#lmpNewPrice').val('');
+            $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
         });
         $('#lmpModalSaveBtn').on('click', function() {
             const entries = [];
             $('#lmpEntriesContainer .lmp-entry-row').each(function() {
                 const price = $(this).find('.lmp-price').val();
+                const delivery = $(this).find('.lmp-delivery').val();
                 const link = $(this).find('.lmp-link').val();
-                if (price || link) entries.push({ price: price ? parseFloat(price) : null, link: link ? link.trim() : null });
+                if (price || link || delivery) {
+                    const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
+                    entries.push({
+                        price: price ? parseFloat(price) : null,
+                        delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
+                        link: link ? link.trim() : null
+                    });
+                }
             });
             if (entries.length === 0) {
                 showToast('Add at least one price or link', 'warning');

@@ -7347,29 +7347,38 @@ class CvrMasterController extends Controller
         }
         $lmpEntries = $this->dedupeTemuLmpEntriesList($lmpEntries);
 
-        // L1 = lowest non-ignored entry (same as /temu-decrease)
+        // L1 = lowest non-ignored entry (Price + Delivery; same as /temu-decrease)
         $prices = [];
         $l1Link = null;
         foreach ($lmpEntries as $entry) {
-            if (!empty($entry['ignored'])) {
+            if (! empty($entry['ignored'])) {
                 continue;
             }
             $p = $entry['price'] ?? null;
-            if ($p !== null && $p !== '' && floatval($p) > 0) {
-                $prices[] = floatval($p);
-                if ($l1Link === null) {
-                    $l1Link = $entry['link'] ?? null;
-                }
+            if ($p === null || $p === '' || ! is_numeric($p)) {
+                continue;
+            }
+            $delivery = $entry['delivery'] ?? 0;
+            $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+            $eff = round((float) $p + $d, 2);
+            if ($eff > 0) {
+                $prices[] = $eff;
             }
         }
         if (count($prices) > 0) {
             $minPrice = min($prices);
             foreach ($lmpEntries as $entry) {
-                if (!empty($entry['ignored'])) {
+                if (! empty($entry['ignored'])) {
                     continue;
                 }
                 $p = $entry['price'] ?? null;
-                if ($p !== null && $p !== '' && floatval($p) === (float) $minPrice) {
+                if ($p === null || $p === '' || ! is_numeric($p)) {
+                    continue;
+                }
+                $delivery = $entry['delivery'] ?? 0;
+                $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+                $eff = round((float) $p + $d, 2);
+                if (abs($eff - (float) $minPrice) < 0.00001) {
                     $l1Link = $entry['link'] ?? null;
                     break;
                 }
@@ -7407,13 +7416,18 @@ class CvrMasterController extends Controller
             $competitors = [];
             foreach ($resolved['entries'] as $idx => $entry) {
                 $price = isset($entry['price']) && $entry['price'] !== '' ? floatval($entry['price']) : 0;
-                if ($price <= 0) {
+                $deliveryRaw = $entry['delivery'] ?? 0;
+                $delivery = (is_numeric($deliveryRaw) && (float) $deliveryRaw > 0) ? (float) $deliveryRaw : 0.0;
+                $effective = round($price + $delivery, 2);
+                if ($effective <= 0) {
                     continue;
                 }
                 $competitors[] = [
                     'id' => 'temu-' . ($idx + 1),
-                    'price' => round($price, 2),
-                    'ignored' => !empty($entry['ignored']),
+                    'price' => $effective,
+                    'base_price' => round($price, 2),
+                    'delivery' => $delivery,
+                    'ignored' => ! empty($entry['ignored']),
                     'product_link' => $entry['link'] ?? null,
                     'link' => $entry['link'] ?? null,
                     'product_title' => '',
@@ -7482,12 +7496,28 @@ class CvrMasterController extends Controller
                 }
 
                 $active = array_values(array_filter($entries, fn ($e) => empty($e['ignored'])));
-                $prices = array_values(array_filter(array_map(fn ($e) => $e['price'] ?? null, $active), fn ($p) => $p !== null && $p !== ''));
-                $firstPrice = count($prices) > 0 ? min(array_map('floatval', $prices)) : null;
+                $effectivePrices = [];
+                foreach ($active as $e) {
+                    $p = $e['price'] ?? null;
+                    if ($p === null || $p === '' || ! is_numeric($p)) {
+                        continue;
+                    }
+                    $delivery = $e['delivery'] ?? 0;
+                    $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+                    $effectivePrices[] = round((float) $p + $d, 2);
+                }
+                $firstPrice = count($effectivePrices) > 0 ? min($effectivePrices) : null;
                 $firstLink = null;
                 if ($firstPrice !== null) {
                     foreach ($active as $e) {
-                        if (($e['price'] ?? null) !== null && (float) $e['price'] === (float) $firstPrice) {
+                        $p = $e['price'] ?? null;
+                        if ($p === null || $p === '' || ! is_numeric($p)) {
+                            continue;
+                        }
+                        $delivery = $e['delivery'] ?? 0;
+                        $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+                        $eff = round((float) $p + $d, 2);
+                        if (abs($eff - (float) $firstPrice) < 0.00001) {
                             $firstLink = $e['link'] ?? null;
                             break;
                         }
