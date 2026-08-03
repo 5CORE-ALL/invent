@@ -240,11 +240,97 @@
         #lmpModal .lmp-list-scroll {
             max-height: min(42vh, 360px);
             overflow: auto;
+            scrollbar-gutter: stable;
             border: 1px solid #dee2e6;
             border-radius: 0.35rem;
         }
-        #lmpModal .lmp-list-scroll .lmp-link {
-            font-size: 12px;
+        #lmpModal #lmpListTable {
+            table-layout: fixed;
+            width: 100%;
+            margin-bottom: 0;
+            border-collapse: collapse;
+        }
+        #lmpModal #lmpListTable thead th {
+            background: #f8f9fa;
+            white-space: nowrap;
+        }
+        /* max-width:0 keeps fixed columns from expanding when cells contain flex/inputs */
+        #lmpModal #lmpListTable th,
+        #lmpModal #lmpListTable td {
+            vertical-align: middle !important;
+            padding: 0.35rem 0.4rem;
+            overflow: hidden;
+            max-width: 0;
+        }
+        /* # | Price | Del | Price+D | Link | Ignore | Actions — widths must sum ~100% */
+        #lmpModal #lmpListTable col.lmp-col-num { width: 5%; }
+        #lmpModal #lmpListTable col.lmp-col-price { width: 14%; }
+        #lmpModal #lmpListTable col.lmp-col-delivery { width: 10%; }
+        #lmpModal #lmpListTable col.lmp-col-price-d { width: 12%; }
+        #lmpModal #lmpListTable col.lmp-col-link { width: 35%; }
+        #lmpModal #lmpListTable col.lmp-col-ignore { width: 12%; }
+        #lmpModal #lmpListTable col.lmp-col-actions { width: 12%; }
+        #lmpModal .lmp-price-d {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #lmpModal #lmpListTable .form-control {
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        #lmpModal .lmp-price-cell,
+        #lmpModal .lmp-link-cell {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: nowrap;
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        #lmpModal .lmp-price-cell .lmp-price {
+            flex: 1 1 auto;
+            width: auto !important;
+            max-width: 4.5rem !important;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+        }
+        #lmpModal .lmp-delivery {
+            width: 100% !important;
+            max-width: 4.5rem !important;
+            margin: 0 auto;
+            display: block;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+        }
+        #lmpModal .lmp-link-cell .lmp-link {
+            flex: 1 1 auto;
+            min-width: 0;
+            width: auto !important;
+            max-width: none !important;
+            font-size: 11px;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+        }
+        #lmpModal .lmp-link-cell .lmp-open-link,
+        #lmpModal .lmp-link-cell .lmp-five-core-open-link {
+            flex: 0 0 auto;
+            padding: 0.15rem 0.4rem;
+        }
+        #lmpModal .lmp-lowest-badge {
+            flex: 0 0 auto;
+            white-space: nowrap;
+            line-height: 1;
+        }
+        #lmpModal .lmp-lowest-badge .badge {
+            font-size: 10px;
+        }
+        #lmpModal .lmp-five-core-row .lmp-price-cell {
+            gap: 6px;
         }
         #lmpModal .lmp-l1-outside-badge {
             display: inline-flex;
@@ -728,6 +814,13 @@
                         </button>
                     </div>
 
+                    {{-- LMP −1% — set SPRICE so S Temu Price = L1 (Price+D) × 0.99 for selected rows --}}
+                    <button type="button" id="apply-lmp-minus-1-toolbar-btn"
+                        class="btn btn-sm btn-outline-primary ms-2 fw-bold"
+                        title="Apply LMP −1%: set SPRICE so S Temu Price = LMP × 0.99 for selected SKUs">
+                        <i class="fas fa-percentage"></i> LMP −1%
+                    </button>
+
                     {{-- Target ROI% bulk control — back-solves SPRICE for selected rows so SROI = Target ROI%.
                          stemuPrice = (LP × (1 + ROI%/100) + temu_ship) / margin; then sprice = stemuPrice
                          or stemuPrice − 2.99 (Temu adds a $2.99 ship bumper when sprice ≤ $26.99).
@@ -970,7 +1063,7 @@
 
     <!-- LMP Modal: Add New + List (like Competitors), lowest LMP highlighted -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-labelledby="lmpModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title" id="lmpModalLabel"><i class="fas fa-link me-2"></i>LMP for <span id="lmpModalSku"></span></h5>
@@ -1021,16 +1114,26 @@
                             <span class="lmp-l1-value" id="lmpModalL1Price">—</span>
                         </div>
                     </div>
-                    <div class="table-responsive lmp-list-scroll">
+                    <div class="lmp-list-scroll">
                         <table class="table table-sm table-bordered mb-0" id="lmpListTable">
-                            <thead class="table-light sticky-top">
+                            <colgroup>
+                                <col class="lmp-col-num">
+                                <col class="lmp-col-price">
+                                <col class="lmp-col-delivery">
+                                <col class="lmp-col-price-d">
+                                <col class="lmp-col-link">
+                                <col class="lmp-col-ignore">
+                                <col class="lmp-col-actions">
+                            </colgroup>
+                            <thead class="table-light">
                                 <tr>
-                                    <th style="width: 50px;">#</th>
+                                    <th class="text-center">#</th>
                                     <th>Price</th>
-                                    <th style="width: 90px;" title="Added to Price for LMP / L1">Delivery</th>
+                                    <th class="text-center" title="Added to Price for LMP / L1">Del</th>
+                                    <th class="text-center" title="Price + Delivery (defaults Del $2.99 when Price &lt; $27)">Price+D</th>
                                     <th>Link</th>
-                                    <th style="width: 70px;" class="text-center" title="Ignore for L1 — product stays in list">Ignore</th>
-                                    <th style="width: 80px;">Actions</th>
+                                    <th class="text-center" title="Ignore for L1 — product stays in list">Ignore</th>
+                                    <th class="text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="lmpEntriesContainer"></tbody>
@@ -2852,6 +2955,9 @@
             applySprice2699();
         });
 
+        $('#apply-lmp-minus-1-toolbar-btn').on('click', function() {
+            applyLmpMinus1Percent();
+        });
 
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
@@ -3367,7 +3473,6 @@
             if (table) {
                 if (missingBadgeFilterActive) {
                     table.getColumn('lmp').show();
-                    table.getColumn('lmp_minus_15').show();
                 }
                 // LMP columns stay visible when Missing L is off (no hide)
             }
@@ -3722,6 +3827,102 @@
                 error: function(xhr) {
                     showToast('Failed to save R prices', 'error');
                 }
+            });
+        }
+
+        /** L1 = lowest non-ignored Price+D (same as LMP column). */
+        function getRowLmpL1(row) {
+            if (!row) return null;
+            const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
+            const prices = entries
+                .filter(function(e) { return !e.ignored; })
+                .map(function(e) {
+                    const p = e.price;
+                    if (p === null || p === undefined || p === '' || isNaN(parseFloat(p))) return null;
+                    const base = parseFloat(p);
+                    const d = parseFloat(e.delivery);
+                    let delivery = (!isNaN(d) && d > 0) ? d : 0;
+                    if (delivery <= 0 && base < 27) delivery = 2.99;
+                    return base + delivery;
+                })
+                .filter(function(p) { return p !== null; });
+            if (prices.length > 0) return Math.min.apply(null, prices);
+            const fallback = parseFloat(row.lmp_raw != null ? row.lmp_raw : row.lmp);
+            return (!isNaN(fallback) && fallback > 0) ? fallback : null;
+        }
+
+        /**
+         * Apply LMP −1%: set SPRICE so displayed S Temu Price ≈ LMP × 0.99
+         * (uses temuStemuPriceToSprice for the $2.99 bumper on low prices).
+         */
+        function applyLmpMinus1Percent() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+            const jobs = [];
+
+            selectedSkus.forEach(function(sku) {
+                const rows = table.searchRows('sku', '=', sku);
+                if (!rows.length) {
+                    skippedCount++;
+                    return;
+                }
+                const tableRow = rows[0];
+                const rowData = tableRow.getData();
+                const lmp = getRowLmpL1(rowData);
+                if (lmp === null) {
+                    skippedCount++;
+                    return;
+                }
+                const targetStemu = +(lmp * 0.99).toFixed(2);
+                const newSPrice = temuStemuPriceToSprice(targetStemu);
+                if (newSPrice == null || !isFinite(newSPrice) || newSPrice <= 0) {
+                    skippedCount++;
+                    return;
+                }
+                const originalSPrice = parseFloat(rowData.sprice) || 0;
+                tableRow.update({
+                    sprice: newSPrice,
+                    sprice_status: 'processing'
+                });
+                tableRow.reformat();
+                jobs.push({ sku: sku, sprice: newSPrice, tableRow: tableRow, originalSPrice: originalSPrice });
+            });
+
+            if (jobs.length === 0) {
+                showToast('No selected SKUs with a valid LMP', 'warning');
+                return;
+            }
+
+            const total = jobs.length;
+            jobs.forEach(function(job) {
+                saveSpriceWithRetry(job.sku, job.sprice, job.tableRow)
+                    .then(function() {
+                        updatedCount++;
+                        if (updatedCount + errorCount === total) {
+                            let msg = 'LMP −1% applied to ' + updatedCount + ' SKU(s)';
+                            if (skippedCount > 0) msg += ' (' + skippedCount + ' skipped — no LMP)';
+                            if (errorCount > 0) msg += ', ' + errorCount + ' failed';
+                            showToast(msg, errorCount > 0 ? 'error' : 'success');
+                        }
+                    })
+                    .catch(function() {
+                        errorCount++;
+                        if (job.tableRow) {
+                            job.tableRow.update({ sprice: job.originalSPrice });
+                            job.tableRow.reformat();
+                        }
+                        if (updatedCount + errorCount === total) {
+                            let msg = 'LMP −1% applied to ' + updatedCount + ' SKU(s), ' + errorCount + ' failed';
+                            if (skippedCount > 0) msg += ' (' + skippedCount + ' skipped)';
+                            showToast(msg, 'error');
+                        }
+                    });
             });
         }
 
@@ -5088,21 +5289,6 @@
                         }
                     },
                 },
-                {
-                    title: "(LMP - 15%)",
-                    field: "lmp_minus_15",
-                    hozAlign: "center",
-                  
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const lmp = row['lmp'];
-                        if (lmp === null || lmp === undefined || lmp === '') return '<span style="color: #999;">-</span>';
-                        const num = parseFloat(lmp);
-                        if (Number.isNaN(num)) return '-';
-                        const val = num * 0.85;
-                        return (val % 1 === 0) ? val.toLocaleString() : val.toFixed(2);
-                    }
-                },
                      {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
@@ -6103,19 +6289,11 @@
                 $('#search-result-info').hide();
             }
 
-            // LMP, LMP Link, (LMP - 15%): always visible (show when Missing L active, never hide)
+            // LMP + linked LMP columns: always visible
             try {
-                if (missingBadgeFilterActive) {
-                    table.getColumn('lmp').show();
-                    table.getColumn('linked_lmp_skus').show();
-                    table.getColumn('linked_lmp_sku_add').show();
-                    table.getColumn('lmp_minus_15').show();
-                } else {
-                    table.getColumn('lmp').show();
-                    table.getColumn('linked_lmp_skus').show();
-                    table.getColumn('linked_lmp_sku_add').show();
-                    table.getColumn('lmp_minus_15').show();
-                }
+                table.getColumn('lmp').show();
+                table.getColumn('linked_lmp_skus').show();
+                table.getColumn('linked_lmp_sku_add').show();
             } catch (e) {}
             // MAP column: visible only when Missing M badge is active
             try {
@@ -6306,12 +6484,19 @@
         }
         function appendLmpTableRow(tbody, price, delivery, link, ignored, relayout) {
             const tr = $('<tr class="lmp-entry-row">' +
-                '<td class="lmp-num text-center align-middle"></td>' +
-                '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
-                '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" style="max-width:90px" placeholder="0.00" title="Added to Price for LMP"></td>' +
-                '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
-                '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore" title="Ignore for L1"></td>' +
-                '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+                '<td class="lmp-num text-center"></td>' +
+                '<td><div class="lmp-price-cell">' +
+                    '<input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" placeholder="Price">' +
+                    '<span class="lmp-lowest-badge"></span>' +
+                '</div></td>' +
+                '<td class="text-center"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent text-center" placeholder="0.00" title="Added to Price for LMP"></td>' +
+                '<td class="text-center"><span class="lmp-price-d text-muted">—</span></td>' +
+                '<td><div class="lmp-link-cell">' +
+                    '<input type="text" class="form-control form-control-sm lmp-link border-0 bg-transparent" placeholder="https://..." autocomplete="off">' +
+                    '<a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a>' +
+                '</div></td>' +
+                '<td class="text-center"><input type="checkbox" class="form-check-input lmp-ignore m-0" title="Ignore for L1"></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
@@ -6319,6 +6504,16 @@
             if (ignored) tr.addClass('lmp-ignored');
             tbody.append(tr);
             if (relayout !== false) updateLmpListLayout();
+        }
+        function updateLmpPriceDDisplay(tr) {
+            const $el = $(tr).find('.lmp-price-d');
+            if (!$el.length) return;
+            const total = getLmpEntryPrice(tr);
+            if (total === null) {
+                $el.text('—').addClass('text-muted').removeClass('text-dark');
+            } else {
+                $el.text('$' + Number(total).toFixed(2)).removeClass('text-muted').addClass('text-dark');
+            }
         }
         let lmpLayoutTimer = null;
         function scheduleLmpListLayout() {
@@ -6390,17 +6585,21 @@
                 const buyerHref = lmpModalBuyerLink;
                 const buyerEsc = buyerHref.replace(/"/g, '&quot;');
                 const linkCell = buyerHref
-                    ? ('<input type="text" class="form-control form-control-sm d-inline-block me-1 bg-transparent border-0 text-primary" style="max-width:220px" readonly value="' + buyerEsc + '" title="' + buyerEsc + '"> ' +
-                       '<a href="' + buyerEsc + '" class="btn btn-sm btn-outline-primary lmp-five-core-open-link" target="_blank" rel="noopener" title="Open buyer link"><i class="fas fa-external-link-alt"></i></a>')
+                    ? ('<div class="lmp-link-cell">' +
+                       '<input type="text" class="form-control form-control-sm lmp-link bg-transparent border-0 text-primary" readonly value="' + buyerEsc + '" title="' + buyerEsc + '">' +
+                       '<a href="' + buyerEsc + '" class="btn btn-sm btn-outline-primary lmp-five-core-open-link" target="_blank" rel="noopener" title="Open buyer link"><i class="fas fa-external-link-alt"></i></a>' +
+                       '</div>')
                     : '<span class="text-muted small"><i class="fas fa-store me-1"></i>No buyer link</span>';
                 const fiveCoreTr = $('<tr class="lmp-five-core-row">' +
-                    '<td class="lmp-num text-center align-middle">—</td>' +
-                    '<td class="align-middle"><span class="lmp-five-core-price">$' + lmpModalOurPrice.toFixed(2) + '</span> ' +
-                    '<span class="badge bg-primary">5 CORE</span></td>' +
-                    '<td class="align-middle text-muted small">—</td>' +
-                    '<td class="align-middle">' + linkCell + '</td>' +
-                    '<td class="align-middle text-center text-muted small">—</td>' +
-                    '<td class="align-middle text-muted small">buyer</td></tr>');
+                    '<td class="lmp-num text-center">—</td>' +
+                    '<td><div class="lmp-price-cell">' +
+                    '<span class="lmp-five-core-price">$' + lmpModalOurPrice.toFixed(2) + '</span>' +
+                    '<span class="badge bg-primary">5 CORE</span></div></td>' +
+                    '<td class="text-center text-muted small">—</td>' +
+                    '<td class="text-center"><span class="lmp-price-d">$' + lmpModalOurPrice.toFixed(2) + '</span></td>' +
+                    '<td>' + linkCell + '</td>' +
+                    '<td class="text-center text-muted small">—</td>' +
+                    '<td class="text-center text-muted small">buyer</td></tr>');
 
                 let inserted = false;
                 tbody.find('.lmp-entry-row').each(function() {
@@ -6414,6 +6613,7 @@
                 if (!inserted) tbody.append(fiveCoreTr);
             }
 
+            tbody.find('.lmp-entry-row').each(function() { updateLmpPriceDDisplay(this); });
             renumberLmpRows();
             updateLmpLowestHighlight();
 
@@ -6453,7 +6653,7 @@
                 }
             });
             if (minTr && minVal !== null) {
-                minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">L1</span>');
+                minTr.find('.lmp-lowest-badge').html('<span class="badge bg-info">L1</span>');
             }
             $('#lmpModalL1Price').text(minVal !== null ? ('$' + Number(minVal).toFixed(2)) : '—');
             renumberLmpRows();

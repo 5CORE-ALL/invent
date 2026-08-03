@@ -460,6 +460,12 @@
                         </button>
                     </div>
 
+                    <button type="button" id="apply-lmp-minus-1-toolbar-btn"
+                        class="btn btn-sm btn-outline-primary ms-2 fw-bold pricing-filter-item"
+                        title="Apply LMP −1%: set SPRICE so S Temu Price = LMP × 0.99 for selected SKUs">
+                        <i class="fas fa-percentage"></i> LMP −1%
+                    </button>
+
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
                         title="Target GPFT% — sets S PRC = (LP + Temu Ship) / (TEMU2_PCT − Target GPFT%/100)">
@@ -695,6 +701,7 @@
                                     <th style="width: 50px;">#</th>
                                     <th>Price</th>
                                     <th style="width: 90px;" title="Added to Price for LMP / L1">Delivery</th>
+                                    <th style="width: 90px;" title="Price + Delivery (defaults Del $2.99 when Price &lt; $27)">Price+D</th>
                                     <th>Link</th>
                                     <th style="width: 80px;">Actions</th>
                                 </tr>
@@ -2035,6 +2042,9 @@
             applySprice2699();
         });
 
+        $('#apply-lmp-minus-1-toolbar-btn').on('click', function() {
+            applyLmpMinus1Percent();
+        });
 
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
@@ -2249,6 +2259,88 @@
             return null;
         }
 
+        /** Inverse of stemu = sprice ≤ 26.99 ? sprice + 2.99 : sprice */
+        function temu2StemuPriceToSprice(desiredStemuPrice) {
+            if (!isFinite(desiredStemuPrice) || desiredStemuPrice <= 0) return null;
+            if (desiredStemuPrice <= 29.98) {
+                const sprice = +(desiredStemuPrice - 2.99).toFixed(2);
+                return sprice > 0 ? sprice : null;
+            }
+            return +desiredStemuPrice.toFixed(2);
+        }
+
+        /** Apply LMP −1%: SPRICE so S Temu Price ≈ raw LMP × 0.99 */
+        function applyLmpMinus1Percent() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+            const jobs = [];
+
+            selectedSkus.forEach(function(sku) {
+                const rows = table.searchRows('sku', '=', sku);
+                if (!rows.length) {
+                    skippedCount++;
+                    return;
+                }
+                const tableRow = rows[0];
+                const rowData = tableRow.getData();
+                const lmp = getTemu2RawLmp(rowData);
+                if (lmp === null) {
+                    skippedCount++;
+                    return;
+                }
+                const targetStemu = +(lmp * 0.99).toFixed(2);
+                const newSPrice = temu2StemuPriceToSprice(targetStemu);
+                if (newSPrice == null || !isFinite(newSPrice) || newSPrice <= 0) {
+                    skippedCount++;
+                    return;
+                }
+                const originalSPrice = parseFloat(rowData.sprice) || 0;
+                tableRow.update({
+                    sprice: newSPrice,
+                    sprice_status: 'processing'
+                });
+                tableRow.reformat();
+                jobs.push({ sku: sku, sprice: newSPrice, tableRow: tableRow, originalSPrice: originalSPrice });
+            });
+
+            if (jobs.length === 0) {
+                showToast('No selected SKUs with a valid LMP', 'warning');
+                return;
+            }
+
+            const total = jobs.length;
+            jobs.forEach(function(job) {
+                saveSpriceWithRetry(job.sku, job.sprice, job.tableRow)
+                    .then(function() {
+                        updatedCount++;
+                        if (updatedCount + errorCount === total) {
+                            let msg = 'LMP −1% applied to ' + updatedCount + ' SKU(s)';
+                            if (skippedCount > 0) msg += ' (' + skippedCount + ' skipped — no LMP)';
+                            if (errorCount > 0) msg += ', ' + errorCount + ' failed';
+                            showToast(msg, errorCount > 0 ? 'error' : 'success');
+                        }
+                    })
+                    .catch(function() {
+                        errorCount++;
+                        if (job.tableRow) {
+                            job.tableRow.update({ sprice: job.originalSPrice });
+                            job.tableRow.reformat();
+                        }
+                        if (updatedCount + errorCount === total) {
+                            let msg = 'LMP −1% applied to ' + updatedCount + ' SKU(s), ' + errorCount + ' failed';
+                            if (skippedCount > 0) msg += ' (' + skippedCount + ' skipped)';
+                            showToast(msg, 'error');
+                        }
+                    });
+            });
+        }
+
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
             moreSoldFilterActive = false;
@@ -2268,7 +2360,7 @@
                    .toggleClass('bg-danger', missingLFilterActive);
             applyFilters();
             if (table && missingLFilterActive) {
-                try { table.getColumn('lmp').show(); table.getColumn('lmp_minus_15').show(); } catch (e) {}
+                try { table.getColumn('lmp').show(); } catch (e) {}
             }
         });
 
@@ -3574,19 +3666,6 @@
                         }
                     }
                 },
-                {
-                    title: "(LMP - 15%)",
-                    field: "lmp_minus_15",
-                    hozAlign: "center",
-                    headerTooltip: "Raw LMP × 0.85 (before Temu Recovery +$2.99 adjustment)",
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const raw = getTemu2RawLmp(row);
-                        if (raw == null) return '<span style="color: #999;">-</span>';
-                        const val = raw * 0.85;
-                        return (val % 1 === 0) ? val.toLocaleString() : val.toFixed(2);
-                    }
-                },
                      {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
@@ -4295,7 +4374,6 @@
 
             try {
                 table.getColumn('lmp').show();
-                table.getColumn('lmp_minus_15').show();
             } catch (e) {}
             try {
                 if (missingMFilterActive || notMapBadgeFilterActive) table.getColumn('MAP').show();
@@ -4433,25 +4511,40 @@
                 '<td class="lmp-num text-center align-middle"></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" style="max-width:100px" placeholder="Price"> <span class="lmp-lowest-badge"></span></td>' +
                 '<td class="align-middle"><input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-delivery border-0 bg-transparent" style="max-width:90px" placeholder="0.00" title="Added to Price for LMP"></td>' +
+                '<td class="align-middle text-center"><span class="lmp-price-d text-muted">—</span></td>' +
                 '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
                 '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
             tbody.append(tr);
+            updateTemu2LmpPriceD(tr);
             tr.find('.lmp-remove-row').on('click', function(e) {
                 e.preventDefault();
                 tr.remove();
                 renumberLmpRows();
                 updateLmpLowestHighlight();
             });
-            tr.find('.lmp-price, .lmp-delivery, .lmp-link').on('input', function() { updateLmpLowestHighlight(); });
+            tr.find('.lmp-price, .lmp-delivery, .lmp-link').on('input', function() {
+                updateTemu2LmpPriceD(tr);
+                updateLmpLowestHighlight();
+            });
             tr.find('.lmp-open-link').on('click', function(e) {
                 e.preventDefault();
                 const href = (tr.find('.lmp-link').val() || '').trim();
                 if (href && (href.startsWith('http://') || href.startsWith('https://'))) window.open(href, '_blank');
             });
             renumberLmpRows();
+        }
+        function updateTemu2LmpPriceD(tr) {
+            const $el = $(tr).find('.lmp-price-d');
+            if (!$el.length) return;
+            const total = getTemu2LmpEffectivePrice(tr);
+            if (total === null) {
+                $el.text('—').addClass('text-muted');
+            } else {
+                $el.text('$' + Number(total).toFixed(2)).removeClass('text-muted');
+            }
         }
         function renumberLmpRows() {
             $('#lmpEntriesContainer .lmp-entry-row').each(function(i) {
@@ -4465,6 +4558,7 @@
                 const tr = $(this);
                 tr.removeClass('table-dark');
                 tr.find('.lmp-lowest-badge').empty();
+                updateTemu2LmpPriceD(tr);
                 const num = getTemu2LmpEffectivePrice(tr);
                 if (num !== null) {
                     if (minVal === null || num < minVal) { minVal = num; minTr = tr; }
@@ -4757,7 +4851,7 @@
 
             // Pricing
             if (
-                /^(cvr_percent|cvr_30|cvr_45|cvr_60|base_price|temu_price|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|lmp_minus_15|recommended_base_price|sprice|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship)$/i.test(f) ||
+                /^(cvr_percent|cvr_30|cvr_45|cvr_60|base_price|temu_price|temu1_price|temu1_base_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|recommended_base_price|sprice|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship)$/i.test(f) ||
                 /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship)\b/i.test(tl)
             ) {
                 return 'pricing';
