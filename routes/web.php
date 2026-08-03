@@ -253,6 +253,8 @@ use App\Http\Controllers\ProductMaster\ImagesAPlusContentController;
 use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
+use App\Http\Controllers\ProductMaster\MastersBarcodeController;
+use App\Http\Controllers\ProductMaster\ShortTitleMasterController;
 use App\Http\Controllers\ProductMaster\VideoMasterController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
@@ -286,13 +288,11 @@ use App\Http\Controllers\PurchaseMaster\QcImprovementReqBeforeItemPkgController;
 use App\Http\Controllers\PurchaseMaster\QcMastersController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
-use App\Http\Controllers\PurchaseMaster\RFQController;
 use App\Http\Controllers\PurchaseMaster\ScopeOfImprovementController;
 use App\Http\Controllers\PurchaseMaster\DarController as DarReportController;
 use App\Http\Controllers\PurchaseMaster\SourcingController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\PurchaseMaster\TransitContainerDetailsController;
-use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\ResourcesController;
 use App\Http\Controllers\Payroll\PayrollController;
 use App\Http\Controllers\Attendance\AttendanceAgentController;
@@ -3212,8 +3212,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/store-purchase-orders', 'store')->name('purchase-orders.store');
         Route::get('/purchase-orders/list', 'getPurchaseOrdersData')->name('purchase-orders.data');
         Route::get('/purchase-orders/convert', 'convert')->name('purchase-orders.convert');
+        Route::get('/purchase-orders/tech-from-comparison', 'techFromComparison')->name('purchase-orders.tech-from-comparison');
         Route::get('/purchase-order/by-po/{poNumber}/generate-pdf', 'generatePdfByPoNumber')->name('generate-pdf-by-po');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
+        Route::post('/purchase-order/{id}/update-item-supplier-sku', 'updateItemSupplierSku')->name('purchase-order.update-item-supplier-sku');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
         Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');
@@ -3230,33 +3232,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase/save', 'store')->name('purchase.store');
         Route::get('/purchase-data/list', 'getPurchaseSummary');
         Route::post('/purchase/delete', 'deletePurchase');
-    });
-
-    // RFQ Form
-    Route::controller(RFQController::class)->group(function () {
-        Route::get('/rfq-form/list', 'index')->name('rfq-form.index');
-        Route::get('rfq-form/data', 'getRfqFormsData');
-        Route::post('/rfq-form/store', 'storeRFQForm')->name('rfq-form.store');
-        Route::post('/rfq-form/import', 'importForm')->name('rfq-form.import');
-        Route::get('/rfq-form/edit/{id}', 'edit')->name('rfq-form.edit');
-        Route::post('/rfq-form/update/{id}', 'update')->name('rfq-form.update');
-        Route::delete('/rfq-form/delete/{id}', 'destroy')->name('rfq-form.destroy');
-
-        // form reports
-        Route::get('/rfq-form/reports/{id}', 'rfqReports')->name('rfq-form.reports');
-        Route::get('/rfq-form/reports-data/{id}', 'getRfqReportsData')->name('rfq-form.reports.data');
-        Route::post('/rfq-form/submission/{id}/update', 'updateSubmission')->name('rfq-form.submission.update');
-        Route::post('/rfq-form/submission/{id}/photos', 'updateSubmissionPhotos')->name('rfq-form.submission.photos');
-        Route::post('/rfq-form/{id}/import-submissions', 'importSubmissions')->name('rfq-form.import-submissions');
-        Route::post('/rfq-form/{id}/report-meta', 'updateReportMeta')->name('rfq-form.report-meta.update');
-
-        // supplier email
-        Route::get('/rfq-form/suppliers/search', 'searchSuppliers')->name('rfq-form.suppliers.search');
-        Route::post('/rfq-form/send-email', 'sendEmailToSuppliers')->name('rfq-form.send-email');
-
-        // linked skus
-        Route::get('/rfq-form/skus/search', 'searchSkus')->name('rfq-form.skus.search');
-        Route::post('/rfq-form/{id}/linked-skus', 'updateLinkedSkus')->name('rfq-form.linked-skus.update');
     });
 
     // Scope of Improvement
@@ -3872,6 +3847,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn () => view('title-master'))->name('title.master');
+    Route::get('/masters-barcode', [MastersBarcodeController::class, 'index'])->name('masters.barcode');
+    Route::get('/masters-barcode-data', [MastersBarcodeController::class, 'getData'])->name('masters.barcode.data');
+    Route::post('/masters-barcode/save', [MastersBarcodeController::class, 'save'])->name('masters.barcode.save');
+    Route::post('/masters-barcode/autogenerate', [MastersBarcodeController::class, 'autogenerate'])->name('masters.barcode.autogenerate');
+
+    Route::get('/short-title-master', [ShortTitleMasterController::class, 'index'])->name('short.title.master');
+    Route::get('/short-title-master-data', [ShortTitleMasterController::class, 'getData'])->name('short.title.master.data');
+    Route::post('/short-title-master/save', [ShortTitleMasterController::class, 'save'])->name('short.title.master.save');
+    Route::post('/short-title-master/autopopulate', [ShortTitleMasterController::class, 'autopopulate'])->name('short.title.master.autopopulate');
+
     Route::get('/image-master', [ImageMasterController::class, 'index'])->name('image.master');
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');
     Route::post('/image-master/push', [ImageMasterController::class, 'pushToMarketplace'])->name('image.master.push');
@@ -4723,6 +4708,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/supplier/{id}/approval-status', [SupplierController::class, 'updateApprovalStatus'])->name('supplier.approval-status');
     Route::delete('/supplier/delete/{id}', [SupplierController::class, 'deleteSupplier'])->name('supplier.delete');
     Route::post('/forecast-analysis/link-supplier-parent', [\App\Http\Controllers\ProductMaster\ForecastAnalysisController::class, 'linkSupplierToParent'])->name('forecast.link-supplier-parent');
+
+    Route::get('/supplier/{id}/bank-accounts', [SupplierController::class, 'getSupplierBankAccounts'])->name('supplier.bank.index');
+    Route::post('/supplier/{id}/bank-accounts', [SupplierController::class, 'storeSupplierBankAccount'])->name('supplier.bank.store');
+    Route::put('/supplier/{id}/bank-accounts/{accountId}', [SupplierController::class, 'updateSupplierBankAccount'])->name('supplier.bank.update');
+    Route::delete('/supplier/{id}/bank-accounts/{accountId}', [SupplierController::class, 'deleteSupplierBankAccount'])->name('supplier.bank.delete');
+    Route::get('/supplier/{id}/bank-history', [SupplierController::class, 'getSupplierBankHistory'])->name('supplier.bank.history');
+
     Route::post('/supplier/import', [SupplierController::class, 'bulkImport'])->name('supplier.import');
     Route::get('/supplier/export', [SupplierController::class, 'exportSuppliers'])->name('supplier.export');
     Route::post('/supplier-rating', [SupplierController::class, 'storeRating'])->name('supplier.rating.save');
@@ -5078,13 +5070,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/container-planning/po-details/{id}', 'getPoDetails');
         Route::post('/container-planning/save', 'saveContainerPlanning')->name('container.planning.save');
         Route::post('/container-planning/delete', 'deleteContainerPlanning')->name('container.planning.delete');
-    });
-
-    Route::controller(UpComingContainerController::class)->group(function () {
-        Route::get('/upcoming-containers', 'index')->name('upcoming.container');
-        Route::get('/upcoming-container/data', 'getUpComingContainer')->name('upcoming.container.data');
-        Route::post('/upcoming-container/save', 'saveUpComingContainer')->name('upcoming.container.save');
-        Route::post('/upcoming-container/delete', 'deleteUpcomingContainer')->name('upcoming.container.delete');
     });
 
     // api data view routes

@@ -7,8 +7,6 @@ return [
     'page_info_keys' => [
         'category.list' => 'categories',
         'supplier.list' => 'suppliers',
-        'rfq-form.index' => 'rfq_form',
-        'rfq-form.reports' => 'rfq_form_reports',
         'claim.reimbursement' => 'claim_reimbursement',
         'forecast.analysis' => 'forecast',
         'to.order.analysis' => 'to_order',
@@ -22,7 +20,6 @@ return [
         'ready.to.ship' => 'r2s',
         'transit' => 'transit',
         'china.load' => 'china_load',
-        'upcoming.container' => 'upcoming_container',
         'transit.container.details' => 'transit_container_inv',
         'transit.container.new' => 'transit_container_new',
         'transit.container.changes' => 'transit_container_changes',

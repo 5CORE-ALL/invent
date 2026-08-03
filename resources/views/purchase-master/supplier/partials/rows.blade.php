@@ -111,9 +111,6 @@
             <span class="text-muted">-</span>
         @endif
     </td>
-    <td class="align-middle">
-        {{ $supplier->alias ?: '-' }}
-    </td>
     <td class="parents-col" style="position: relative;">
         @php
             $parents = !empty($supplier->parent) ? array_filter(explode(',', $supplier->parent)) : [];
@@ -135,28 +132,6 @@
         @if(count($parents) == 0)
             <span class="text-muted">-</span>
         @endif
-    </td>
-
-    @php
-        $linkedSkus = $rfqLinkedSkusBySupplierId[$supplier->id] ?? [];
-    @endphp
-    <td class="linked-sku-col align-top">
-        <div class="d-flex flex-column align-items-start py-1">
-            <div class="mb-1" style="line-height:1.6;">
-                @if(count($linkedSkus))
-                    @foreach($linkedSkus as $linkedSku)
-                        <span class="badge bg-info-subtle text-dark border me-1 mb-1">{{ $linkedSku }}</span>
-                    @endforeach
-                @else
-                    <span class="text-muted fst-italic">No SKUs</span>
-                @endif
-            </div>
-            <a href="{{ url('/rfq-form/list') }}" target="_blank" rel="noopener noreferrer"
-                class="btn btn-sm btn-outline-primary" title="Manage linked SKUs on RFQ Form list"
-                style="padding:2px 8px;">
-                <i class="mdi mdi-plus"></i>
-            </a>
-        </div>
     </td>
 
     <td>
@@ -190,12 +165,14 @@
         @endphp
 
         @if ($avg === null)
-            <button class="btn btn-outline-primary btn-sm rate-btn"
+            <button type="button" class="btn btn-link btn-sm p-0 rate-btn text-primary"
                 data-supplier-id="{{ $supplier->id }}"
                 data-supplier-name="{{ $supplier->name }}"
                 data-bs-toggle="modal"
-                data-bs-target="#ratingModal">
-                <i class="mdi mdi-star-outline me-1"></i> Rate
+                data-bs-target="#ratingModal"
+                title="Rate"
+                aria-label="Rate">
+                <i class="mdi mdi-pencil rate-btn-icon"></i>
             </button>
         @else
             @php
@@ -209,7 +186,7 @@
                 ] : null;
             @endphp
             <div class="d-flex align-items-center justify-content-center gap-2">
-                <span class="fw-bold" style="font-size: 0.95rem; color: {{ $ratingPctColor }};" title="Average % (each rating uses only filled criteria)">{{ (int) round($avg) }}%</span>
+                <span class="fw-bold" style="color: {{ $ratingPctColor }};" title="Average % (each rating uses only filled criteria)">{{ (int) round($avg) }}%</span>
                 @if ($editPayload)
                     <button type="button" class="btn btn-link p-0 rating-edit-dot rate-edit-btn"
                         data-bs-toggle="modal" data-bs-target="#ratingModal"
@@ -226,105 +203,50 @@
     </td>
     <td>
         @if(!empty($supplier->alibaba))
-            <a href="{{ $supplier->alibaba }}" target="_blank"
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="View Alibaba Profile">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
-                    </span>
-                </span>
+            <a href="{{ $supplier->alibaba }}" target="_blank" class="text-decoration-none" title="View Alibaba Profile">
+                <span class="supplier-data-dot supplier-data-dot--ok"></span>
             </a>
         @else
-            <div class="d-flex justify-content-center align-items-center" title="No Alibaba on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #ffecb3; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-shopping" style="font-size: 1.4rem; color: #ff9800;"></i>
-                    </span>
-                </span>
-            </div>
+            <span class="supplier-data-dot supplier-data-dot--missing" title="No Alibaba on file"></span>
         @endif
     </td>
 
     <td>
         @if(!empty($supplier->link_1688))
-            <a href="{{ $supplier->link_1688 }}" target="_blank"
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="View 1688 Profile">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #ffe0b2; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <span style="font-size: 0.72rem; font-weight: 800; color: #e65100; line-height: 1;">1688</span>
-                    </span>
-                </span>
+            <a href="{{ $supplier->link_1688 }}" target="_blank" class="text-decoration-none" title="View 1688 Profile">
+                <span class="supplier-data-dot supplier-data-dot--ok"></span>
             </a>
         @else
-            <div class="d-flex justify-content-center align-items-center" title="No 1688 on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #ffe0b2; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <span style="font-size: 0.72rem; font-weight: 800; color: #e65100; line-height: 1;">1688</span>
-                    </span>
-                </span>
-            </div>
+            <span class="supplier-data-dot supplier-data-dot--missing" title="No 1688 on file"></span>
         @endif
     </td>
 
     <td>
         @if(!empty($supplier->qq))
-            <a href="javascript:void(0);"
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="QQ: {{ $supplier->qq }}">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #bbdefb; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-qqchat" style="font-size: 1.4rem; color: #1565c0;"></i>
-                    </span>
-                </span>
-            </a>
+            <span class="supplier-data-dot supplier-data-dot--ok" title="QQ: {{ $supplier->qq }}"></span>
         @else
-            <div class="d-flex justify-content-center align-items-center" title="No QQ on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #bbdefb; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-qqchat" style="font-size: 1.4rem; color: #1565c0;"></i>
-                    </span>
-                </span>
-            </div>
+            <span class="supplier-data-dot supplier-data-dot--missing" title="No QQ on file"></span>
         @endif
     </td>
 
     <td>
         @if(!empty($supplier->email))
-            <a href="mailto:{{ $supplier->email }}"
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="Send Email">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #e3f0ff; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-email-outline text-primary" style="font-size: 1.4rem;"></i>
-                    </span>
-                </span>
+            <a href="mailto:{{ $supplier->email }}" class="text-decoration-none" title="{{ $supplier->email }}">
+                <span class="supplier-data-dot supplier-data-dot--ok"></span>
             </a>
         @else
-            <div class="d-flex justify-content-center align-items-center" title="No email on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #e3f0ff; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-email-outline text-primary" style="font-size: 1.4rem;"></i>
-                    </span>
-                </span>
-            </div>
+            <span class="supplier-data-dot supplier-data-dot--missing" title="No email on file"></span>
         @endif
     </td>
 
     <td>
         @if(!empty($supplier->whatsapp))
             @php
-                // Remove all non-digit characters from WhatsApp number
                 $number = preg_replace('/\D/', '', $supplier->whatsapp);
-                
-                // If number doesn't start with a country code (e.g., less than 10 digits or doesn't start with common country codes)
-                // And country_code is available, prepend it
                 if (!empty($supplier->country_code) && strlen($number) < 10) {
                     $countryCode = preg_replace('/\D/', '', $supplier->country_code);
                     $number = $countryCode . $number;
                 } elseif (!empty($supplier->country_code) && !empty($supplier->phone)) {
-                    // Check if WhatsApp number is same as phone number (might be missing country code)
                     $phoneDigits = preg_replace('/\D/', '', $supplier->phone);
                     if ($number === $phoneDigits) {
                         $countryCode = preg_replace('/\D/', '', $supplier->country_code);
@@ -332,46 +254,32 @@
                     }
                 }
             @endphp
-
-            <a href="#" onclick="openWhatsApp('{{ $number }}')" target="_blank"
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="Chat on WhatsApp">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #00d757; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-whatsapp" style="font-size: 1.4rem; color: #fff;"></i>
-                    </span>
-                </span>
+            <a href="#" onclick="openWhatsApp('{{ $number }}'); return false;" class="text-decoration-none" title="Chat on WhatsApp">
+                <span class="supplier-data-dot supplier-data-dot--ok"></span>
             </a>
         @else
-            <div class="d-flex justify-content-center align-items-center" title="No WhatsApp on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #00d757; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-whatsapp" style="font-size: 1.4rem; color: #fff;"></i>
-                    </span>
-                </span>
-            </div>
+            <span class="supplier-data-dot supplier-data-dot--missing" title="No WhatsApp on file"></span>
         @endif
     </td>
 
     <td>
+        @php
+            $bankCount = (int) ($supplier->bank_accounts_count ?? 0);
+        @endphp
+        <button type="button"
+                class="btn btn-link p-0 border-0 supplier-bank-open-btn"
+                data-supplier-id="{{ $supplier->id }}"
+                data-supplier-name="{{ e($supplier->name) }}"
+                title="{{ $bankCount > 0 ? $bankCount . ' bank account(s)' : 'Add / view bank details' }}">
+            <span class="supplier-data-dot {{ $bankCount > 0 ? 'supplier-data-dot--ok' : 'supplier-data-dot--missing' }}"></span>
+        </button>
+    </td>
+
+    <td>
         @if(!empty($supplier->wechat))
-            <a href="javascript:void(0);" 
-            class="d-flex justify-content-center align-items-center text-decoration-none"
-            title="WeChat ID: {{ $supplier->wechat }}">
-                <span class="supplier-contact-wrap">
-                    <span class="supplier-contact-icon-inner" style="background: #09b83e; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-wechat" style="font-size: 1.4rem; color: #fff;"></i>
-                    </span>
-                </span>
-            </a>
+            <span class="supplier-data-dot supplier-data-dot--ok" title="WeChat ID: {{ $supplier->wechat }}"></span>
         @else
-            <div class="d-flex justify-content-center align-items-center" title="No WeChat on file">
-                <span class="supplier-contact-wrap supplier-contact-wrap--missing">
-                    <span class="supplier-contact-icon-inner" style="background: #09b83e; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center;">
-                        <i class="mdi mdi-wechat" style="font-size: 1.4rem; color: #fff;"></i>
-                    </span>
-                </span>
-            </div>
+            <span class="supplier-data-dot supplier-data-dot--missing" title="No WeChat on file"></span>
         @endif
     </td>
 

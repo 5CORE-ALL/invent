@@ -4,9 +4,9 @@ namespace App\Http\Controllers\PurchaseMaster;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
-use App\Models\ProductMaster;
-use App\Models\RfqForm;
 use App\Models\Supplier;
+use App\Models\SupplierBankAccount;
+use App\Models\SupplierBankAccountHistory;
 use App\Models\SupplierRating;
 use App\Models\SupplierRemarkHistory;
 use Illuminate\Support\Collection;
@@ -95,15 +95,18 @@ class SupplierController extends Controller
         // Get total count of all suppliers (unfiltered)
         $totalCount = Supplier::count();
         
-        $suppliers = $query->with(['ratings', 'latestRemark'])->paginate(20)->appends($request->query());
+        $suppliers = $query->with(['ratings', 'latestRemark'])
+            ->withCount('bankAccounts')
+            ->paginate(20)
+            ->appends($request->query());
         $categories = $this->categoriesWithSupplierCounts();
-        $rfqLinkedSkusBySupplierId = $this->buildRfqLinkedSkusBySupplierId($suppliers->getCollection());
-        
+        $canEditSupplierBank = $this->canEditSupplierBank();
+
         // If AJAX request, return JSON
         if ($request->ajax()) {
             return response()->json([
                 'success' => true,
-                'html' => view('purchase-master.supplier.partials.rows', compact('suppliers', 'categories', 'rfqLinkedSkusBySupplierId'))->render(),
+                'html' => view('purchase-master.supplier.partials.rows', compact('suppliers', 'categories', 'canEditSupplierBank'))->render(),
                 'pagination' => (string) $suppliers->onEachSide(1)->links('pagination::bootstrap-5'),
                 'filteredCount' => $filteredCount,
                 'totalCount' => $totalCount,
@@ -111,7 +114,7 @@ class SupplierController extends Controller
                 'direction' => $direction,
             ]);
         }
-        
+
         return view('purchase-master.supplier.suppliers' , compact(
             'suppliers',
             'categories',
@@ -119,8 +122,206 @@ class SupplierController extends Controller
             'totalCount',
             'sortKey',
             'direction',
-            'rfqLinkedSkusBySupplierId'
+            'canEditSupplierBank'
         ));
+    }
+
+    /**
+     * Bank account edit allowed only for Sruit / Candy / President.
+     */
+    protected function canEditSupplierBank(): bool
+    {
+        $email = strtolower(trim((string) (auth()->user()->email ?? '')));
+
+        return in_array($email, [
+            'sourcing1@5core.com',
+            'purchase@5core.com',
+            'president@5core.com',
+        ], true);
+    }
+
+    protected function bankAccountFields(): array
+    {
+        return [
+            'supplier_name',
+            'nick_name',
+            'company_name',
+            'swift',
+            'address',
+            'city',
+            'province',
+            'country',
+            'account_number',
+        ];
+    }
+
+    protected function authBankUserName(): string
+    {
+        $name = trim((string) (auth()->user()->name ?? ''));
+        if ($name === '') {
+            return 'Unknown';
+        }
+
+        return explode(' ', $name)[0] ?: 'Unknown';
+    }
+
+    public function getSupplierBankAccounts($id)
+    {
+        $supplier = Supplier::findOrFail($id);
+        $accounts = SupplierBankAccount::where('supplier_id', $supplier->id)
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'can_edit' => $this->canEditSupplierBank(),
+            'supplier' => [
+                'id' => $supplier->id,
+                'name' => $supplier->name,
+                'company' => $supplier->company,
+            ],
+            'accounts' => $accounts,
+        ]);
+    }
+
+    public function storeSupplierBankAccount(Request $request, $id)
+    {
+        if (!$this->canEditSupplierBank()) {
+            return response()->json(['success' => false, 'message' => 'You are not allowed to edit bank details.'], 403);
+        }
+
+        $supplier = Supplier::findOrFail($id);
+        $rules = [];
+        foreach ($this->bankAccountFields() as $field) {
+            $rules[$field] = 'nullable|string|max:30';
+        }
+        $data = $request->validate($rules);
+
+        foreach ($this->bankAccountFields() as $field) {
+            $val = isset($data[$field]) ? trim((string) $data[$field]) : '';
+            $data[$field] = $val === '' ? null : $val;
+        }
+
+        $account = SupplierBankAccount::create(array_merge($data, [
+            'supplier_id' => $supplier->id,
+        ]));
+
+        SupplierBankAccountHistory::create([
+            'supplier_id' => $supplier->id,
+            'supplier_bank_account_id' => $account->id,
+            'user_id' => auth()->id(),
+            'user_name' => $this->authBankUserName(),
+            'action' => 'created',
+            'changes' => ['new' => $account->only($this->bankAccountFields())],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'account' => $account,
+            'message' => 'Bank account added.',
+        ]);
+    }
+
+    public function updateSupplierBankAccount(Request $request, $id, $accountId)
+    {
+        if (!$this->canEditSupplierBank()) {
+            return response()->json(['success' => false, 'message' => 'You are not allowed to edit bank details.'], 403);
+        }
+
+        $supplier = Supplier::findOrFail($id);
+        $account = SupplierBankAccount::where('supplier_id', $supplier->id)
+            ->where('id', $accountId)
+            ->firstOrFail();
+
+        $rules = [];
+        foreach ($this->bankAccountFields() as $field) {
+            $rules[$field] = 'nullable|string|max:30';
+        }
+        $data = $request->validate($rules);
+
+        $old = $account->only($this->bankAccountFields());
+        $changes = [];
+        foreach ($this->bankAccountFields() as $field) {
+            $val = isset($data[$field]) ? trim((string) $data[$field]) : '';
+            $val = $val === '' ? null : $val;
+            if ((string) ($old[$field] ?? '') !== (string) ($val ?? '')) {
+                $changes[$field] = ['old' => $old[$field], 'new' => $val];
+            }
+            $account->{$field} = $val;
+        }
+
+        if ($changes === []) {
+            return response()->json(['success' => true, 'account' => $account, 'message' => 'No changes.']);
+        }
+
+        $account->save();
+
+        SupplierBankAccountHistory::create([
+            'supplier_id' => $supplier->id,
+            'supplier_bank_account_id' => $account->id,
+            'user_id' => auth()->id(),
+            'user_name' => $this->authBankUserName(),
+            'action' => 'updated',
+            'changes' => $changes,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'account' => $account,
+            'message' => 'Bank account updated.',
+        ]);
+    }
+
+    public function deleteSupplierBankAccount($id, $accountId)
+    {
+        if (!$this->canEditSupplierBank()) {
+            return response()->json(['success' => false, 'message' => 'You are not allowed to edit bank details.'], 403);
+        }
+
+        $supplier = Supplier::findOrFail($id);
+        $account = SupplierBankAccount::where('supplier_id', $supplier->id)
+            ->where('id', $accountId)
+            ->firstOrFail();
+
+        $snapshot = $account->only($this->bankAccountFields());
+        $account->delete();
+
+        SupplierBankAccountHistory::create([
+            'supplier_id' => $supplier->id,
+            'supplier_bank_account_id' => null,
+            'user_id' => auth()->id(),
+            'user_name' => $this->authBankUserName(),
+            'action' => 'deleted',
+            'changes' => ['old' => $snapshot],
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Bank account deleted.']);
+    }
+
+    public function getSupplierBankHistory($id)
+    {
+        $supplier = Supplier::findOrFail($id);
+        $history = SupplierBankAccountHistory::where('supplier_id', $supplier->id)
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(function (SupplierBankAccountHistory $item) {
+                $at = $item->created_at;
+                return [
+                    'id' => $item->id,
+                    'action' => $item->action,
+                    'user_name' => $item->user_name ?: 'Unknown',
+                    'account_id' => $item->supplier_bank_account_id,
+                    'changes' => $item->changes,
+                    'date_label' => $at ? ($at->format('j') . strtoupper($at->format('M'))) : '',
+                    'created_at' => $at?->toIso8601String(),
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'history' => $history,
+        ]);
     }
 
     /**
@@ -136,85 +337,6 @@ class SupplierController extends Controller
         }
 
         return $categories;
-    }
-
-    /**
-     * RFQ Form list linked_skus matched to each supplier via supplier sku/parent.
-     *
-     * @param  Collection<int, Supplier>  $suppliers
-     * @return array<int, list<string>>
-     */
-    private function buildRfqLinkedSkusBySupplierId(Collection $suppliers): array
-    {
-        $supplierIds = $suppliers->pluck('id')->all();
-        if ($supplierIds === []) {
-            return [];
-        }
-
-        $rfqSkuDisplay = [];
-        foreach (RfqForm::query()->whereNotNull('linked_skus')->get(['linked_skus']) as $form) {
-            $linked = $form->linked_skus;
-            if (!is_array($linked)) {
-                $linked = json_decode($linked, true) ?: [];
-            }
-            foreach ($linked as $sku) {
-                $norm = strtoupper(trim((string) $sku));
-                if ($norm !== '') {
-                    $rfqSkuDisplay[$norm] = trim((string) $sku);
-                }
-            }
-        }
-
-        if ($rfqSkuDisplay === []) {
-            return array_fill_keys($supplierIds, []);
-        }
-
-        $parentBySkuNorm = [];
-        foreach (ProductMaster::query()->select('sku', 'parent')->get() as $product) {
-            $norm = strtoupper(trim((string) ($product->sku ?? '')));
-            if ($norm === '') {
-                continue;
-            }
-            $parentBySkuNorm[$norm] = str_replace(' ', '', strtoupper(trim((string) ($product->parent ?? ''))));
-        }
-
-        $result = array_fill_keys($supplierIds, []);
-
-        foreach ($suppliers as $supplier) {
-            $supplierSkuNorms = array_filter(array_map(
-                static fn ($s) => strtoupper(trim($s)),
-                preg_split('/\s*,\s*/', (string) ($supplier->sku ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
-            ));
-
-            $supplierParentNorms = array_filter(array_map(
-                static fn ($p) => str_replace(' ', '', strtoupper(trim($p))),
-                preg_split('/\s*,\s*/', (string) ($supplier->parent ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: []
-            ));
-
-            $matched = [];
-            foreach ($rfqSkuDisplay as $normSku => $displaySku) {
-                if (in_array($normSku, $supplierSkuNorms, true)) {
-                    $matched[] = $displaySku;
-                    continue;
-                }
-
-                $skuParentNorm = $parentBySkuNorm[$normSku] ?? '';
-                if ($skuParentNorm === '') {
-                    continue;
-                }
-
-                foreach ($supplierParentNorms as $supplierParentNorm) {
-                    if ($supplierParentNorm !== '' && $supplierParentNorm === $skuParentNorm) {
-                        $matched[] = $displaySku;
-                        break;
-                    }
-                }
-            }
-
-            $result[$supplier->id] = array_values(array_unique($matched));
-        }
-
-        return $result;
     }
 
     /**

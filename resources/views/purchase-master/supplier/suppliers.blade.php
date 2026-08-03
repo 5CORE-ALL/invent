@@ -112,10 +112,45 @@
             display: none;
         }
 
-        #suppliers-table th.linked-sku-col,
-        #suppliers-table td.linked-sku-col {
-            min-width: 180px;
-            max-width: 240px;
+        /* Uniform data font size + center headers and cell content */
+        #suppliers-table {
+            font-size: 0.875rem;
+        }
+        #suppliers-table thead th,
+        #suppliers-table tbody td {
+            font-size: 0.875rem !important;
+            line-height: 1.35;
+            text-align: center !important;
+            vertical-align: middle !important;
+        }
+        #suppliers-table tbody td > .d-flex {
+            justify-content: center !important;
+        }
+        #suppliers-table tbody td .dropdown,
+        #suppliers-table tbody td .input-group {
+            display: inline-flex !important;
+            justify-content: center;
+        }
+        #suppliers-table tbody td,
+        #suppliers-table tbody td .btn,
+        #suppliers-table tbody td .badge,
+        #suppliers-table tbody td .fw-bold,
+        #suppliers-table tbody td .fw-semibold,
+        #suppliers-table tbody td span,
+        #suppliers-table tbody td a {
+            font-size: 0.875rem !important;
+        }
+        #suppliers-table tbody td .rate-btn {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            text-decoration: none !important;
+            line-height: 1;
+        }
+        #suppliers-table tbody td .rate-btn-icon {
+            font-size: 0.9rem !important;
+            margin: 0 !important;
+            vertical-align: middle;
         }
 
         #suppliers-table .supplier-select-col {
@@ -148,19 +183,25 @@
             font-weight: 600;
         }
 
-        .supplier-contact-wrap {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
+        /* Ali / 1688 / QQ / Email / WhatsApp / Bank / WeChat — green if data, red if missing */
+        .supplier-data-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            padding: 2px;
+            vertical-align: middle;
         }
-        .supplier-contact-wrap--missing {
-            border: 2px solid #dc3545;
-            box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.2);
+        .supplier-data-dot--ok {
+            background-color: #198754;
         }
-        .supplier-contact-wrap--missing .supplier-contact-icon-inner {
-            opacity: 0.5;
+        .supplier-data-dot--missing {
+            background-color: #dc3545;
+        }
+        #suppliers-table tbody td .supplier-bank-open-btn {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            line-height: 1;
         }
 
         .rating-edit-dot {
@@ -215,6 +256,38 @@
         .modal.show {
             background-color: transparent !important;
         }
+
+        /* Actions column — no outline/border on soft edit/delete buttons */
+        #suppliers-table .btn-soft-primary,
+        #suppliers-table .btn-soft-danger {
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        #suppliers-table .btn-soft-primary:focus,
+        #suppliers-table .btn-soft-danger:focus,
+        #suppliers-table .btn-soft-primary:active,
+        #suppliers-table .btn-soft-danger:active {
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        /* One-line toolbar: title + badge + filters + actions */
+        .supplier-toolbar .select2-container {
+            width: 100% !important;
+        }
+        .supplier-toolbar .select2-container .select2-selection--single {
+            height: 31px !important;
+            min-height: 31px !important;
+        }
+        .supplier-toolbar .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 29px !important;
+            font-size: 0.85rem;
+        }
+        .supplier-toolbar .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 29px !important;
+        }
     </style>
 @endsection
 
@@ -232,32 +305,6 @@
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="d-flex align-items-center gap-3">
-                        <h4 class="card-title mb-0">Suppliers</h4>
-                        <span class="badge bg-primary rounded-pill px-3 py-2" id="supplier-count" style="font-size: 1rem; font-weight: 600;">
-                            <strong style="font-size: 1.1rem;">{{ number_format($filteredCount) }}</strong>
-                            @if($filteredCount != $totalCount)
-                                <span class="text-white-50" style="font-size: 0.95rem;">/ {{ number_format($totalCount) }}</span>
-                            @endif
-                        </span>
-                    </div>
-                    <div class="d-flex gap-2 align-items-center">
-                        @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'suppliers'])
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal"
-                            data-bs-target="#addSupplierModal">
-                            <i class="mdi mdi-plus me-1"></i> Add Supplier
-                        </button>
-                        <button type="button" class="btn btn-success" data-bs-toggle="modal"
-                            data-bs-target="#bulkImportModal">
-                            <i class="mdi mdi-file-import me-1"></i> Bulk Import
-                        </button>
-                        <a href="{{ route('supplier.export') }}" id="export-suppliers-btn" class="btn btn-outline-success">
-                            <i class="mdi mdi-file-export me-1"></i> Export
-                        </a>
-                    </div>
-                </div>
-
                 <!-- Bulk Import Modal -->
                 <div class="modal fade" id="bulkImportModal" tabindex="-1" aria-labelledby="bulkImportModalLabel" aria-hidden="true">
                     <div class="modal-dialog modal-dialog-centered shadow-none">
@@ -298,10 +345,18 @@
                 </div>
 
                 <form method="GET" action="{{ route('supplier.list') }}" id="filter-form">
-                    <div class="row mb-4">
-                        <div class="col-md-4">
-                            <label for="category-filter" class="form-label fw-semibold">Category</label>
-                            <select class="form-select select2" id="category-filter" name="category" data-placeholder="Filter by category">
+                    {{-- Title + badge + filters + actions — one line L→R --}}
+                    <div class="supplier-toolbar d-flex flex-nowrap align-items-center gap-2 mb-3">
+                        <h4 class="card-title mb-0 text-nowrap flex-shrink-0">Suppliers</h4>
+                        <span class="badge bg-primary rounded-pill px-2 py-1 flex-shrink-0" id="supplier-count" style="font-size: 0.85rem; font-weight: 600;">
+                            <strong>{{ number_format($filteredCount) }}</strong>
+                            @if($filteredCount != $totalCount)
+                                <span class="text-white-50">/ {{ number_format($totalCount) }}</span>
+                            @endif
+                        </span>
+
+                        <div class="flex-shrink-0" style="min-width: 140px; max-width: 180px; width: 160px;">
+                            <select class="form-select form-select-sm select2" id="category-filter" name="category" data-placeholder="Category" aria-label="Category">
                                 <option value="">All Categories</option>
                                 @foreach($categories as $category)
                                     <option value="{{ $category->name }}" {{ request('category') == $category->name ? 'selected' : '' }}>{{ $category->name }}</option>
@@ -309,25 +364,36 @@
                             </select>
                         </div>
 
-                        <div class="col-md-4">
-                            <label for="type-filter" class="form-label fw-semibold">Type</label>
+                        <div class="flex-shrink-0" style="min-width: 120px; max-width: 150px; width: 140px;">
                             @php
                                 $types = ['Supplier','Forwarders', 'Photographer'];
                             @endphp
-                            <select class="form-select select2" id="type-filter" name="type" data-placeholder="Filter by type">
-                                <option value="">Select Type</option>
+                            <select class="form-select form-select-sm select2" id="type-filter" name="type" data-placeholder="Type" aria-label="Type">
+                                <option value="">All Types</option>
                                 @foreach($types as $type)
                                     <option value="{{ $type }}" {{ request('type') == $type ? 'selected' : '' }}>{{ $type }}</option>
                                 @endforeach
                             </select>
                         </div>
 
-                        <div class="col-md-4">
-                            <label for="search-input" class="form-label fw-semibold">Search by name</label>
-                            <div class="input-group">
-                                <span class="input-group-text" style="height: 42px;"><i class="mdi mdi-magnify"></i></span>
-                                <input type="text" id="search-input" name="search" class="form-control" placeholder="Search suppliers..." value="{{ request('search') }}" style="height: 42px;">
-                            </div>
+                        <div class="input-group input-group-sm flex-grow-1" style="min-width: 140px; max-width: 260px;">
+                            <span class="input-group-text py-0"><i class="mdi mdi-magnify"></i></span>
+                            <input type="text" id="search-input" name="search" class="form-control" placeholder="Search…" value="{{ request('search') }}" aria-label="Search suppliers">
+                        </div>
+
+                        <div class="d-flex gap-1 align-items-center flex-shrink-0 ms-auto">
+                            @include('purchase-master.partials.page-info-toolbar', ['pageKey' => 'suppliers'])
+                            <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal"
+                                data-bs-target="#addSupplierModal">
+                                <i class="mdi mdi-plus me-1"></i>Add
+                            </button>
+                            <button type="button" class="btn btn-success btn-sm text-nowrap" data-bs-toggle="modal"
+                                data-bs-target="#bulkImportModal">
+                                <i class="mdi mdi-file-import me-1"></i>Import
+                            </button>
+                            <a href="{{ route('supplier.export') }}" id="export-suppliers-btn" class="btn btn-outline-success btn-sm text-nowrap">
+                                <i class="mdi mdi-file-export me-1"></i>Export
+                            </a>
                         </div>
                     </div>
                 </form>
@@ -356,9 +422,7 @@
                                 <th class="sortable" data-sort-key="name">Name <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable text-center" data-sort-key="approval" title="Approved">Appr <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="company">Company <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
-                                <th class="sortable" data-sort-key="alias">Alias <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable parents-col" data-sort-key="parent">Product <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
-                                <th class="linked-sku-col">Linked SKU</th>
                                 <th class="sortable" data-sort-key="zone">Zone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="phone">Phone <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="rating">Rating <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
@@ -367,6 +431,7 @@
                                 <th class="sortable" data-sort-key="qq">QQ <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="email">Email <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="whatsapp">WhatsApp <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
+                                <th class="text-center">Bank</th>
                                 <th class="sortable" data-sort-key="wechat">WeChat <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="text-end">Actions</th>
                             </tr>
@@ -375,7 +440,6 @@
                             @include('purchase-master.supplier.partials.rows', [
                                 'suppliers' => $suppliers,
                                 'categories' => $categories,
-                                'rfqLinkedSkusBySupplierId' => $rfqLinkedSkusBySupplierId ?? [],
                             ])
                         </tbody>
                     </table>
@@ -691,6 +755,108 @@
             <div class="modal-body">
                 <div class="mb-2 text-muted small" id="supplierCompanyModalSupplier"></div>
                 <div class="fs-5 fw-semibold text-break" id="supplierCompanyModalBody"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Supplier Bank Details modal — multiple accounts; edit gated by email --}}
+<div class="modal fade" id="supplierBankModal" tabindex="-1" aria-labelledby="supplierBankModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="supplierBankModalLabel">
+                    <i class="mdi mdi-bank me-1"></i>Bank Details — <span id="supplierBankModalSupplierName">—</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="supplierBankSupplierId" value="">
+                <input type="hidden" id="supplierBankAccountId" value="">
+
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="supplierBankHistoryBtn">
+                        <i class="mdi mdi-history me-1"></i>History
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary d-none" id="supplierBankEditBtn">
+                        <i class="mdi mdi-pencil me-1"></i>Edit
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success d-none" id="supplierBankAddBtn">
+                        <i class="mdi mdi-plus me-1"></i>Add account
+                    </button>
+                    <span class="text-muted small align-self-center" id="supplierBankEditHint"></span>
+                </div>
+
+                <div id="supplierBankAccountsPanel">
+                    <div class="mb-3" id="supplierBankAccountsList">
+                        <div class="text-muted small">Loading…</div>
+                    </div>
+
+                    <form id="supplierBankForm" class="row g-2 border rounded-3 p-3 bg-light">
+                        <div class="col-12">
+                            <div class="fw-semibold mb-1" id="supplierBankFormTitle">Account details</div>
+                            <small class="text-muted">Max 30 characters per field.</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Supplier name</label>
+                            <input type="text" name="supplier_name" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Nick name</label>
+                            <input type="text" name="nick_name" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Benificiary</label>
+                            <input type="text" name="company_name" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Swift</label>
+                            <input type="text" name="swift" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Address</label>
+                            <input type="text" name="address" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">City</label>
+                            <input type="text" name="city" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Province</label>
+                            <input type="text" name="province" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Country</label>
+                            <input type="text" name="country" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Account number</label>
+                            <input type="text" name="account_number" maxlength="30" class="form-control form-control-sm" disabled>
+                        </div>
+                        <div class="col-12 d-flex gap-2 mt-2 d-none" id="supplierBankFormActions">
+                            <button type="submit" class="btn btn-primary btn-sm" id="supplierBankSaveBtn">
+                                <i class="mdi mdi-content-save me-1"></i>Save
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm d-none" id="supplierBankDeleteBtn">
+                                <i class="mdi mdi-delete me-1"></i>Delete
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="supplierBankCancelEditBtn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="supplierBankHistoryPanel" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Change history</h6>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="supplierBankBackFromHistoryBtn">Back</button>
+                    </div>
+                    <div id="supplierBankHistoryBody" class="table-responsive">
+                        <div class="text-muted small">Loading…</div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -1728,7 +1894,7 @@
                             $('#pagination-wrapper').html(response.pagination).fadeIn(200);
                             
                             // Update count badge with smooth transition
-                            let countHtml = '<strong style="font-size: 1.1rem;">' + formatNumber(response.filteredCount) + '</strong>';
+                            let countHtml = '<strong>' + formatNumber(response.filteredCount) + '</strong>';
                             if (response.filteredCount != response.totalCount) {
                                 countHtml += '<span class="text-white-50" style="font-size: 0.95rem;">/ ' + formatNumber(response.totalCount) + '</span>';
                             }
@@ -2227,6 +2393,255 @@
         });
 
         document.body.style.zoom = '90%';
+
+        /* ── Supplier Bank Details ─────────────────────────────────────── */
+        const SUPPLIER_BANK_CAN_EDIT = @json($canEditSupplierBank ?? false);
+        const SUPPLIER_BANK_CSRF = '{{ csrf_token() }}';
+        let supplierBankEditMode = false;
+        let supplierBankAccountsCache = [];
+        let supplierBankDefaultName = '';
+
+        function supplierBankSetFormEnabled(enabled) {
+            $('#supplierBankForm').find('input').prop('disabled', !enabled);
+            $('#supplierBankFormActions').toggleClass('d-none', !enabled);
+        }
+
+        function supplierBankClearForm(prefillName) {
+            $('#supplierBankAccountId').val('');
+            const form = document.getElementById('supplierBankForm');
+            form.reset();
+            if (prefillName) {
+                form.querySelector('[name="supplier_name"]').value = prefillName;
+            }
+            $('#supplierBankFormTitle').text('New bank account');
+            $('#supplierBankDeleteBtn').addClass('d-none');
+        }
+
+        function supplierBankFillForm(account) {
+            $('#supplierBankAccountId').val(account.id || '');
+            const form = document.getElementById('supplierBankForm');
+            ['supplier_name','nick_name','company_name','swift','address','city','province','country','account_number'].forEach(function (f) {
+                const el = form.querySelector('[name="' + f + '"]');
+                if (el) el.value = account[f] || '';
+            });
+            $('#supplierBankFormTitle').text(account.id ? ('Edit account #' + account.id) : 'New bank account');
+            $('#supplierBankDeleteBtn').toggleClass('d-none', !account.id || !SUPPLIER_BANK_CAN_EDIT);
+        }
+
+        function supplierBankRenderList(accounts) {
+            supplierBankAccountsCache = accounts || [];
+            const $list = $('#supplierBankAccountsList');
+            if (!supplierBankAccountsCache.length) {
+                $list.html('<div class="alert alert-light border mb-0 py-2 small">No bank accounts yet.</div>');
+                return;
+            }
+            let html = '<div class="list-group mb-0">';
+            supplierBankAccountsCache.forEach(function (a) {
+                const title = a.nick_name || a.company_name || a.account_number || ('Account #' + a.id);
+                const sub = [a.supplier_name, a.swift, a.country].filter(Boolean).join(' · ');
+                html += `
+                    <button type="button" class="list-group-item list-group-item-action supplier-bank-account-item py-2"
+                            data-account-id="${a.id}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-semibold">${$('<div>').text(title).html()}</div>
+                                <small class="text-muted">${$('<div>').text(sub || '—').html()}</small>
+                            </div>
+                            <i class="mdi mdi-chevron-right"></i>
+                        </div>
+                    </button>`;
+            });
+            html += '</div>';
+            $list.html(html);
+        }
+
+        function supplierBankLoadAccounts(supplierId) {
+            $('#supplierBankAccountsList').html('<div class="text-muted small">Loading…</div>');
+            return fetch('/supplier/' + supplierId + '/bank-accounts', {
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': SUPPLIER_BANK_CSRF }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.message || 'Failed to load');
+                supplierBankRenderList(data.accounts || []);
+                return data;
+            });
+        }
+
+        function supplierBankOpenModal(supplierId, supplierName) {
+            supplierBankEditMode = false;
+            supplierBankDefaultName = supplierName || '';
+            $('#supplierBankSupplierId').val(supplierId);
+            $('#supplierBankModalSupplierName').text(supplierName || '—');
+            $('#supplierBankAccountsPanel').removeClass('d-none');
+            $('#supplierBankHistoryPanel').addClass('d-none');
+            $('#supplierBankEditBtn').toggleClass('d-none', !SUPPLIER_BANK_CAN_EDIT);
+            $('#supplierBankAddBtn').toggleClass('d-none', !SUPPLIER_BANK_CAN_EDIT);
+            $('#supplierBankEditHint').text(SUPPLIER_BANK_CAN_EDIT ? '' : 'View only — edit restricted');
+            supplierBankClearForm(supplierBankDefaultName);
+            supplierBankSetFormEnabled(false);
+            supplierBankLoadAccounts(supplierId).catch(() => {
+                $('#supplierBankAccountsList').html('<div class="alert alert-danger mb-0 py-2 small">Failed to load bank accounts.</div>');
+            });
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('supplierBankModal')).show();
+        }
+
+        $(document).on('click', '.supplier-bank-open-btn', function () {
+            supplierBankOpenModal($(this).data('supplier-id'), $(this).data('supplier-name'));
+        });
+
+        $('#supplierBankEditBtn').on('click', function () {
+            if (!SUPPLIER_BANK_CAN_EDIT) return;
+            supplierBankEditMode = true;
+            supplierBankSetFormEnabled(true);
+            if (!$('#supplierBankAccountId').val()) {
+                supplierBankClearForm(supplierBankDefaultName);
+                supplierBankSetFormEnabled(true);
+            }
+        });
+
+        $('#supplierBankAddBtn').on('click', function () {
+            if (!SUPPLIER_BANK_CAN_EDIT) return;
+            supplierBankEditMode = true;
+            supplierBankClearForm(supplierBankDefaultName);
+            supplierBankSetFormEnabled(true);
+        });
+
+        $('#supplierBankCancelEditBtn').on('click', function () {
+            supplierBankEditMode = false;
+            supplierBankClearForm(supplierBankDefaultName);
+            supplierBankSetFormEnabled(false);
+        });
+
+        $(document).on('click', '.supplier-bank-account-item', function () {
+            const id = $(this).data('account-id');
+            const account = supplierBankAccountsCache.find(a => String(a.id) === String(id));
+            if (!account) return;
+            supplierBankFillForm(account);
+            if (SUPPLIER_BANK_CAN_EDIT && supplierBankEditMode) {
+                supplierBankSetFormEnabled(true);
+            } else {
+                supplierBankSetFormEnabled(false);
+            }
+        });
+
+        $('#supplierBankForm').on('submit', function (e) {
+            e.preventDefault();
+            if (!SUPPLIER_BANK_CAN_EDIT) return;
+            const supplierId = $('#supplierBankSupplierId').val();
+            const accountId = $('#supplierBankAccountId').val();
+            const formData = new FormData(this);
+            const payload = {};
+            formData.forEach((v, k) => { payload[k] = String(v).slice(0, 30); });
+
+            const url = accountId
+                ? '/supplier/' + supplierId + '/bank-accounts/' + accountId
+                : '/supplier/' + supplierId + '/bank-accounts';
+            const method = accountId ? 'PUT' : 'POST';
+
+            fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': SUPPLIER_BANK_CSRF
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json().then(j => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+                if (!ok || !j.success) {
+                    alert(j.message || (j.errors ? JSON.stringify(j.errors) : 'Save failed'));
+                    return;
+                }
+                supplierBankEditMode = false;
+                supplierBankSetFormEnabled(false);
+                supplierBankLoadAccounts(supplierId).then(() => {
+                    if (j.account) supplierBankFillForm(j.account);
+                });
+                // Refresh table badge count
+                if (typeof loadSuppliers === 'function') {
+                    const page = new URLSearchParams(window.location.search).get('page') || 1;
+                    loadSuppliers(page);
+                }
+            })
+            .catch(() => alert('Save failed'));
+        });
+
+        $('#supplierBankDeleteBtn').on('click', function () {
+            if (!SUPPLIER_BANK_CAN_EDIT) return;
+            const supplierId = $('#supplierBankSupplierId').val();
+            const accountId = $('#supplierBankAccountId').val();
+            if (!accountId || !confirm('Delete this bank account?')) return;
+            fetch('/supplier/' + supplierId + '/bank-accounts/' + accountId, {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': SUPPLIER_BANK_CSRF }
+            })
+            .then(r => r.json())
+            .then(j => {
+                if (!j.success) {
+                    alert(j.message || 'Delete failed');
+                    return;
+                }
+                supplierBankClearForm(supplierBankDefaultName);
+                supplierBankSetFormEnabled(false);
+                supplierBankEditMode = false;
+                supplierBankLoadAccounts(supplierId);
+                if (typeof loadSuppliers === 'function') {
+                    const page = new URLSearchParams(window.location.search).get('page') || 1;
+                    loadSuppliers(page);
+                }
+            })
+            .catch(() => alert('Delete failed'));
+        });
+
+        $('#supplierBankHistoryBtn').on('click', function () {
+            const supplierId = $('#supplierBankSupplierId').val();
+            $('#supplierBankAccountsPanel').addClass('d-none');
+            $('#supplierBankHistoryPanel').removeClass('d-none');
+            $('#supplierBankHistoryBody').html('<div class="text-muted small">Loading…</div>');
+            fetch('/supplier/' + supplierId + '/bank-history', {
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': SUPPLIER_BANK_CSRF }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !data.history || !data.history.length) {
+                    $('#supplierBankHistoryBody').html('<div class="alert alert-info mb-0 py-2 small">No history yet.</div>');
+                    return;
+                }
+                let html = '<table class="table table-sm table-bordered table-striped mb-0"><thead class="table-light"><tr><th>Date</th><th>User</th><th>Action</th><th>Changes</th></tr></thead><tbody>';
+                data.history.forEach(function (h) {
+                    let changeText = '';
+                    if (h.action === 'created' && h.changes && h.changes.new) {
+                        changeText = Object.keys(h.changes.new).filter(k => h.changes.new[k]).map(k => k + ': ' + h.changes.new[k]).join('; ');
+                    } else if (h.action === 'deleted' && h.changes && h.changes.old) {
+                        changeText = 'Deleted ' + (h.changes.old.account_number || h.changes.old.nick_name || 'account');
+                    } else if (h.changes) {
+                        changeText = Object.keys(h.changes).map(k => {
+                            const c = h.changes[k];
+                            if (!c || typeof c !== 'object' || !('old' in c || 'new' in c)) return '';
+                            return k + ': ' + (c.old || 'empty') + ' → ' + (c.new || 'empty');
+                        }).filter(Boolean).join('; ');
+                    }
+                    html += `<tr>
+                        <td class="fw-semibold text-nowrap">${$('<div>').text(h.date_label || '').html()}</td>
+                        <td>${$('<div>').text(h.user_name || 'Unknown').html()}</td>
+                        <td>${$('<div>').text(h.action || '').html()}</td>
+                        <td class="small" style="word-break:break-word;">${$('<div>').text(changeText || '—').html()}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                $('#supplierBankHistoryBody').html(html);
+            })
+            .catch(() => {
+                $('#supplierBankHistoryBody').html('<div class="alert alert-danger mb-0 py-2 small">Failed to load history.</div>');
+            });
+        });
+
+        $('#supplierBankBackFromHistoryBtn').on('click', function () {
+            $('#supplierBankHistoryPanel').addClass('d-none');
+            $('#supplierBankAccountsPanel').removeClass('d-none');
+        });
 
     </script>
 @endsection

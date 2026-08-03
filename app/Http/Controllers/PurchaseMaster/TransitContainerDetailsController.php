@@ -533,15 +533,16 @@ class TransitContainerDetailsController extends Controller
                 $totalAmount += $rate * $quantity;
             }
             
-            // Update On Sea Transit table
+            // Overwrite On Sea Transit Value with latest Transit Container Inv total
             $onSeaRecord = \App\Models\OnSeaTransit::firstOrNew(['container_sl_no' => $containerSlNo]);
             $onSeaRecord->invoice_value = round($totalAmount);
-            
-            // Recalculate balance
+
+            // Due = Value + Freight − Paid
             $invoiceValue = $onSeaRecord->invoice_value ?? 0;
+            $freight = $onSeaRecord->freight ?? 0;
             $paid = $onSeaRecord->paid ?? 0;
-            $onSeaRecord->balance = $invoiceValue - $paid;
-            
+            $onSeaRecord->balance = ($invoiceValue + $freight) - $paid;
+
             $onSeaRecord->save();
         }
     }

@@ -2342,6 +2342,12 @@
                             <a href="{{ route('product.master') }}">CP Masters</a>
                         </li>
                         <li>
+                            <a href="{{ route('masters.barcode') }}">Masters Barcode</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('short.title.master') }}">Short Title Master</a>
+                        </li>
+                        <li>
                             <a href="{{ route('category.master') }}">Category Master</a>
                         </li>
                         <li>
@@ -2648,9 +2654,6 @@
                             <a href="{{ route('supplier.list') }}">Suppliers</a>
                         </li>
                         <li>
-                            <a href="{{ route('rfq-form.index') }}">RFQ Form</a>
-                        </li>
-                        <li>
                             <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
                         </li>
                         <li>
@@ -2702,9 +2705,6 @@
                         </li>
                         <li>
                             <a href="{{ route('china.load') }}">China Load</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('upcoming.container') }}">Coming Container</a>
                         </li>
                         <li>
                             <a href="{{ route('transit.container.details') }}">Transit Container INV</a>

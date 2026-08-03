@@ -452,14 +452,15 @@
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Currency</label>
-                                    <select class="form-select" name="currency[]">
+                                    <select class="form-select po-currency-select" name="currency[]">
                                         <option value="USD">USD</option>
                                         <option value="RMB">RMB</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Price</label>
-                                    <input type="number" class="form-control" name="price[]" step="any">
+                                    <input type="number" class="form-control po-price-input" name="price[]" step="any">
+                                    <small class="text-muted po-usd-equiv d-none"></small>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-semibold">Price Type</label>
@@ -583,12 +584,41 @@
     let currentPage = 1;
     const itemsPerPage = 12;
     let allPurchaseOrders = [];
-    let sortColumn = '';
-    let sortDir = 'asc';
+    let sortColumn = 'po_date';
+    let sortDir = 'desc';
 
     document.body.style.zoom = "90%";
+
+    function fillTechFromComparison(skuInput) {
+        if (!skuInput) return;
+        const row = skuInput.closest('.product-row');
+        if (!row) return;
+        const techField = row.querySelector('textarea[name="tech[]"]');
+        if (!techField) return;
+
+        const sku = (skuInput.value || '').trim();
+        if (!sku) return;
+
+        // Only auto-fill when Tech is empty (do not overwrite manual edits).
+        if ((techField.value || '').trim() !== '') return;
+
+        fetch('/purchase-orders/tech-from-comparison?sku=' + encodeURIComponent(sku))
+            .then(res => res.json())
+            .then(data => {
+                if (!data || !data.success || !(data.tech || '').trim()) return;
+                if ((techField.value || '').trim() !== '') return;
+                techField.value = data.tech;
+            })
+            .catch(() => {});
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         getPurchaseOrderData();
+
+        document.addEventListener('focusout', function (e) {
+            const input = e.target.closest('input[name="sku[]"]');
+            if (input) fillTechFromComparison(input);
+        });
 
         document.getElementById("purchase-order-search").addEventListener("input", applyFilters);
         document.getElementById("search-items").addEventListener("input", applyFilters);
@@ -689,14 +719,15 @@
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold">Currency</label>
-                                <select class="form-select" name="currency[]">
+                                <select class="form-select po-currency-select" name="currency[]">
                                     <option value="USD" ${item.currency=="USD"?"selected":""}>USD</option>
                                     <option value="RMB" ${item.currency=="RMB"?"selected":""}>RMB</option>
                                 </select>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold">Price</label>
-                                <input type="number" class="form-control" name="price[]" value="${item.price ?? 0}" step="any">
+                                <input type="number" class="form-control po-price-input" name="price[]" value="${item.price ?? 0}" step="any">
+                                <small class="text-muted po-usd-equiv d-none"></small>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label fw-semibold">Price Type</label>
@@ -759,14 +790,15 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">Currency</label>
-                        <select class="form-select" name="currency[]">
+                        <select class="form-select po-currency-select" name="currency[]">
                             <option value="USD" selected>USD</option>
                             <option value="RMB">RMB</option>
                         </select>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">Price</label>
-                        <input type="number" class="form-control" name="price[]" value="0" step="any">
+                        <input type="number" class="form-control po-price-input" name="price[]" value="0" step="any">
+                        <small class="text-muted po-usd-equiv d-none"></small>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">Price Type</label>
@@ -1162,18 +1194,18 @@
                     html += `
                         <tr class="text-center align-middle">
                             <td>
-                                ${item.photo 
+                                ${item.photo_url || item.photo
                                     ? `<div class="img-hover-photo">
-                                            <img src="/storage/${item.photo}" alt="Photo" class="photo-img">
+                                            <img src="${item.photo_url || (String(item.photo).startsWith('http') || String(item.photo).startsWith('/') ? item.photo : '/storage/' + item.photo)}" alt="Photo" class="photo-img">
                                             <div class="zoomed-photo">
-                                                <img src="/storage/${item.photo}" alt="Zoomed Photo">
+                                                <img src="${item.photo_url || (String(item.photo).startsWith('http') || String(item.photo).startsWith('/') ? item.photo : '/storage/' + item.photo)}" alt="Zoomed Photo">
                                             </div>
                                         </div>`
                                     : '<span class="text-muted">No Image</span>'}
                             </td>
                             <td><span class="fw-semibold">${item.sku || '-'}</span></td>
                             <td>${item.supplier_sku || '-'}</td>
-                            <td>${item.tech || '-'}</td>
+                            <td style="white-space: pre-line;">${item.tech || '-'}</td>
                             <td><span class="badge bg-primary-subtle text-dark">${item.qty || 0}</span></td>
                             <td>${item.price || 0}</td>
                             <td><span class="fw-bold text-success">${total.toFixed(2)}</span></td>
@@ -1295,6 +1327,44 @@
                 });
                 e.target.indeterminate = false;
                 updatePoDeleteButtonVisibility();
+            }
+        });
+
+        // RMB price → show USD conversion; USD price → no RMB autopopulate.
+        let poUsdToCny = null;
+        fetch(@json(route('purchase-orders.convert')) + '?amount=1&from=USD&to=CNY')
+            .then(r => r.json())
+            .then(data => {
+                const rate = parseFloat(data?.rates?.CNY);
+                if (isFinite(rate) && rate > 0) poUsdToCny = rate;
+                document.querySelectorAll('.product-row').forEach(updatePoUsdEquiv);
+            })
+            .catch(() => {});
+
+        function updatePoUsdEquiv(row) {
+            if (!row) return;
+            const currency = (row.querySelector('.po-currency-select')?.value || 'USD').toUpperCase();
+            const price = parseFloat(row.querySelector('.po-price-input')?.value);
+            const hint = row.querySelector('.po-usd-equiv');
+            if (!hint) return;
+            if (currency === 'RMB' && isFinite(price) && price > 0 && poUsdToCny) {
+                const usd = (price / poUsdToCny).toFixed(2);
+                hint.textContent = '≈ ' + usd + '$ (also shown on proforma)';
+                hint.classList.remove('d-none');
+            } else {
+                hint.textContent = '';
+                hint.classList.add('d-none');
+            }
+        }
+
+        document.addEventListener('change', function (e) {
+            if (e.target.matches('.po-currency-select, .po-price-input')) {
+                updatePoUsdEquiv(e.target.closest('.product-row'));
+            }
+        });
+        document.addEventListener('input', function (e) {
+            if (e.target.matches('.po-price-input')) {
+                updatePoUsdEquiv(e.target.closest('.product-row'));
             }
         });
 

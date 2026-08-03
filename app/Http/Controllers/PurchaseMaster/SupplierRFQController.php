@@ -6,8 +6,6 @@ use Illuminate\Routing\Controller as BaseController;
 use App\Models\RfqForm;
 use App\Models\RfqSubmission;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
 
 class SupplierRFQController extends BaseController
 {
@@ -29,10 +27,9 @@ class SupplierRFQController extends BaseController
         // Per-supplier token ties Basics + Details into one record
         $token = $request->query('token');
 
-        // Only logged-in users with a @5core.com email may edit the form.
-        $user = Auth::user();
-        $canEdit = $user && Str::endsWith(strtolower((string) ($user->email ?? '')), '@5core.com');
-        $editUrl = $canEdit ? url('/rfq-form/list?edit=' . $rfqForm->id) : null;
+        // Admin RFQ list page removed; public form is view/submit only.
+        $canEdit = false;
+        $editUrl = null;
 
         return view('purchase-master.rfq-form.rfq-form', compact('rfqForm', 'canEdit', 'editUrl', 'part', 'token'));
     }

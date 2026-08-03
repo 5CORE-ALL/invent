@@ -1850,6 +1850,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('ostApplySupplierPaymentsBtn').addEventListener('click', function () {
+        // Full replace of previous payments (not merge) + persist immediately.
         const payments = ostReadPaymentsFromTables();
         ostSetPaymentsPayload(payments);
         const firstAgent = payments.agent.find(p => p.agent)?.agent || '';
@@ -1857,7 +1858,55 @@ document.addEventListener('DOMContentLoaded', function () {
             ostRebuildAgentSelect(firstAgent);
         }
         ostSyncMoneyFieldsFromPayments();
-        if (ostSupplierModal) ostSupplierModal.hide();
+
+        const sl = document.getElementById('ostEditRowContainerSlNo').value;
+        if (!sl) {
+            if (ostSupplierModal) ostSupplierModal.hide();
+            return;
+        }
+
+        const freight = ostGetFreightRowValue();
+        const paid = parseFloat(document.getElementById('ostEditPaidHidden')?.value) || 0;
+        const invoiceValue = parseFloat(document.getElementById('ostEditInvoiceValueHidden')?.value) || 0;
+        const applyBtn = document.getElementById('ostApplySupplierPaymentsBtn');
+        applyBtn.disabled = true;
+
+        fetch(ostUpdateUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': ostCsrf,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                container_sl_no: sl,
+                supplier_payments: payments,
+                freight: freight,
+                paid: paid,
+                invoice_value: invoiceValue
+            })
+        })
+        .then(r => r.json())
+        .then(resp => {
+            if (!resp || resp.success === false) {
+                alert(resp && resp.message ? resp.message : 'Failed to apply payments');
+                return;
+            }
+            const idx = tableData.findIndex(r => String(r.container_sl_no) === String(sl));
+            if (idx !== -1) {
+                tableData[idx].supplier_payments = resp.supplier_payments ?? payments;
+                tableData[idx].freight = resp.freight ?? freight;
+                tableData[idx].paid = resp.paid ?? paid;
+                tableData[idx].invoice_value = resp.invoice_value ?? invoiceValue;
+                tableData[idx].balance = resp.balance ?? tableData[idx].balance;
+                const row = table.getRows().find(rr => String(rr.getData().container_sl_no) === String(sl));
+                if (row) row.update(tableData[idx]);
+            }
+            updateBadgeCounts();
+            if (ostSupplierModal) ostSupplierModal.hide();
+        })
+        .catch(() => alert('Failed to apply payments'))
+        .finally(() => { applyBtn.disabled = false; });
     });
 
     document.getElementById('ostEditRowSaveBtn').addEventListener('click', function () {

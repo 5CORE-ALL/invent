@@ -515,16 +515,15 @@ class OnSeaTransitController extends Controller
                 $sumPaid += $paidLine;
             }
 
+            // Always overwrite previous payment lines with the applied payload (no merge).
             $record->supplier_payments = [
                 'supplier' => $normalizedSupplier,
                 'agent' => $normalizedAgent,
             ];
             // Paid from payment lines; Value stays Transit Container Inv (not overwritten here)
             $record->paid = $sumPaid;
-            // Freight is a single row value (not per line)
-            if ($request->has('freight')) {
-                $record->freight = round((float) $request->input('freight', 0), 2);
-            }
+            // Freight always overwritten when payments are applied (0 clears previous freight)
+            $record->freight = round((float) $request->input('freight', 0), 2);
         }
 
         // Keep Value aligned with Transit Container Inv when available
