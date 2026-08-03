@@ -449,7 +449,7 @@
 
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / TEMU2_PCT">
+                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Temu Ship) / 0.80">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
@@ -2057,8 +2057,8 @@
          * ----------------------------------------------------------------
          * Back-solves S PRC for every selected row so the resulting SROI / SGPFT
          * column matches the entered target:
-         *     SROI%  = ((sprice * TEMU2_PCT − temu_ship − lp) / lp)     * 100
-         *           → sprice = (lp * (1 + ROI%/100) + temu_ship) / TEMU2_PCT
+         *     SROI%  = Profit / lp; Profit = (sprice * 0.80 − temu_ship − lp)
+         *           → sprice = (lp * (1 + ROI%/100) + temu_ship) / 0.80
          *     SGPFT% = ((sprice * 0.80 − temu_ship − lp) / sprice) * 100
          *           → sprice = (lp + temu_ship) / (0.80 − GPFT%/100)
          * Each save goes through the existing saveSpriceWithRetry() pipeline so
@@ -2088,7 +2088,8 @@
                 const lp = parseFloat(rowData['lp']) || 0;
                 if (lp <= 0) return null;
                 const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                const candidate = (lp * (1 + targetRoiPct / 100) + temuShip) / TEMU2_PCT;
+                // SROI = Profit/LP → sprice = (lp × (1 + ROI%/100) + ship) / 0.80
+                const candidate = (lp * (1 + targetRoiPct / 100) + temuShip) / 0.80;
                 const newPrice = +candidate.toFixed(2);
                 if (!isFinite(newPrice) || newPrice <= 0) return null;
                 return newPrice;
@@ -3826,24 +3827,13 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        // Always calculate from current row values to avoid stale stored sroi_percent.
+                        // SROI = Profit / LP; Profit = (Sprice × 0.80) − temu_ship − LP
                         const sprice = parseFloat(rowData['sprice']) || 0;
-                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
                         if (sprice === 0 || lp === 0) return '';
-
-                        const isSameAsCurrentTemuPrice = currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01;
-                        if (isSameAsCurrentTemuPrice) {
-                            const groiExact = parseFloat(rowData['roi_percent']) || 0;
-                            const colorClass = getRoiColor(groiExact);
-                            return `<span class="dil-percent-value ${colorClass}">${Math.round(groiExact)}%</span>`;
-                        }
-
-                        const stemuPrice = isSameAsCurrentTemuPrice
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        const sroi = ((stemuPrice * TEMU2_PCT - lp - temuShip) / lp) * 100;
+                        const profit = (sprice * 0.80) - temuShip - lp;
+                        const sroi = (profit / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
                     }

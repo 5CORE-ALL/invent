@@ -827,7 +827,7 @@
                          Visual styling matches /doba-tabulator: 🎯 emoji label + icon-only Apply button. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-white"
                         id="target-roi-controls"
-                        title="Target ROI% — sets SPRICE so the on-page SROI column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
+                        title="Target ROI% — sets SPRICE so SROI = Profit/LP using (Sprice × 0.80) − temu_ship − LP">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap"
                                aria-label="Target ROI percent">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
@@ -2980,14 +2980,14 @@
          *   - target S Temu Price >  29.98  →  sprice = stemuPrice  (no bumper)
          *
          * Backend math (mirrors saveTemuSprice):
-         *   SROI%   = ((stemuPrice * margin − lp − temu_ship) / lp)         * 100
-         *      -> stemuPrice = (lp * (1 + roi%/100) + temu_ship) / margin
-         *   SGPRFT% = ((sprice * 0.80 − lp − temu_ship) / sprice) * 100
+         *   Profit  = (sprice * 0.80 − lp − temu_ship)
+         *   SROI%   = Profit / lp * 100
+         *      -> sprice = (lp * (1 + roi%/100) + temu_ship) / 0.80
+         *   SGPRFT% = Profit / sprice * 100
          *      -> sprice = (lp + temu_ship) / (0.80 − gpft%/100)
          *      Constraint: (0.80 − gpft%/100) must be > 0 (else infinite/neg price).
          *
-         * Target ROI still uses per-row `margin` (rowData.percentage). Falls back
-         * to TEMU_MARGIN_FALLBACK when missing. Target GPFT uses fixed 0.80.
+         * Target ROI and Target GPFT both use fixed 0.80 take-home on Sprice.
          *
          * All POSTs go through the existing /temu-pricing/save-sprice endpoint so
          * SGPRFT / SROI get recomputed server-side exactly like an inline SPRICE
@@ -3398,11 +3398,9 @@
                     const lp = parseFloat(rd.lp) || 0;
                     if (lp <= 0) return null;
                     const temuShip = parseFloat(rd.temu_ship) || 0;
-                    // Use per-row margin (same as backend GROI calc) so the post-save SROI
-                    // lines up. Falls back to the global default if the row didn't carry it.
-                    const marginRaw = parseFloat(rd.percentage);
-                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN_FALLBACK;
-                    return { stemuPrice: (lp * roiMultiplier + temuShip) / margin };
+                    // SROI = Profit/LP; Profit = (Sprice × 0.80) − ship − LP
+                    // → Sprice = (LP × (1 + ROI%/100) + ship) / 0.80
+                    return { sprice: (lp * roiMultiplier + temuShip) / 0.80 };
                 }
             });
         });
@@ -5457,31 +5455,13 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        // Always calculate from current row values to avoid stale stored sroi_percent.
+                        // SROI = Profit / LP; Profit = (Sprice × 0.80) − temu_ship − LP
                         const sprice = parseFloat(rowData['sprice']) || 0;
-                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
                         if (sprice === 0 || lp === 0) return '';
-
-                        const isSameAsCurrentTemuPrice = currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01;
-                        if (isSameAsCurrentTemuPrice) {
-                            const groiExact = parseFloat(rowData['roi_percent']) || 0;
-                            const colorClass = getRoiColor(groiExact);
-                            return `<span class="dil-percent-value ${colorClass}">${Math.round(groiExact)}%</span>`;
-                        }
-
-                        const stemuPrice = isSameAsCurrentTemuPrice
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        // Use the SAME marketplace take-home % the backend GROI calc used
-                        // (delivered with each row as `percentage`). Falls back to TEMU_MARGIN
-                        // when the field is missing, matching the backend default. This keeps
-                        // SROI and GROI on identical margins so the only legit difference is
-                        // sprice vs current temu_price — not a margin mismatch.
-                        const marginRaw = parseFloat(rowData['percentage']);
-                        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
-                        const sroi = ((stemuPrice * margin - lp - temuShip) / lp) * 100;
+                        const profit = (sprice * 0.80) - temuShip - lp;
+                        const sroi = (profit / lp) * 100;
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
                     }

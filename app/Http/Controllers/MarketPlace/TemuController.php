@@ -2100,15 +2100,11 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.95;
-
-            $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
-
-            // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP (same for Temu / Temu2)
-            $sgprftPercent = $sprice > 0 ? (($sprice * 0.80 - $lp - $temuShip) / $sprice) * 100 : 0;
-
-            $sroiPercent = $lp > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+            // Profit = (Sprice × 0.80) − temu_ship − LP (same for Temu / Temu2)
+            $profit = $sprice * 0.80 - $lp - $temuShip;
+            $sgprftPercent = $sprice > 0 ? ($profit / $sprice) * 100 : 0;
+            // SROI = Profit / LP
+            $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
             $temuDataView = Temu2DataView::firstOrNew(['sku' => $sku]);
             $temuDataView->sku = $sku;
@@ -3961,18 +3957,11 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Get Temu marketplace percentage (SROI still uses marketplace % + FB bumper)
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.80;
-
-            // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99) — used for SROI
-            $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
-
-            // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP
-            $sgprftPercent = $sprice > 0 ? (($sprice * 0.80 - $lp - $temuShip) / $sprice) * 100 : 0;
-
-            // Calculate SROI%
-            $sroiPercent = $lp > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+            // Profit = (Sprice × 0.80) − temu_ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
+            $profit = $sprice * 0.80 - $lp - $temuShip;
+            $sgprftPercent = $sprice > 0 ? ($profit / $sprice) * 100 : 0;
+            // SROI = Profit / LP
+            $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
             // Store SPRICE in TemuDataView (similar to eBay's approach)
             $temuDataView = TemuDataView::firstOrNew(['sku' => $sku]);

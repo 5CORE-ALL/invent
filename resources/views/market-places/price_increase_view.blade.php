@@ -3738,12 +3738,13 @@
                 }
                 let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
-                    // Temu/Temu2: SROI still uses FB price (+$2.99 when ≤26.99);
-                    // SGPFT/SPFT Profit = (Sprice × 0.80) − temu_ship − LP
+                    // Temu/Temu2: Profit = (Sprice × 0.80) − temu_ship − LP
+                    // SGPFT = Profit/Sprice; SROI = Profit/LP
                     const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                     const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
+                    const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
                     sgpft = isTemuMp
-                        ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                        ? (temuProfit / sprice) * 100
                         : ((calcSp * margin - ship - lp) / calcSp) * 100;
                     // Doba: SPFT = SGPFT; Reverb/eBay/TikTok/Temu: SPFT = SGPFT − Ads%; else L30==0 skip-ads
                     if (isNoAdsMp || isTemu2MpRow) {
@@ -3753,7 +3754,9 @@
                     } else {
                         spft = (l30 == 0 ? sgpft : (sgpft - ad));
                     }
-                    sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
+                    sroi = isTemuMp
+                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
                     // SNROI%: Doba/Temu2 = SROI; Temu = SROI − Ads%; others (incl. Reverb) subtract SPRICE × Ads$
                     if (lp > 0) {
                         if (isNoAdsMp || isTemu2MpRow) {
@@ -6205,22 +6208,28 @@
             if (sprice > 0) {
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
                 const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
+                const isTemu2Mp = (mpLower === 'temu2');
                 const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit);
                 const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-                // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+                // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
+                const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
                 const sgpft = isTemuMp
-                    ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                    ? (temuProfit / sprice) * 100
                     : ((calcSp * margin - ship - lp) / calcSp) * 100;
                 // Doba/Shein: no ads; Reverb/eBay/TikTok: SGPFT − channel Ads%
                 const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                     || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
                 const spft = isNoAdsMp ? sgpft
                     : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
-                const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
+                const sroi = isTemuMp
+                    ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                    : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
                 const snroi = lp > 0
-                    ? (isNoAdsMp
+                    ? (isNoAdsMp || isTemu2Mp
                         ? sroi
-                        : (((calcSp * margin - lp - ship) - calcSp * (tacosCh / 100)) / lp) * 100)
+                        : (isTemuMp
+                            ? ((tacosCh === 100) ? sroi : (sroi - tacosCh))
+                            : (((calcSp * margin - lp - ship) - calcSp * (tacosCh / 100)) / lp) * 100))
                     : 0;
                 
                 applyCellColor($sgpftSpan, getSgpftSpftColor(sgpft));
@@ -6400,17 +6409,20 @@
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
             
-            // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+            // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
+            const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
             const sgpft = sprice > 0
                 ? (isTemuMp
-                    ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                    ? (temuProfit / sprice) * 100
                     : ((calcSp * margin - ship - lp) / calcSp) * 100)
                 : 0;
             const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                 || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
             const spft = isNoAdsBlur ? sgpft
                 : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
-            const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
+            const sroi = isTemuMp
+                ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
             
             input.css('border-color', '#ff9c00');
             
@@ -6563,17 +6575,20 @@
             const l30 = parseFloat($row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-            // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+            // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
+            const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
             const sgpft = sprice > 0
                 ? (isTemuMp
-                    ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                    ? (temuProfit / sprice) * 100
                     : ((calcSp * margin - ship - lp) / calcSp) * 100)
                 : 0;
             const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                 || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
             const spft = isNoAdsMp ? sgpft
                 : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
-            const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
+            const sroi = isTemuMp
+                ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                : (lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0);
 
             if (!sku || !marketplace) {
                 if (done) done(false);
@@ -6797,9 +6812,15 @@
                     const lp = parseFloat($tr.attr('data-lp')) || 0;
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
-                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
-                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
-                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+                    const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
+                    const temuProfit = isTemuMp ? ((newPrice * 0.80) - ship - lp) : 0;
+                    const sgpft = newPrice > 0
+                        ? (isTemuMp ? (temuProfit / newPrice) * 100 : ((newPrice * margin - ship - lp) / newPrice) * 100)
+                        : 0;
+                    const sroi = isTemuMp
+                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: isTemuMp ? 0.80 : margin };
 
                     $input.val(newPrice.toFixed(2)).trigger('input');
                     saveModalSpriceForRow($tr, newPrice, function(ok) {
@@ -7004,9 +7025,15 @@
                     const lp = parseFloat($tr.attr('data-lp')) || 0;
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
-                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
-                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
-                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+                    const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
+                    const temuProfit = isTemuMp ? ((newPrice * 0.80) - ship - lp) : 0;
+                    const sgpft = newPrice > 0
+                        ? (isTemuMp ? (temuProfit / newPrice) * 100 : ((newPrice * margin - ship - lp) / newPrice) * 100)
+                        : 0;
+                    const sroi = isTemuMp
+                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: isTemuMp ? 0.80 : margin };
 
                     $input.val(newPrice.toFixed(2)).trigger('input');
                     // Primary SKU only here; siblings (incl. INV 0) saved explicitly below
@@ -7111,9 +7138,15 @@
                     const lp = parseFloat($tr.attr('data-lp')) || 0;
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
-                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
-                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
-                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+                    const isTemuMp = (String(mp).toLowerCase() === 'temu' || String(mp).toLowerCase() === 'temu2');
+                    const temuProfit = isTemuMp ? ((newPrice * 0.80) - ship - lp) : 0;
+                    const sgpft = newPrice > 0
+                        ? (isTemuMp ? (temuProfit / newPrice) * 100 : ((newPrice * margin - ship - lp) / newPrice) * 100)
+                        : 0;
+                    const sroi = isTemuMp
+                        ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                        : (lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0);
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: isTemuMp ? 0.80 : margin };
 
                     $input.val(newPrice.toFixed(2)).trigger('input');
                     saveModalSpriceForRow($tr, newPrice, function(ok) {
@@ -7256,8 +7289,12 @@
                 return;
             }
             applyModalTargetBackSolve(function(ctx) {
-                if (!(ctx.lp > 0) || !(ctx.margin > 0)) return null;
-                const candidate = (ctx.lp * (1 + targetRoiPct / 100) + ctx.ship) / ctx.margin;
+                if (!(ctx.lp > 0)) return null;
+                // Temu/Temu2 SROI = Profit/LP → sprice = (LP × (1 + ROI%/100) + ship) / 0.80
+                const isTemuMp = ['temu', 'temu2', 'temutwo'].includes(String(ctx.marketplace || '').toLowerCase());
+                const margin = isTemuMp ? 0.80 : ctx.margin;
+                if (!(margin > 0)) return null;
+                const candidate = (ctx.lp * (1 + targetRoiPct / 100) + ctx.ship) / margin;
                 if (!isFinite(candidate) || candidate <= 0) return null;
                 return { newPrice: candidate };
             }, 'Target ROI ' + targetRoiPct + '%');
@@ -7755,11 +7792,17 @@
                 const l30 = parseFloat($tr.attr('data-l30')) || (item ? parseInt(item.l30) || 0 : 0);
                 const mpLower = String(s.marketplace || '').toLowerCase();
                 const sprice = s.suggested;
-                const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
+                const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
+                const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
+                const sgpft = sprice > 0
+                    ? (isTemuMp ? (temuProfit / sprice) * 100 : ((sprice * margin - ship - lp) / sprice) * 100)
+                    : 0;
                 const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                     || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
-                const spft = isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
-                const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+                const spft = (isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
+                const sroi = isTemuMp
+                    ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
+                    : (lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0);
 
                 $.ajax({
                     url: '/cvr-master-save-suggested-data',

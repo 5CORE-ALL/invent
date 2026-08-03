@@ -3556,15 +3556,15 @@ class CvrMasterController extends Controller
                 $val = is_array($temuDataView->value) ? $temuDataView->value : json_decode($temuDataView->value, true);
                 if (is_array($val)) {
                     $temuSprice = floatval($val['sprice'] ?? $val['SPRICE'] ?? 0);
-                    // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP
-                    $temuSgpft = $temuSprice > 0
-                        ? round((($temuSprice * 0.80 - $lp - $temuShip) / $temuSprice) * 100, 2)
-                        : 0;
+                    // Profit = (Sprice × 0.80) − temu_ship − LP
+                    $temuProfit = $temuSprice * 0.80 - $lp - $temuShip;
+                    $temuSgpft = $temuSprice > 0 ? round(($temuProfit / $temuSprice) * 100, 2) : 0;
+                    $temuSroi = $lp > 0 ? round(($temuProfit / $lp) * 100, 2) : 0;
                     $temuSpft = ($temuADS == 100) ? $temuSgpft : round($temuSgpft - $temuADS, 2);
                     $temuSuggested = [
                         'sprice' => $temuSprice,
                         'sgpft' => $temuSgpft,
-                        'sroi' => floatval($val['sroi_percent'] ?? $val['SROI'] ?? $val['sroi'] ?? 0),
+                        'sroi' => $temuSroi,
                         'spft' => $temuSpft,
                     ];
                 }
@@ -3638,14 +3638,14 @@ class CvrMasterController extends Controller
                         $v2d = is_array($temu2DataView->value) ? $temu2DataView->value : json_decode($temu2DataView->value, true);
                         if (is_array($v2d)) {
                             $suggSp = floatval($v2d['sprice'] ?? $v2d['SPRICE'] ?? 0);
-                            // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP (Temu2 same as Temu)
-                            $temu2Sgpft = $suggSp > 0
-                                ? round((($suggSp * 0.80 - $lp - $temuShip) / $suggSp) * 100, 2)
-                                : 0;
+                            // Profit = (Sprice × 0.80) − temu_ship − LP (Temu2 same as Temu)
+                            $temu2Profit = $suggSp * 0.80 - $lp - $temuShip;
+                            $temu2Sgpft = $suggSp > 0 ? round(($temu2Profit / $suggSp) * 100, 2) : 0;
+                            $temu2Sroi = $lp > 0 ? round(($temu2Profit / $lp) * 100, 2) : 0;
                             $temu2Suggested = [
                                 'sprice' => $suggSp,
                                 'sgpft' => $temu2Sgpft,
-                                'sroi' => floatval($v2d['sroi_percent'] ?? $v2d['SROI'] ?? 0),
+                                'sroi' => $temu2Sroi,
                                 'spft' => $temu2Sgpft, // Temu2: no ads
                             ];
                         }
