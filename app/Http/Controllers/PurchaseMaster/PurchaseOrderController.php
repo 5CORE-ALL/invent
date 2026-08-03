@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Picqer\Barcode\BarcodeGeneratorPNG;
 
 class PurchaseOrderController extends Controller
 {
@@ -434,6 +435,10 @@ class PurchaseOrderController extends Controller
             $item->photo_url = $imageBySku[$sku] ?? $this->fallbackPoPhotoUrl($item->photo ?? null);
             $item->barcode_url = $barcodeBySku[$sku]['image'] ?? null;
             $item->barcode_code = $barcodeBySku[$sku]['code'] ?? null;
+            // If Masters Barcode has a code but no saved image, generate bars for the proforma.
+            if (empty($item->barcode_url) && !empty($item->barcode_code)) {
+                $item->barcode_url = $this->barcodeDataUri((string) $item->barcode_code);
+            }
             $item->short_name = $shortNameBySku[$sku] ?? '';
             $item->tech = $this->normalizeTechText($item->tech ?? '');
             if ($item->tech === '' && !empty($techBySku[$sku])) {
@@ -816,6 +821,48 @@ class PurchaseOrderController extends Controller
             'image' => $image,
             'code' => $code !== '' ? $code : null,
         ];
+    }
+
+    /**
+     * PNG data-URI barcode for proforma when no stored barcode_image exists.
+     */
+    private function barcodeDataUri(string $code): ?string
+    {
+        $code = preg_replace('/\s+/', '', trim($code)) ?? '';
+        if ($code === '' || $code === '-') {
+            return null;
+        }
+
+        try {
+            $generator = new BarcodeGeneratorPNG();
+            $digits = preg_replace('/\D/', '', $code) ?? '';
+            $type = (strlen($digits) === 11 || strlen($digits) === 12)
+                ? $generator::TYPE_UPC_A
+                : $generator::TYPE_CODE_128;
+            $payload = $code;
+
+            if ($type === $generator::TYPE_UPC_A) {
+                if (strlen($digits) === 12) {
+                    $payload = substr($digits, 0, 11);
+                } elseif (strlen($digits) === 11) {
+                    $payload = $digits;
+                } else {
+                    $type = $generator::TYPE_CODE_128;
+                    $payload = $code;
+                }
+            }
+
+            $png = $generator->getBarcode($payload, $type, 2, 55);
+
+            return 'data:image/png;base64,'.base64_encode($png);
+        } catch (\Throwable $e) {
+            Log::warning('PO proforma barcode render failed', [
+                'code' => $code,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function productValuesArray(ProductMaster $product): array

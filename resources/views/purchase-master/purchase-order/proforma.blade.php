@@ -177,29 +177,40 @@
         }
 
         .col-barcode {
-            width: 90px;
-            min-width: 80px;
+            width: 110px;
+            min-width: 100px;
             font-size: 10px;
+            vertical-align: middle !important;
+        }
+
+        .po-barcode-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
         }
 
         .po-barcode-img {
-            width: 70px;
-            height: 70px;
+            width: 96px;
+            height: 48px;
             object-fit: contain;
             display: block;
             margin: 0 auto;
             background: #fff;
             border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            padding: 2px;
+            border-radius: 4px;
+            padding: 3px 4px;
         }
 
         .po-barcode-code {
-            margin-top: 3px;
+            margin-top: 2px;
             font-size: 9px;
             line-height: 1.2;
             word-break: break-all;
             text-align: center;
+            font-weight: 600;
+            color: #1a237e;
         }
 
         .col-edit {
@@ -406,13 +417,17 @@
                             @endif
                         </td>
                         <td class="col-barcode">
-                            @if(!empty($item->barcode_url))
-                                <img src="{{ $item->barcode_url }}" alt="Barcode {{ $item->barcode_code ?? $item->sku ?? '' }}" class="po-barcode-img" />
-                                @if(!empty($item->barcode_code))
-                                    <div class="po-barcode-code">{{ $item->barcode_code }}</div>
-                                @endif
-                            @elseif(!empty($item->barcode_code))
-                                <span class="po-barcode-code">{{ $item->barcode_code }}</span>
+                            @if(!empty($item->barcode_url) || !empty($item->barcode_code))
+                                <div class="po-barcode-wrap">
+                                    @if(!empty($item->barcode_url))
+                                        <img src="{{ $item->barcode_url }}"
+                                             alt="Barcode {{ $item->barcode_code ?? $item->sku ?? '' }}"
+                                             class="po-barcode-img" />
+                                    @endif
+                                    @if(!empty($item->barcode_code))
+                                        <div class="po-barcode-code">{{ $item->barcode_code }}</div>
+                                    @endif
+                                </div>
                             @else
                                 <span class="text-muted">—</span>
                             @endif
