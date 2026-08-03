@@ -468,7 +468,7 @@
 
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Temu Ship) / (TEMU2_PCT − Target GPFT%/100)">
+                        title="Target GPFT% — sets S PRC = (LP + Temu Ship) / (0.80 − Target GPFT%/100)">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
@@ -2053,14 +2053,14 @@
         });
 
         /*
-         * Target ROI% / Target GPFT% bulk apply (Temu2, margin = TEMU2_PCT)
+         * Target ROI% / Target GPFT% bulk apply (Temu2)
          * ----------------------------------------------------------------
          * Back-solves S PRC for every selected row so the resulting SROI / SGPFT
          * column matches the entered target:
          *     SROI%  = ((sprice * TEMU2_PCT − temu_ship − lp) / lp)     * 100
          *           → sprice = (lp * (1 + ROI%/100) + temu_ship) / TEMU2_PCT
-         *     SGPFT% = ((sprice * TEMU2_PCT − temu_ship − lp) / sprice) * 100
-         *           → sprice = (lp + temu_ship) / (TEMU2_PCT − GPFT%/100)
+         *     SGPFT% = ((sprice * 0.80 − temu_ship − lp) / sprice) * 100
+         *           → sprice = (lp + temu_ship) / (0.80 − GPFT%/100)
          * Each save goes through the existing saveSpriceWithRetry() pipeline so
          * sprice_status (processing → saved / error) and sgprft_percent /
          * sroi_percent stay in sync exactly like Decrease / Increase / Same Price.
@@ -2112,9 +2112,10 @@
                 return;
             }
 
-            const denom = TEMU2_PCT - targetGpftPct / 100;
+            const SGPFT_MARGIN = 0.80;
+            const denom = SGPFT_MARGIN - targetGpftPct / 100;
             if (denom <= 0) {
-                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < ${(TEMU2_PCT * 100).toFixed(0)}% (Temu take-home).`, 'error');
+                showToast(`Target GPFT% ${targetGpftPct}% is too high — must be < 80% (Sprice take-home).`, 'error');
                 return;
             }
 
@@ -3769,20 +3770,11 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
-                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const percentage = TEMU2_PCT; // TemuTwo marketplace percentage
-                        
                         if (sprice === 0) return '';
-                        
-                        const stemuPrice = (currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01)
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        
-                        // SGPRFT% = ((S Temu Price × percentage - LP - Temu Ship) / S Temu Price) × 100
-                        const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
-                        
+                        // Profit = (Sprice × 0.80) − temu_ship − LP; SGPRFT% = Profit / Sprice × 100
+                        const sgprft = ((sprice * 0.80 - temuShip - lp) / sprice) * 100;
                         const colorClass = getPftColor(sgprft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
                     }
@@ -3801,14 +3793,10 @@
                         const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
                         const spend = parseFloat(rowData['spend']) || 0;
                         const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const percentage = TEMU2_PCT;
                         
                         if (sprice === 0) return '';
                         
                         const isSameAsCurrentTemuPrice = currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01;
-                        const stemuPrice = isSameAsCurrentTemuPrice
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
 
                         // If S PRC equals current Temu Price, SPFT must match NPFT exactly.
                         if (isSameAsCurrentTemuPrice) {
@@ -3817,8 +3805,8 @@
                             return `<span class="dil-percent-value ${colorClass}">${Math.round(npftExact)}%</span>`;
                         }
                         
-                        // SGPRFT%
-                        const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
+                        // Profit = (Sprice × 0.80) − temu_ship − LP; SGPRFT% then − Ads%
+                        const sgprft = ((sprice * 0.80 - temuShip - lp) / sprice) * 100;
                         
                         // Keep SPFT aligned with NPFT logic:
                         // prefer aggregate ADS% badge value; if spend>0 and no sales (100% case), don't subtract ADS.

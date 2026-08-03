@@ -1674,6 +1674,17 @@
                             Apply
                         </button>
                     </div>
+                    <div class="ovl30-tool-group"
+                        title="Set this exact SPRICE on selected channels. With Siblings checked, every sibling SKU (including INV 0) gets the same price from this box.">
+                        <label for="modal-sprice-same-input">$</label>
+                        <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
+                            placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
+                            title="Exact SPRICE to set on selected channels (+ siblings when checked)">
+                        <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
+                            title="Set the same SPRICE from this box on checked channels (and siblings if checked)" aria-label="Apply same SPRICE">
+                            Apply
+                        </button>
+                    </div>
                     <div class="ovl30-tool-group ovl30-tool-group-sp"
                         title="Standard Price (manual). Saves to SP for this SKU and Sku Link LMP siblings. Use when LMP cannot be determined.">
                         <label for="modal-std-sp-input">SP</label>
@@ -3727,10 +3738,13 @@
                 }
                 let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
-                    // Temu/Temu2: suggested metrics use FB price (base ≤26.99 → +$2.99) — same as /temu-decrease
+                    // Temu/Temu2: SROI still uses FB price (+$2.99 when ≤26.99);
+                    // SGPFT/SPFT Profit = (Sprice × 0.80) − temu_ship − LP
                     const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                     const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-                    sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
+                    sgpft = isTemuMp
+                        ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                        : ((calcSp * margin - ship - lp) / calcSp) * 100;
                     // Doba: SPFT = SGPFT; Reverb/eBay/TikTok/Temu: SPFT = SGPFT − Ads%; else L30==0 skip-ads
                     if (isNoAdsMp || isTemu2MpRow) {
                         spft = sgpft;
@@ -6193,12 +6207,15 @@
                 const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                 const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit);
                 const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-                const sgpft = ((calcSp * margin - ship - lp) / calcSp) * 100;
+                // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+                const sgpft = isTemuMp
+                    ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                    : ((calcSp * margin - ship - lp) / calcSp) * 100;
                 // Doba/Shein: no ads; Reverb/eBay/TikTok: SGPFT − channel Ads%
                 const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                     || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
                 const spft = isNoAdsMp ? sgpft
-                    : (isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+                    : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
                 const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
                 const snroi = lp > 0
                     ? (isNoAdsMp
@@ -6383,11 +6400,16 @@
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
             
-            const sgpft = sprice > 0 ? ((calcSp * margin - ship - lp) / calcSp) * 100 : 0;
+            // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+            const sgpft = sprice > 0
+                ? (isTemuMp
+                    ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                    : ((calcSp * margin - ship - lp) / calcSp) * 100)
+                : 0;
             const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                 || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
             const spft = isNoAdsBlur ? sgpft
-                : (isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+                : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
             
             input.css('border-color', '#ff9c00');
@@ -6541,11 +6563,16 @@
             const l30 = parseFloat($row.attr('data-l30')) || 0;
             const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
             const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
-            const sgpft = sprice > 0 ? ((calcSp * margin - ship - lp) / calcSp) * 100 : 0;
+            // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+            const sgpft = sprice > 0
+                ? (isTemuMp
+                    ? (((sprice * 0.80) - ship - lp) / sprice) * 100
+                    : ((calcSp * margin - ship - lp) / calcSp) * 100)
+                : 0;
             const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
                 || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
             const spft = isNoAdsMp ? sgpft
-                : (isChannelAdsMp ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
+                : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = lp > 0 ? ((calcSp * margin - lp - ship) / lp) * 100 : 0;
 
             if (!sku || !marketplace) {
@@ -6723,39 +6750,85 @@
 
             const mode = modalSamePriceModeActive ? 'same' : (modalIncreaseModeActive ? 'increase' : 'decrease');
             const actionLabel = mode === 'same' ? 'Same Price' : (mode === 'increase' ? 'Increase' : 'Decrease');
-            if (!confirm(actionLabel + ' SPRICE for ' + $rows.length + ' channel(s)' + siblingsApplyLabel() + '?')) return;
+            const withSiblings = isModalSiblingsApply();
+            if (!confirm(
+                actionLabel + ' SPRICE for ' + $rows.length + ' channel(s)' + siblingsApplyLabel()
+                + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same new SPRICE.' : '')
+                + '?'
+            )) return;
 
             const $btn = $(this);
             const origHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
 
-            let doneCount = 0;
-            let okCount = 0;
-            $rows.forEach(function($tr) {
-                const basePrice = parseFloat($tr.attr('data-price')) || 0;
-                const $input = $tr.find('.editable-sprice');
-                if (mode !== 'same' && !(basePrice > 0)) {
-                    doneCount++;
-                    if (doneCount === $rows.length) {
-                        $btn.prop('disabled', false).html(origHtml);
-                        showToast(okCount ? ('Updated ' + okCount + ' channel(s); some had no Price') : 'Selected channels have no Price', okCount ? 'success' : 'error');
-                    }
-                    return;
+            function runPrcModeApply() {
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+                let doneCount = 0;
+                let okCount = 0;
+                let siblingsOk = 0;
+                let skipped = 0;
+
+                function finishIfDone() {
+                    if (doneCount !== $rows.length) return;
+                    $btn.prop('disabled', false).html(origHtml);
+                    showToast(okCount
+                        ? (actionLabel + ' applied to ' + okCount + ' channel(s)'
+                            + (skipped ? ' (' + skipped + ' skipped)' : '')
+                            + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
+                            + '. Use Push to go live.')
+                        : (skipped === $rows.length
+                            ? 'Selected channels have no Price'
+                            : 'Failed to save SPRICE'),
+                        okCount ? 'success' : 'error');
+                    $('#modal-discount-percentage-input').val('');
                 }
-                const newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
-                $input.val(newPrice.toFixed(2)).trigger('input');
-                saveModalSpriceForRow($tr, newPrice, function(ok) {
-                    if (ok) okCount++;
-                    doneCount++;
-                    if (doneCount === $rows.length) {
-                        $btn.prop('disabled', false).html(origHtml);
-                        showToast(okCount
-                            ? (actionLabel + ' applied to ' + okCount + ' channel(s). Use Push to go live.')
-                            : 'Failed to save SPRICE', okCount ? 'success' : 'error');
-                        $('#modal-discount-percentage-input').val('');
+
+                $rows.forEach(function($tr) {
+                    const mp = String($tr.attr('data-marketplace') || '');
+                    const basePrice = parseFloat($tr.attr('data-price')) || 0;
+                    const $input = $tr.find('.editable-sprice');
+                    if (mode !== 'same' && !(basePrice > 0)) {
+                        skipped++;
+                        doneCount++;
+                        finishIfDone();
+                        return;
                     }
+                    const newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
+                    const lp = parseFloat($tr.attr('data-lp')) || 0;
+                    const ship = parseFloat($tr.attr('data-ship')) || 0;
+                    const margin = parseFloat($tr.attr('data-margin')) || 0.80;
+                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
+                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+
+                    $input.val(newPrice.toFixed(2)).trigger('input');
+                    saveModalSpriceForRow($tr, newPrice, function(ok) {
+                        if (ok) {
+                            okCount++;
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
+                            });
+                        }
+                        if (ok && withSiblings && modalSiblingSkus.length) {
+                            applySpriceToSiblingSkus(mp, newPrice, metrics, function(sibOk) {
+                                siblingsOk = Math.max(siblingsOk, sibOk || 0);
+                                doneCount++;
+                                finishIfDone();
+                            });
+                        } else {
+                            doneCount++;
+                            finishIfDone();
+                        }
+                    }, { applySiblings: false });
                 });
-            });
+            }
+
+            if (withSiblings) {
+                refreshModalSiblingSkus(getModalPrimarySku());
+                setTimeout(runPrcModeApply, 350);
+            } else {
+                runPrcModeApply();
+            }
         });
 
         $(document).on('keydown', '#modal-discount-percentage-input', function(e) {
@@ -6981,6 +7054,110 @@
             }
         });
 
+        // ==================== SAME $ SPRICE (exact price from box → channels + siblings) ====================
+        function applyModalSameSpriceFromBox() {
+            const rawInput = $('#modal-sprice-same-input').val();
+            const samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
+            if (rawInput === '' || rawInput == null || !isFinite(samePrice) || !(samePrice > 0)) {
+                showToast('Enter a SPRICE greater than 0 (e.g. 19.99)', 'error');
+                $('#modal-sprice-same-input').focus();
+                return;
+            }
+            if (modalSelectedChannels.size === 0) {
+                showToast('Please select at least one channel (checkbox)', 'error');
+                return;
+            }
+            const $rows = collectModalTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows selected', 'error');
+                return;
+            }
+
+            const newPrice = Math.max(0.01, +samePrice.toFixed(2));
+            const withSiblings = isModalSiblingsApply();
+
+            function runSame() {
+                if (!confirm(
+                    'Set SPRICE to $' + newPrice.toFixed(2) + ' on ' + $rows.length + ' selected channel(s)'
+                    + siblingsApplyLabel()
+                    + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get this same SPRICE.' : '')
+                    + '?'
+                )) return;
+
+                const $btn = $('#modal-apply-sprice-same-btn');
+                const origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+                let doneCount = 0;
+                let okCount = 0;
+                let siblingsOk = 0;
+
+                function finishIfDone() {
+                    if (doneCount !== $rows.length) return;
+                    $btn.prop('disabled', false).html(origHtml);
+                    showToast(
+                        okCount
+                            ? ('Same SPRICE $' + newPrice.toFixed(2) + ' applied to ' + okCount + ' channel(s)'
+                                + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
+                                + '. Use Push to go live.')
+                            : 'Failed to save SPRICE',
+                        okCount ? 'success' : 'error'
+                    );
+                }
+
+                $rows.forEach(function($tr) {
+                    const mp = String($tr.attr('data-marketplace') || '');
+                    const $input = $tr.find('.editable-sprice');
+                    const lp = parseFloat($tr.attr('data-lp')) || 0;
+                    const ship = parseFloat($tr.attr('data-ship')) || 0;
+                    const margin = parseFloat($tr.attr('data-margin')) || 0.80;
+                    const sgpft = newPrice > 0 ? ((newPrice * margin - ship - lp) / newPrice) * 100 : 0;
+                    const sroi = lp > 0 ? ((newPrice * margin - lp - ship) / lp) * 100 : 0;
+                    const metrics = { sgpft: sgpft, spft: sgpft, sroi: sroi, margin: margin };
+
+                    $input.val(newPrice.toFixed(2)).trigger('input');
+                    saveModalSpriceForRow($tr, newPrice, function(ok) {
+                        if (ok) {
+                            okCount++;
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
+                            });
+                        }
+
+                        if (ok && withSiblings && modalSiblingSkus.length) {
+                            applySpriceToSiblingSkus(mp, newPrice, metrics, function(sibOk) {
+                                siblingsOk = Math.max(siblingsOk, sibOk || 0);
+                                doneCount++;
+                                finishIfDone();
+                            });
+                        } else {
+                            doneCount++;
+                            finishIfDone();
+                        }
+                    }, { applySiblings: false });
+                });
+            }
+
+            if (withSiblings) {
+                const sku = getModalPrimarySku();
+                refreshModalSiblingSkus(sku);
+                setTimeout(runSame, 350);
+            } else {
+                runSame();
+            }
+        }
+
+        $(document).on('click', '#modal-apply-sprice-same-btn', function(e) {
+            e.preventDefault();
+            applyModalSameSpriceFromBox();
+        });
+        $(document).on('keydown', '#modal-sprice-same-input', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyModalSameSpriceFromBox();
+            }
+        });
+
         // ==================== TARGET ROI% / GPFT% (same as /doba-tabulator) ====================
         // ROI:  sprice = (LP × (1 + ROI%/100) + Ship) / margin
         // GPFT: sprice = (LP + Ship) / (margin − GPFT%/100)
@@ -7099,8 +7276,12 @@
                 return;
             }
             applyModalTargetBackSolve(function(ctx) {
-                if (!(ctx.lp > 0) || !(ctx.margin > 0)) return null;
-                const denom = ctx.margin - targetGpftPct / 100;
+                if (!(ctx.lp > 0)) return null;
+                // Temu/Temu2 SGPFT: Profit = (Sprice × 0.80) − ship − LP
+                const isTemuMp = ['temu', 'temu2', 'temutwo'].includes(String(ctx.marketplace || '').toLowerCase());
+                const margin = isTemuMp ? 0.80 : ctx.margin;
+                if (!(margin > 0)) return null;
+                const denom = margin - targetGpftPct / 100;
                 if (!(denom > 0)) return null;
                 const candidate = (ctx.lp + ctx.ship) / denom;
                 if (!isFinite(candidate) || candidate <= 0) return null;
@@ -8149,6 +8330,8 @@
                 extId: row.extId || '',
                 origPrice: row.price,
                 origLink: row.link || '',
+                origDelivery: row.delivery != null ? row.delivery : null,
+                sourceSku: row.sourceSku || row.sku || '',
                 draftPrice: priceStr,
                 draftLink: row.link || '',
                 draftExtId: row.extId || '',
@@ -8754,6 +8937,7 @@
                     reviews: null,
                     old_price: null,
                     delivery: ship,
+                    sourceSku: temu.source_sku || sku,
                     source: 'Temu',
                 });
             });
@@ -9077,24 +9261,32 @@
                 const linkAttr = String(row.link || '').replace(/"/g, '&quot;');
                 const extAttr = String(row.extId || '').replace(/"/g, '&quot;');
                 const skuAttr = String(sku || '').replace(/"/g, '&quot;');
+                const sourceSkuAttr = String(row.sourceSku || sku || '').replace(/"/g, '&quot;');
+                const deliveryAttr = (row.delivery != null && row.delivery !== '') ? String(row.delivery) : '';
                 const selectCb = '<input type="checkbox" class="form-check-input lmp-row-cb" title="Select for delete"'
                     + ' data-id="' + String(row.id).replace(/"/g, '&quot;') + '"'
                     + ' data-marketplace="' + row.channel + '"'
                     + ' data-sku="' + skuAttr + '"'
+                    + ' data-source-sku="' + sourceSkuAttr + '"'
                     + ' data-price="' + row.price + '"'
+                    + ' data-delivery="' + deliveryAttr + '"'
                     + ' data-ext-id="' + extAttr + '"'
                     + ' data-link="' + linkAttr + '">';
                 const editBtn = '<button type="button" class="btn btn-sm btn-outline-warning edit-lmp-row-btn me-1" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
                     + '" data-sku="' + skuAttr
+                    + '" data-source-sku="' + sourceSkuAttr
                     + '" data-price="' + row.price
+                    + '" data-delivery="' + deliveryAttr
                     + '" data-link="' + linkAttr
                     + '" data-ext-id="' + extAttr
                     + '" title="Edit price"><i class="fa fa-edit"></i></button>';
                 const delBtn = '<button type="button" class="btn btn-sm btn-danger delete-lmp-row-btn" data-id="' + row.id
                     + '" data-marketplace="' + row.channel
                     + '" data-sku="' + skuAttr
+                    + '" data-source-sku="' + sourceSkuAttr
                     + '" data-price="' + row.price
+                    + '" data-delivery="' + deliveryAttr
                     + '" data-ext-id="' + extAttr
                     + '" data-link="' + linkAttr
                     + '" title="Delete"><i class="fa fa-trash"></i></button>';
@@ -9226,6 +9418,9 @@
                 extId: $btn.attr('data-ext-id') || '',
                 price: $btn.attr('data-price') || $btn.data('price'),
                 link: $btn.attr('data-link') || '',
+                delivery: $btn.attr('data-delivery') || $btn.data('delivery'),
+                sourceSku: $btn.attr('data-source-sku') || $btn.data('source-sku') || '',
+                sku: $btn.attr('data-sku') || $btn.data('sku') || '',
             });
         });
 
@@ -9282,10 +9477,14 @@
                 success: function(res) {
                     const existing = (res && res.competitors) ? res.competitors : [];
                     const entries = existing.map(function(c) {
+                        let delivery = parseFloat(c.delivery != null ? c.delivery : c.shipping_cost);
+                        if (isNaN(delivery) || delivery < 0) delivery = 0;
                         return {
                             price: c.price,
+                            delivery: delivery,
                             link: c.link || c.product_link || null,
                             ignored: !!c.ignored,
+                            source_sku: c.source_sku || sku,
                         };
                     });
                     const next = mutator(entries, existing);
@@ -9507,28 +9706,55 @@
                 return;
             }
 
-            // Temu: append or replace entry then save
-            if (isEdit) {
-                const origPrice = lmpEditState ? lmpEditState.origPrice : null;
-                const origLink = lmpEditState ? lmpEditState.origLink : '';
-                withTemuLmpEntries(sku, function(entries) {
-                    const idx = findTemuEntryIndex(entries, editId, origPrice, origLink);
-                    if (idx < 0) return false;
-                    entries[idx] = { price: price, link: link || null };
-                    return entries;
-                }, done);
-                return;
-            }
-            withTemuLmpEntries(sku, function(entries) {
-                entries.push({ price: price, link: link || null });
-                return entries;
-            }, function(ok, msg) {
-                if (!ok && msg === 'Failed to load Temu LMP entries') {
-                    saveTemuLmpEntries(sku, [{ price: price, link: link || null }], done);
+            // Temu: append or replace entry then save (keeps source_sku + delivery)
+            if (channel === 'temu') {
+                if (isEdit) {
+                    const origPrice = lmpEditState ? lmpEditState.origPrice : null;
+                    const origLink = lmpEditState ? lmpEditState.origLink : '';
+                    const sourceSku = (lmpEditState && lmpEditState.sourceSku) ? lmpEditState.sourceSku : sku;
+                    const origDelivery = lmpEditState && lmpEditState.origDelivery != null
+                        ? parseFloat(lmpEditState.origDelivery) : 0;
+                    withTemuLmpEntries(sku, function(entries) {
+                        const idx = findTemuEntryIndex(entries, editId, origPrice, origLink);
+                        if (idx < 0) return false;
+                        const prev = entries[idx] || {};
+                        let delivery = parseFloat(prev.delivery);
+                        if (isNaN(delivery) || delivery < 0) delivery = (!isNaN(origDelivery) && origDelivery > 0) ? origDelivery : 0;
+                        entries[idx] = {
+                            price: price,
+                            delivery: delivery,
+                            link: link || null,
+                            ignored: !!prev.ignored,
+                            source_sku: prev.source_sku || sourceSku || sku,
+                        };
+                        return entries;
+                    }, done);
                     return;
                 }
-                done(ok, msg || 'Temu LMP added');
-            });
+                withTemuLmpEntries(sku, function(entries) {
+                    entries.push({
+                        price: price,
+                        delivery: (price < 27 ? 2.99 : 0),
+                        link: link || null,
+                        ignored: false,
+                        source_sku: sku,
+                    });
+                    return entries;
+                }, function(ok, msg) {
+                    if (!ok && msg === 'Failed to load Temu LMP entries') {
+                        saveTemuLmpEntries(sku, [{
+                            price: price,
+                            delivery: (price < 27 ? 2.99 : 0),
+                            link: link || null,
+                            ignored: false,
+                            source_sku: sku,
+                        }], done);
+                        return;
+                    }
+                    done(ok, msg || 'Temu LMP added');
+                });
+                return;
+            }
         });
 
         $(document).on('click', '.lmp-channel-filter-btn', function(e) {

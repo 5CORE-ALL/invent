@@ -843,18 +843,17 @@
                     </div>
 
                     {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPRFT = Target GPFT%.
-                         Formula: stemuPrice = (LP + temu_ship) / (margin − GPFT%/100). Target GPFT% must be
-                         < margin*100 (else denominator ≤ 0). Same icon-only doba styling as the ROI chip. --}}
+                         Formula: Sprice = (LP + temu_ship) / (0.80 − GPFT%/100). Target GPFT% must be < 80%. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-white"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets SPRICE so the on-page SGPRFT column equals the target (accounts for Temu fees, temu_ship, and the $2.99 ship bumper on prices ≤ $26.99)">
+                        title="Target GPFT% — sets SPRICE so SGPRFT = target using (Sprice × 0.80) − temu_ship − LP">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap"
                                aria-label="Target GPFT percent">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" maxlength="2" style="width: 45px;"
-                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than the Temu take-home margin (e.g. < 96%).">
+                            title="Target GPFT% applied to all selected rows when you click Apply. Must be less than 80%.">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
                             title="Apply — Compute & save SPRICE so SGPRFT column = Target GPFT% for every selected row"
                             aria-label="Apply Target GPFT">
@@ -2983,12 +2982,12 @@
          * Backend math (mirrors saveTemuSprice):
          *   SROI%   = ((stemuPrice * margin − lp − temu_ship) / lp)         * 100
          *      -> stemuPrice = (lp * (1 + roi%/100) + temu_ship) / margin
-         *   SGPRFT% = ((stemuPrice * margin − lp − temu_ship) / stemuPrice) * 100
-         *      -> stemuPrice = (lp + temu_ship) / (margin − gpft%/100)
-         *      Constraint: (margin − gpft%/100) must be > 0 (else infinite/neg price).
+         *   SGPRFT% = ((sprice * 0.80 − lp − temu_ship) / sprice) * 100
+         *      -> sprice = (lp + temu_ship) / (0.80 − gpft%/100)
+         *      Constraint: (0.80 − gpft%/100) must be > 0 (else infinite/neg price).
          *
-         * `margin` is per-row (rowData.percentage, same value the backend GROI calc
-         * uses). Falls back to TEMU_MARGIN_FALLBACK only when missing.
+         * Target ROI still uses per-row `margin` (rowData.percentage). Falls back
+         * to TEMU_MARGIN_FALLBACK when missing. Target GPFT uses fixed 0.80.
          *
          * All POSTs go through the existing /temu-pricing/save-sprice endpoint so
          * SGPRFT / SROI get recomputed server-side exactly like an inline SPRICE
@@ -3282,12 +3281,11 @@
         });
 
         function temuApplyTargetSpriceBatch(opts) {
-            // opts: { label, $btn, btnHtml, computeStemuPrice(rd) -> {stemuPrice, skipReason?} }
-            //   `stemuPrice` is the desired displayed S Temu Price (back-solved against
-            //   the target %). It runs through temuStemuPriceToSprice(...) so we end up
-            //   storing `sprice = stemuPrice − 2.99` for low prices (≤ 29.98) and
-            //   `sprice = stemuPrice` for higher prices — letting the backend's $2.99
-            //   bumper land the final S Temu Price exactly on the target.
+            // opts: { label, $btn, btnHtml, computeStemuPrice(rd) -> {stemuPrice|sprice, skipReason?} }
+            //   Prefer `sprice` when provided (SGPFT now uses Sprice×0.80, no FB bumper).
+            //   Otherwise `stemuPrice` is the desired displayed S Temu Price; it runs
+            //   through temuStemuPriceToSprice(...) so we store sprice = stemu − 2.99
+            //   for low prices (≤ 29.98) — used by Target ROI which still uses stemu.
             const $btn = opts.$btn;
 
             // Safety net: ensure the select column is visible even if the focus listeners
@@ -3310,7 +3308,12 @@
                     if (res && res.skipReason) skipped.push({ sku: sku, reason: res.skipReason });
                     return;
                 }
-                const sprice = temuStemuPriceToSprice(res.stemuPrice);
+                let sprice = null;
+                if (res.sprice != null && isFinite(res.sprice)) {
+                    sprice = +Number(res.sprice).toFixed(2);
+                } else {
+                    sprice = temuStemuPriceToSprice(res.stemuPrice);
+                }
                 if (sprice == null || !isFinite(sprice) || sprice <= 0) return;
                 rowsToProcess.push({ row: r, sku: sku, sprice: sprice });
             });
@@ -3407,7 +3410,8 @@
             if (e.which === 13) $('#apply-target-roi-btn').click();
         });
 
-        // Target GPFT%
+        // Target GPFT% — SGPFT = ((Sprice × 0.80 − ship − LP) / Sprice) × 100
+        // → Sprice = (LP + ship) / (0.80 − GPFT%/100)
         $('#apply-target-gpft-btn').on('click', function() {
             const $btn = $(this);
             const raw = $('#target-gpft-input').val();
@@ -3415,6 +3419,7 @@
             if (raw === '' || raw == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
             if (!isFinite(targetGpftPct)) { showToast('Target GPFT% must be a number', 'error'); return; }
             const targetFraction = targetGpftPct / 100;
+            const SGPFT_MARGIN = 0.80;
             temuApplyTargetSpriceBatch({
                 label: `Target GPFT ${targetGpftPct}%`,
                 $btn: $btn,
@@ -3424,13 +3429,11 @@
                     const lp = parseFloat(rd.lp) || 0;
                     if (lp <= 0) return null;
                     const temuShip = parseFloat(rd.temu_ship) || 0;
-                    const marginRaw = parseFloat(rd.percentage);
-                    const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN_FALLBACK;
-                    const denom = margin - targetFraction;
+                    const denom = SGPFT_MARGIN - targetFraction;
                     if (denom <= 0) {
-                        return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 Temu take-home margin (~${Math.round(margin * 100)}%)` };
+                        return { skipReason: `Target GPFT% ${targetGpftPct}% \u2265 80% (Sprice take-home)` };
                     }
-                    return { stemuPrice: (lp + temuShip) / denom };
+                    return { sprice: (lp + temuShip) / denom };
                 }
             });
         });
@@ -5395,21 +5398,11 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = parseFloat(rowData['sprice']) || 0;
-                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
                         const lp = parseFloat(rowData['lp']) || 0;
                         const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const marginRaw = parseFloat(rowData['percentage']);
-                        const percentage = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
-                        
                         if (sprice === 0) return '';
-                        
-                        const stemuPrice = (currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01)
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        
-                        // SGPRFT% = ((S Temu Price × percentage - LP - Temu Ship) / S Temu Price) × 100
-                        const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
-                        
+                        // Profit = (Sprice × 0.80) − temu_ship − LP; SGPRFT% = Profit / Sprice × 100
+                        const sgprft = ((sprice * 0.80 - temuShip - lp) / sprice) * 100;
                         const colorClass = getPftColor(sgprft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
                     }
@@ -5431,15 +5424,10 @@
                         const adsPercentRow = parseFloat(rowData['ads_percent']) || 0;
                         const spend = parseFloat(rowData['spend']) || 0;
                         const temuL30 = parseFloat(rowData['temu_l30']) || 0;
-                        const marginRawSpft = parseFloat(rowData['percentage']);
-                        const percentage = (isFinite(marginRawSpft) && marginRawSpft > 0) ? marginRawSpft : TEMU_MARGIN;
                         
                         if (sprice === 0) return '';
                         
                         const isSameAsCurrentTemuPrice = currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01;
-                        const stemuPrice = isSameAsCurrentTemuPrice
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
 
                         // If S PRC equals current Temu Price, SPFT must match NPFT exactly.
                         if (isSameAsCurrentTemuPrice) {
@@ -5448,8 +5436,8 @@
                             return `<span class="dil-percent-value ${colorClass}">${Math.round(npftExact)}%</span>`;
                         }
                         
-                        // SGPRFT%
-                        const sgprft = stemuPrice > 0 ? ((stemuPrice * percentage - lp - temuShip) / stemuPrice) * 100 : 0;
+                        // Profit = (Sprice × 0.80) − temu_ship − LP; SGPRFT% then − Ads%
+                        const sgprft = ((sprice * 0.80 - temuShip - lp) / sprice) * 100;
                         
                         // Keep SPFT aligned with NPFT logic:
                         // prefer aggregate ADS% badge value; if spend>0 and no sales (100% case), don't subtract ADS.
@@ -6471,7 +6459,8 @@
                     del,
                     entry.link || '',
                     !!entry.ignored,
-                    false
+                    false,
+                    entry.source_sku || lmpModalSku || ''
                 );
             });
             updateLmpListLayout();
@@ -6482,7 +6471,7 @@
                 if (scroller) scroller.scrollTop = 0;
             }, 150);
         }
-        function appendLmpTableRow(tbody, price, delivery, link, ignored, relayout) {
+        function appendLmpTableRow(tbody, price, delivery, link, ignored, relayout, sourceSku) {
             const tr = $('<tr class="lmp-entry-row">' +
                 '<td class="lmp-num text-center"></td>' +
                 '<td><div class="lmp-price-cell">' +
@@ -6497,6 +6486,7 @@
                 '</div></td>' +
                 '<td class="text-center"><input type="checkbox" class="form-check-input lmp-ignore m-0" title="Ignore for L1"></td>' +
                 '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+            tr.attr('data-source-sku', sourceSku || lmpModalSku || '');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
@@ -6666,7 +6656,7 @@
                 showToast('Enter Price or Link', 'warning');
                 return;
             }
-            appendLmpTableRow($('#lmpEntriesContainer'), price || '', delivery || '', link || '', false, true);
+            appendLmpTableRow($('#lmpEntriesContainer'), price || '', delivery || '', link || '', false, true, lmpModalSku || '');
             $('#lmpNewPrice').val('');
             $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
@@ -6683,26 +6673,29 @@
         $('#lmpModalSaveBtn').on('click', function() {
             const entries = [];
             $('#lmpEntriesContainer .lmp-entry-row').each(function() {
-                const price = $(this).find('.lmp-price').val();
-                const delivery = $(this).find('.lmp-delivery').val();
-                const link = $(this).find('.lmp-link').val();
-                const ignored = $(this).find('.lmp-ignore').is(':checked');
+                const $tr = $(this);
+                const price = $tr.find('.lmp-price').val();
+                const delivery = $tr.find('.lmp-delivery').val();
+                const link = $tr.find('.lmp-link').val();
+                const ignored = $tr.find('.lmp-ignore').is(':checked');
+                const sourceSku = ($tr.attr('data-source-sku') || lmpModalSku || '').trim();
                 if (price || link || delivery) {
                     const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
                     entries.push({
                         price: price ? parseFloat(price) : null,
                         delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
                         link: link ? link.trim() : null,
-                        ignored: ignored
+                        ignored: ignored,
+                        source_sku: sourceSku || lmpModalSku
                     });
                 }
             });
-            if (entries.length === 0) {
-                showToast('Add at least one price or link', 'warning');
-                return;
-            }
+            // Empty list is allowed — clears LMP on this SKU / linked sources that no longer have rows
             if (!lmpModalSku) {
                 showToast('Missing SKU — reopen the LMP modal', 'error');
+                return;
+            }
+            if (entries.length === 0 && !confirm('Save empty LMP list? This deletes all Temu LMP entries for this SKU group.')) {
                 return;
             }
             $(this).prop('disabled', true);

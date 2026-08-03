@@ -3555,11 +3555,17 @@ class CvrMasterController extends Controller
             if ($temuDataView) {
                 $val = is_array($temuDataView->value) ? $temuDataView->value : json_decode($temuDataView->value, true);
                 if (is_array($val)) {
+                    $temuSprice = floatval($val['sprice'] ?? $val['SPRICE'] ?? 0);
+                    // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP
+                    $temuSgpft = $temuSprice > 0
+                        ? round((($temuSprice * 0.80 - $lp - $temuShip) / $temuSprice) * 100, 2)
+                        : 0;
+                    $temuSpft = ($temuADS == 100) ? $temuSgpft : round($temuSgpft - $temuADS, 2);
                     $temuSuggested = [
-                        'sprice' => floatval($val['sprice'] ?? $val['SPRICE'] ?? 0),
-                        'sgpft' => floatval($val['sgprft_percent'] ?? $val['SGPFT'] ?? $val['sgpft'] ?? 0),
+                        'sprice' => $temuSprice,
+                        'sgpft' => $temuSgpft,
                         'sroi' => floatval($val['sroi_percent'] ?? $val['SROI'] ?? $val['sroi'] ?? 0),
-                        'spft' => floatval($val['SPFT'] ?? $val['spft'] ?? 0),
+                        'spft' => $temuSpft,
                     ];
                 }
             }
@@ -3631,12 +3637,16 @@ class CvrMasterController extends Controller
                     if ($temu2DataView) {
                         $v2d = is_array($temu2DataView->value) ? $temu2DataView->value : json_decode($temu2DataView->value, true);
                         if (is_array($v2d)) {
-                            $suggSp = $v2d['sprice'] ?? $v2d['SPRICE'] ?? 0;
+                            $suggSp = floatval($v2d['sprice'] ?? $v2d['SPRICE'] ?? 0);
+                            // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP (Temu2 same as Temu)
+                            $temu2Sgpft = $suggSp > 0
+                                ? round((($suggSp * 0.80 - $lp - $temuShip) / $suggSp) * 100, 2)
+                                : 0;
                             $temu2Suggested = [
-                                'sprice' => floatval($suggSp),
-                                'sgpft' => floatval($v2d['sgprft_percent'] ?? $v2d['SGPFT'] ?? 0),
+                                'sprice' => $suggSp,
+                                'sgpft' => $temu2Sgpft,
                                 'sroi' => floatval($v2d['sroi_percent'] ?? $v2d['SROI'] ?? 0),
-                                'spft' => floatval($v2d['SPFT'] ?? $v2d['spft'] ?? 0),
+                                'spft' => $temu2Sgpft, // Temu2: no ads
                             ];
                         }
                     }
@@ -7369,8 +7379,16 @@ class CvrMasterController extends Controller
         $lmpEntries = [];
         foreach ($linkedSkus as $linkedSku) {
             $row = $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) $linkedSku)] ?? null;
-            if ($row) {
-                $lmpEntries = array_merge($lmpEntries, $this->extractTemuLmpEntriesFromRow($row));
+            if (! $row) {
+                continue;
+            }
+            foreach ($this->extractTemuLmpEntriesFromRow($row) as $e) {
+                if (! is_array($e)) {
+                    continue;
+                }
+                // Preserve which temu_lmp row owns this entry (edit/delete write back here)
+                $e['source_sku'] = (string) ($row->sku ?? $linkedSku);
+                $lmpEntries[] = $e;
             }
         }
         $lmpEntries = $this->dedupeTemuLmpEntriesList($lmpEntries);
@@ -7453,6 +7471,7 @@ class CvrMasterController extends Controller
                     'ignored' => ! empty($entry['ignored']),
                     'product_link' => $entry['link'] ?? null,
                     'link' => $entry['link'] ?? null,
+                    'source_sku' => $entry['source_sku'] ?? $sku,
                     'product_title' => '',
                     'image' => null,
                 ];
@@ -7497,28 +7516,55 @@ class CvrMasterController extends Controller
 
                 [$temuLmpByNormalizedSku, $groupService] = $this->loadTemuLmpMapForSkus([$sku]);
                 $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
-                $entries = $resolved['entries'];
-                if ($idx >= count($entries)) {
+                $merged = $resolved['entries'];
+                if ($idx >= count($merged)) {
                     return response()->json(['success' => false, 'error' => 'Temu LMP entry not found'], 404);
                 }
-                $entries[$idx]['ignored'] = $ignored;
 
-                $normalizeSku = function ($s) {
-                    return self::normalizeTemuSkuForCvr((string) $s);
-                };
-                $target = $normalizeSku($sku);
-                $row = $temuLmpByNormalizedSku[$target] ?? null;
-                if (!$row) {
-                    if (!Schema::hasTable('temu_lmp')) {
+                $targetEntry = $merged[$idx];
+                $sourceSku = trim((string) ($targetEntry['source_sku'] ?? $sku));
+                if ($sourceSku === '') {
+                    $sourceSku = $sku;
+                }
+                $sourceKey = self::normalizeTemuSkuForCvr($sourceSku);
+                $row = $temuLmpByNormalizedSku[$sourceKey] ?? null;
+
+                // Mutate the owning temu_lmp row only (not the full merged list)
+                $ownEntries = $row ? $this->extractTemuLmpEntriesFromRow($row) : [];
+                $matched = false;
+                $op = isset($targetEntry['price']) && is_numeric($targetEntry['price']) ? (float) $targetEntry['price'] : null;
+                $ol = strtoupper(trim((string) ($targetEntry['link'] ?? '')));
+                foreach ($ownEntries as $i => $own) {
+                    $ep = isset($own['price']) && is_numeric($own['price']) ? (float) $own['price'] : null;
+                    $el = strtoupper(trim((string) ($own['link'] ?? '')));
+                    if ($op !== null && $ep !== null && abs($ep - $op) < 0.001 && $el === $ol) {
+                        $ownEntries[$i]['ignored'] = $ignored;
+                        $matched = true;
+                        break;
+                    }
+                }
+                if (! $matched) {
+                    // Fallback: update by merged index when this SKU owns the whole list
+                    if ($sourceKey === self::normalizeTemuSkuForCvr($sku) && $idx < count($ownEntries)) {
+                        $ownEntries[$idx]['ignored'] = $ignored;
+                        $matched = true;
+                    }
+                }
+                if (! $matched) {
+                    return response()->json(['success' => false, 'error' => 'Temu LMP entry not found on source SKU'], 404);
+                }
+
+                if (! $row) {
+                    if (! Schema::hasTable('temu_lmp')) {
                         return response()->json(['success' => false, 'error' => 'Temu LMP table not available'], 404);
                     }
                     $row = TemuLmp::create([
-                        'sku' => $sku,
-                        'lmp_entries' => $entries,
+                        'sku' => $sourceSku,
+                        'lmp_entries' => $ownEntries,
                     ]);
                 }
 
-                $active = array_values(array_filter($entries, fn ($e) => empty($e['ignored'])));
+                $active = array_values(array_filter($ownEntries, fn ($e) => empty($e['ignored'])));
                 $effectivePrices = [];
                 foreach ($active as $e) {
                     $eff = $this->temuLmpEntryEffectivePriceForCvr($e);
@@ -7539,10 +7585,9 @@ class CvrMasterController extends Controller
                 }
 
                 $row->update([
-                    'sku' => $sku,
                     'lmp' => $firstPrice,
                     'lmp_link' => $firstLink,
-                    'lmp_entries' => $entries,
+                    'lmp_entries' => $ownEntries,
                     'lmp_2' => null,
                     'lmp_link_2' => null,
                 ]);

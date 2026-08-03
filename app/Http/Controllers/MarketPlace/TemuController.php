@@ -2105,7 +2105,8 @@ class TemuController extends Controller
 
             $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
 
-            $sgprftPercent = $stemuPrice > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $stemuPrice) * 100 : 0;
+            // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP (same for Temu / Temu2)
+            $sgprftPercent = $sprice > 0 ? (($sprice * 0.80 - $lp - $temuShip) / $sprice) * 100 : 0;
 
             $sroiPercent = $lp > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
 
@@ -3253,13 +3254,21 @@ class TemuController extends Controller
                     $missing = '';
                 }
 
-                // LMP entries merged across Sku Link LMP group (array of {price, link})
+                // LMP entries merged across Sku Link LMP group — tag source_sku so edit/delete
+                // write back to the same temu_lmp row they came from.
                 $linkedLmpSkus = $this->linkedLmpSkusForProduct($sku);
                 $lmpEntries = [];
                 foreach ($linkedLmpSkus as $linkedSku) {
                     $temuLmpRow = $temuLmpByNormalizedSku[$normalizeSku($linkedSku)] ?? null;
-                    if ($temuLmpRow) {
-                        $lmpEntries = array_merge($lmpEntries, $this->extractTemuLmpEntries($temuLmpRow));
+                    if (! $temuLmpRow) {
+                        continue;
+                    }
+                    foreach ($this->extractTemuLmpEntries($temuLmpRow) as $e) {
+                        if (! is_array($e)) {
+                            continue;
+                        }
+                        $e['source_sku'] = (string) ($temuLmpRow->sku ?? $linkedSku);
+                        $lmpEntries[] = $e;
                     }
                 }
                 $lmpEntries = $this->dedupeTemuLmpEntries($lmpEntries);
@@ -3952,15 +3961,15 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Get TemuTwo marketplace percentage from marketplace_percentages table
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.95;
+            // Get Temu marketplace percentage (SROI still uses marketplace % + FB bumper)
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percentage = $marketplaceData && $marketplaceData->percentage ? ($marketplaceData->percentage / 100) : 0.80;
 
-            // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
+            // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99) — used for SROI
             $stemuPrice = $sprice <= 26.99 ? $sprice + 2.99 : $sprice;
 
-            // Calculate SGPRFT%
-            $sgprftPercent = $stemuPrice > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $stemuPrice) * 100 : 0;
+            // SGPFT Profit = (Sprice × 0.80) − temu_ship − LP
+            $sgprftPercent = $sprice > 0 ? (($sprice * 0.80 - $lp - $temuShip) / $sprice) * 100 : 0;
 
             // Calculate SROI%
             $sroiPercent = $lp > 0 ? (($stemuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
@@ -4767,8 +4776,10 @@ class TemuController extends Controller
     }
 
     /**
-     * Save LMP entries from Temu Decrease modal (match by normalized SKU, or create).
-     * lmp_entries = array of {price, link, ignored}; L1 (lmp/lmp_link) ignores flagged rows.
+     * Save LMP entries from Temu Decrease / price-increase (match by normalized SKU, or create).
+     * lmp_entries = array of {price, delivery, link, ignored, source_sku?}.
+     * Entries are written back to each source_sku's temu_lmp row (Sku Link LMP group),
+     * so edit/delete on /price-increase and /temu-decrease hit the same source.
      */
     public function saveTemuLmp(Request $request)
     {
@@ -4787,7 +4798,15 @@ class TemuController extends Controller
                 return response()->json(['success' => false, 'message' => 'lmp_entries must be an array'], 422);
             }
 
-            $lmpEntries = [];
+            $normalizeSku = static function ($s) {
+                $s = strtoupper(trim((string) $s));
+                $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+                $s = preg_replace('/\s+/', ' ', $s);
+
+                return $s;
+            };
+
+            $bySource = [];
             foreach ($rawEntries as $e) {
                 if (! is_array($e)) {
                     continue;
@@ -4800,25 +4819,57 @@ class TemuController extends Controller
                     : null;
                 $delivery = ($deliveryRaw !== null && (float) $deliveryRaw > 0) ? (float) $deliveryRaw : 0.0;
                 $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim((string) $e['link']) : null;
-                // Temu product URLs can exceed 2k with tracking params — store full link (text column).
                 if ($link !== null && strlen($link) > 10000) {
                     $link = substr($link, 0, 10000);
                 }
                 $ignored = filter_var($e['ignored'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                if ($price !== null || $link !== null || $delivery > 0) {
-                    $lmpEntries[] = [
-                        'price' => $price,
-                        'delivery' => $delivery,
-                        'link' => $link,
-                        'ignored' => $ignored,
-                    ];
+                if ($price === null && $link === null && $delivery <= 0) {
+                    continue;
                 }
+                $sourceSku = trim((string) ($e['source_sku'] ?? $sku));
+                if ($sourceSku === '') {
+                    $sourceSku = $sku;
+                }
+                $sourceKey = $normalizeSku($sourceSku);
+                if (! isset($bySource[$sourceKey])) {
+                    $bySource[$sourceKey] = ['sku' => $sourceSku, 'entries' => []];
+                }
+                $bySource[$sourceKey]['entries'][] = [
+                    'price' => $price,
+                    'delivery' => $delivery,
+                    'link' => $link,
+                    'ignored' => $ignored,
+                ];
             }
 
-            $activeEntries = array_values(array_filter($lmpEntries, static function ($e) {
+            // Full replace across Sku Link LMP group — sources with no remaining entries are cleared
+            // so deletes from a linked SKU do not reappear after refresh.
+            $groupSkus = $this->linkedLmpSkusForProduct($sku);
+            if ($groupSkus === []) {
+                $groupSkus = [$sku];
+            }
+            $writeKeys = [];
+            foreach ($groupSkus as $memberSku) {
+                $writeKeys[$normalizeSku($memberSku)] = $memberSku;
+            }
+            foreach ($bySource as $key => $bucket) {
+                $writeKeys[$key] = $bucket['sku'];
+            }
+
+            $totalCount = 0;
+            foreach ($writeKeys as $key => $displaySku) {
+                $entries = $bySource[$key]['entries'] ?? [];
+                $this->upsertTemuLmpEntriesForSku($displaySku, $entries, $normalizeSku);
+                $totalCount += count($entries);
+            }
+
+            $merged = [];
+            foreach ($bySource as $bucket) {
+                $merged = array_merge($merged, $bucket['entries']);
+            }
+            $activeEntries = array_values(array_filter($merged, static function ($e) {
                 return empty($e['ignored']);
             }));
-            // L1 / stored lmp = Price + Delivery (Delivery defaults to 0)
             $effectivePrices = [];
             foreach ($activeEntries as $e) {
                 $eff = $this->temuLmpEntryEffectivePrice($e);
@@ -4827,59 +4878,12 @@ class TemuController extends Controller
                 }
             }
             $firstPrice = count($effectivePrices) > 0 ? min($effectivePrices) : null;
-            $firstLink = null;
-            if ($firstPrice !== null) {
-                foreach ($activeEntries as $e) {
-                    $eff = $this->temuLmpEntryEffectivePrice($e);
-                    if ($eff !== null && abs($eff - (float) $firstPrice) < 0.00001) {
-                        $firstLink = $e['link'] ?? null;
-                        break;
-                    }
-                }
-            }
-
-            $normalizeSku = static function ($s) {
-                $s = strtoupper(trim((string) $s));
-                $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
-                $s = preg_replace('/\s+/', ' ', $s);
-
-                return $s;
-            };
-
-            $targetNormalized = $normalizeSku($sku);
-            $existing = TemuLmp::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                ->first();
-            if (! $existing) {
-                $existing = TemuLmp::query()
-                    ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
-                    ->get()
-                    ->first(static function ($row) use ($normalizeSku, $targetNormalized) {
-                        return $normalizeSku($row->sku) === $targetNormalized;
-                    });
-            }
-
-            // Clear legacy columns (lmp_2, lmp_link_2) so deleted entries don't reappear on refresh
-            $payload = [
-                'sku' => $sku,
-                'lmp' => $firstPrice,
-                'lmp_link' => $firstLink,
-                'lmp_entries' => $lmpEntries,
-                'lmp_2' => null,
-                'lmp_link_2' => null,
-            ];
-
-            if ($existing) {
-                $existing->update($payload);
-            } else {
-                TemuLmp::create($payload);
-            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'LMP saved successfully',
                 'lmp' => $firstPrice,
-                'count' => count($lmpEntries),
+                'count' => $totalCount,
             ]);
         } catch (\Throwable $e) {
             Log::error('Temu LMP save error: ' . $e->getMessage(), [
@@ -4890,6 +4894,71 @@ class TemuController extends Controller
                 'success' => false,
                 'message' => 'Failed to save LMP: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Upsert one SKU's temu_lmp row (entries only for that source).
+     *
+     * @param  list<array{price: mixed, delivery?: float, link: mixed, ignored?: bool}>  $lmpEntries
+     * @param  callable(string): string  $normalizeSku
+     */
+    private function upsertTemuLmpEntriesForSku(string $sku, array $lmpEntries, callable $normalizeSku): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+
+        $activeEntries = array_values(array_filter($lmpEntries, static function ($e) {
+            return empty($e['ignored']);
+        }));
+        $effectivePrices = [];
+        foreach ($activeEntries as $e) {
+            $eff = $this->temuLmpEntryEffectivePrice($e);
+            if ($eff !== null) {
+                $effectivePrices[] = $eff;
+            }
+        }
+        $firstPrice = count($effectivePrices) > 0 ? min($effectivePrices) : null;
+        $firstLink = null;
+        if ($firstPrice !== null) {
+            foreach ($activeEntries as $e) {
+                $eff = $this->temuLmpEntryEffectivePrice($e);
+                if ($eff !== null && abs($eff - (float) $firstPrice) < 0.00001) {
+                    $firstLink = $e['link'] ?? null;
+                    break;
+                }
+            }
+        }
+
+        $targetNormalized = $normalizeSku($sku);
+        $existing = TemuLmp::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first();
+        if (! $existing) {
+            $existing = TemuLmp::query()
+                ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
+                ->whereRaw(
+                    'UPPER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(sku), CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?',
+                    [$targetNormalized]
+                )
+                ->first();
+        }
+
+        $payload = [
+            'sku' => $existing ? (string) $existing->sku : $sku,
+            'lmp' => $firstPrice,
+            'lmp_link' => $firstLink,
+            'lmp_entries' => $lmpEntries,
+            'lmp_2' => null,
+            'lmp_link_2' => null,
+        ];
+
+        if ($existing) {
+            $existing->update($payload);
+        } elseif (count($lmpEntries) > 0) {
+            TemuLmp::create(array_merge($payload, ['sku' => $sku]));
         }
     }
 
