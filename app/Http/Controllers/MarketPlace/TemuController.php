@@ -5709,6 +5709,10 @@ class TemuController extends Controller
         }
         $delivery = $entry['delivery'] ?? 0;
         $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+        // Temu LMP: default +$2.99 delivery when Price is below $27 (manual Delivery overrides)
+        if ($d <= 0 && $p < 27) {
+            $d = 2.99;
+        }
 
         return round($p + $d, 2);
     }

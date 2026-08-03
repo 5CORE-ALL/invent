@@ -2238,9 +2238,11 @@
                 .map(function(e) {
                     const p = e && e.price;
                     if (p === null || p === undefined || p === '' || isNaN(parseFloat(p))) return null;
+                    const base = parseFloat(p);
                     const d = parseFloat(e.delivery);
-                    const delivery = (!isNaN(d) && d > 0) ? d : 0;
-                    return parseFloat(p) + delivery;
+                    let delivery = (!isNaN(d) && d > 0) ? d : 0;
+                    if (delivery <= 0 && base < 27) delivery = 2.99;
+                    return base + delivery;
                 })
                 .filter(function(p) { return p !== null && p > 0; });
             if (prices.length > 0) return Math.min.apply(null, prices);
@@ -4420,8 +4422,11 @@
             const num = val !== '' && val != null ? parseFloat(val) : NaN;
             if (isNaN(num)) return null;
             const dVal = $(tr).find('.lmp-delivery').val();
-            const delivery = dVal !== '' && dVal != null ? parseFloat(dVal) : 0;
-            return num + (isNaN(delivery) || delivery < 0 ? 0 : delivery);
+            let delivery = dVal !== '' && dVal != null ? parseFloat(dVal) : 0;
+            if (isNaN(delivery) || delivery < 0) delivery = 0;
+            // Default +$2.99 when Price < $27
+            if (delivery <= 0 && num < 27) delivery = 2.99;
+            return num + delivery;
         }
         function appendLmpTableRow(tbody, price, delivery, link) {
             const tr = $('<tr class="lmp-entry-row">' +

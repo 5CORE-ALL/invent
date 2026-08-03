@@ -5144,7 +5144,7 @@
                     visible: false,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Direct Temu LMP (raw competitor price — no Recovery calculation)",
+                    headerTooltip: "Temu LMP L1 = Price + Del (Del defaults to $2.99 when Price &lt; $27)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
@@ -8733,11 +8733,18 @@
             temuList.forEach(function(temu) {
                 const price = parseFloat(temu.price) || 0;
                 if (price <= 0) return;
+                // Temu Del: use saved delivery, else default $2.99 when Price < $27
+                let ship = parseFloat(temu.delivery != null ? temu.delivery : temu.shipping_cost);
+                if (isNaN(ship) || ship < 0) ship = 0;
+                if (ship <= 0 && price < 27) ship = 2.99;
+                const totalPrice = parseFloat(temu.total_price);
                 rows.push({
                     channel: 'temu',
                     id: temu.id,
                     sku: sku,
                     price: price,
+                    shipCost: ship,
+                    totalPrice: (!isNaN(totalPrice) && totalPrice > 0) ? totalPrice : (price + ship),
                     ignored: !!temu.ignored,
                     link: temu.link || temu.product_link || '',
                     extId: '',
@@ -8746,7 +8753,7 @@
                     rating: null,
                     reviews: null,
                     old_price: null,
-                    delivery: '',
+                    delivery: ship,
                     source: 'Temu',
                 });
             });

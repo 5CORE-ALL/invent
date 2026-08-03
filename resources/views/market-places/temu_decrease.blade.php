@@ -5022,9 +5022,12 @@
                             .map(function(e) {
                                 const p = e.price;
                                 if (p === null || p === undefined || p === '' || isNaN(parseFloat(p))) return null;
+                                const base = parseFloat(p);
                                 const d = parseFloat(e.delivery);
-                                const delivery = (!isNaN(d) && d > 0) ? d : 0;
-                                return parseFloat(p) + delivery;
+                                let delivery = (!isNaN(d) && d > 0) ? d : 0;
+                                // Default +$2.99 when Price < $27
+                                if (delivery <= 0 && base < 27) delivery = 2.99;
+                                return base + delivery;
                             })
                             .filter(function(p) { return p !== null; });
                         let lowest = prices.length > 0 ? Math.min.apply(null, prices) : null;
@@ -6276,10 +6279,18 @@
                 }
             }
             entries.forEach(function(entry) {
+                const p = entry.price !== undefined && entry.price !== null ? parseFloat(entry.price) : NaN;
+                let del = entry.delivery !== undefined && entry.delivery !== null && entry.delivery !== ''
+                    ? entry.delivery
+                    : '';
+                // Prefill default Del $2.99 when Price < $27 and no saved delivery
+                if ((del === '' || del == null || !(parseFloat(del) > 0)) && !isNaN(p) && p > 0 && p < 27) {
+                    del = 2.99;
+                }
                 appendLmpTableRow(
                     tbody,
                     entry.price !== undefined && entry.price !== null ? entry.price : '',
-                    entry.delivery !== undefined && entry.delivery !== null ? entry.delivery : '',
+                    del,
                     entry.link || '',
                     !!entry.ignored,
                     false
@@ -6338,14 +6349,16 @@
             .on('input.lmpActions', '.lmp-price, .lmp-delivery, .lmp-link', function() {
                 scheduleLmpListLayout();
             });
-        /** Effective LMP for sorting / L1 = Price + Delivery. */
+        /** Effective LMP for sorting / L1 = Price + Delivery (default Del $2.99 when Price < $27). */
         function getLmpEntryPrice(tr) {
             const val = $(tr).find('.lmp-price').val();
             const num = val !== '' && val != null ? parseFloat(val) : NaN;
             if (isNaN(num)) return null;
             const dVal = $(tr).find('.lmp-delivery').val();
-            const delivery = dVal !== '' && dVal != null ? parseFloat(dVal) : 0;
-            return num + (isNaN(delivery) || delivery < 0 ? 0 : delivery);
+            let delivery = dVal !== '' && dVal != null ? parseFloat(dVal) : 0;
+            if (isNaN(delivery) || delivery < 0) delivery = 0;
+            if (delivery <= 0 && num < 27) delivery = 2.99;
+            return num + delivery;
         }
         /** Sort competitor rows by price, insert blue 5 Core row at our price position, renumber + LOWEST. */
         function updateLmpListLayout() {

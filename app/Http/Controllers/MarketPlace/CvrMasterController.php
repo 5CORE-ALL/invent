@@ -7173,6 +7173,34 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Effective Temu LMP = Price + Delivery.
+     * Default Delivery = $2.99 when Price is below $27 (manual delivery overrides).
+     *
+     * @param  array{price?: mixed, delivery?: mixed}|null  $entry
+     */
+    private function temuLmpEntryEffectivePriceForCvr(?array $entry): ?float
+    {
+        if (! is_array($entry)) {
+            return null;
+        }
+        $price = $entry['price'] ?? null;
+        if ($price === null || $price === '' || ! is_numeric($price)) {
+            return null;
+        }
+        $p = (float) $price;
+        if (! ($p > 0) && $p !== 0.0) {
+            return null;
+        }
+        $delivery = $entry['delivery'] ?? 0;
+        $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
+        if ($d <= 0 && $p < 27) {
+            $d = 2.99;
+        }
+
+        return round($p + $d, 2);
+    }
+
+    /**
      * Temu LMP entries from a temu_lmp row — same logic as TemuController::extractTemuLmpEntries.
      *
      * @param  TemuLmp|object|null  $temuLmpRow
@@ -7354,14 +7382,8 @@ class CvrMasterController extends Controller
             if (! empty($entry['ignored'])) {
                 continue;
             }
-            $p = $entry['price'] ?? null;
-            if ($p === null || $p === '' || ! is_numeric($p)) {
-                continue;
-            }
-            $delivery = $entry['delivery'] ?? 0;
-            $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
-            $eff = round((float) $p + $d, 2);
-            if ($eff > 0) {
+            $eff = $this->temuLmpEntryEffectivePriceForCvr($entry);
+            if ($eff !== null && $eff > 0) {
                 $prices[] = $eff;
             }
         }
@@ -7371,14 +7393,8 @@ class CvrMasterController extends Controller
                 if (! empty($entry['ignored'])) {
                     continue;
                 }
-                $p = $entry['price'] ?? null;
-                if ($p === null || $p === '' || ! is_numeric($p)) {
-                    continue;
-                }
-                $delivery = $entry['delivery'] ?? 0;
-                $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
-                $eff = round((float) $p + $d, 2);
-                if (abs($eff - (float) $minPrice) < 0.00001) {
+                $eff = $this->temuLmpEntryEffectivePriceForCvr($entry);
+                if ($eff !== null && abs($eff - (float) $minPrice) < 0.00001) {
                     $l1Link = $entry['link'] ?? null;
                     break;
                 }
@@ -7418,15 +7434,22 @@ class CvrMasterController extends Controller
                 $price = isset($entry['price']) && $entry['price'] !== '' ? floatval($entry['price']) : 0;
                 $deliveryRaw = $entry['delivery'] ?? 0;
                 $delivery = (is_numeric($deliveryRaw) && (float) $deliveryRaw > 0) ? (float) $deliveryRaw : 0.0;
+                // Default Temu Del $2.99 when Price < $27
+                if ($delivery <= 0 && $price > 0 && $price < 27) {
+                    $delivery = 2.99;
+                }
                 $effective = round($price + $delivery, 2);
-                if ($effective <= 0) {
+                if ($price <= 0) {
                     continue;
                 }
                 $competitors[] = [
                     'id' => 'temu-' . ($idx + 1),
-                    'price' => $effective,
+                    // Keep item Price as base; Del/P+S use delivery separately in the LMP drawer
+                    'price' => round($price, 2),
                     'base_price' => round($price, 2),
                     'delivery' => $delivery,
+                    'shipping_cost' => $delivery,
+                    'total_price' => $effective,
                     'ignored' => ! empty($entry['ignored']),
                     'product_link' => $entry['link'] ?? null,
                     'link' => $entry['link'] ?? null,
@@ -7498,26 +7521,17 @@ class CvrMasterController extends Controller
                 $active = array_values(array_filter($entries, fn ($e) => empty($e['ignored'])));
                 $effectivePrices = [];
                 foreach ($active as $e) {
-                    $p = $e['price'] ?? null;
-                    if ($p === null || $p === '' || ! is_numeric($p)) {
-                        continue;
+                    $eff = $this->temuLmpEntryEffectivePriceForCvr($e);
+                    if ($eff !== null) {
+                        $effectivePrices[] = $eff;
                     }
-                    $delivery = $e['delivery'] ?? 0;
-                    $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
-                    $effectivePrices[] = round((float) $p + $d, 2);
                 }
                 $firstPrice = count($effectivePrices) > 0 ? min($effectivePrices) : null;
                 $firstLink = null;
                 if ($firstPrice !== null) {
                     foreach ($active as $e) {
-                        $p = $e['price'] ?? null;
-                        if ($p === null || $p === '' || ! is_numeric($p)) {
-                            continue;
-                        }
-                        $delivery = $e['delivery'] ?? 0;
-                        $d = (is_numeric($delivery) && (float) $delivery > 0) ? (float) $delivery : 0.0;
-                        $eff = round((float) $p + $d, 2);
-                        if (abs($eff - (float) $firstPrice) < 0.00001) {
+                        $eff = $this->temuLmpEntryEffectivePriceForCvr($e);
+                        if ($eff !== null && abs($eff - (float) $firstPrice) < 0.00001) {
                             $firstLink = $e['link'] ?? null;
                             break;
                         }
