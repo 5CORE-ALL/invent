@@ -3611,6 +3611,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
     Route::get('/cvr-master-amazon-sprice-table', [CvrMasterController::class, 'getAmazonSpriceTableData'])->name('cvr.master.amazon.sprice.table');
     Route::get('/cvr-master-chart-data', [CvrMasterController::class, 'getPricingMasterChartData'])->name('cvr.master.chart.data');
+    Route::get('/cvr-master-channel-price-chart', [CvrMasterController::class, 'getChannelPriceChartData'])->name('cvr.master.channel.price.chart');
     Route::post('/cvr-master-save-suggested-data', [CvrMasterController::class, 'saveSuggestedData'])->name('cvr.master.save.suggested');
     Route::post('/cvr-master-push-price', [CvrMasterController::class, 'pushPriceToAmazon'])->name('cvr.master.push.price');
     Route::get('/cvr-master-siblings', [CvrMasterController::class, 'getSiblingSkus'])->name('cvr.master.siblings');

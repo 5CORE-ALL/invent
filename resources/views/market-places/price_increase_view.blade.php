@@ -148,6 +148,16 @@
             color: #475569;
             white-space: nowrap;
         }
+        #ovl30DetailsModal .ovl30-stat.pricing-master-chart-link {
+            cursor: pointer;
+            user-select: none;
+            transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        #ovl30DetailsModal .ovl30-stat.pricing-master-chart-link:hover {
+            border-color: #94a3b8;
+            background: #f8fafc;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
         #ovl30DetailsModal .ovl30-stat strong {
             color: #0f172a;
             font-weight: 700;
@@ -1564,9 +1574,21 @@
                             <span id="modalSkuName" class="ovl30-header-sku text-truncate">SKU</span>
                         </div>
                         <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="ovl30-stat">INV <strong id="modal-header-inv">0</strong></span>
-                            <span class="ovl30-stat">L30 <strong id="modal-header-l30">0</strong></span>
-                            <span class="ovl30-stat">Dil% <strong id="modal-header-dil">0%</strong></span>
+                            <span class="ovl30-stat pricing-master-chart-link" id="modal-header-inv-badge"
+                                data-metric="inv" data-sku="" data-parent=""
+                                title="View Inv graph (Rolling L30)">
+                                INV <strong id="modal-header-inv">0</strong>
+                            </span>
+                            <span class="ovl30-stat pricing-master-chart-link" id="modal-header-l30-badge"
+                                data-metric="ov_l30" data-sku="" data-parent=""
+                                title="View OV L30 graph (Rolling L30)">
+                                L30 <strong id="modal-header-l30">0</strong>
+                            </span>
+                            <span class="ovl30-stat pricing-master-chart-link" id="modal-header-dil-badge"
+                                data-metric="dil" data-sku="" data-parent=""
+                                title="View DIL history (Rolling L30)">
+                                Dil% <strong id="modal-header-dil">0%</strong>
+                            </span>
                             <span class="ovl30-tool-group py-0">
                                 <label for="modal-group-select" class="mb-0">Group</label>
                                 <select id="modal-group-select" class="form-select form-select-sm" style="width: auto; min-width: 64px; height: 28px; font-size: 12px;"
@@ -1850,6 +1872,21 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-2">
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">
+                        <label class="small text-muted mb-0 d-flex align-items-center gap-1" for="ovl30PushHistoryDays">
+                            Days
+                            <select id="ovl30PushHistoryDays" class="form-select form-select-sm" style="width:auto;min-width:7rem;">
+                                <option value="1">Today</option>
+                                <option value="7" selected>Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="0">All</option>
+                            </select>
+                        </label>
+                        <span class="small text-muted" id="ovl30PushHistoryHint" title="Same-day rows where History date = SPRICE edit date = Push date are hidden">
+                            Same-day edit+push rows hidden
+                        </span>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered table-hover mb-0">
                             <thead class="table-light">
@@ -2900,8 +2937,22 @@
             }
 
             $('#modalSkuName').text(sku);
-            // Wire totals-row Price / CVR chart dots to this SKU
-            $('#modal-price-chart-dot, #modal-cvr-chart-dot').attr('data-sku', sku || '');
+            // Wire totals-row Price / CVR chart dots + header INV/L30/Dil badges to this SKU
+            const chartSku = String(sku || '').trim();
+            const isParentSku = chartSku.toUpperCase().indexOf('PARENT ') === 0;
+            const chartParent = isParentSku ? chartSku.replace(/^PARENT\s+/i, '').trim() : '';
+            $('#modal-price-chart-dot, #modal-cvr-chart-dot')
+                .attr('data-sku', chartSku)
+                .attr('data-parent', chartParent);
+            $('#modal-header-inv-badge, #modal-header-l30-badge, #modal-header-dil-badge')
+                .attr('data-sku', chartSku)
+                .attr('data-parent', chartParent)
+                .attr('title', function() {
+                    const metric = $(this).attr('data-metric') || '';
+                    const labels = { inv: 'Inv', ov_l30: 'OV L30', dil: 'DIL' };
+                    const label = labels[metric] || metric;
+                    return 'View ' + label + ' graph' + (chartParent ? ' (Parent, Rolling L30)' : ' (Rolling L30)');
+                });
             syncModalGroupSelects('');
             // Restore per-SKU siblings preference (saved when user ticks Siblings for this SKU)
             $('#modal-siblings-apply-cb').prop('checked', getSiblingsPrefForSku(sku));
@@ -4006,16 +4057,18 @@
                         priceColorStyle = 'color:#006400;font-weight:700;';
                     }
                 }
-                // Rolling history dots — same chart modal as main-table Price / CVR columns
+                // Rolling history dots — channel Price uses per-marketplace history (not blended avg_price)
                 const chartSkuEsc = String(getModalPrimarySku() || item.sku || '')
                     .replace(/"/g, '&quot;');
-                const priceChartMetric = mpLower === 'amazon' ? 'amz_price' : 'price';
-                const priceChartDot = (isListed && chartSkuEsc)
-                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="' + priceChartMetric
-                        + '" data-sku="' + chartSkuEsc
-                        + '" style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"'
-                        + ' title="View ' + (priceChartMetric === 'amz_price' ? 'Amz Price' : 'Price')
-                        + ' history (Rolling L30)"></i>'
+                const chartMpEsc = String(item.marketplace || '')
+                    .replace(/"/g, '&quot;');
+                const priceChartDot = (isListed && chartSkuEsc && displayPrice > 0)
+                    ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="channel_price"'
+                        + ' data-sku="' + chartSkuEsc
+                        + '" data-marketplace="' + chartMpEsc
+                        + '" data-current-price="' + displayPrice.toFixed(2) + '"'
+                        + ' style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"'
+                        + ' title="View ' + chartMpEsc + ' Price history (Rolling L30)"></i>'
                     : '';
                 const cvrChartDot = (isListed && chartSkuEsc && !viewsMissing)
                     ? ' <i class="fas fa-circle pricing-master-chart-link ms-1" data-metric="cvr"'
@@ -8129,10 +8182,96 @@
             });
         }
 
+        /** Parse history/push/edit timestamps to YYYY-MM-DD (dynamic calendar day). */
+        function ovl30HistoryDayKey(raw) {
+            if (raw == null || raw === '') return '';
+            const s = String(raw).trim();
+            // Already "Y-m-d ..." or ISO
+            const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (m) return m[1];
+            const d = new Date(s);
+            if (isNaN(d.getTime())) return '';
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return y + '-' + mo + '-' + day;
+        }
+
+        function ovl30HistoryDaysAgoKey(daysAgo) {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() - (parseInt(daysAgo, 10) || 0));
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return y + '-' + mo + '-' + day;
+        }
+
+        /**
+         * Filter push history:
+         * 1) Hide rows when History day === SPRICE edit day === Push day (same calendar day).
+         * 2) Keep one row per marketplace+day (newest first — history is already newest-first).
+         * 3) Optional dynamic day-range (Today / 7 / 30 / 90 / All).
+         */
+        function filterOvl30PushHistory(history, opts) {
+            opts = opts || {};
+            const list = Array.isArray(history) ? history.slice() : [];
+            const pushedDay = ovl30HistoryDayKey(opts.pushedAtIso || opts.pushedAt || '');
+            const editedDay = ovl30HistoryDayKey(opts.spriceEditedAt || '');
+            const days = parseInt(opts.days, 10);
+            const cutoff = (isFinite(days) && days > 0) ? ovl30HistoryDaysAgoKey(days - 1) : null;
+            const seenDayMp = {};
+
+            return list.filter(function(h) {
+                const day = ovl30HistoryDayKey(h && h.at);
+                if (!day) return true;
+
+                // Dynamic day window
+                if (cutoff && day < cutoff) return false;
+
+                // Prefer per-history-row meta (All-channels view); fall back to modal-level meta
+                const rowPushedDay = ovl30HistoryDayKey(h.pushed_at_iso || opts.pushedAtIso || opts.pushedAt || '') || pushedDay;
+                const rowEditedDay = ovl30HistoryDayKey(h.sprice_edited_at || opts.spriceEditedAt || '') || editedDay;
+                const rowPushedPrice = (h.pushed_price != null && h.pushed_price !== '')
+                    ? parseFloat(h.pushed_price)
+                    : parseFloat(opts.pushedPrice);
+
+                // Hide when History date, SPRICE edit date, and Push date are the same day
+                if (day && rowPushedDay && rowEditedDay && day === rowPushedDay && day === rowEditedDay) {
+                    return false;
+                }
+                // Hide current By push when same day + same price (redundant with By column)
+                const histPrice = parseFloat(h && h.price);
+                if (
+                    day && rowPushedDay && day === rowPushedDay
+                    && isFinite(rowPushedPrice) && isFinite(histPrice)
+                    && Math.abs(rowPushedPrice - histPrice) < 0.005
+                ) {
+                    return false;
+                }
+
+                // One visible row per marketplace + calendar day
+                const mpKey = String((h && h.marketplace) || opts.fallbackMarketplace || '').toLowerCase();
+                const dedupeKey = mpKey + '|' + day;
+                if (seenDayMp[dedupeKey]) return false;
+                seenDayMp[dedupeKey] = true;
+                return true;
+            });
+        }
+
+        let ovl30PushHistoryState = {
+            marketplaceLabel: '',
+            sku: '',
+            history: [],
+            pushedAtIso: null,
+            spriceEditedAt: null,
+            pushedPrice: null,
+        };
+
         function renderOvl30PushHistoryRows(history, fallbackMarketplace) {
             const mp = String(fallbackMarketplace || '');
             if (!history || !history.length) {
-                return '<tr><td colspan="4" class="text-center text-muted py-3">No push history yet</td></tr>';
+                return '<tr><td colspan="4" class="text-center text-muted py-3">No push history for this range</td></tr>';
             }
             let html = '';
             history.forEach(function(h) {
@@ -8149,13 +8288,40 @@
             return html;
         }
 
-        function showOvl30PushHistoryModal(marketplaceLabel, sku, history) {
-            $('#ovl30PushHistoryMarketplace').text(marketplaceLabel || 'Channel');
-            $('#ovl30PushHistorySku').text(sku || '-');
-            $('#ovl30PushHistoryBody').html(renderOvl30PushHistoryRows(history, marketplaceLabel));
+        function refreshOvl30PushHistoryBody() {
+            const days = parseInt($('#ovl30PushHistoryDays').val(), 10);
+            const filtered = filterOvl30PushHistory(ovl30PushHistoryState.history, {
+                days: isFinite(days) ? days : 0,
+                pushedAtIso: ovl30PushHistoryState.pushedAtIso,
+                spriceEditedAt: ovl30PushHistoryState.spriceEditedAt,
+                pushedPrice: ovl30PushHistoryState.pushedPrice,
+                fallbackMarketplace: ovl30PushHistoryState.marketplaceLabel,
+            });
+            $('#ovl30PushHistoryBody').html(
+                renderOvl30PushHistoryRows(filtered, ovl30PushHistoryState.marketplaceLabel)
+            );
+        }
+
+        function showOvl30PushHistoryModal(marketplaceLabel, sku, history, meta) {
+            meta = meta || {};
+            ovl30PushHistoryState = {
+                marketplaceLabel: marketplaceLabel || 'Channel',
+                sku: sku || '-',
+                history: Array.isArray(history) ? history : [],
+                pushedAtIso: meta.pushedAtIso || meta.pushed_at_iso || null,
+                spriceEditedAt: meta.spriceEditedAt || meta.sprice_edited_at || null,
+                pushedPrice: meta.pushedPrice != null ? meta.pushedPrice : meta.pushed_price,
+            };
+            $('#ovl30PushHistoryMarketplace').text(ovl30PushHistoryState.marketplaceLabel);
+            $('#ovl30PushHistorySku').text(ovl30PushHistoryState.sku);
+            refreshOvl30PushHistoryBody();
             const el = document.getElementById('ovl30PushHistoryModal');
             if (el) bootstrap.Modal.getOrCreateInstance(el).show();
         }
+
+        $(document).on('change', '#ovl30PushHistoryDays', function() {
+            refreshOvl30PushHistoryBody();
+        });
 
         function openOvl30PushHistory(marketplace) {
             const mp = String(marketplace || '');
@@ -8164,7 +8330,11 @@
                 return String(r.marketplace || '') === mp;
             });
             const history = (item && Array.isArray(item.push_history)) ? item.push_history : [];
-            showOvl30PushHistoryModal(mp || 'Channel', sku, history);
+            showOvl30PushHistoryModal(mp || 'Channel', sku, history, {
+                pushedAtIso: item ? (item.pushed_at_iso || item.pushed_at || null) : null,
+                spriceEditedAt: item ? (item.sprice_edited_at || null) : null,
+                pushedPrice: item ? item.pushed_price : null,
+            });
         }
 
         function openOuterSkuPushHistory(sku, $btn) {
@@ -11328,8 +11498,11 @@
         let currentPricingChartParent = '';
         let currentPricingChartAggregate = false;
         let currentPricingChartDays = 30;
-        let currentPricingChartSource = 'cvr'; // 'cvr' | 'temu_views'
-        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
+        let currentPricingChartSource = 'cvr'; // 'cvr' | 'temu_views' | 'channel_price'
+        let currentPricingChartMarketplace = '';
+        let currentPricingChartCurrentPrice = null;
+        let currentPricingChartCurrentValue = null;
+        const pricingChartMetricLabels = { inv: 'Inv', ov_l30: 'OV L30', price: 'Price', channel_price: 'Price', cvr: 'CVR', dil: 'DIL', amz_price: 'Amz Price', rating: 'Rating', total_views: 'Total Views', temu_views: 'Temu Views' };
         const pricingChartRangeLabel = (days) => 'L' + days;
 
         /**
@@ -11393,11 +11566,42 @@
         $(document).on('click', '.pricing-master-chart-link', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            const metric = $(e.currentTarget).attr('data-metric') || $(e.currentTarget).data('metric');
-            const sku = String($(e.currentTarget).attr('data-sku') || $(e.currentTarget).data('sku') || '').trim();
-            const parent = String($(e.currentTarget).attr('data-parent') || $(e.currentTarget).data('parent') || '').trim();
+            const $el = $(e.currentTarget);
+            const metric = $el.attr('data-metric') || $el.data('metric');
+            const sku = String($el.attr('data-sku') || $el.data('sku') || '').trim();
+            const parent = String($el.attr('data-parent') || $el.data('parent') || '').trim();
+            const marketplace = String($el.attr('data-marketplace') || $el.data('marketplace') || '').trim();
+            const currentPriceRaw = $el.attr('data-current-price') || $el.data('current-price');
             if (!metric) return;
+
+            // OV L30 per-channel Price dot → channel-specific history
+            if (metric === 'channel_price' || (marketplace && (metric === 'price' || metric === 'amz_price'))) {
+                if (!sku) { showToast('SKU not found for chart', 'error'); return; }
+                if (!marketplace) { showToast('Marketplace not found for price chart', 'error'); return; }
+                currentPricingChartSource = 'channel_price';
+                currentPricingChartMetric = 'channel_price';
+                currentPricingChartSku = sku;
+                currentPricingChartParent = '';
+                currentPricingChartAggregate = false;
+                currentPricingChartMarketplace = marketplace;
+                const cp = parseFloat(currentPriceRaw);
+                currentPricingChartCurrentPrice = (isFinite(cp) && cp > 0) ? cp : null;
+                currentPricingChartDays = 30;
+                $('#pricingMasterChartRangeSelect').val('30');
+                $('#pricingMasterChartModalTitle').text(
+                    'Price Increase - ' + sku + ' - ' + marketplace + ' Price (Rolling ' + pricingChartRangeLabel(30) + ')'
+                );
+                $('#pricingMasterChartContainer').hide();
+                $('#pricingMasterChartNoData').hide();
+                $('#pricingMasterChartLoading').show();
+                showPricingMasterChartModal();
+                return;
+            }
+
             currentPricingChartSource = 'cvr';
+            currentPricingChartMarketplace = '';
+            currentPricingChartCurrentPrice = null;
+            currentPricingChartCurrentValue = null;
             currentPricingChartAggregate = false;
             const isParentChart = parent !== '' || (sku.indexOf('PARENT ') === 0);
             const displayName = isParentChart ? (parent || sku.replace(/^PARENT\s+/i, '')) : sku;
@@ -11410,6 +11614,16 @@
                 currentPricingChartSku = sku;
             }
             currentPricingChartMetric = metric;
+            // Modal INV / L30 / Dil badges — overlay today's badge value on the chart
+            if (metric === 'inv' || metric === 'ov_l30' || metric === 'dil') {
+                let raw = $el.attr('data-current-value');
+                if (raw == null || raw === '') {
+                    const $strong = $el.find('strong').first();
+                    raw = $strong.length ? $strong.text() : '';
+                }
+                const n = parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
+                currentPricingChartCurrentValue = isFinite(n) ? n : null;
+            }
             currentPricingChartDays = 30;
             $('#pricingMasterChartRangeSelect').val('30');
             const label = pricingChartMetricLabels[metric] || metric;
@@ -11486,6 +11700,37 @@
                 return;
             }
 
+            // Per-channel Price history (OV L30 modal Price column dots)
+            if (currentPricingChartSource === 'channel_price') {
+                const payload = {
+                    sku: currentPricingChartSku,
+                    marketplace: currentPricingChartMarketplace,
+                    days: currentPricingChartDays
+                };
+                if (currentPricingChartCurrentPrice != null) {
+                    payload.current_price = currentPricingChartCurrentPrice;
+                }
+                $.ajax({
+                    url: '/cvr-master-channel-price-chart',
+                    method: 'GET',
+                    data: payload,
+                    success: function(response) {
+                        $('#pricingMasterChartLoading').hide();
+                        if (response.success && response.data && response.data.length > 0) {
+                            $('#pricingMasterChartContainer').show();
+                            renderPricingMasterChart(response.data);
+                        } else {
+                            $('#pricingMasterChartNoData').show();
+                        }
+                    },
+                    error: function() {
+                        $('#pricingMasterChartLoading').hide();
+                        $('#pricingMasterChartNoData').show();
+                    }
+                });
+                return;
+            }
+
             const payload = { metric: currentPricingChartMetric, days: currentPricingChartDays };
             if (currentPricingChartAggregate) {
                 payload.aggregate = 1;
@@ -11493,6 +11738,12 @@
                 payload.parent = currentPricingChartParent;
             } else {
                 payload.sku = currentPricingChartSku;
+            }
+            if (currentPricingChartCurrentValue != null
+                && (currentPricingChartMetric === 'inv'
+                    || currentPricingChartMetric === 'ov_l30'
+                    || currentPricingChartMetric === 'dil')) {
+                payload.current_value = currentPricingChartCurrentValue;
             }
             $.ajax({
                 url: '/cvr-master-chart-data',
@@ -11522,17 +11773,41 @@
                 pricingMasterChartInstance = null;
             }
             const labels = data.map(d => d.date);
-            const values = data.map(d => parseFloat(d.value) || 0);
-            const dataMin = Math.min(...values);
-            const dataMax = Math.max(...values);
-            const sorted = [...values].sort((a, b) => a - b);
+            // Preserve nulls (days before first snapshot) — do not coerce to 0
+            const values = data.map(function(d) {
+                if (d.value === null || d.value === undefined || d.value === '') return null;
+                const n = parseFloat(d.value);
+                return isFinite(n) ? n : null;
+            });
+            const isPriceChart = currentPricingChartSource === 'channel_price'
+                || currentPricingChartMetric === 'price'
+                || currentPricingChartMetric === 'amz_price'
+                || currentPricingChartMetric === 'channel_price';
+            const numericValues = values.filter(function(v) {
+                if (v === null || !isFinite(v)) return false;
+                // Price charts: ignore placeholder 0s so MEDIAN/LOWEST stay real prices
+                if (isPriceChart && v <= 0) return false;
+                return true;
+            });
+            if (!numericValues.length) {
+                $('#pricingMasterChartContainer').hide();
+                $('#pricingMasterChartNoData').show();
+                return;
+            }
+            const dataMin = Math.min.apply(null, numericValues);
+            const dataMax = Math.max.apply(null, numericValues);
+            const sorted = numericValues.slice().sort(function(a, b) { return a - b; });
             const mid = Math.floor(sorted.length / 2);
             const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
             const range = dataMax - dataMin || 1;
             const yMin = Math.max(0, dataMin - range * 0.1);
             const yMax = dataMax + range * 0.1;
             const fmtVal = (v) => {
-                if (currentPricingChartMetric === 'price' || currentPricingChartMetric === 'amz_price') return '$' + (Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                if (v === null || v === undefined || !isFinite(Number(v))) return '';
+                // Prices: always show 2 decimals (never Math.round → "6")
+                if (isPriceChart) {
+                    return '$' + Number(v).toFixed(2);
+                }
                 if (currentPricingChartMetric === 'cvr' || currentPricingChartMetric === 'dil') return Number(v).toFixed(1) + '%';
                 if (currentPricingChartMetric === 'rating') return Number(v).toFixed(1);
                 if (currentPricingChartMetric === 'total_views' || currentPricingChartMetric === 'temu_views') {
@@ -11543,9 +11818,14 @@
             $('#pricingMasterChartHighest').text(fmtVal(dataMax)).css('color', '#dc3545');
             $('#pricingMasterChartMedian').text(fmtVal(median)).css('color', '#6c757d');
             $('#pricingMasterChartLowest').text(fmtVal(dataMin)).css('color', '#198754');
-            const dotColors = values.map((v, i) => {
-                if (i === 0) return '#6c757d';
-                return v > values[i - 1] ? '#28a745' : v < values[i - 1] ? '#dc3545' : '#6c757d';
+            const dotColors = values.map(function(v, i) {
+                if (v === null) return '#adb5bd';
+                let prev = null;
+                for (let j = i - 1; j >= 0; j--) {
+                    if (values[j] !== null) { prev = values[j]; break; }
+                }
+                if (prev === null) return '#6c757d';
+                return v > prev ? '#28a745' : v < prev ? '#dc3545' : '#6c757d';
             });
             const medianLinePlugin = {
                 id: 'pricingMedianLine',
@@ -11580,14 +11860,19 @@
                     ctx.textBaseline = 'bottom';
                     meta.data.forEach((point, i) => {
                         const val = dataset.data[i];
-                        const prev = i > 0 ? dataset.data[i - 1] : null;
-                        const changed = prev !== null && Number(val) !== Number(prev);
+                        if (val === null || val === undefined || !isFinite(Number(val))) return;
+                        let prev = null;
+                        for (let j = i - 1; j >= 0; j--) {
+                            const p = dataset.data[j];
+                            if (p !== null && p !== undefined && isFinite(Number(p))) { prev = Number(p); break; }
+                        }
+                        const changed = prev !== null && Number(val) !== prev;
                         const show = i === 0 || i === n - 1 || changed || (step === 1) || (i % step === 0);
                         if (!show) return;
                         const x = point.x;
                         const y = point.y;
                         const offsetY = (i % 2 === 0) ? -7 : -14;
-                        ctx.fillStyle = val === 0 ? '#198754' : val > 0 ? '#dc3545' : '#6c757d';
+                        ctx.fillStyle = Number(val) === 0 ? '#198754' : Number(val) > 0 ? '#dc3545' : '#6c757d';
                         ctx.fillText(fmtVal(val), x, y + offsetY);
                     });
                     ctx.restore();
@@ -11605,6 +11890,7 @@
                         borderWidth: 1.5,
                         fill: true,
                         tension: 0.3,
+                        spanGaps: true,
                         pointRadius: 3,
                         pointHoverRadius: 5,
                         pointBackgroundColor: dotColors,

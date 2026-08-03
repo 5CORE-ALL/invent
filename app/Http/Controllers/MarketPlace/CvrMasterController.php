@@ -4686,7 +4686,16 @@ class CvrMasterController extends Controller
         }
     }
 
-    private function fillDailyChartSeries(array $byDateKey, int $days): array
+    /**
+     * Build a calendar-day series for charts.
+     * - Days with no datapoint are null (not fake 0) — avoids LOWEST=0 artifacts
+     * - When $forwardFill is true, missing days after the first point keep last-known
+     * - When false (sparse snapshot metrics), only real datapoints are plotted
+     *
+     * @param  array<string, float|int>  $byDateKey
+     * @return list<array{date: string, value: float|null}>
+     */
+    private function fillDailyChartSeries(array $byDateKey, int $days, bool $forwardFill = true): array
     {
         $tz = 'America/Los_Angeles';
         $end = now($tz)->startOfDay();
@@ -4701,21 +4710,285 @@ class CvrMasterController extends Controller
         }
 
         $out = [];
-        $last = 0.0;
+        $last = null;
         $hasAny = false;
         for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
             $key = $d->toDateString();
             if (array_key_exists($key, $byDateKey)) {
                 $last = (float) $byDateKey[$key];
                 $hasAny = true;
+                $out[] = [
+                    'date' => $d->format('M j'),
+                    'value' => $last,
+                ];
+                continue;
             }
             $out[] = [
                 'date' => $d->format('M j'),
-                'value' => $hasAny || array_key_exists($key, $byDateKey) ? $last : 0.0,
+                'value' => ($forwardFill && $hasAny) ? (float) $last : null,
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Per-channel Price history for OV L30 modal Price dots.
+     * Uses each channel's SKU daily snapshot (not blended avg_price).
+     */
+    public function getChannelPriceChartData(Request $request)
+    {
+        $sku = preg_replace('/\s+/', ' ', trim((string) $request->input('sku', '')));
+        $marketplace = strtolower(preg_replace('/\s+/', '', (string) $request->input('marketplace', '')));
+        $days = (int) $request->input('days', 30);
+        $currentPrice = $request->input('current_price');
+
+        if ($sku === '' || $marketplace === '') {
+            return response()->json(['success' => false, 'message' => 'SKU and marketplace are required'], 400);
+        }
+
+        // Normalize aliases used by OV L30 breakdown rows
+        $marketplace = match ($marketplace) {
+            'ebay', 'ebayone' => 'ebay1',
+            'ebaytwo' => 'ebay2',
+            'ebaythree' => 'ebay3',
+            'macys' => 'macy',
+            'bestbuyusa' => 'bestbuy',
+            'shopifyb2c', 'sb2c' => 'shopify',
+            'shopifyb2b' => 'sb2b',
+            'purchasingpower', 'purchase' => 'ppower',
+            default => $marketplace,
+        };
+
+        if ($days > 0 && $days < 7) {
+            $days = 7;
+        }
+
+        $byDateKey = $this->loadChannelPriceHistoryByDate($sku, $marketplace, $days);
+
+        // Temu / Temu2 modal Price cells show base × 1.1765 — convert history to displayed Price
+        if (in_array($marketplace, ['temu', 'temu2'], true)) {
+            foreach ($byDateKey as $k => $v) {
+                if ((float) $v > 0) {
+                    $byDateKey[$k] = round((float) $v * 1.1765, 2);
+                }
+            }
+        }
+
+        // Overlay today's live / displayed channel price so chart matches the Price cell
+        $live = null;
+        if (is_numeric($currentPrice) && (float) $currentPrice > 0) {
+            $live = round((float) $currentPrice, 2);
+        } else {
+            $live = $this->resolveLiveChannelPriceForChart($sku, $marketplace);
+            if ($live !== null && in_array($marketplace, ['temu', 'temu2'], true)) {
+                $live = round($live * 1.1765, 2);
+            }
+        }
+        if ($live !== null && $live > 0) {
+            $byDateKey[now('America/Los_Angeles')->toDateString()] = $live;
+        }
+
+        if (empty($byDateKey)) {
+            return response()->json(['success' => true, 'data' => [], 'marketplace' => $marketplace]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->fillDailyChartSeries($byDateKey, $days),
+            'marketplace' => $marketplace,
+        ]);
+    }
+
+    /**
+     * @return array<string, float> date => price
+     */
+    private function loadChannelPriceHistoryByDate(string $sku, string $marketplace, int $days): array
+    {
+        $tz = 'America/Los_Angeles';
+        $end = now($tz)->toDateString();
+        $start = $days > 0
+            ? now($tz)->subDays($days)->toDateString()
+            : null;
+        $skuUpper = strtoupper(trim($sku));
+        $byDateKey = [];
+
+        $readJsonDaily = function (string $table, ?string $channel = null) use ($skuUpper, $start, $end, &$byDateKey) {
+            if (! Schema::hasTable($table)) {
+                return;
+            }
+            $q = DB::table($table)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                ->where('record_date', '<=', $end)
+                ->orderBy('record_date', 'asc');
+            if ($start) {
+                $q->where('record_date', '>=', $start);
+            }
+            if ($channel !== null && Schema::hasColumn($table, 'channel')) {
+                $q->where('channel', $channel);
+            }
+            foreach ($q->get() as $record) {
+                $data = is_array($record->daily_data ?? null)
+                    ? $record->daily_data
+                    : (json_decode($record->daily_data ?? '{}', true) ?: []);
+                $price = (float) ($data['price'] ?? $data['ebay_price'] ?? $data['base_price'] ?? $data['sprice'] ?? 0);
+                if ($price <= 0) {
+                    continue;
+                }
+                $byDateKey[Carbon::parse($record->record_date)->toDateString()] = round($price, 2);
+            }
+        };
+
+        switch ($marketplace) {
+            case 'amazon':
+                $readJsonDaily('amazon_sku_daily_data');
+                break;
+            case 'ebay1':
+                $readJsonDaily('ebay_sku_daily_data');
+                break;
+            case 'ebay2':
+                $readJsonDaily('ebay2_sku_daily_data');
+                break;
+            case 'fba':
+                $readJsonDaily('fba_sku_daily_data');
+                break;
+            case 'tiktok':
+                $readJsonDaily('tiktok_sku_daily_data', 'tiktok');
+                break;
+            case 'temu':
+            case 'temu2':
+                $table = 'temu_sku_daily_data';
+                // Temu2 history still lives in temu_sku_daily_data keyed by SKU; live overlay distinguishes channels
+                if (Schema::hasTable($table)) {
+                    $q = DB::table($table)
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])
+                        ->where('record_date', '<=', $end)
+                        ->orderBy('record_date', 'asc');
+                    if ($start) {
+                        $q->where('record_date', '>=', $start);
+                    }
+                    foreach ($q->get() as $record) {
+                        $price = (float) ($record->base_price ?? 0);
+                        if ($price <= 0) {
+                            continue;
+                        }
+                        $byDateKey[Carbon::parse($record->record_date)->toDateString()] = round($price, 2);
+                    }
+                }
+                break;
+            default:
+                // No SKU-daily history table for this channel yet
+                break;
+        }
+
+        return $byDateKey;
+    }
+
+    /**
+     * Today's live listing price for a channel (same sources as OV L30 breakdown Price).
+     */
+    private function resolveLiveChannelPriceForChart(string $sku, string $marketplace): ?float
+    {
+        $skuUpper = strtoupper(trim($sku));
+
+        try {
+            $price = 0.0;
+            switch ($marketplace) {
+                case 'amazon':
+                    $price = (float) (AmazonDatasheet::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    break;
+                case 'ebay1':
+                    $price = (float) (EbayMetric::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('ebay_price') ?? 0);
+                    break;
+                case 'ebay2':
+                    $price = (float) (Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('ebay_price') ?? 0);
+                    break;
+                case 'ebay3':
+                    if (Schema::hasTable('ebay_3_metrics')) {
+                        $price = (float) (DB::table('ebay_3_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('ebay_price') ?? 0);
+                    }
+                    break;
+                case 'temu':
+                    $price = (float) (TemuMetric::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('base_price') ?? 0);
+                    break;
+                case 'temu2':
+                    if (Schema::hasTable('temu2_metrics')) {
+                        $price = (float) (DB::table('temu2_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('base_price') ?? 0);
+                    }
+                    break;
+                case 'fba':
+                    if (Schema::hasTable('fba_prices')) {
+                        $price = (float) (DB::table('fba_prices')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'tiktok':
+                    if (Schema::hasTable('tiktok_metrics')) {
+                        $price = (float) (DB::table('tiktok_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'shopify':
+                case 'sb2b':
+                    if (Schema::hasTable('shopify_skus')) {
+                        $col = $marketplace === 'sb2b' && Schema::hasColumn('shopify_skus', 'b2b_price')
+                            ? 'b2b_price'
+                            : 'price';
+                        $price = (float) (DB::table('shopify_skus')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value($col) ?? 0);
+                    }
+                    break;
+                case 'doba':
+                    $price = (float) (DobaMetric::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('self_pick_price') ?? 0);
+                    break;
+                case 'shein':
+                    if (Schema::hasTable('shein_metrics')) {
+                        $price = (float) (DB::table('shein_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'reverb':
+                    if (Schema::hasTable('reverb_products')) {
+                        $price = (float) (DB::table('reverb_products')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'macy':
+                    if (Schema::hasTable('macy_products')) {
+                        $price = (float) (DB::table('macy_products')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'bestbuy':
+                    foreach (['bestbuy_products', 'bestbuy_usa_products', 'bestbuy_metrics'] as $bbTable) {
+                        if (Schema::hasTable($bbTable) && Schema::hasColumn($bbTable, 'price')) {
+                            $price = (float) (DB::table($bbTable)->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                            if ($price > 0) {
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                case 'topdawg':
+                    if (Schema::hasTable('topdawg_metrics') && Schema::hasColumn('topdawg_metrics', 'price')) {
+                        $price = (float) (DB::table('topdawg_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'ppower':
+                    if (Schema::hasTable('purchasing_power_metrics') && Schema::hasColumn('purchasing_power_metrics', 'price')) {
+                        $price = (float) (DB::table('purchasing_power_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+                case 'aliexpress':
+                    if (Schema::hasTable('aliexpress_metrics') && Schema::hasColumn('aliexpress_metrics', 'price')) {
+                        $price = (float) (DB::table('aliexpress_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
+                    }
+                    break;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('resolveLiveChannelPriceForChart failed', [
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+
+        return $price > 0 ? round($price, 2) : null;
     }
 
     /**
@@ -4766,7 +5039,8 @@ class CvrMasterController extends Controller
             if (empty($byDateKey)) {
                 return response()->json(['success' => true, 'data' => []]);
             }
-            $data = $this->fillDailyChartSeries($byDateKey, $days);
+            // Aggregate daily totals are dense enough to forward-fill
+            $data = $this->fillDailyChartSeries($byDateKey, $days, true);
             return response()->json(['success' => true, 'data' => $data]);
         }
 
@@ -4836,7 +5110,39 @@ class CvrMasterController extends Controller
             foreach ($rows as $row) {
                 $key = Carbon::parse($row->snapshot_date)->toDateString();
                 $val = $row->{$column};
-                $byDateKey[$key] = $val !== null ? (is_numeric($val) ? (float) $val : 0) : 0;
+                // Skip null snapshot cells — do not invent 0 (was causing fake LOWEST=0 on Inv)
+                if ($val === null || $val === '') {
+                    continue;
+                }
+                if (! is_numeric($val)) {
+                    continue;
+                }
+                $byDateKey[$key] = (float) $val;
+            }
+        }
+
+        // Overlay today's live INV / OV L30 / Dil so the chart matches the modal badges
+        if (! $isAggregate && in_array($metric, ['inv', 'ov_l30', 'dil'], true)) {
+            $todayKey = now('America/Los_Angeles')->toDateString();
+            $currentValue = $request->input('current_value');
+            if (is_numeric($currentValue)) {
+                $byDateKey[$todayKey] = round((float) $currentValue, 2);
+            } elseif (! $isParent) {
+                $skuForLive = preg_replace('/\s+/', ' ', trim((string) $skuRaw));
+                if ($skuForLive !== '') {
+                    $shopifyLive = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($skuForLive)])->first();
+                    if ($shopifyLive) {
+                        $liveInv = max(0, (int) ($shopifyLive->inv ?? 0));
+                        $liveL30 = max(0, (int) ($shopifyLive->quantity ?? 0));
+                        if ($metric === 'inv') {
+                            $byDateKey[$todayKey] = (float) $liveInv;
+                        } elseif ($metric === 'ov_l30') {
+                            $byDateKey[$todayKey] = (float) $liveL30;
+                        } elseif ($metric === 'dil' && $liveInv > 0) {
+                            $byDateKey[$todayKey] = round(($liveL30 / $liveInv) * 100, 2);
+                        }
+                    }
+                }
             }
         }
 
@@ -4844,7 +5150,9 @@ class CvrMasterController extends Controller
             return response()->json(['success' => true, 'data' => []]);
         }
 
-        $data = $this->fillDailyChartSeries($byDateKey, $days);
+        // SKU snapshots are sparse (saved on refresh) — do not invent a flat plateau
+        // across missing days (was showing fake Inv 323 for ~3 weeks).
+        $data = $this->fillDailyChartSeries($byDateKey, $days, false);
 
         return response()->json(['success' => true, 'data' => $data]);
     }
@@ -4960,6 +5268,10 @@ class CvrMasterController extends Controller
             $meta = $this->extractPushMeta($val);
             foreach ($meta['push_history'] as $h) {
                 $h['marketplace'] = $h['marketplace'] ?: $mpLabel;
+                // Per-row meta so the modal can hide same-day edit+push dynamically
+                $h['pushed_at_iso'] = $meta['pushed_at_iso'] ?? null;
+                $h['sprice_edited_at'] = $meta['sprice_edited_at'] ?? null;
+                $h['pushed_price'] = $meta['pushed_price'] ?? null;
                 $all[] = $h;
             }
         }
@@ -5122,6 +5434,8 @@ class CvrMasterController extends Controller
                 $value['SGPFT'] = $sgpft;
                 $value['SROI'] = $sroi;
                 $value['SPFT'] = $spft;
+                // Track SPRICE edit time (used by Push History same-day hide)
+                $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
 
                 // Temu / Temu2: keep lowercase keys used by /temu-decrease and /temu2-decrease
                 // TopDawg: lowercase sprice only (same as /topdawg-pricing)
@@ -5141,7 +5455,8 @@ class CvrMasterController extends Controller
                     $value['SPRICE'], $value['sprice'],
                     $value['SGPFT'], $value['sgpft'], $value['sgprft_percent'],
                     $value['SROI'], $value['sroi'], $value['sroi_percent'],
-                    $value['SPFT'], $value['spft']
+                    $value['SPFT'], $value['spft'],
+                    $value['SPRICE_EDITED_AT']
                 );
             }
             
@@ -5357,6 +5672,7 @@ class CvrMasterController extends Controller
         $value['SGPFT'] = $sgpft;
         $value['SROI'] = $sroi;
         $value['SPFT'] = $spft;
+        $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
 
         if ($marketplace === 'walmart' || $marketplace === 'topdawg') {
             unset($value['SPRICE']);
@@ -6901,20 +7217,35 @@ class CvrMasterController extends Controller
         }
 
         $pushedAtShort = null;
+        $pushedAtIso = null;
         if (!empty($val['SPRICE_PUSHED_AT'])) {
             try {
-                $pushedAtShort = Carbon::parse($val['SPRICE_PUSHED_AT'])->format('jM');
+                $pushedAtCarbon = Carbon::parse($val['SPRICE_PUSHED_AT']);
+                $pushedAtShort = $pushedAtCarbon->format('jM');
+                $pushedAtIso = $pushedAtCarbon->format('Y-m-d H:i:s');
             } catch (\Throwable $e) {
                 $pushedAtShort = null;
+                $pushedAtIso = is_string($val['SPRICE_PUSHED_AT']) ? $val['SPRICE_PUSHED_AT'] : null;
+            }
+        }
+
+        $spriceEditedAt = null;
+        if (!empty($val['SPRICE_EDITED_AT'])) {
+            try {
+                $spriceEditedAt = Carbon::parse($val['SPRICE_EDITED_AT'])->format('Y-m-d H:i:s');
+            } catch (\Throwable $e) {
+                $spriceEditedAt = is_string($val['SPRICE_EDITED_AT']) ? $val['SPRICE_EDITED_AT'] : null;
             }
         }
 
         return [
             'pushed_by' => $val['SPRICE_PUSHED_BY'] ?? null,
             'pushed_at' => $pushedAtShort,
+            'pushed_at_iso' => $pushedAtIso,
             'pushed_price' => isset($val['SPRICE_PUSHED_VALUE']) && is_numeric($val['SPRICE_PUSHED_VALUE'])
                 ? round(floatval($val['SPRICE_PUSHED_VALUE']), 2)
                 : null,
+            'sprice_edited_at' => $spriceEditedAt,
             'push_history' => $formatted,
         ];
     }
@@ -6939,10 +7270,15 @@ class CvrMasterController extends Controller
                 $row['pushed_at'] = $meta['pushed_at'];
             }
             $row['pushed_price'] = $meta['pushed_price'];
+            $row['pushed_at_iso'] = $meta['pushed_at_iso'] ?? null;
+            $row['sprice_edited_at'] = $meta['sprice_edited_at'] ?? null;
             // Ensure marketplace label is on each history row for display
             $hist = [];
             foreach ($meta['push_history'] as $h) {
                 $h['marketplace'] = $h['marketplace'] ?: ($row['marketplace'] ?? $mp);
+                $h['pushed_at_iso'] = $meta['pushed_at_iso'] ?? null;
+                $h['sprice_edited_at'] = $meta['sprice_edited_at'] ?? null;
+                $h['pushed_price'] = $meta['pushed_price'] ?? null;
                 $hist[] = $h;
             }
             $row['push_history'] = $hist;
