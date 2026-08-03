@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2CampaignReport;
-use App\Models\Temu2Pricing;
+use App\Models\Temu2Metric;
+use Illuminate\Support\Facades\Artisan;
 use App\Support\TemuGoodsIdHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -21,11 +22,11 @@ class Temu2VariationVerifyController extends Controller
 
     /**
      * Tabulator data for Temu 2 Ads Variation Verification.
-     * Listings: temu2_pricing
+     * Listings: temu2_metrics
      * Ads: temu2_campaign_reports (L30) — same goods_id → SKU → loose SKU match as Temu 2 Analytics
      *
      * Ads existing = in campaign AND inv >= 0
-     * Over = in campaign but NOT listed in temu2_pricing
+     * Over = in campaign but NOT listed in temu2_metrics
      */
     public function data(Request $request)
     {
@@ -108,8 +109,8 @@ class Temu2VariationVerifyController extends Controller
             ], $this->prefixAdFields('ad', $adRollup));
         }
 
-        $listingsCount = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
-        $lastPulledAt = Temu2Pricing::query()->max('updated_at');
+        $listingsCount = (int) Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+        $lastPulledAt = Temu2Metric::query()->max('updated_at');
         $campaignCount = $adLookup['campaign_count'] ?? 0;
 
         return response()->json([
@@ -130,18 +131,22 @@ class Temu2VariationVerifyController extends Controller
     }
 
     /**
-     * Temu 2 listings come from the temu2_pricing Excel upload (no API pull).
+     * Temu 2 listings come from the temu2_metrics Open API sync (app:fetch-temu2-metrics).
      */
     public function pullListings(Request $request)
     {
         try {
-            $count = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
-            $lastPulledAt = Temu2Pricing::query()->max('updated_at');
+            Artisan::call('app:fetch-temu2-metrics', ['--only' => 'skus']);
+            Artisan::call('app:fetch-temu2-metrics', ['--only' => 'goods']);
+            Artisan::call('app:fetch-temu2-metrics', ['--only' => 'price']);
+
+            $count = (int) Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $lastPulledAt = Temu2Metric::query()->max('updated_at');
 
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Temu 2 listings in temu2_pricing. Upload pricing on Temu 2 Analytics first.',
+                    'message' => 'No Temu 2 listings returned from API. Check TEMU2_* credentials / access token.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
@@ -149,7 +154,7 @@ class Temu2VariationVerifyController extends Controller
 
             return response()->json([
                 'status' => 200,
-                'message' => "Temu 2 listings ready. {$count} SKUs in temu2_pricing.",
+                'message' => "Temu 2 listings synced from API. {$count} SKUs in temu2_metrics.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
             ]);
@@ -198,7 +203,7 @@ class Temu2VariationVerifyController extends Controller
     {
         $set = [];
 
-        foreach (Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
+        foreach (Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $sku) {
             $norm = $this->normalizeSku($sku);
             if ($norm !== '') {
                 $set[$norm] = true;
@@ -212,7 +217,7 @@ class Temu2VariationVerifyController extends Controller
     }
 
     /**
-     * Normalized SKU → normalized goods_id from temu2_pricing.
+     * Normalized SKU → normalized goods_id from temu2_metrics.
      *
      * @return array<string, string>
      */
@@ -220,11 +225,11 @@ class Temu2VariationVerifyController extends Controller
     {
         $map = [];
 
-        if (! Schema::hasTable('temu2_pricing')) {
+        if (! Schema::hasTable('temu2_metrics')) {
             return $map;
         }
 
-        Temu2Pricing::query()
+        Temu2Metric::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->get(['sku', 'goods_id'])

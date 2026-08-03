@@ -233,10 +233,15 @@ class MarketplaceApiConfigService
                 'services.amazon_sp.refresh_token',
                 'services.amazon_sp.seller_id',
             ]),
-            'temu', 'temu2' => $this->filledAll([
+            'temu' => $this->filledAll([
                 'services.temu.app_key',
                 'services.temu.secret_key',
                 'services.temu.access_token',
+            ]),
+            'temu2' => $this->filledAll([
+                'services.temu2.app_key',
+                'services.temu2.secret_key',
+                'services.temu2.access_token',
             ]),
             'macy' => $this->filledAll([
                 'services.macy.client_id',

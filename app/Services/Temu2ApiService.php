@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Temu2Metric;
 use App\Models\Temu2Pricing;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -10,6 +11,106 @@ use Illuminate\Support\Facades\Schema;
 
 class Temu2ApiService extends TemuApiService
 {
+    protected function openApiRouterUrl(): string
+    {
+        return rtrim((string) config('services.temu2.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+    }
+
+    /**
+     * Sign with Temu 2 credentials only (never TEMU_*).
+     */
+    protected function generateSignValue($requestBody)
+    {
+        $appKey = trim((string) (config('services.temu2.app_key') ?? ''));
+        $appSecret = trim((string) (config('services.temu2.secret_key') ?? ''));
+        $accessToken = trim((string) (config('services.temu2.access_token') ?? ''));
+
+        $timestamp = time();
+        $params = [
+            'access_token' => $accessToken,
+            'app_key' => $appKey,
+            'timestamp' => (string) $timestamp,
+            'data_type' => 'JSON',
+        ];
+
+        $signParams = array_merge($params, $requestBody);
+        ksort($signParams);
+
+        $temp = '';
+        foreach ($signParams as $key => $value) {
+            if (is_array($value) || is_object($value)) {
+                $value = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            }
+            $temp .= $key.(string) $value;
+        }
+
+        $signStr = $appSecret.$temp.$appSecret;
+        $params['sign'] = strtoupper(md5($signStr));
+
+        return array_merge($params, $requestBody);
+    }
+
+    public function isConfigured(): bool
+    {
+        $appKey = trim((string) (config('services.temu2.app_key') ?? ''));
+        $secret = trim((string) (config('services.temu2.secret_key') ?? ''));
+        $token = trim((string) (config('services.temu2.access_token') ?? ''));
+
+        return $appKey !== '' && $secret !== '' && $token !== '';
+    }
+
+    public function testConnection(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Temu 2 API credentials missing. Set TEMU2_APP_KEY, TEMU2_SECRET_KEY, and TEMU2_ACCESS_TOKEN in .env.',
+            ];
+        }
+
+        $requestBody = [
+            'type' => 'bg.local.goods.list.query',
+            'goodsSearchType' => 1,
+            'goodsStatusFilterType' => 1,
+            'pageSize' => 5,
+            'pageNumber' => 1,
+        ];
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $url = rtrim((string) config('services.temu2.openapi_router_url', 'https://openapi-b-us.temu.com/openapi/router'), '/');
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->timeout(30)->post($url, $signedRequest);
+            $data = $response->json() ?? [];
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                $items = $data['result']['goodsList'] ?? [];
+                $total = (int) ($data['result']['total'] ?? count($items));
+
+                return [
+                    'success' => true,
+                    'message' => 'Connected to Temu 2 Open API. Sample page returned '.count($items)." item(s); total reported: {$total}.",
+                    'sample_count' => count($items),
+                ];
+            }
+
+            $errorMsg = (string) ($data['errorMsg'] ?? $response->body() ?: 'Unknown error');
+
+            return [
+                'success' => false,
+                'message' => trim(($data['errorCode'] ?? $response->status()).': '.$errorMsg),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Temu 2 connection test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
     protected function resolveTemuGoodsAndSku(string $identifier): array
     {
         $id = trim($identifier);
@@ -17,14 +118,14 @@ class Temu2ApiService extends TemuApiService
             return ['sku' => '', 'goods_id' => null];
         }
 
-        $row = Temu2Pricing::query()
+        $row = Temu2Metric::query()
             ->where('sku', $id)
             ->orWhere('sku', strtoupper($id))
             ->orWhere('sku', strtolower($id))
             ->first();
 
         if (! $row) {
-            $row = Temu2Pricing::query()
+            $row = Temu2Metric::query()
                 ->where('goods_id', $id)
                 ->orWhere('sku_id', $id)
                 ->first();
@@ -42,12 +143,12 @@ class Temu2ApiService extends TemuApiService
 
     public function getProductPrice(string $sku): ?float
     {
-        $price = Temu2Pricing::where('sku', trim($sku))->value('base_price');
+        $price = Temu2Metric::where('sku', trim($sku))->value('base_price');
         if ($price !== null && (float) $price > 0) {
             return (float) $price;
         }
 
-        return parent::getProductPrice($sku);
+        return null;
     }
 
     public function getGoodsIdBySku(string $sku): ?string
@@ -57,24 +158,12 @@ class Temu2ApiService extends TemuApiService
             return null;
         }
 
-        $goodsId = Temu2Pricing::where('sku', $sku)->value('goods_id');
+        $goodsId = Temu2Metric::where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->value('goods_id');
         if ($goodsId !== null && $goodsId !== '') {
             return (string) $goodsId;
-        }
-
-        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'goods_id')) {
-            $fromMetrics = DB::table('temu2_metrics')
-                ->where(function ($q) use ($sku) {
-                    $q->where('sku', $sku)
-                        ->orWhere('sku', strtoupper($sku))
-                        ->orWhere('sku', strtolower($sku));
-                })
-                ->whereNotNull('goods_id')
-                ->where('goods_id', '!=', '')
-                ->value('goods_id');
-            if ($fromMetrics !== null && $fromMetrics !== '') {
-                return (string) $fromMetrics;
-            }
         }
 
         return $this->findTemuGoodsIdBySkuViaApi($sku);
@@ -87,24 +176,12 @@ class Temu2ApiService extends TemuApiService
             return null;
         }
 
-        $skuId = Temu2Pricing::where('sku', $sku)->value('sku_id');
+        $skuId = Temu2Metric::where('sku', $sku)
+            ->orWhere('sku', strtoupper($sku))
+            ->orWhere('sku', strtolower($sku))
+            ->value('sku_id');
         if ($skuId !== null && $skuId !== '') {
             return (string) $skuId;
-        }
-
-        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'sku_id')) {
-            $fromMetrics = DB::table('temu2_metrics')
-                ->where(function ($q) use ($sku) {
-                    $q->where('sku', $sku)
-                        ->orWhere('sku', strtoupper($sku))
-                        ->orWhere('sku', strtolower($sku));
-                })
-                ->whereNotNull('sku_id')
-                ->where('sku_id', '!=', '')
-                ->value('sku_id');
-            if ($fromMetrics !== null && $fromMetrics !== '') {
-                return (string) $fromMetrics;
-            }
         }
 
         return $this->findTemuSkuIdBySkuViaApi($sku);
@@ -118,22 +195,22 @@ class Temu2ApiService extends TemuApiService
         }
 
         try {
-            if (! Schema::hasTable('temu2_pricing') || ! Schema::hasColumn('temu2_pricing', 'sku')) {
-                return;
-            }
-
             $update = [];
-            if ($goodsId !== null && $goodsId !== '' && Schema::hasColumn('temu2_pricing', 'goods_id')) {
+            if ($goodsId !== null && $goodsId !== '') {
                 $update['goods_id'] = $goodsId;
             }
-            if ($skuId !== null && $skuId !== '' && Schema::hasColumn('temu2_pricing', 'sku_id')) {
+            if ($skuId !== null && $skuId !== '') {
                 $update['sku_id'] = $skuId;
             }
             if ($update === []) {
                 return;
             }
 
-            Temu2Pricing::updateOrCreate(['sku' => $sku], $update);
+            Temu2Metric::updateOrCreate(['sku' => $sku], $update);
+
+            if (Schema::hasTable('temu2_pricing')) {
+                Temu2Pricing::updateOrCreate(['sku' => $sku], $update);
+            }
         } catch (\Throwable $e) {
             Log::warning('Temu2 persistTemuMapping failed', [
                 'sku' => $sku,
@@ -142,6 +219,190 @@ class Temu2ApiService extends TemuApiService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Persist stock to temu2_metrics only (never temu_metrics / inventory_temu).
+     *
+     * @param  array<int, array<string, mixed>>  $goodsList
+     */
+    public function persistGoodsListInventory(array $goodsList): int
+    {
+        $updated = 0;
+        if (! Schema::hasColumn('temu2_metrics', 'quantity')) {
+            return 0;
+        }
+
+        foreach ($goodsList as $titem) {
+            $goodsQty = (int) ($titem['quantity'] ?? 0);
+            $goodsId = isset($titem['goodsId']) ? (string) $titem['goodsId'] : '';
+            $skuTargets = [];
+            $skuIdQty = [];
+
+            foreach ($titem['outSkuSnList'] ?? [] as $outSku) {
+                $outSku = trim((string) $outSku);
+                if ($outSku !== '') {
+                    $skuTargets[$outSku] = $goodsQty;
+                }
+            }
+
+            foreach ($titem['skuInfoList'] ?? [] as $skuInfo) {
+                $skuQty = $goodsQty;
+                foreach (['stock', 'quantity', 'skuStockQuantity', 'virtualStock'] as $stockKey) {
+                    if (isset($skuInfo[$stockKey]) && is_numeric($skuInfo[$stockKey])) {
+                        $skuQty = (int) $skuInfo[$stockKey];
+                        break;
+                    }
+                }
+
+                foreach (['outSkuSn', 'skuSn', 'extCode'] as $key) {
+                    $candidate = trim((string) ($skuInfo[$key] ?? ''));
+                    if ($candidate !== '') {
+                        $skuTargets[$candidate] = $skuQty;
+                    }
+                }
+
+                $skuId = isset($skuInfo['skuId']) ? (string) $skuInfo['skuId'] : '';
+                if ($skuId !== '') {
+                    $skuIdQty[$skuId] = $skuQty;
+                }
+            }
+
+            $outGoodsSn = trim((string) ($titem['outGoodsSn'] ?? ''));
+            if ($outGoodsSn !== '' && $skuTargets === []) {
+                $skuTargets[$outGoodsSn] = $goodsQty;
+            }
+
+            foreach ($skuIdQty as $skuId => $qty) {
+                $updated += Temu2Metric::where('sku_id', $skuId)->update(['quantity' => $qty]);
+                if (Schema::hasTable('temu2_pricing')) {
+                    Temu2Pricing::where('sku_id', $skuId)->update(['quantity' => $qty]);
+                }
+            }
+
+            foreach ($skuTargets as $sku => $qty) {
+                $updated += Temu2Metric::where('sku', $sku)->update(['quantity' => $qty]);
+                $updated += Temu2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                    ->where('quantity', '!=', $qty)
+                    ->update(['quantity' => $qty]);
+                if (Schema::hasTable('temu2_pricing')) {
+                    Temu2Pricing::where('sku', $sku)->update(['quantity' => $qty]);
+                }
+            }
+
+            if ($goodsId !== '' && $goodsQty >= 0) {
+                $updated += Temu2Metric::where('goods_id', $goodsId)
+                    ->where(function ($q) {
+                        $q->whereNull('quantity')->orWhere('quantity', 0);
+                    })
+                    ->update(['quantity' => $goodsQty]);
+            }
+        }
+
+        Log::info('Temu2 inventory persisted to temu2_metrics', [
+            'goods' => count($goodsList),
+            'metric_updates' => $updated,
+        ]);
+
+        return $updated;
+    }
+
+    public function syncSkuListStock(): int
+    {
+        if (! Schema::hasColumn('temu2_metrics', 'quantity')) {
+            return 0;
+        }
+
+        $pageNumber = 1;
+        $pageSize = 100;
+        $totalPages = null;
+        $updated = 0;
+        $url = $this->openApiRouterUrl();
+
+        Log::info('======================= Started Temu2 SKU Stock Sync =======================');
+
+        do {
+            $requestBody = [
+                'type' => 'bg.local.goods.sku.list.query',
+                'pageSize' => $pageSize,
+                'pageNumber' => $pageNumber,
+                'skuSearchType' => 2,
+            ];
+
+            $signedRequest = $this->generateSignValue($requestBody);
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+
+            try {
+                $response = $request->post($url, $signedRequest);
+            } catch (\Exception $e) {
+                Log::error('Temu2 SKU stock sync HTTP exception page '.$pageNumber.': '.$e->getMessage());
+                break;
+            }
+
+            if ($response->failed()) {
+                Log::error('Temu2 SKU stock sync failed page '.$pageNumber, [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                break;
+            }
+
+            $data = $response->json();
+            if (! ($data['success'] ?? false)) {
+                Log::warning('Temu2 SKU stock sync API error page '.$pageNumber.': '.($data['errorMsg'] ?? 'Unknown'));
+                break;
+            }
+
+            $result = $data['result'] ?? [];
+            $items = $result['skuList'] ?? [];
+            if ($items === []) {
+                break;
+            }
+
+            foreach ($items as $item) {
+                $qty = $item['stock'] ?? $item['quantity'] ?? null;
+                if ($qty === null || ! is_numeric($qty)) {
+                    continue;
+                }
+                $qty = (int) $qty;
+
+                $skuId = isset($item['skuId']) ? (string) $item['skuId'] : '';
+                $outSkuSn = trim((string) ($item['outSkuSn'] ?? $item['skuSn'] ?? ''));
+
+                if ($skuId !== '') {
+                    $updated += Temu2Metric::where('sku_id', $skuId)->update(['quantity' => $qty]);
+                    if (Schema::hasTable('temu2_pricing')) {
+                        Temu2Pricing::where('sku_id', $skuId)->update(['quantity' => $qty]);
+                    }
+                }
+                if ($outSkuSn !== '') {
+                    $updated += Temu2Metric::where('sku', $outSkuSn)->update(['quantity' => $qty]);
+                    $updated += Temu2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($outSkuSn)])
+                        ->where('quantity', '!=', $qty)
+                        ->update(['quantity' => $qty]);
+                    if (Schema::hasTable('temu2_pricing')) {
+                        Temu2Pricing::where('sku', $outSkuSn)->update(['quantity' => $qty]);
+                    }
+                }
+            }
+
+            if ($totalPages === null) {
+                $total = (int) ($result['total'] ?? 0);
+                $totalPages = $total > 0 ? (int) ceil($total / $pageSize) : $pageNumber;
+            }
+
+            $pageNumber++;
+            if ($pageNumber > 1000) {
+                break;
+            }
+        } while ($pageNumber <= ($totalPages ?? 1));
+
+        Log::info('Temu2 SKU stock sync finished', ['updated' => $updated, 'pages' => $pageNumber - 1]);
+
+        return $updated;
     }
 
     protected function fetchCurrentTemuGoodsDesc(string $goodsId, string $sku = ''): string
@@ -306,7 +567,7 @@ class Temu2ApiService extends TemuApiService
             $request = $request->withoutVerifying();
         }
 
-        $response = $request->post('https://openapi-b-us.temu.com/openapi/router', $this->generateSignValue($requestBody));
+        $response = $request->post($this->openApiRouterUrl(), $this->generateSignValue($requestBody));
 
         return $response->json() ?? [];
     }

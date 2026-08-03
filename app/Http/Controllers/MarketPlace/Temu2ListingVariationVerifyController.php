@@ -4,7 +4,8 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
-use App\Models\Temu2Pricing;
+use App\Models\Temu2Metric;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -96,9 +97,9 @@ class Temu2ListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
-                'last_pulled_at' => Temu2Pricing::query()->max('updated_at'),
-                'has_listings_cache' => Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => (int) Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
+                'last_pulled_at' => Temu2Metric::query()->max('updated_at'),
+                'has_listings_cache' => Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
@@ -108,19 +109,23 @@ class Temu2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * Temu 2 listings come from the temu2_pricing Excel upload (no API pull).
+     * Temu 2 listings come from the temu2_metrics Open API sync (app:fetch-temu2-metrics).
      * This endpoint refreshes meta from the current cache so the UI matches other pages.
      */
     public function pullListings(Request $request)
     {
         try {
-            $count = (int) Temu2Pricing::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
-            $lastPulledAt = Temu2Pricing::query()->max('updated_at');
+            Artisan::call('app:fetch-temu2-metrics', ['--only' => 'skus']);
+            Artisan::call('app:fetch-temu2-metrics', ['--only' => 'goods']);
+            Artisan::call('app:fetch-temu2-metrics', ['--only' => 'price']);
+
+            $count = (int) Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
+            $lastPulledAt = Temu2Metric::query()->max('updated_at');
 
             if ($count === 0) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Temu 2 listings in temu2_pricing. Upload pricing on Temu 2 Analytics first.',
+                    'message' => 'No Temu 2 listings returned from API. Check TEMU2_* credentials / access token.',
                     'count' => 0,
                     'last_pulled_at' => $lastPulledAt,
                 ], 422);
@@ -128,7 +133,7 @@ class Temu2ListingVariationVerifyController extends Controller
 
             return response()->json([
                 'status' => 200,
-                'message' => "Temu 2 listings ready. {$count} SKUs in temu2_pricing. Parent Vs Listed SKU updated.",
+                'message' => "Temu 2 listings synced from API. {$count} SKUs in temu2_metrics. Parent Vs Listed SKU updated.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
             ]);
@@ -293,7 +298,7 @@ class Temu2ListingVariationVerifyController extends Controller
         $goodsIdToSkus = [];
         $parentToGoodsId = [];
 
-        $rows = Temu2Pricing::query()
+        $rows = Temu2Metric::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->get(['sku', 'goods_id']);

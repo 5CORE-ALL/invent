@@ -1904,6 +1904,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('app:fetch-temu2-metrics')
+            ->dailyAt('14:35')
+            ->timezone('Asia/Kolkata')
+            ->name('fetch-temu2-metrics')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('temu:collect-metrics')
             ->dailyAt('14:35')
             ->timezone('Asia/Kolkata')

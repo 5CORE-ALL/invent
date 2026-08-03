@@ -21,6 +21,7 @@ use App\Models\Temu2DailyDataL60;
 use App\Models\Temu2DailyDataL7;
 use App\Models\TemuPricing;
 use App\Models\Temu2Pricing;
+use App\Models\Temu2Metric;
 use App\Models\Temu2DataView;
 use App\Models\TemuViewData;
 use App\Models\TemuViewDataL7;
@@ -1882,93 +1883,55 @@ class TemuController extends Controller
     }
 
     /**
-     * Upload Temu 2 Pricing Data (same Excel format as Temu; stores in temu2_pricing).
+     * Pricing sheet upload removed — Temu 2 listings/prices come from Open API.
      */
     public function uploadTemu2Pricing(Request $request)
     {
+        return back()->with(
+            'error',
+            'Temu 2 pricing sheet upload is disabled. Run: php artisan app:fetch-temu2-metrics'
+        );
+    }
+
+    /**
+     * Sync Temu 2 SKUs / goods / prices / stock from Open API into temu2_metrics.
+     */
+    public function syncTemu2MetricsFromApi(Request $request)
+    {
         try {
-            $request->validate([
-                'pricing_file' => 'required|file|mimes:xlsx,xls,csv',
-            ]);
-
-            $file = $request->file('pricing_file');
-            $spreadsheet = IOFactory::load($file->getPathName());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            $headers = $rows[0];
-            unset($rows[0]);
-
-            $imported = 0;
-            $errors = [];
-
-            DB::beginTransaction();
-            try {
-                // delete() instead of truncate() — truncate() implicitly commits
-                // the active transaction in MySQL, which would later make
-                // DB::commit/rollBack throw "There is no active transaction".
-                Temu2Pricing::query()->delete();
-
-                foreach ($rows as $index => $row) {
-                    if (empty(array_filter($row))) {
-                        continue;
-                    }
-
-                    $rowData = array_combine($headers, $row);
-
-                    $sku = $rowData['SKU'] ?? $rowData['Contribution Goods'] ?? null;
-
-                    if (empty($sku)) {
-                        $errors[] = 'Row ' . ($index + 2) . ': Missing SKU';
-                        continue;
-                    }
-
-                    $dateCreated = null;
-                    if (!empty($rowData['Date created'])) {
-                        try {
-                            $dateCreated = Carbon::parse($rowData['Date created']);
-                        } catch (\Exception $e) {
-                            try {
-                                $dateCreated = Carbon::createFromFormat('d/m/Y H:i:s', $rowData['Date created']);
-                            } catch (\Exception $e2) {
-                                Log::warning('Could not parse date: ' . $rowData['Date created']);
-                            }
-                        }
-                    }
-
-                    $pricingData = [
-                        'category' => $rowData['Category'] ?? null,
-                        'category_id' => $rowData['Category id'] ?? null,
-                        'product_name' => $rowData['Product name'] ?? null,
-                        'contribution_goods' => $rowData['Contribution Goods'] ?? null,
-                        'goods_id' => $rowData['Goods ID'] ?? null,
-                        'sku_id' => $rowData['SKU ID'] ?? null,
-                        'variation' => $rowData['Variation'] ?? null,
-                        'quantity' => !empty($rowData['Quantity']) ? (int) $rowData['Quantity'] : 0,
-                        'base_price' => !empty($rowData['Base price']) ? (float) $rowData['Base price'] : null,
-                        'external_product_id_type' => $rowData['External Product ID Type'] ?? null,
-                        'external_product_id' => $rowData['External product ID'] ?? null,
-                        'status' => $rowData['Status'] ?? null,
-                        'detail_status' => $rowData['Detail status'] ?? null,
-                        'date_created' => $dateCreated,
-                        'incomplete_product_information' => $rowData['Incomplete product information'] ?? null,
-                    ];
-
-                    Temu2Pricing::create(array_merge(['sku' => $sku], $pricingData));
-                    $imported++;
-                }
-
-                DB::commit();
-
-                return back()->with('success', "Temu 2: successfully imported {$imported} pricing records. (temu2_pricing was cleared first.)");
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
+            $only = strtolower(trim((string) $request->input('only', '')));
+            $allowed = ['', 'skus', 'goods', 'qty', 'price', 'ads', 'stock'];
+            if (! in_array($only, $allowed, true)) {
+                return response()->json(['success' => false, 'message' => 'Invalid only value'], 422);
             }
-        } catch (\Exception $e) {
-            Log::error('Error uploading Temu 2 pricing: ' . $e->getMessage());
 
-            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
+            $params = $only === '' ? [] : ['--only' => $only];
+            $exit = \Illuminate\Support\Facades\Artisan::call('app:fetch-temu2-metrics', $params);
+            $output = trim(\Illuminate\Support\Facades\Artisan::output());
+
+            $count = Schema::hasTable('temu2_metrics')
+                ? (int) Temu2Metric::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0;
+            $withPrice = Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'base_price')
+                ? (int) Temu2Metric::query()->whereNotNull('base_price')->where('base_price', '>', 0)->count()
+                : 0;
+
+            return response()->json([
+                'success' => $exit === 0,
+                'message' => $exit === 0
+                    ? "Temu 2 API sync done. {$count} SKU(s), {$withPrice} with price."
+                    : ('Temu 2 API sync failed. '.$output),
+                'count' => $count,
+                'with_price' => $withPrice,
+                'output' => $output,
+            ], $exit === 0 ? 200 : 500);
+        } catch (\Throwable $e) {
+            Log::error('Temu 2 API sync failed: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Temu 2 API sync failed: '.$e->getMessage(),
+            ], 500);
         }
     }
 
@@ -2064,7 +2027,7 @@ class TemuController extends Controller
     }
 
     /**
-     * Update Temu 2 base price (temu2_pricing).
+     * Update Temu 2 base price in temu2_metrics (API-backed).
      */
     public function updateTemu2Price(Request $request)
     {
@@ -2074,19 +2037,23 @@ class TemuController extends Controller
                 'base_price' => 'required|numeric|min:0',
             ]);
 
-            $pricing = Temu2Pricing::where('sku', $request->sku)->first();
+            $metric = Temu2Metric::where('sku', $request->sku)->first();
 
-            if (!$pricing) {
-                return response()->json(['error' => 'SKU not found in temu2_pricing'], 404);
+            if (! $metric) {
+                return response()->json(['error' => 'SKU not found in temu2_metrics'], 404);
             }
 
-            $pricing->base_price = $request->base_price;
-            $pricing->save();
+            $metric->base_price = $request->base_price;
+            $metric->save();
+
+            if (Schema::hasTable('temu2_pricing')) {
+                Temu2Pricing::where('sku', $request->sku)->update(['base_price' => $request->base_price]);
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Price updated successfully',
-                'data' => $pricing,
+                'data' => $metric,
             ]);
         } catch (\Exception $e) {
             Log::error('Error updating Temu 2 price: ' . $e->getMessage());
@@ -2527,47 +2494,38 @@ class TemuController extends Controller
             }
 
             // 3. Listing / price / stock source:
-            //    Temu 1 → temu_metrics (API: base_price, goods_id, sku_id, quantity) — no sheet
-            //    Temu 2 → temu2_pricing (sheet; no Temu 2 metrics API yet)
-            $pricingSelect = [
-                'sku',
-                'product_name',
-                'category',
-                'variation',
-                'quantity',
-                'base_price',
-                'status',
-                'detail_status',
-                'goods_id',
-                'sku_id',
-                'date_created',
-            ];
+            //    Temu 1 → temu_metrics (API)
+            //    Temu 2 → temu2_metrics (API — sheet upload removed)
+            $mapMetricToPricingRow = static function ($m) {
+                return (object) [
+                    'sku' => $m->sku,
+                    'product_name' => '',
+                    'category' => '',
+                    'variation' => '',
+                    'quantity' => (int) ($m->quantity ?? 0),
+                    'base_price' => $m->base_price,
+                    'status' => '',
+                    'detail_status' => '',
+                    'goods_id' => $m->goods_id,
+                    'sku_id' => $m->sku_id,
+                    'date_created' => '',
+                    'recommended_base_price' => $m->recommended_base_price ?? null,
+                    'product_clicks_l30' => $m->product_clicks_l30 ?? null,
+                ];
+            };
 
             if ($isTemu2Pricing) {
-                $allPricingData = Schema::hasTable('temu2_pricing')
-                    ? Temu2Pricing::select($pricingSelect)->get()
+                $allPricingData = Schema::hasTable('temu2_metrics')
+                    ? Temu2Metric::query()
+                        ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'recommended_base_price', 'product_clicks_l30'])
+                        ->get()
+                        ->map($mapMetricToPricingRow)
                     : collect();
             } else {
                 $allPricingData = TemuMetric::query()
                     ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'recommended_base_price', 'product_clicks_l30'])
                     ->get()
-                    ->map(static function ($m) {
-                        return (object) [
-                            'sku' => $m->sku,
-                            'product_name' => '',
-                            'category' => '',
-                            'variation' => '',
-                            'quantity' => (int) ($m->quantity ?? 0),
-                            'base_price' => $m->base_price,
-                            'status' => '',
-                            'detail_status' => '',
-                            'goods_id' => $m->goods_id,
-                            'sku_id' => $m->sku_id,
-                            'date_created' => '',
-                            'recommended_base_price' => $m->recommended_base_price,
-                            'product_clicks_l30' => $m->product_clicks_l30,
-                        ];
-                    });
+                    ->map($mapMetricToPricingRow);
             }
 
             // Build pricing data with normalized matching
@@ -5225,7 +5183,7 @@ class TemuController extends Controller
 
             $useTemu2PricingChart = $request->boolean('temu2');
             if ($useTemu2PricingChart) {
-                $pricingModel = Schema::hasTable('temu2_pricing') ? Temu2Pricing::class : null;
+                $pricingModel = Schema::hasTable('temu2_metrics') ? Temu2Metric::class : null;
             } else {
                 $pricingModel = Schema::hasTable('temu_metrics') ? \App\Models\TemuMetric::class : null;
             }

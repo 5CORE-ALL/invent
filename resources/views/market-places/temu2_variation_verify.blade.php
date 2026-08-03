@@ -98,7 +98,7 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="temu2-stat-badge temu2-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="temu2-vv-badge-parents">0</span></span>
                             <span class="temu2-stat-badge temu2-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="temu2-vv-badge-children">0</span></span>
-                            <span class="temu2-stat-badge temu2-stat-badge--listed" title="Temu 2 listings (temu2_pricing)">LISTED:<span id="temu2-vv-badge-listed">0</span></span>
+                            <span class="temu2-stat-badge temu2-stat-badge--listed" title="Temu 2 listings (temu2_metrics API)">LISTED:<span id="temu2-vv-badge-listed">0</span></span>
                             <span class="temu2-stat-badge temu2-stat-badge--campaigns" title="Temu 2 L30 campaign report rows">CAMPAIGNS:<span id="temu2-vv-badge-campaigns">0</span></span>
                         </div>
                         <span id="temu2-vv-total" class="badge bg-secondary">Total: —</span>
@@ -106,7 +106,7 @@
                         <button type="button" id="temu2-vv-refresh-btn" class="btn btn-sm btn-outline-primary temu2-raw-icon-btn" title="Refresh from CP Master" aria-label="Refresh">
                             <i class="fa fa-refresh"></i>
                         </button>
-                        <button type="button" id="temu2-vv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Refresh Temu 2 listings from temu2_pricing">
+                        <button type="button" id="temu2-vv-pull-btn" class="btn btn-sm btn-warning text-dark" title="Refresh Temu 2 listings from Open API">
                             <i class="fas fa-cloud-download-alt me-1"></i> Pull Listings
                         </button>
                         <span class="text-muted small" id="temu2-vv-status-line"></span>
@@ -215,7 +215,7 @@
             }
 
             if (status === 'over') {
-                return '<span class="temu2-vv-ad-over" title="In campaign but not in temu2_pricing">Over</span>';
+                return '<span class="temu2-vv-ad-over" title="In campaign but not in temu2_metrics">Over</span>';
             }
             if (status === 'added') {
                 return '<span class="temu2-vv-ad-added" title="Ads existing (in campaign + inv ≥ 0)">Added</span>';
@@ -314,13 +314,13 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Refresh Temu 2 listings from temu2_pricing?\n\nUpload pricing on Temu 2 Analytics if the cache is empty.')) {
+                if (!confirm('Sync Temu 2 listings from Open API into temu2_metrics?')) {
                     return;
                 }
 
                 $btn.prop('disabled', true)
                     .html('<span class="spinner-border spinner-border-sm me-1"></span> Pulling…');
-                $('#temu2-vv-status-line').text('Refreshing listings from temu2_pricing…');
+                $('#temu2-vv-status-line').text('Syncing listings from Temu 2 Open API…');
 
                 $.ajax({
                     url: '{{ route("temu2.variation.verify.pull") }}',

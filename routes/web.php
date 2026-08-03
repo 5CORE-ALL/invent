@@ -4567,9 +4567,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');
     Route::get('/temu-pricing/sample', [TemuController::class, 'downloadTemuPricingSample'])->name('temu.pricing.sample');
 
-    // Temu 2 Pricing Upload (same Excel format → temu2_pricing)
+    // Temu 2 pricing sheet upload disabled — use Open API sync
     Route::post('/temu2-pricing/upload', [TemuController::class, 'uploadTemu2Pricing'])->name('temu2.pricing.upload');
     Route::get('/temu2-pricing/sample', [TemuController::class, 'downloadTemu2PricingSample'])->name('temu2.pricing.sample');
+    Route::post('/temu2/sync-metrics', [TemuController::class, 'syncTemu2MetricsFromApi'])->name('temu2.sync.metrics');
 
     // Temu 1 View Data Upload / scrape (Seller Center product clicks → temu_view_data; Ads API has no organic page views)
     Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');

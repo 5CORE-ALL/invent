@@ -30,6 +30,7 @@ use App\Models\AmazonDataView;
 use App\Models\AmzCvrAuditHistory;
 use App\Models\TemuDataView;
 use App\Models\Temu2Pricing;
+use App\Models\Temu2Metric;
 use App\Models\Temu2DailyData;
 use App\Models\Temu2DataView;
 use App\Models\DobaDataView;
@@ -609,7 +610,7 @@ class CvrMasterController extends Controller
             if (Schema::hasTable('temu2_pricing') && Schema::hasTable('temu2_daily_data')) {
                 try {
                     $temu2L30ByProductSku = $this->buildTemu2L30ByProductSkusMap($skus, true);
-                    $temu2PricingsAll = Temu2Pricing::query()->get(['sku', 'base_price', 'goods_id']);
+                    $temu2PricingsAll = Temu2Metric::query()->get(['sku', 'base_price', 'goods_id']);
                     $temu2PricingByProductSku = $this->buildTemu2PricingMapForProductSkus($temu2PricingsAll, $skus);
                     Log::info('CVR Master - Temu 2 Data fetched', [
                         'temu2_pricing_rows'   => $temu2PricingsAll->count(),
@@ -3602,7 +3603,7 @@ class CvrMasterController extends Controller
                 try {
                     $l30MapOne = $this->buildTemu2L30ByProductSkusMap([$fullSku], true);
                     $temu2L30Br = (int) ($l30MapOne[$fullSku] ?? 0);
-                    $temu2AllPricing = Temu2Pricing::query()->get(['sku', 'base_price', 'goods_id']);
+                    $temu2AllPricing = Temu2Metric::query()->get(['sku', 'base_price', 'goods_id']);
                     $t2PriceMap = $this->buildTemu2PricingMapForProductSkus($temu2AllPricing, [$fullSku]);
                     $temu2PricingRow = $t2PriceMap[$fullSku] ?? null;
                     if ($temu2PricingRow) {

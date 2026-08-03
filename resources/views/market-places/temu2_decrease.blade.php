@@ -537,8 +537,8 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="upload-actions-btn">
                             <li>
-                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
-                                    <i class="fa fa-dollar-sign me-1 text-info"></i> Up Pricing
+                                <a class="dropdown-item" href="#" id="sync-temu2-api-pricing">
+                                    <i class="fa fa-cloud-download-alt me-1 text-info"></i> Sync Pricing (API)
                                 </a>
                             </li>
                             <li>
@@ -3293,7 +3293,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_pricing table">M</span>';
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu2_metrics (API)">M</span>';
                         }
                         return '';
                     }
@@ -5351,6 +5351,37 @@
                 if (typeof updateSummary === 'function') updateSummary();
             }).catch(function(err) {
                 showToast((err && err.message) || 'Failed to push price', 'error');
+            });
+        });
+
+        $('#sync-temu2-api-pricing').on('click', function(e) {
+            e.preventDefault();
+            if (!confirm('Sync Temu 2 listings/prices/stock from Open API into temu2_metrics?\n\nThis replaces the old pricing sheet upload.')) {
+                return;
+            }
+            const $link = $(this);
+            $link.addClass('disabled').css('pointer-events', 'none');
+            showToast('Syncing Temu 2 from API…', 'info');
+            $.ajax({
+                url: '{{ route("temu2.sync.metrics") }}',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                success: function(res) {
+                    showToast((res && res.message) || 'Temu 2 sync complete', res && res.success === false ? 'error' : 'success');
+                    if (typeof table !== 'undefined' && table && typeof table.replaceData === 'function') {
+                        // reload decrease data
+                        location.reload();
+                    } else {
+                        location.reload();
+                    }
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Temu 2 API sync failed';
+                    showToast(msg, 'error');
+                },
+                complete: function() {
+                    $link.removeClass('disabled').css('pointer-events', '');
+                }
             });
         });
 

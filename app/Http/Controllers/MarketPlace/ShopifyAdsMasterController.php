@@ -600,11 +600,9 @@ class ShopifyAdsMasterController extends Controller
         $byDate     = [];   // date => [spend, clicks, sold, sales]
         $byChannel  = [];   // channel => date => [...]
         $ssalesByDate = []; // date => net sales
-        $allDates   = [];   // every date seen, incl. ssales-only days
         foreach ($rows as $r) {
             $d  = (string) $r->snapshot_date;
             $ch = (string) $r->channel;
-            $allDates[$d] = true;
 
             if ($ch === self::SSALES_CHANNEL) {
                 $ssalesByDate[$d] = (float) $r->sales;
@@ -637,15 +635,23 @@ class ShopifyAdsMasterController extends Controller
             $byDate[$d]['active'] += (float) ($r->active ?? 0);
         }
 
-        // Use the union of all dates so an ssales-only day still shows.
-        $labels = array_keys($allDates);
-        sort($labels);
-        foreach ($labels as $d) {
-            $byDate[$d] ??= ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
+        // Continuous calendar window so days with no snapshot still appear
+        // on the chart (as null → "No data for that date") instead of being
+        // skipped and connecting the line across gaps.
+        $end = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
+        $labels = [];
+        $cursor = Carbon::parse($from, self::SNAPSHOT_TIMEZONE)->startOfDay();
+        $endC = Carbon::parse($end, self::SNAPSHOT_TIMEZONE)->startOfDay();
+        while ($cursor->lte($endC)) {
+            $labels[] = $cursor->toDateString();
+            $cursor->addDay();
         }
 
         $metrics = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
-        $metrics['ssales'] = array_map(fn ($d) => round($ssalesByDate[$d] ?? 0, 2), $labels);
+        $metrics['ssales'] = array_map(
+            fn ($d) => array_key_exists($d, $ssalesByDate) ? round($ssalesByDate[$d], 2) : null,
+            $labels
+        );
 
         return response()->json([
             'status'   => 200,
@@ -658,17 +664,30 @@ class ShopifyAdsMasterController extends Controller
 
     /**
      * Turn the per-day raw measures into the 6 badge series (with CVR /
-     * ACOS derived exactly like the badges / table do).
+     * ACOS derived exactly like the badges / table do). Days with no
+     * snapshot are null so the chart can show "No data for that date".
      *
      * @param  array<string, array<string, float>>  $byDate
      * @param  array<int, string>  $labels
      * @param  array<string, float>  $ssalesByDate  date => store net sales (for TCOS)
-     * @return array<string, array<int, float>>
+     * @return array<string, array<int, float|null>>
      */
     private function buildMetricSeries(array $byDate, array $labels, array $ssalesByDate = []): array
     {
         $series = ['spend' => [], 'clicks' => [], 'sold' => [], 'sales' => [], 'active' => [], 'cvr' => [], 'acos' => [], 'tcos' => []];
         foreach ($labels as $d) {
+            if (! isset($byDate[$d])) {
+                $series['spend'][]  = null;
+                $series['clicks'][] = null;
+                $series['sold'][]   = null;
+                $series['sales'][]  = null;
+                $series['active'][] = null;
+                $series['cvr'][]    = null;
+                $series['acos'][]   = null;
+                $series['tcos'][]   = null;
+                continue;
+            }
+
             $m = $byDate[$d];
             $series['spend'][]  = round($m['spend'], 2);
             $series['clicks'][] = (int) round($m['clicks']);
@@ -689,13 +708,13 @@ class ShopifyAdsMasterController extends Controller
     }
 
     /**
-     * Per-channel badge series, aligned to the same date labels (missing
-     * days fill with 0 so every line spans the full range).
+     * Per-channel badge series, aligned to the same date labels. Missing
+     * days stay null so the chart can show "No data for that date".
      *
      * @param  array<string, array<string, array<string, float>>>  $byChannel
      * @param  array<int, string>  $labels
      * @param  array<string, float>  $ssalesByDate
-     * @return array<string, array<string, array<int, float>>>
+     * @return array<string, array<string, array<int, float|null>>>
      */
     private function buildChannelSeries(array $byChannel, array $labels, array $ssalesByDate = []): array
     {
@@ -703,7 +722,9 @@ class ShopifyAdsMasterController extends Controller
         foreach ($byChannel as $channel => $perDay) {
             $byDate = [];
             foreach ($labels as $d) {
-                $byDate[$d] = $perDay[$d] ?? ['spend' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'sales' => 0.0, 'active' => 0.0];
+                if (isset($perDay[$d])) {
+                    $byDate[$d] = $perDay[$d];
+                }
             }
             $out[$channel] = $this->buildMetricSeries($byDate, $labels, $ssalesByDate);
         }

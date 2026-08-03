@@ -646,8 +646,8 @@ class MarketplaceMasterAuditService
 
     private function temu2GoodsIdForSku(string $sku): bool
     {
-        if (Schema::hasTable('temu2_pricing') && Schema::hasColumn('temu2_pricing', 'goods_id')) {
-            $id = DB::table('temu2_pricing')
+        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'goods_id')) {
+            $id = DB::table('temu2_metrics')
                 ->where('sku', $sku)
                 ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
                 ->whereNotNull('goods_id')
@@ -658,8 +658,8 @@ class MarketplaceMasterAuditService
             }
         }
 
-        if (Schema::hasTable('temu2_metrics') && Schema::hasColumn('temu2_metrics', 'goods_id')) {
-            return DB::table('temu2_metrics')
+        if (Schema::hasTable('temu2_pricing') && Schema::hasColumn('temu2_pricing', 'goods_id')) {
+            return DB::table('temu2_pricing')
                 ->where('sku', $sku)
                 ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
                 ->whereNotNull('goods_id')

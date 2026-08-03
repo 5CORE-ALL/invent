@@ -121,7 +121,7 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="temu2-stat-badge temu2-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="temu2-lvv-badge-parents">0</span></span>
                             <span class="temu2-stat-badge temu2-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="temu2-lvv-badge-children">0</span></span>
-                            <span class="temu2-stat-badge temu2-stat-badge--listed" title="eBay listings cache (temu2_pricing)">LISTED:<span id="temu2-lvv-badge-listed">0</span></span>
+                            <span class="temu2-stat-badge temu2-stat-badge--listed" title="Temu 2 listings (temu2_metrics API)">LISTED:<span id="temu2-lvv-badge-listed">0</span></span>
                             <span class="temu2-stat-badge temu2-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="temu2-lvv-badge-mismatch">0</span></span>
                         </div>
                         <span id="temu2-lvv-total" class="badge bg-secondary">Total: —</span>
@@ -439,7 +439,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Refresh Temu 2 listings from temu2_pricing cache?\n\nUpload pricing on Temu 2 Analytics if the cache is empty.')) {
+                if (!confirm('Sync Temu 2 listings from Open API into temu2_metrics?')) {
                     return;
                 }
 
