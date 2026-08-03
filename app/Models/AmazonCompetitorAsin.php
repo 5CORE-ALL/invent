@@ -24,9 +24,12 @@ class AmazonCompetitorAsin extends Model
         'image',
         'extracted_old_price',
         'delivery',
+        'stock',
+        'stock_quantity',
     ];
 
     protected $casts = [
         'delivery' => 'array',
+        'stock_quantity' => 'integer',
     ];
 }

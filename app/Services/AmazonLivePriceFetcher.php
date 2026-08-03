@@ -65,7 +65,9 @@ class AmazonLivePriceFetcher
      *     reviews: ?int,
      *     extracted_old_price: ?float,
      *     delivery: ?array,
-     *     seller_name: ?string
+     *     seller_name: ?string,
+     *     stock: ?string,
+     *     stock_quantity: ?int
      * }|null
      */
     public function fetchByAsin(string $asin, ?string $marketplace = null): ?array
@@ -186,7 +188,9 @@ class AmazonLivePriceFetcher
      *     reviews: ?int,
      *     extracted_old_price: ?float,
      *     delivery: ?array,
-     *     seller_name: ?string
+     *     seller_name: ?string,
+     *     stock: ?string,
+     *     stock_quantity: ?int
      * }|null
      */
     private function parseProductResponse($response, string $asin, string $amazonDomain): ?array
@@ -218,6 +222,7 @@ class AmazonLivePriceFetcher
         $title = $product['title'] ?? null;
         $link = $product['link'] ?? "https://www.{$amazonDomain}/dp/{$asin}";
         $image = $this->extractImage($product);
+        $stockInfo = $this->extractStock($data, $product);
 
         return [
             'asin' => $asin,
@@ -232,6 +237,65 @@ class AmazonLivePriceFetcher
                 ? array_values(array_filter(array_map('strval', $product['delivery'])))
                 : null,
             'seller_name' => $this->extractSellerFromTitle($title),
+            'stock' => $stockInfo['stock'],
+            'stock_quantity' => $stockInfo['stock_quantity'],
+        ];
+    }
+
+    /**
+     * SerpApi amazon_product exposes stock as text, e.g. "In Stock" or
+     * "Only 3 left in stock - order soon." Also check purchase_options.buy_new.
+     *
+     * @return array{stock: ?string, stock_quantity: ?int}
+     */
+    private function extractStock(array $data, array $product): array
+    {
+        $candidates = [];
+
+        if (! empty($product['stock']) && is_string($product['stock'])) {
+            $candidates[] = $product['stock'];
+        }
+
+        $buyNew = $data['purchase_options']['buy_new'] ?? null;
+        if (is_array($buyNew) && ! empty($buyNew['stock']) && is_string($buyNew['stock'])) {
+            $candidates[] = $buyNew['stock'];
+        }
+
+        // Some responses nest stock under offers[0]
+        if (! empty($product['offers']) && is_array($product['offers'])) {
+            foreach ($product['offers'] as $offer) {
+                if (is_array($offer) && ! empty($offer['stock']) && is_string($offer['stock'])) {
+                    $candidates[] = $offer['stock'];
+                    break;
+                }
+            }
+        }
+
+        $stock = null;
+        foreach ($candidates as $text) {
+            $text = trim(preg_replace('/\s+/', ' ', $text));
+            if ($text !== '') {
+                $stock = $text;
+                break;
+            }
+        }
+
+        if ($stock === null) {
+            return ['stock' => null, 'stock_quantity' => null];
+        }
+
+        $qty = null;
+        if (preg_match('/only\s+(\d+)\s+left/i', $stock, $m)) {
+            $qty = (int) $m[1];
+        } elseif (preg_match('/(\d+)\s+left\s+in\s+stock/i', $stock, $m)) {
+            $qty = (int) $m[1];
+        } elseif (preg_match('/\bout\s+of\s+stock\b/i', $stock)) {
+            $qty = 0;
+        }
+
+        return [
+            'stock' => mb_substr($stock, 0, 255),
+            'stock_quantity' => $qty,
         ];
     }
 

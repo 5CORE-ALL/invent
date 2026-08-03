@@ -8329,6 +8329,36 @@
         }
 
         /** Prefer row.shipCost (eBay), else parse delivery text (Amazon). */
+        /** Amazon competitor Inv/stock from SerpApi (numeric qty or status text). */
+        function formatLmpStockCell(row) {
+            if (!row || row.channel !== 'amazon') {
+                return '<span class="text-muted">-</span>';
+            }
+            const stockText = row.stock != null ? String(row.stock).trim() : '';
+            const qty = row.stock_quantity != null && row.stock_quantity !== ''
+                ? parseInt(row.stock_quantity, 10)
+                : NaN;
+            if (!stockText && !isFinite(qty)) {
+                return '<span class="text-muted">-</span>';
+            }
+            const tip = (stockText || (isFinite(qty) ? String(qty) : '')).replace(/"/g, '&quot;');
+            if (isFinite(qty) && qty === 0) {
+                return '<span style="color:#dc3545;font-weight:700;" title="' + tip + '">0</span>';
+            }
+            if (isFinite(qty) && qty > 0) {
+                const color = qty <= 5 ? '#dc3545' : (qty <= 20 ? '#ffc107' : '#28a745');
+                return '<span style="color:' + color + ';font-weight:700;" title="' + tip + '">' + qty + '</span>';
+            }
+            if (/\bout\s+of\s+stock\b/i.test(stockText)) {
+                return '<span style="color:#dc3545;font-weight:600;" title="' + tip + '">OOS</span>';
+            }
+            if (/\bin\s+stock\b/i.test(stockText)) {
+                return '<span style="color:#28a745;font-weight:600;" title="' + tip + '">In Stock</span>';
+            }
+            const short = stockText.length > 14 ? stockText.substring(0, 14) + '…' : stockText;
+            return '<span style="font-size:10px;" title="' + tip + '">' + short.replace(/</g, '&lt;') + '</span>';
+        }
+
         function getLmpRowShipCost(row) {
             if (!row) return null;
             if (row.shipCost != null && row.shipCost !== '' && !isNaN(parseFloat(row.shipCost))) {
@@ -8403,6 +8433,9 @@
                 if (price <= 0) return;
                 const delivery = amz.delivery || '';
                 const shipCost = parseLmpShipCost(delivery);
+                const stockQty = amz.stock_quantity != null && amz.stock_quantity !== ''
+                    ? parseInt(amz.stock_quantity, 10)
+                    : null;
                 rows.push({
                     channel: 'amazon',
                     id: amz.id,
@@ -8419,6 +8452,8 @@
                     reviews: amz.reviews != null ? parseInt(amz.reviews) : null,
                     old_price: amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null,
                     delivery: delivery,
+                    stock: amz.stock || '',
+                    stock_quantity: (stockQty != null && isFinite(stockQty)) ? stockQty : null,
                     source: '',
                 });
             });
@@ -8675,6 +8710,7 @@
                 + '<td><span class="badge bg-primary">Ours</span></td>'
                 + '<td title="' + titleEsc + '">' + psCell + '</td>'
                 + '<td class="text-center text-muted small">—</td>'
+                + '<td class="text-center text-muted small">—</td>'
                 + '<td class="text-muted small">' + titleEsc + '</td>'
                 + '</tr>';
         }
@@ -8824,6 +8860,7 @@
                 + '<th>#</th>'
                 + '<th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
+                + '<th title="Competitor inventory / stock (Amazon SerpApi)">Inv</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
                 + '</thead><tbody>';
 
@@ -8879,6 +8916,7 @@
                 const psCell = (psTotal != null && psTotal > 0)
                     ? '<span class="lmp-ps-cell" style="font-weight:700;" title="' + psTip.replace(/"/g, '&quot;') + '">$' + psTotal.toFixed(2) + '</span>'
                     : '<span class="text-muted">-</span>';
+                const stockCell = formatLmpStockCell(row);
                 const ignoreCb = '<input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"'
                     + (row.ignored ? ' checked' : '')
                     + ' data-id="' + String(row.id).replace(/"/g, '&quot;') + '"'
@@ -8918,6 +8956,7 @@
                     + '<td>' + reviewsCell + '</td>'
                     + '<td>' + deliveryCell + '</td>'
                     + '<td>' + psCell + '</td>'
+                    + '<td class="text-center">' + stockCell + '</td>'
                     + '<td class="text-center">' + ignoreCb + '</td>'
                     + '<td class="text-nowrap">' + editBtn + delBtn + '</td>'
                     + '</tr>';

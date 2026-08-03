@@ -215,6 +215,17 @@
             color: #991b1b;
             border-color: #fca5a5;
         }
+        #ovl30DetailsModal .ovl30-tool-group-sp {
+            max-width: 420px;
+        }
+        #ovl30DetailsModal .ovl30-tool-group-sp .ovl30-sp-hint {
+            font-size: 11px;
+            line-height: 1.25;
+            max-width: 220px;
+        }
+        #ovl30DetailsModal #modal-std-sp-input {
+            font-weight: 700;
+        }
         #ovl30DetailsModal .modal-footer {
             padding: 0.45rem 0.85rem;
             border-top: 1px solid #e2e8f0;
@@ -1663,6 +1674,17 @@
                             Apply
                         </button>
                     </div>
+                    <div class="ovl30-tool-group ovl30-tool-group-sp"
+                        title="Standard Price (manual). Saves to SP for this SKU and Sku Link LMP siblings. Use when LMP cannot be determined.">
+                        <label for="modal-std-sp-input">SP</label>
+                        <input type="number" id="modal-std-sp-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
+                            title="Manual Standard Price — use when LMP cannot be determined. Saves to SP / STD PRC.">
+                        <span class="ovl30-sp-hint text-muted">
+                            Standard Price (manual). Saves to <strong>SP</strong> for this SKU and
+                            <strong>Sku Link LMP</strong> siblings.
+                        </span>
+                    </div>
                     <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm"
                         title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
                         <i class="fas fa-eraser"></i> Clear All SPRICE
@@ -2864,6 +2886,7 @@
             syncModalGroupSelects('');
             // Fresh SKU → clear siblings checkbox so it isn't accidentally left on from prior SKU
             $('#modal-siblings-apply-cb').prop('checked', false);
+            $('#modal-std-sp-input').val('');
             refreshModalSiblingSkus(sku);
             
             // Set product image in modal totals row
@@ -4161,9 +4184,50 @@
             $('#modal-avg-spft').html(`<span style="${styleForCellColor(spftColorTotal)}">${Math.round(avgSPFT)}%</span>`);
             $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${Math.round(avgSROI)}%</span>`);
             $('#modal-avg-snroi').html(`<span style="${styleForCellColor(roiColorTotal(avgSNROI))}">${Math.round(avgSNROI)}%</span>`);
+            syncModalToolbarSpInput();
             updateOvl30SortIcons();
             scheduleAutoFitOvl30TableFont();
             applyModalGroupFilter({ selectChannels: false });
+        }
+
+        /** Toolbar SP — same STANDARD_PRICE as STD PRC / amazon-tabulator SP. */
+        function syncModalToolbarSpInput(forcedValue) {
+            const $input = $('#modal-std-sp-input');
+            if (!$input.length) return;
+            if ($input.is(':focus')) return;
+            let std = parseFloat(forcedValue);
+            if (!isFinite(std) || std <= 0) {
+                std = 0;
+                if (Array.isArray(ovl30ModalData)) {
+                    for (let i = 0; i < ovl30ModalData.length; i++) {
+                        const item = ovl30ModalData[i];
+                        if (String(item.marketplace || '').toLowerCase() !== 'amazon') continue;
+                        const n = parseFloat(item.standard_price);
+                        if (isFinite(n) && n > 0) { std = n; break; }
+                    }
+                }
+            }
+            $input.val(std > 0 ? std.toFixed(2) : '');
+        }
+
+        function refreshModalAmazonStdPrcCells(saved) {
+            const std = parseFloat(saved);
+            if (!isFinite(std) || std <= 0) return;
+            const sku = getModalPrimarySku();
+            $('#ovl30DetailsTable tbody tr').each(function() {
+                const $row = $(this);
+                if (String($row.attr('data-marketplace') || '').toLowerCase() !== 'amazon') return;
+                const amazonPrice = parseFloat($row.attr('data-price')) || 0;
+                const $wrap = $row.find('.ovl30-std-prc-wrap');
+                if (!$wrap.length) return;
+                const dotHtml = priceIncreaseSpChangeDotHtml(std, amazonPrice, sku);
+                $wrap.html(
+                    (dotHtml || '')
+                    + '<input type="number" class="form-control form-control-sm editable-std-prc" '
+                    + 'value="' + std.toFixed(2) + '" step="0.01" min="0" '
+                    + 'title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                );
+            });
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
@@ -5766,10 +5830,22 @@
             }
         }
 
-        // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid SP in sync
+        // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid SP + modal toolbar SP in sync
         document.addEventListener('lmp-modal-sp-saved', function(e) {
             const d = e && e.detail ? e.detail : {};
             applyStandardPriceToPriceIncreaseRows(d.sku, d.standard_price, d.applied_skus);
+            const saved = parseFloat(d.standard_price);
+            if (isFinite(saved) && saved > 0) {
+                if (Array.isArray(ovl30ModalData)) {
+                    ovl30ModalData.forEach(function(item) {
+                        if (String(item.marketplace || '').toLowerCase() === 'amazon') {
+                            item.standard_price = saved;
+                        }
+                    });
+                }
+                refreshModalAmazonStdPrcCells(saved);
+                syncModalToolbarSpInput(saved);
+            }
         });
 
         // Amz SPRICE / SP edited in table
@@ -5800,8 +5876,21 @@
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(response) {
-                        const saved = response.data || std;
+                        const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
                         applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                        if (Array.isArray(ovl30ModalData)) {
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '').toLowerCase() === 'amazon') {
+                                    item.standard_price = saved;
+                                }
+                            });
+                        }
+                        if (typeof refreshModalAmazonStdPrcCells === 'function') {
+                            refreshModalAmazonStdPrcCells(saved);
+                        }
+                        if (typeof syncModalToolbarSpInput === 'function') {
+                            syncModalToolbarSpInput(saved);
+                        }
                         const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                         showToast(n > 1
                             ? ('Standard Price (SP) saved for ' + n + ' linked SKUs')
@@ -6182,15 +6271,9 @@
                     if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
                         applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
                     }
-                    const amazonPrice = parseFloat(row.attr('data-price')) || 0;
-                    const $wrap = input.closest('.ovl30-std-prc-wrap');
-                    const dotHtml = priceIncreaseSpChangeDotHtml(saved, amazonPrice, sku);
-                    $wrap.html(
-                        (dotHtml || '')
-                        + '<input type="number" class="form-control form-control-sm editable-std-prc" '
-                        + 'value="' + saved.toFixed(2) + '" step="0.01" min="0" '
-                        + 'title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
-                    );
+                    refreshModalAmazonStdPrcCells(saved);
+                    syncModalToolbarSpInput(saved);
+                    const $wrap = row.find('.ovl30-std-prc-wrap');
                     $wrap.find('.editable-std-prc').css('border-color', '#28a745');
                     setTimeout(function() {
                         $wrap.find('.editable-std-prc').css('border-color', '');
@@ -6207,6 +6290,67 @@
             });
         });
         $(document).on('keydown', '.editable-std-prc', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $(this).blur();
+            }
+        });
+
+        // Toolbar SP — same store/API as STD PRC / amazon-tabulator SP
+        $(document).on('blur', '#modal-std-sp-input', function() {
+            const input = $(this);
+            const sku = getModalPrimarySku();
+            if (!sku || String(sku).indexOf('PARENT') !== -1) return;
+
+            const raw = String(input.val() || '').trim();
+            if (raw === '') return; // leave blank — do not clear on empty blur
+            const std = parseFloat(raw);
+            if (!isFinite(std) || std <= 0) {
+                input.val('');
+                return;
+            }
+
+            input.css('border-color', '#20c997');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: sku,
+                    sprice: std,
+                    is_standard_price: 1,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
+                    if (Array.isArray(ovl30ModalData)) {
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
+                                item.standard_price = saved;
+                            }
+                        });
+                    }
+                    if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
+                        applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                    }
+                    refreshModalAmazonStdPrcCells(saved);
+                    syncModalToolbarSpInput(saved);
+                    input.css('border-color', '#28a745');
+                    setTimeout(function() { input.css('border-color', ''); }, 800);
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    showToast(n > 1
+                        ? ('SP saved for ' + n + ' linked SKUs')
+                        : 'SP saved', 'success');
+                },
+                error: function() {
+                    input.css('border-color', '#dc3545');
+                    showToast('Failed to save SP', 'error');
+                }
+            });
+        });
+        $(document).on('keydown', '#modal-std-sp-input', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 $(this).blur();
@@ -8328,6 +8472,36 @@
             return null;
         }
 
+        /** Amazon competitor Inv/stock from SerpApi (numeric qty or status text). */
+        function formatLmpStockCell(row) {
+            if (!row || row.channel !== 'amazon') {
+                return '<span class="text-muted">-</span>';
+            }
+            const stockText = row.stock != null ? String(row.stock).trim() : '';
+            const qty = row.stock_quantity != null && row.stock_quantity !== ''
+                ? parseInt(row.stock_quantity, 10)
+                : NaN;
+            if (!stockText && !isFinite(qty)) {
+                return '<span class="text-muted">-</span>';
+            }
+            const tip = (stockText || (isFinite(qty) ? String(qty) : '')).replace(/"/g, '&quot;');
+            if (isFinite(qty) && qty === 0) {
+                return '<span style="color:#dc3545;font-weight:700;" title="' + tip + '">0</span>';
+            }
+            if (isFinite(qty) && qty > 0) {
+                const color = qty <= 5 ? '#dc3545' : (qty <= 20 ? '#ffc107' : '#28a745');
+                return '<span style="color:' + color + ';font-weight:700;" title="' + tip + '">' + qty + '</span>';
+            }
+            if (/\bout\s+of\s+stock\b/i.test(stockText)) {
+                return '<span style="color:#dc3545;font-weight:600;" title="' + tip + '">OOS</span>';
+            }
+            if (/\bin\s+stock\b/i.test(stockText)) {
+                return '<span style="color:#28a745;font-weight:600;" title="' + tip + '">In Stock</span>';
+            }
+            const short = stockText.length > 14 ? stockText.substring(0, 14) + '…' : stockText;
+            return '<span style="font-size:10px;" title="' + tip + '">' + short.replace(/</g, '&lt;') + '</span>';
+        }
+
         /** Prefer row.shipCost (eBay), else parse delivery text (Amazon). */
         function getLmpRowShipCost(row) {
             if (!row) return null;
@@ -8403,6 +8577,9 @@
                 if (price <= 0) return;
                 const delivery = amz.delivery || '';
                 const shipCost = parseLmpShipCost(delivery);
+                const stockQty = amz.stock_quantity != null && amz.stock_quantity !== ''
+                    ? parseInt(amz.stock_quantity, 10)
+                    : null;
                 rows.push({
                     channel: 'amazon',
                     id: amz.id,
@@ -8419,6 +8596,8 @@
                     reviews: amz.reviews != null ? parseInt(amz.reviews) : null,
                     old_price: amz.extracted_old_price != null ? parseFloat(amz.extracted_old_price) : null,
                     delivery: delivery,
+                    stock: amz.stock || '',
+                    stock_quantity: (stockQty != null && isFinite(stockQty)) ? stockQty : null,
                     source: '',
                 });
             });
@@ -8675,6 +8854,7 @@
                 + '<td><span class="badge bg-primary">Ours</span></td>'
                 + '<td title="' + titleEsc + '">' + psCell + '</td>'
                 + '<td class="text-center text-muted small">—</td>'
+                + '<td class="text-center text-muted small">—</td>'
                 + '<td class="text-muted small">' + titleEsc + '</td>'
                 + '</tr>';
         }
@@ -8824,6 +9004,7 @@
                 + '<th>#</th>'
                 + '<th>Price</th><th>Rating</th><th>Rev</th><th>Del</th>'
                 + '<th title="Price + Shipping">P+S</th>'
+                + '<th title="Competitor inventory / stock (Amazon SerpApi)">Inv</th>'
                 + '<th title="Ignore for L1 (same as Temu Decrease)">Ign</th><th></th></tr>'
                 + '</thead><tbody>';
 
@@ -8879,6 +9060,7 @@
                 const psCell = (psTotal != null && psTotal > 0)
                     ? '<span class="lmp-ps-cell" style="font-weight:700;" title="' + psTip.replace(/"/g, '&quot;') + '">$' + psTotal.toFixed(2) + '</span>'
                     : '<span class="text-muted">-</span>';
+                const stockCell = formatLmpStockCell(row);
                 const ignoreCb = '<input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"'
                     + (row.ignored ? ' checked' : '')
                     + ' data-id="' + String(row.id).replace(/"/g, '&quot;') + '"'
@@ -8918,6 +9100,7 @@
                     + '<td>' + reviewsCell + '</td>'
                     + '<td>' + deliveryCell + '</td>'
                     + '<td>' + psCell + '</td>'
+                    + '<td class="text-center">' + stockCell + '</td>'
                     + '<td class="text-center">' + ignoreCb + '</td>'
                     + '<td class="text-nowrap">' + editBtn + delBtn + '</td>'
                     + '</tr>';

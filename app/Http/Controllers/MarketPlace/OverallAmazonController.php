@@ -3620,6 +3620,11 @@ class OverallAmazonController extends Controller
                                 // Ship / delivery text from SerpApi (FREE or "$X.XX delivery")
                                 'delivery' => $live['delivery'] ?? $competitor->delivery,
                                 'seller_name' => $live['seller_name'] ?? $competitor->seller_name,
+                                // Competitor inventory / stock status from SerpApi
+                                'stock' => $live['stock'] ?? $competitor->stock,
+                                'stock_quantity' => array_key_exists('stock_quantity', $live)
+                                    ? $live['stock_quantity']
+                                    : $competitor->stock_quantity,
                             ]);
                         } catch (\Throwable $e) {
                             Log::warning('getAmazonCompetitors refresh skipped competitor', [
@@ -3641,6 +3646,8 @@ class OverallAmazonController extends Controller
                             'extracted_old_price' => $live['extracted_old_price'] ?? null,
                             'delivery' => $live['delivery'] ?? null,
                             'seller_name' => $live['seller_name'] ?? null,
+                            'stock' => $live['stock'] ?? null,
+                            'stock_quantity' => $live['stock_quantity'] ?? null,
                         ]);
                     } catch (\Throwable $e) {
                         Log::warning('getAmazonCompetitors cache sync skipped', [
@@ -3699,6 +3706,8 @@ class OverallAmazonController extends Controller
                         'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
                         'extracted_old_price' => $comp->extracted_old_price !== null ? floatval($comp->extracted_old_price) : null,
                         'delivery' => $delivery,
+                        'stock' => $comp->stock,
+                        'stock_quantity' => $comp->stock_quantity !== null ? (int) $comp->stock_quantity : null,
                         'monthly_revenue' => $comp->monthly_revenue !== null ? floatval($comp->monthly_revenue) : null,
                         'monthly_units_sold' => $comp->monthly_units_sold !== null ? (int) $comp->monthly_units_sold : null,
                         'buy_box_owner' => $comp->buy_box_owner,

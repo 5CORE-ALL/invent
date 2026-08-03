@@ -10177,6 +10177,7 @@
                             <th style="width: 70px;">Rating</th>
                             <th style="width: 70px;">Reviews</th>
                             <th style="width: 140px;">Delivery</th>
+                            <th style="width: 80px;" title="Competitor inventory / stock from Amazon (SerpApi)">Inv</th>
                             <th style="width: 60px;">Link</th>
                             <th style="width: 80px;">Actions</th>
                         </tr>
@@ -10235,6 +10236,28 @@
                             deliveryHtml = `<span style="font-size: 10px;" title="${escAttr(delText)}">${delText.substring(0, 22)}${delText.length > 22 ? '…' : ''}</span>`;
                         }
                     }
+
+                    let stockHtml = '<span style="color: #999;">—</span>';
+                    const stockText = item.stock != null ? String(item.stock).trim() : '';
+                    const stockQty = item.stock_quantity != null && item.stock_quantity !== ''
+                        ? parseInt(item.stock_quantity, 10)
+                        : NaN;
+                    if (stockText || isFinite(stockQty)) {
+                        const tip = escAttr(stockText || (isFinite(stockQty) ? String(stockQty) : ''));
+                        if (isFinite(stockQty) && stockQty === 0) {
+                            stockHtml = `<span style="color:#dc3545;font-weight:700;" title="${tip}">0</span>`;
+                        } else if (isFinite(stockQty) && stockQty > 0) {
+                            const color = stockQty <= 5 ? '#dc3545' : (stockQty <= 20 ? '#ffc107' : '#28a745');
+                            stockHtml = `<span style="color:${color};font-weight:700;" title="${tip}">${stockQty}</span>`;
+                        } else if (/\bout\s+of\s+stock\b/i.test(stockText)) {
+                            stockHtml = `<span style="color:#dc3545;font-weight:600;" title="${tip}">OOS</span>`;
+                        } else if (/\bin\s+stock\b/i.test(stockText)) {
+                            stockHtml = `<span style="color:#28a745;font-weight:600;" title="${tip}">In Stock</span>`;
+                        } else {
+                            const short = stockText.length > 18 ? stockText.substring(0, 18) + '…' : stockText;
+                            stockHtml = `<span style="font-size:10px;" title="${tip}">${escAttr(short)}</span>`;
+                        }
+                    }
                     
                     html += `
                         <tr class="${rowClass}">
@@ -10256,6 +10279,7 @@
                              <td class="text-center">${rating}</td>
                             <td class="text-center">${reviews}</td>
                             <td class="text-center">${deliveryHtml}</td>
+                            <td class="text-center">${stockHtml}</td>
                             <td class="text-center">
                                 <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
                                     <i class="fa fa-external-link"></i>

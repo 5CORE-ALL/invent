@@ -95,6 +95,8 @@ class UpdateAmazonSkuCompetitorPrices extends Command
                                 'extracted_old_price' => $latestItem->extracted_old_price ?? $skuCompetitor->extracted_old_price,
                                 'delivery' => $latestItem->delivery ?? $skuCompetitor->delivery,
                                 'seller_name' => $latestItem->seller_name ?? $skuCompetitor->seller_name,
+                                'stock' => $latestItem->stock ?? $skuCompetitor->stock,
+                                'stock_quantity' => $latestItem->stock_quantity ?? $skuCompetitor->stock_quantity,
                             ]);
                         }
 
@@ -210,6 +212,10 @@ class UpdateAmazonSkuCompetitorPrices extends Command
                         'extracted_old_price' => $live['extracted_old_price'] ?? $competitor->extracted_old_price,
                         'delivery' => $live['delivery'] ?? $competitor->delivery,
                         'seller_name' => $live['seller_name'] ?? $competitor->seller_name,
+                        'stock' => $live['stock'] ?? $competitor->stock,
+                        'stock_quantity' => array_key_exists('stock_quantity', $live)
+                            ? $live['stock_quantity']
+                            : $competitor->stock_quantity,
                     ]);
 
                     AmazonCompetitorAsin::where('asin', $asin)->update([
@@ -221,6 +227,8 @@ class UpdateAmazonSkuCompetitorPrices extends Command
                         'extracted_old_price' => $live['extracted_old_price'],
                         'delivery' => $live['delivery'],
                         'seller_name' => $live['seller_name'],
+                        'stock' => $live['stock'] ?? null,
+                        'stock_quantity' => $live['stock_quantity'] ?? null,
                     ]);
                 }
 
