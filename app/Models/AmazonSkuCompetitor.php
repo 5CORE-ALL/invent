@@ -61,18 +61,78 @@ class AmazonSkuCompetitor extends Model
         return $query->orderByRaw('CAST(price AS DECIMAL(10,2)) ' . $dir);
     }
 
+    /**
+     * Parse Amazon delivery text/array into a ship cost.
+     * FREE / Prime free → 0; "$6.99 delivery..." → 6.99; unknown → null.
+     */
+    public static function parseShipCost($delivery): ?float
+    {
+        if ($delivery === null || $delivery === '') {
+            return null;
+        }
+
+        if (is_array($delivery)) {
+            $delivery = implode(', ', array_slice($delivery, 0, 3));
+        } elseif (is_string($delivery)) {
+            $decoded = json_decode($delivery, true);
+            if (is_array($decoded)) {
+                $delivery = implode(', ', array_slice($decoded, 0, 3));
+            }
+        }
+
+        if (is_numeric($delivery)) {
+            return max(0.0, (float) $delivery);
+        }
+
+        $text = trim((string) $delivery);
+        if ($text === '') {
+            return null;
+        }
+
+        if (preg_match('/\bfree\b/i', $text)) {
+            return 0.0;
+        }
+
+        if (preg_match('/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/', $text, $m)) {
+            return max(0.0, (float) $m[1]);
+        }
+
+        return null;
+    }
+
+    /**
+     * LMP landed = item price + paid delivery. FREE delivery does not add.
+     */
+    public static function landedPrice($item): ?float
+    {
+        $price = (float) (is_object($item) ? ($item->price ?? 0) : ($item['price'] ?? 0));
+        if ($price <= 0) {
+            return null;
+        }
+
+        $delivery = is_object($item) ? ($item->delivery ?? null) : ($item['delivery'] ?? null);
+        $ship = self::parseShipCost($delivery);
+        // Paid ship only; FREE (0) or missing delivery → do not add
+        if ($ship !== null && $ship > 0) {
+            return round($price + $ship, 2);
+        }
+
+        return round($price, 2);
+    }
+
     public static function lowestFromCollection($items)
     {
-        // L1 = lowest non-ignored (same idea as Temu LMP ignore)
+        // L1 = lowest non-ignored by landed (price + paid delivery; FREE = no add)
         $active = collect($items)->filter(fn ($item) => empty($item->ignored));
         $pool = $active->isNotEmpty() ? $active : collect();
 
-        return $pool->sortBy(fn ($item) => (float) ($item->price ?? 0))->first();
+        return $pool->sortBy(fn ($item) => self::landedPrice($item) ?? PHP_FLOAT_MAX)->first();
     }
 
     public static function sortCollectionByNumericPrice($items)
     {
-        return collect($items)->sortBy(fn ($item) => (float) ($item->price ?? 0))->values();
+        // Sort by landed LMP (price + paid delivery) so L1 matches outer/inner badges
+        return collect($items)->sortBy(fn ($item) => self::landedPrice($item) ?? PHP_FLOAT_MAX)->values();
     }
 
     /**
@@ -101,15 +161,15 @@ class AmazonSkuCompetitor extends Model
 
         $q = self::whereRaw('UPPER(REPLACE(REPLACE(REPLACE(REPLACE(sku, CHAR(10), " "), CHAR(13), " "), CHAR(9), " "), "  ", " ")) = ?', [$normalizedSku])
             ->where('marketplace', $marketplace)
-            ->wherePositivePrice()
-            ->orderByNumericPrice('asc');
+            ->wherePositivePrice();
         if (\Illuminate\Support\Facades\Schema::hasColumn('amazon_sku_competitors', 'ignored')) {
             $q->where(function ($qq) {
                 $qq->where('ignored', false)->orWhereNull('ignored');
             });
         }
 
-        return $q->first();
+        // Rank in PHP: paid delivery adds to price; FREE does not
+        return self::lowestFromCollection($q->get());
     }
 
     /**

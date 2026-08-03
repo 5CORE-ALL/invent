@@ -779,7 +779,7 @@ class CvrMasterController extends Controller
             try {
                 if (Schema::hasTable('amazon_sku_competitors')) {
                     $amazonGrouped = DB::table('amazon_sku_competitors')
-                        ->select(['sku', 'price', 'product_link', 'ignored'])
+                        ->select(['sku', 'price', 'product_link', 'ignored', 'delivery'])
                         ->where('marketplace', 'amazon')
                         ->whereRaw('CAST(price AS DECIMAL(10,2)) > 0')
                         ->get()
@@ -1700,8 +1700,8 @@ class CvrMasterController extends Controller
                 $amazonLmp = $amazonLmpLookup->get($skuLookupKey);
                 $ebayLmp = $ebayLmpLookup->get($skuLookupKey);
                 $googleLmp = $googleLmpLookup->get($skuLookupKey);
-                $amazonLmpPrice = ($amazonLmp && isset($amazonLmp->price) && is_numeric($amazonLmp->price))
-                    ? round(floatval($amazonLmp->price), 2) : null;
+                // Landed LMP = price + paid delivery (FREE does not add)
+                $amazonLmpPrice = $amazonLmp ? AmazonSkuCompetitor::landedPrice($amazonLmp) : null;
                 $amazonLmpLink = ($amazonLmp && !empty($amazonLmp->product_link)) ? $amazonLmp->product_link : null;
                 $ebayLmpTotal = null;
                 $ebayLmpLink = null;
@@ -2388,10 +2388,8 @@ class CvrMasterController extends Controller
                 }
                 return $cacheLmp('amazon', $key, function () use ($lookupSku) {
                     $lmp = AmazonSkuCompetitor::getLowestPriceForSku($lookupSku, 'amazon');
-                    if ($lmp && isset($lmp->price) && is_numeric($lmp->price) && floatval($lmp->price) > 0) {
-                        return round(floatval($lmp->price), 2);
-                    }
-                    return null;
+                    // Landed LMP = price + paid delivery (FREE does not add)
+                    return $lmp ? AmazonSkuCompetitor::landedPrice($lmp) : null;
                 });
             };
             $resolveEbayLmpPrice = function (?string $lookupSku = null) use ($cacheLmp) {
@@ -4177,9 +4175,8 @@ class CvrMasterController extends Controller
                     // Get LMP data for FBA SKU by matching base SKU (remove "FBA" suffix)
                     $baseSkuForLmp = strtoupper(preg_replace('/\s*FBA\s*/i', '', $fullSku));
                     $baseSkuForLmp = preg_replace('/\s+/', ' ', trim($baseSkuForLmp));
-                    $fbaLmp = $amazonLmpLookup->get($baseSkuForLmp);
-                    $fbaLmpPrice = ($fbaLmp && isset($fbaLmp->price) && is_numeric($fbaLmp->price))
-                        ? round(floatval($fbaLmp->price), 2) : null;
+                    $fbaLmp = AmazonSkuCompetitor::getLowestPriceForSku($baseSkuForLmp, 'amazon');
+                    $fbaLmpPrice = $fbaLmp ? AmazonSkuCompetitor::landedPrice($fbaLmp) : null;
                     $fbaLmpLink = ($fbaLmp && !empty($fbaLmp->product_link)) ? $fbaLmp->product_link : null;
 
                     $breakdownData[] = [

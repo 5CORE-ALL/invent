@@ -10190,14 +10190,22 @@
 
                     let shipCost = 0;
                     if (item.delivery) {
-                        const paidMatch = String(item.delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
-                        if (paidMatch) {
-                            shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                        const delText = String(item.delivery);
+                        // FREE → do not add; paid "$X.XX delivery" → add
+                        if (!/\bfree\b/i.test(delText)) {
+                            const paidMatch = delText.match(/\$\s*([\d,]+\.?\d*)\s*delivery/i)
+                                || delText.match(/\$\s*([\d,]+\.?\d*)/);
+                            if (paidMatch) {
+                                shipCost = parseFloat(paidMatch[1].replace(/,/g, '')) || 0;
+                            }
                         }
                     }
-                    const totalPrice = basePrice + shipCost;
+                    const totalPrice = (item.landed_price != null && parseFloat(item.landed_price) > 0)
+                        ? parseFloat(item.landed_price)
+                        : (basePrice + shipCost);
 
-                    const isLowest = Math.abs(parseFloat(item.price) - parseFloat(lowestPrice)) < 0.01;
+                    // L1 compares landed (price + paid delivery); FREE does not add
+                    const isLowest = Math.abs(totalPrice - parseFloat(lowestPrice)) < 0.01;
                     const rowClass = isLowest ? 'table-success' : '';
                     const totalFormatted = '$' + totalPrice.toFixed(2);
                     const priceInner = shipCost > 0

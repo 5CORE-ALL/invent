@@ -646,11 +646,11 @@ class OverallAmazonController extends Controller
             }
 
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
-            $lowestLmp = $allLmpEntries->first();
+            // L1 by landed (price + paid delivery; FREE does not add) — ignore ignored rows
+            $lowestLmp = AmazonSkuCompetitor::lowestFromCollection($allLmpEntries)
+                ?? $allLmpEntries->first();
 
-            $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
-                ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
-                : null;
+            $row['lmp_price'] = $lowestLmp ? AmazonSkuCompetitor::landedPrice($lowestLmp) : null;
             $row['lmp_link'] = $lowestLmp->product_link ?? null;
             $row['lmp_asin'] = $lowestLmp->asin ?? null;
             $row['lmp_title'] = $lowestLmp->product_title ?? null;
@@ -3669,12 +3669,13 @@ class OverallAmazonController extends Controller
                         return (float) ($comp->price ?? 0) > 0;
                     })
                     ->sortBy(function ($comp) {
-                        return (float) ($comp->price ?? 0);
+                        return AmazonSkuCompetitor::landedPrice($comp) ?? PHP_FLOAT_MAX;
                     })
                     ->values();
             }
 
-            // L1 = lowest non-ignored competitor (same as eBay / Temu)
+            // L1 = lowest non-ignored by landed (price + paid delivery; FREE does not add)
+            $competitors = AmazonSkuCompetitor::sortCollectionByNumericPrice($competitors);
             $lowest = $competitors->first(fn ($comp) => empty($comp->ignored))
                 ?? $competitors->first();
             
@@ -3689,6 +3690,7 @@ class OverallAmazonController extends Controller
                             : null
                     );
                     $delivery = $this->normalizeDeliveryText($comp->delivery);
+                    $landed = AmazonSkuCompetitor::landedPrice($comp);
                     return [
                         'id' => $comp->id,
                         'sku' => $comp->sku,
@@ -3701,6 +3703,7 @@ class OverallAmazonController extends Controller
                         'title' => $comp->product_title,
                         'seller_name' => $comp->seller_name,
                         'price' => floatval($comp->price),
+                        'landed_price' => $landed,
                         'ignored' => (bool) ($comp->ignored ?? false),
                         'rating' => $comp->rating !== null ? floatval($comp->rating) : null,
                         'reviews' => $comp->reviews !== null ? (int) $comp->reviews : null,
@@ -3717,7 +3720,7 @@ class OverallAmazonController extends Controller
                         'updated_at' => $comp->updated_at ? $comp->updated_at->format('Y-m-d H:i:s') : null,
                     ];
                 }),
-                'lowest_price' => $lowest ? floatval($lowest->price) : null,
+                'lowest_price' => $lowest ? AmazonSkuCompetitor::landedPrice($lowest) : null,
                 'lowest_delivery' => $lowest ? $this->normalizeDeliveryText($lowest->delivery ?? null) : null,
                 'total_count' => $competitors->count()
             ]);

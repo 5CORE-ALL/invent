@@ -8849,6 +8849,23 @@
             return price + ship;
         }
 
+        /**
+         * Value used for L1 / channel badge / sort — must match outer OV L30 LMP.
+         * Amazon: price + paid delivery (FREE delivery does not add) — same as backend landedPrice().
+         * Google: item price. eBay / BestBuy / Macy / Reverb / Temu: landed P+S.
+         */
+        function lmpRankValue(row) {
+            if (!row) return null;
+            const ch = String(row.channel || '').toLowerCase();
+            const price = parseFloat(row.price) || 0;
+            if (!(price > 0)) return null;
+            if (ch === 'google') {
+                return price;
+            }
+            // Amazon + marketplaces with ship: FREE → +0, paid delivery → price + ship
+            return lmpPricePlusShip(row) || price;
+        }
+
         function lmpChannelIconHtml(channel) {
             if (channel === 'amazon') {
                 return '<span class="lmp-channel-icon amazon" title="Amazon"><i class="fab fa-amazon"></i></span>';
@@ -9071,10 +9088,10 @@
                 });
             });
 
-            // Sort by landed cost (P+S) so eBay matches /ebay-tabulator-view Total order
+            // Sort by channel L1 metric (Amazon/Google = item price; eBay/etc = P+S)
             rows.sort(function(a, b) {
-                const pa = lmpPricePlusShip(a) || a.price || 0;
-                const pb = lmpPricePlusShip(b) || b.price || 0;
+                const pa = lmpRankValue(a) || a.price || 0;
+                const pb = lmpRankValue(b) || b.price || 0;
                 return pa - pb;
             });
             return rows;
@@ -9185,20 +9202,20 @@
             const allRows = lmpModalCache.rows || [];
             const rows = filter === 'all' ? allRows : allRows.filter(function(r) { return r.channel === filter; });
 
-            // L1 / badges use P+S (eBay Total = price + shipping_cost, same as ebay-tabulator)
-            function activeLanded(ch) {
+            // L1 / badges: Amazon/Google = item price (matches outer); eBay/etc = P+S
+            function activeRanked(ch) {
                 return allRows
                     .filter(function(r) { return r.channel === ch && !r.ignored; })
-                    .map(function(r) { return lmpPricePlusShip(r) || r.price; })
-                    .filter(function(v) { return v > 0; });
+                    .map(function(r) { return lmpRankValue(r); })
+                    .filter(function(v) { return v != null && v > 0; });
             }
-            const amzPrices = activeLanded('amazon');
-            const ebayPrices = activeLanded('ebay');
-            const googlePrices = activeLanded('google');
-            const bestbuyPrices = activeLanded('bestbuy');
-            const macyPrices = activeLanded('macy');
-            const reverbPrices = activeLanded('reverb');
-            const temuPrices = activeLanded('temu');
+            const amzPrices = activeRanked('amazon');
+            const ebayPrices = activeRanked('ebay');
+            const googlePrices = activeRanked('google');
+            const bestbuyPrices = activeRanked('bestbuy');
+            const macyPrices = activeRanked('macy');
+            const reverbPrices = activeRanked('reverb');
+            const temuPrices = activeRanked('temu');
             const amzLowest = amzPrices.length ? Math.min.apply(null, amzPrices) : null;
             const ebayLowest = ebayPrices.length ? Math.min.apply(null, ebayPrices) : null;
             const googleLowest = googlePrices.length ? Math.min.apply(null, googlePrices) : null;
@@ -9333,9 +9350,10 @@
             let lIndex = 0;
 
             rows.forEach(function(row) {
-                const landed = lmpPricePlusShip(row) || row.price;
+                const rankVal = lmpRankValue(row) || row.price;
+                const landedPs = lmpPricePlusShip(row) || row.price;
                 // Insert 5 Core just before the first competitor at/above our price (never counts as L1)
-                if (!fiveCoreInserted && fiveCoreHtml && ourPrice > 0 && landed >= ourPrice) {
+                if (!fiveCoreInserted && fiveCoreHtml && ourPrice > 0 && rankVal >= ourPrice) {
                     html += fiveCoreHtml;
                     fiveCoreInserted = true;
                 }
@@ -9343,7 +9361,7 @@
                 lIndex++;
                 const sn = 'L' + lIndex;
                 const lowest = channelLowest[row.channel];
-                const isLowest = !row.ignored && lowest != null && Math.abs(landed - lowest) < 0.01;
+                const isLowest = !row.ignored && lowest != null && Math.abs(rankVal - lowest) < 0.01;
                 const thumb = row.image
                     ? '<img src="' + String(row.image).replace(/"/g, '&quot;') + '" alt="" class="rounded lmp-thumb me-1" style="object-fit:contain;" onerror="this.style.display=\'none\'">'
                     : '';
@@ -9373,7 +9391,7 @@
                             : row.delivery
                     )
                     : formatLmpDelivery(row.delivery);
-                const psTotal = landed;
+                const psTotal = landedPs;
                 const psTip = (shipCost === null)
                     ? 'Price (no ship data)'
                     : ('Price $' + row.price.toFixed(2) + ' + Ship $' + Number(shipCost).toFixed(2));
@@ -9565,8 +9583,9 @@
                 });
                 let lowest = null;
                 rows.forEach(function(r) {
-                    const landed = (typeof lmpPricePlusShip === 'function' ? lmpPricePlusShip(r) : null) || r.price;
-                    if (landed > 0 && (lowest == null || landed < lowest)) lowest = landed;
+                    const ranked = (typeof lmpRankValue === 'function' ? lmpRankValue(r) : null)
+                        || r.price;
+                    if (ranked > 0 && (lowest == null || ranked < lowest)) lowest = ranked;
                 });
                 patchOvl30LmpCell(ch, lowest);
             }, 400);
@@ -9660,8 +9679,9 @@
                         });
                         let lowest = null;
                         active.forEach(function(r) {
-                            const landed = (typeof lmpPricePlusShip === 'function' ? lmpPricePlusShip(r) : null) || r.price;
-                            if (landed > 0 && (lowest == null || landed < lowest)) lowest = landed;
+                            const ranked = (typeof lmpRankValue === 'function' ? lmpRankValue(r) : null)
+                                || r.price;
+                            if (ranked > 0 && (lowest == null || ranked < lowest)) lowest = ranked;
                         });
                         patchOvl30LmpCell(ch, lowest);
                     } else {
