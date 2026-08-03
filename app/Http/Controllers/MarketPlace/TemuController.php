@@ -2106,21 +2106,9 @@ class TemuController extends Controller
             // SROI = Profit / LP
             $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
-            $temuDataView = Temu2DataView::firstOrNew(['sku' => $sku]);
-            $temuDataView->sku = $sku;
-            $existingValue = is_array($temuDataView->value)
-                ? $temuDataView->value
-                : (is_string($temuDataView->value) ? json_decode($temuDataView->value, true) : []);
-            if (!is_array($existingValue)) {
-                $existingValue = [];
-            }
-
-            $existingValue['sprice'] = $sprice;
-            $existingValue['sgprft_percent'] = round($sgprftPercent, 2);
-            $existingValue['sroi_percent'] = round($sroiPercent, 2);
-
-            $temuDataView->value = $existingValue;
-            $temuDataView->save();
+            $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, true);
+            // Auto-apply same suggested price to Temu 1
+            $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, false);
 
             return response()->json([
                 'success' => true,
@@ -2128,12 +2116,53 @@ class TemuController extends Controller
                 'sprice' => $sprice,
                 'sgprft_percent' => round($sgprftPercent, 2),
                 'sroi_percent' => round($sroiPercent, 2),
+                'temu_cross_applied' => true,
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving Temu 2 SPRICE: ' . $e->getMessage());
 
             return response()->json(['error' => 'Failed to save SPRICE'], 500);
         }
+    }
+
+    /**
+     * Persist SPRICE (+ metrics) to Temu or Temu2 data_view for one SKU.
+     */
+    private function writeTemuChannelSprice(string $sku, float $sprice, float $sgprftPercent, float $sroiPercent, bool $isTemu2): void
+    {
+        if ($isTemu2 && !Schema::hasTable('temu2_data_view')) {
+            return;
+        }
+
+        $dataView = $isTemu2
+            ? Temu2DataView::firstOrNew(['sku' => $sku])
+            : TemuDataView::firstOrNew(['sku' => $sku]);
+        $dataView->sku = $sku;
+        $existingValue = is_array($dataView->value)
+            ? $dataView->value
+            : (is_string($dataView->value) ? json_decode($dataView->value, true) : []);
+        if (!is_array($existingValue)) {
+            $existingValue = [];
+        }
+
+        if ($sprice > 0) {
+            $existingValue['sprice'] = $sprice;
+            $existingValue['SPRICE'] = $sprice;
+            $existingValue['sgprft_percent'] = round($sgprftPercent, 2);
+            $existingValue['sroi_percent'] = round($sroiPercent, 2);
+            $existingValue['SGPFT'] = round($sgprftPercent, 2);
+            $existingValue['SROI'] = round($sroiPercent, 2);
+        } else {
+            unset(
+                $existingValue['sprice'], $existingValue['SPRICE'],
+                $existingValue['sgprft_percent'], $existingValue['sroi_percent'],
+                $existingValue['SGPFT'], $existingValue['SROI'],
+                $existingValue['SPFT'], $existingValue['spft']
+            );
+        }
+
+        $dataView->value = $existingValue;
+        $dataView->save();
     }
 
     /**
@@ -3963,25 +3992,17 @@ class TemuController extends Controller
             // SROI = Profit / LP
             $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
-            // Store SPRICE in TemuDataView (similar to eBay's approach)
-            $temuDataView = TemuDataView::firstOrNew(['sku' => $sku]);
-            $existingValue = is_array($temuDataView->value) 
-                ? $temuDataView->value 
-                : (is_string($temuDataView->value) ? json_decode($temuDataView->value, true) : []);
-            
-            $existingValue['sprice'] = $sprice;
-            $existingValue['sgprft_percent'] = round($sgprftPercent, 2);
-            $existingValue['sroi_percent'] = round($sroiPercent, 2);
-            
-            $temuDataView->value = $existingValue;
-            $temuDataView->save();
+            $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, false);
+            // Auto-apply same suggested price to Temu 2
+            $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, true);
 
             return response()->json([
                 'success' => true,
                 'message' => 'SPRICE saved successfully',
                 'sprice' => $sprice,
                 'sgprft_percent' => round($sgprftPercent, 2),
-                'sroi_percent' => round($sroiPercent, 2)
+                'sroi_percent' => round($sroiPercent, 2),
+                'temu_cross_applied' => true,
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving Temu SPRICE: ' . $e->getMessage());

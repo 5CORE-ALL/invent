@@ -1656,7 +1656,7 @@
                         </button>
                     </div>
                     <div class="form-check"
-                        title="When checked, the same SPRICE is saved on all child SKUs under the same parent, and Push sends that price to those siblings on each marketplace. Never applies 0.">
+                        title="When checked, the same SPRICE is saved on all child SKUs under the same parent (Temu↔Temu2 both channels). Preference is remembered for this SKU. Never applies 0.">
                         <input class="form-check-input" type="checkbox" id="modal-siblings-apply-cb">
                         <label class="form-check-label" for="modal-siblings-apply-cb">
                             Siblings
@@ -2895,8 +2895,8 @@
             // Wire totals-row Price / CVR chart dots to this SKU
             $('#modal-price-chart-dot, #modal-cvr-chart-dot').attr('data-sku', sku || '');
             syncModalGroupSelects('');
-            // Fresh SKU → clear siblings checkbox so it isn't accidentally left on from prior SKU
-            $('#modal-siblings-apply-cb').prop('checked', false);
+            // Restore per-SKU siblings preference (saved when user ticks Siblings for this SKU)
+            $('#modal-siblings-apply-cb').prop('checked', getSiblingsPrefForSku(sku));
             $('#modal-std-sp-input').val('');
             refreshModalSiblingSkus(sku);
             
@@ -3056,6 +3056,32 @@
             return $('#modal-siblings-apply-cb').is(':checked');
         }
 
+        // Persist Siblings checkbox per SKU so reopening the same SKU restores it
+        const SIBLINGS_PREF_STORAGE_KEY = 'cvr_master_siblings_apply_by_sku_v1';
+        function getSiblingsPrefMap() {
+            try {
+                const raw = localStorage.getItem(SIBLINGS_PREF_STORAGE_KEY);
+                const map = raw ? JSON.parse(raw) : {};
+                return (map && typeof map === 'object') ? map : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        function setSiblingsPrefForSku(sku, on) {
+            sku = String(sku || '').trim();
+            if (!sku) return;
+            const key = sku.toUpperCase();
+            const map = getSiblingsPrefMap();
+            if (on) map[key] = 1;
+            else delete map[key];
+            try { localStorage.setItem(SIBLINGS_PREF_STORAGE_KEY, JSON.stringify(map)); } catch (e) { /* ignore */ }
+        }
+        function getSiblingsPrefForSku(sku) {
+            sku = String(sku || '').trim();
+            if (!sku) return false;
+            return !!getSiblingsPrefMap()[sku.toUpperCase()];
+        }
+
         function siblingsApplyPayload(price) {
             // Never apply 0 / empty to siblings — only real suggested prices
             if (price !== undefined && price !== null) {
@@ -3063,6 +3089,33 @@
                 if (!isFinite(n) || !(n > 0)) return 0;
             }
             return isModalSiblingsApply() ? 1 : 0;
+        }
+
+        /** Temu ↔ Temu2 pair for auto-apply */
+        function temuPairedMarketplace(mp) {
+            const m = String(mp || '').toLowerCase();
+            if (m === 'temu') return 'temu2';
+            if (m === 'temu2') return 'temu';
+            return null;
+        }
+
+        /** Mirror SPRICE into the paired Temu row in the open modal (UI only; backend already saved). */
+        function syncTemuPairedSpriceInModal(sourceMp, sprice) {
+            const other = temuPairedMarketplace(sourceMp);
+            if (!other) return;
+            const $otherRow = $('#ovl30DetailsTableBody tr').filter(function() {
+                return String($(this).attr('data-marketplace') || '').toLowerCase() === other;
+            }).first();
+            if (!$otherRow.length) return;
+            const $input = $otherRow.find('.editable-sprice');
+            if (!$input.length) return;
+            const display = (sprice > 0) ? Number(sprice).toFixed(2) : '';
+            $input.val(display).attr('data-temu-synced', '1').trigger('input');
+            ovl30ModalData.forEach(function(item) {
+                if (String(item.marketplace || '').toLowerCase() === other) {
+                    item.sprice = sprice > 0 ? sprice : 0;
+                }
+            });
         }
 
         function siblingsApplyLabel() {
@@ -3157,13 +3210,16 @@
             });
         }
 
-        /** Apply same SPRICE to every sibling SKU (includes INV 0). */
+        /** Apply same SPRICE to every sibling SKU (includes INV 0). Temu↔Temu2 both channels. */
         function applySpriceToSiblingSkus(marketplace, sprice, metrics, done) {
             const list = (modalSiblingSkus || []).map(String).map(function(s) { return s.trim(); }).filter(Boolean);
             if (!list.length || !(sprice > 0) || !marketplace) {
                 if (done) done(0);
                 return;
             }
+            const channels = [marketplace];
+            const paired = temuPairedMarketplace(marketplace);
+            if (paired) channels.push(paired);
             let i = 0;
             let ok = 0;
             function next() {
@@ -3172,22 +3228,38 @@
                     return;
                 }
                 const sibSku = list[i++];
-                saveSpriceForSkuMarketplace(sibSku, marketplace, sprice, metrics, function(success) {
-                    if (success) ok++;
-                    next();
-                });
+                let chIdx = 0;
+                let sibOk = false;
+                function nextChannel() {
+                    if (chIdx >= channels.length) {
+                        if (sibOk) ok++;
+                        next();
+                        return;
+                    }
+                    const ch = channels[chIdx++];
+                    saveSpriceForSkuMarketplace(sibSku, ch, sprice, metrics, function(success) {
+                        if (success) sibOk = true;
+                        nextChannel();
+                    });
+                }
+                nextChannel();
             }
             next();
         }
 
         $(document).on('change', '#modal-siblings-apply-cb', function() {
-            if (!$(this).is(':checked')) return;
             const sku = getModalPrimarySku();
+            const on = $(this).is(':checked');
             if (!sku) {
-                showToast('Open a SKU details modal first', 'error');
-                $(this).prop('checked', false);
+                if (on) {
+                    showToast('Open a SKU details modal first', 'error');
+                    $(this).prop('checked', false);
+                }
                 return;
             }
+            // Remember preference for this SKU (restored next time the modal opens)
+            setSiblingsPrefForSku(sku, on);
+            if (!on) return;
             if (!modalSiblingSkus.length) {
                 // Re-fetch once in case count was stale
                 refreshModalSiblingSkus(sku);
@@ -3195,12 +3267,12 @@
                     if (!modalSiblingSkus.length) {
                         showToast('No sibling SKUs found for this parent', 'error');
                     } else {
-                        showToast('Siblings Apply ON — will update ' + modalSiblingSkus.length + ' sibling(s)', 'success');
+                        showToast('Siblings Apply ON — saved for ' + sku + ' (+' + modalSiblingSkus.length + ' sibling(s))', 'success');
                     }
                 }, 400);
                 return;
             }
-            showToast('Siblings Apply ON — will update ' + modalSiblingSkus.length + ' sibling(s)', 'success');
+            showToast('Siblings Apply ON — saved for ' + sku + ' (+' + modalSiblingSkus.length + ' sibling(s))', 'success');
         });
         // Group: A = Amazon + others (exclude Temu, Doba, B2B); D = Doba; T = Temu
         const MODAL_GROUP_EXCLUDE_FROM_A = ['temu', 'temu2', 'doba', 'sb2b', 'shopifyb2b', 'shopify_b2b'];
@@ -6386,6 +6458,11 @@
         // Auto-save on blur
         $(document).on('blur', '.editable-sprice', function() {
             const input = $(this);
+            // Paired Temu↔Temu2 UI sync — skip re-POST (already saved on the source channel)
+            if (input.attr('data-temu-synced')) {
+                input.removeAttr('data-temu-synced');
+                return;
+            }
             const row = input.closest('tr');
             // Always use modal SKU (row data-sku can be "Not Listed" / channel listing SKU)
             const sku = getModalPrimarySku() || row.attr('data-sku');
@@ -6443,8 +6520,14 @@
                 success: function(res) {
                     input.css('border-color', '#28a745');
                     setTimeout(() => input.css('border-color', ''), 1000);
+                    if (isTemuMp) {
+                        syncTemuPairedSpriceInModal(mpLower, sprice);
+                    }
                     const sibN = res && res.siblings_count ? res.siblings_count : 0;
-                    showToast(sibN ? ('Saved! (+' + sibN + ' siblings)') : 'Saved!', 'success');
+                    let msg = 'Saved!';
+                    if (isTemuMp) msg += ' (Temu + Temu2)';
+                    if (sibN) msg += ' (+' + sibN + ' siblings)';
+                    showToast(msg, 'success');
                 },
                 error: function() {
                     input.css('border-color', '#dc3545');
@@ -6614,6 +6697,9 @@
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
+                    if (isTemuMp) {
+                        syncTemuPairedSpriceInModal(mpLower, sprice);
+                    }
                     if (done) done(true, res);
                 },
                 error: function() { if (done) done(false); }

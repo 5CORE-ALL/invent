@@ -5109,14 +5109,35 @@ class CvrMasterController extends Controller
                 }
             }
 
-            return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, [
+            $payload = [
                 'sprice' => $sprice,
                 'sgpft' => $sgpft,
                 'sroi' => $sroi,
                 'spft' => $spft,
                 'amazon_margin' => $amazonMargin,
                 'avg_pft' => $avgPft,
-            ]);
+            ];
+
+            // Temu ↔ Temu2: any suggested price on one auto-applies to the other (same SKU)
+            if ($marketplace === 'temu' || $marketplace === 'temu2') {
+                $otherTemu = $marketplace === 'temu' ? 'temu2' : 'temu';
+                try {
+                    if ($sprice > 0) {
+                        $this->applySuggestedSpriceToSku($skuToUse, $otherTemu, $payload);
+                    } else {
+                        $this->clearSuggestedSpriceOnSku($skuToUse, $otherTemu);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR Temu↔Temu2 SPRICE cross-apply failed', [
+                        'sku' => $skuToUse,
+                        'from' => $marketplace,
+                        'to' => $otherTemu,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, $payload);
         } catch (\Exception $e) {
             Log::error('Error saving suggested data: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $message = config('app.debug') ? $e->getMessage() : 'Failed to save';
@@ -5303,14 +5324,74 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Clear SPRICE keys on one SKU/channel (used to keep Temu ↔ Temu2 in sync on clear).
+     */
+    private function clearSuggestedSpriceOnSku(string $sku, string $marketplace): bool
+    {
+        $marketplace = strtolower(trim($marketplace));
+        $sku = trim($sku);
+        if ($sku === '' || $marketplace === '') {
+            return false;
+        }
+
+        $productMaster = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+            ?: ProductMaster::where('sku', 'LIKE', $sku . '%')
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first();
+        $fullSku = $productMaster ? trim((string) $productMaster->sku) : $sku;
+
+        if ($marketplace === 'temu') {
+            $dataView = TemuDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
+                ?: TemuDataView::where('sku', $fullSku)->first();
+        } elseif ($marketplace === 'temu2') {
+            if (!Schema::hasTable('temu2_data_view')) {
+                return false;
+            }
+            $dataView = Temu2DataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
+                ?: Temu2DataView::where('sku', $fullSku)->first();
+        } else {
+            return false;
+        }
+
+        if (!$dataView) {
+            return true;
+        }
+
+        $value = is_array($dataView->value)
+            ? $dataView->value
+            : (is_string($dataView->value) ? json_decode($dataView->value, true) : []);
+        if (!is_array($value)) {
+            $value = [];
+        }
+
+        unset(
+            $value['SPRICE'], $value['sprice'],
+            $value['SGPFT'], $value['sgpft'], $value['sgprft_percent'],
+            $value['SROI'], $value['sroi'], $value['sroi_percent'],
+            $value['SPFT'], $value['spft']
+        );
+        $dataView->value = $value;
+        $dataView->save();
+
+        return true;
+    }
+
+    /**
      * After a successful SPRICE save, optionally copy the same SPRICE to sibling child SKUs (same parent).
      * Never applies 0 to siblings.
+     * Temu / Temu2: siblings get both channels (same as primary Temu↔Temu2 cross-apply).
      */
     private function finishSuggestedSaveWithSiblings(Request $request, string $fullSku, string $marketplace, array $payload)
     {
         $applySiblings = filter_var($request->input('apply_siblings'), FILTER_VALIDATE_BOOLEAN);
         $siblingSaved = [];
         $sprice = floatval($payload['sprice'] ?? 0);
+        $marketplace = strtolower(trim($marketplace));
+
+        $channels = [$marketplace];
+        if ($marketplace === 'temu' || $marketplace === 'temu2') {
+            $channels[] = $marketplace === 'temu' ? 'temu2' : 'temu';
+        }
 
         // Siblings Apply only when there is a real (non-zero) suggested price
         if ($applySiblings && $sprice > 0) {
@@ -5318,16 +5399,22 @@ class CvrMasterController extends Controller
                 if (strtoupper(trim((string) $sibSku)) === strtoupper(trim($fullSku))) {
                     continue;
                 }
-                try {
-                    if ($this->applySuggestedSpriceToSku((string) $sibSku, $marketplace, $payload)) {
-                        $siblingSaved[] = $sibSku;
+                $anyOk = false;
+                foreach ($channels as $ch) {
+                    try {
+                        if ($this->applySuggestedSpriceToSku((string) $sibSku, $ch, $payload)) {
+                            $anyOk = true;
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('CVR siblings SPRICE save failed', [
+                            'sku' => $sibSku,
+                            'marketplace' => $ch,
+                            'error' => $e->getMessage(),
+                        ]);
                     }
-                } catch (\Throwable $e) {
-                    Log::warning('CVR siblings SPRICE save failed', [
-                        'sku' => $sibSku,
-                        'marketplace' => $marketplace,
-                        'error' => $e->getMessage(),
-                    ]);
+                }
+                if ($anyOk) {
+                    $siblingSaved[] = $sibSku;
                 }
             }
         }
@@ -5336,6 +5423,7 @@ class CvrMasterController extends Controller
             'success' => true,
             'siblings_applied' => $siblingSaved,
             'siblings_count' => count($siblingSaved),
+            'temu_cross_applied' => in_array($marketplace, ['temu', 'temu2'], true),
             'message' => count($siblingSaved)
                 ? ('Saved (+' . count($siblingSaved) . ' siblings)')
                 : 'Saved',
