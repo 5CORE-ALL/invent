@@ -14,6 +14,7 @@ class OnSeaTransitDetailsHistory extends Model
     protected $fillable = [
         'on_sea_transit_id',
         'container_sl_no',
+        'field',
         'user_name',
         'old_value',
         'new_value',
