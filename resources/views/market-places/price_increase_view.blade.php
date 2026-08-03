@@ -936,7 +936,7 @@
             max-width: 90% !important;
         }
 
-        /* LMP Competitors – right-side drawer (full height, 30% width) */
+        /* LMP Competitors – right-side drawer (full height, ~48% width) */
         #lmpModal {
             z-index: 1065;
         }
@@ -946,11 +946,19 @@
             right: 0;
             left: auto;
             margin: 0;
-            width: 30vw;
-            max-width: 30vw;
+            width: 48vw;
+            max-width: 48vw;
+            min-width: 520px;
             height: 100vh;
             max-height: 100vh;
             transform: none;
+        }
+        @media (max-width: 768px) {
+            #lmpModal .modal-dialog {
+                width: 100vw;
+                max-width: 100vw;
+                min-width: 0;
+            }
         }
         #lmpModal.fade .modal-dialog {
             transform: translateX(100%);
@@ -4274,6 +4282,8 @@
             $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${Math.round(avgSROI)}%</span>`);
             $('#modal-avg-snroi').html(`<span style="${styleForCellColor(roiColorTotal(avgSNROI))}">${Math.round(avgSNROI)}%</span>`);
             syncModalToolbarSpInput();
+            // Prefer SP from Sku Link LMP siblings (shared group value)
+            loadModalToolbarSpFromSkuLinkGroup(getModalPrimarySku());
             updateOvl30SortIcons();
             scheduleAutoFitOvl30TableFont();
             applyModalGroupFilter({ selectChannels: false });
@@ -4297,6 +4307,34 @@
                 }
             }
             $input.val(std > 0 ? std.toFixed(2) : '');
+        }
+
+        /**
+         * Load SP from Sku Link LMP siblings (/amazon-standard-price) into OV L30 toolbar + STD PRC.
+         * Ensures SP shows the shared sibling value even when this SKU has no STANDARD_PRICE saved.
+         */
+        function loadModalToolbarSpFromSkuLinkGroup(sku) {
+            sku = String(sku || getModalPrimarySku() || '').trim();
+            if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return;
+            $.getJSON('/amazon-standard-price', { sku: sku })
+                .done(function(res) {
+                    const std = parseFloat(res && res.standard_price);
+                    if (!isFinite(std) || std <= 0) return;
+                    if (Array.isArray(ovl30ModalData)) {
+                        ovl30ModalData.forEach(function(item) {
+                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
+                                item.standard_price = std;
+                            }
+                        });
+                    }
+                    syncModalToolbarSpInput(std);
+                    refreshModalAmazonStdPrcCells(std);
+                    // Prefill Same-$ SPRICE box from shared sibling SP (user can still edit)
+                    const $same = $('#modal-sprice-same-input');
+                    if ($same.length && !$same.is(':focus') && String($same.val() || '').trim() === '') {
+                        $same.val(std.toFixed(2));
+                    }
+                });
         }
 
         function refreshModalAmazonStdPrcCells(saved) {
@@ -6474,7 +6512,8 @@
             const lp = parseFloat(row.attr('data-lp')) || 0;
             const mpLower = String(marketplace || '').toLowerCase();
             const isNoAdsBlur = (mpLower === 'doba' || mpLower === 'ppower' || mpLower === 'purchasingpower'
-                || mpLower === 'purchase' || mpLower === 'topdawg' || mpLower === 'shein');
+                || mpLower === 'purchase' || mpLower === 'topdawg' || mpLower === 'shein'
+                || mpLower === 'aliexpress');
             const ship = (mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase'
                 || mpLower === 'topdawg') ? 0 : (parseFloat(row.attr('data-ship')) || 0);
             const ad = parseFloat(row.attr('data-ad')) || 0;
@@ -8191,6 +8230,13 @@
             if (!$('#ovl30DetailsModal').hasClass('show')) return;
             const mp = String(marketplace || '').toLowerCase();
             if (!mp) return;
+            // Drawer filter channel (Ebay1/2/3 → ebay, FBA → amazon)
+            let linkMp = mp;
+            if (['ebay1', 'ebay2', 'ebay3', 'ebaytwo', 'ebaythree', 'ebay'].indexOf(mp) !== -1) {
+                linkMp = 'ebay';
+            } else if (mp === 'fba') {
+                linkMp = 'amazon';
+            }
             const $tr = $('#ovl30DetailsTableBody tr').filter(function() {
                 return String($(this).attr('data-marketplace') || '').toLowerCase() === mp;
             }).first();
@@ -8200,8 +8246,8 @@
             const $lmpTd = $tr.children('td').eq(11); // LMP column
             if (!(lmpPrice > 0)) {
                 $lmpTd.html(
-                    '<a href="#" class="lmp-add-btn" data-sku="' + skuAttr + '" data-marketplace="' + mp
-                    + '" title="Add ' + mp + ' LMP"><i class="fas fa-plus-circle"></i></a>'
+                    '<a href="#" class="lmp-add-btn" data-sku="' + skuAttr + '" data-marketplace="' + linkMp
+                    + '" title="Add ' + linkMp + ' LMP"><i class="fas fa-plus-circle"></i></a>'
                 );
                 $tr.attr('data-lmp', '0');
                 return;
@@ -8209,14 +8255,14 @@
             const p = +Number(lmpPrice).toFixed(2);
             $tr.attr('data-lmp', p);
             $lmpTd.html(
-                '<a href="#" class="lmp-channel-price" data-sku="' + skuAttr + '" data-marketplace="' + mp
-                + '" title="View ' + mp + ' LMP" style="color:#0d6efd;font-weight:600;text-decoration:underline;cursor:pointer;">$'
+                '<a href="#" class="lmp-channel-price" data-sku="' + skuAttr + '" data-marketplace="' + linkMp
+                + '" title="View ' + linkMp + ' LMP" style="color:#0d6efd;font-weight:600;text-decoration:underline;cursor:pointer;">$'
                 + p.toFixed(2) + '</a>'
             );
             ovl30ModalData.forEach(function(item) {
                 if (String(item.marketplace || '').toLowerCase() === mp) {
                     item.lmp_price = p;
-                    item.lmp_channel = mp;
+                    item.lmp_channel = linkMp;
                 }
             });
         }
@@ -8525,6 +8571,51 @@
             }
         }
 
+        /** Lowest ranked LMP from current modal cache (Amazon = price + paid delivery). */
+        function lowestLmpFromModalCache(channel) {
+            const ch = String(channel || '').toLowerCase();
+            if (!ch || !lmpModalCache || !Array.isArray(lmpModalCache.rows)) return null;
+            let lowest = null;
+            lmpModalCache.rows.forEach(function(r) {
+                if (!r || r.channel !== ch || r.ignored) return;
+                const ranked = (typeof lmpRankValue === 'function' ? lmpRankValue(r) : null) || r.price;
+                if (ranked > 0 && (lowest == null || ranked < lowest)) lowest = ranked;
+            });
+            return lowest;
+        }
+
+        /**
+         * After Pull: refresh open LMP drawer + patch OV L30 LMP cells in place
+         * (no page reload, no closing/reopening modals).
+         */
+        function applyLmpPullResultsToOpenUi(sku, amazonRes, ebayRes, googleRes) {
+            patchPriceIncreaseLmpFromPull(sku, amazonRes, ebayRes, googleRes);
+
+            const amz = (amazonRes && amazonRes.lowest_price != null && amazonRes.lowest_price > 0)
+                ? +Number(amazonRes.lowest_price).toFixed(2)
+                : lowestLmpFromModalCache('amazon');
+            const ebay = (ebayRes && ebayRes.lowest_price != null && ebayRes.lowest_price > 0)
+                ? +Number(ebayRes.lowest_price).toFixed(2)
+                : lowestLmpFromModalCache('ebay');
+            const google = (googleRes && googleRes.lowest_price != null && googleRes.lowest_price > 0)
+                ? +Number(googleRes.lowest_price).toFixed(2)
+                : lowestLmpFromModalCache('google');
+
+            if (amz != null) {
+                patchOvl30LmpCell('amazon', amz);
+                patchOvl30LmpCell('fba', amz);
+            }
+            if (ebay != null) {
+                // OV L30 channel labels: Ebay1 / Ebay2 / Ebay3
+                ['ebay1', 'ebay2', 'ebay3'].forEach(function(mp) {
+                    patchOvl30LmpCell(mp, ebay);
+                });
+            }
+            if (google != null) {
+                patchOvl30LmpCell('google', google);
+            }
+        }
+
         /**
          * Load multi-channel LMP drawer.
          * Pass options.refresh = true to live-fetch Amazon/eBay/Google via SerpApi
@@ -8568,13 +8659,12 @@
             $('#lmpModal').data('lmp-show-add', showAdd);
             updateLmpPullBtnTitle(initialFilter);
 
-            if (!refreshFromApi) {
-                const lmpEl = document.getElementById('lmpModal');
-                if (lmpEl) {
-                    const modal = bootstrap.Modal.getOrCreateInstance(lmpEl);
-                    if (!lmpEl.classList.contains('show')) {
-                        modal.show();
-                    }
+            // Keep LMP drawer open for both initial load and live Pull (no page/modal reopen)
+            const lmpEl = document.getElementById('lmpModal');
+            if (lmpEl) {
+                const modal = bootstrap.Modal.getOrCreateInstance(lmpEl);
+                if (!lmpEl.classList.contains('show')) {
+                    modal.show();
                 }
             }
 
@@ -8601,10 +8691,17 @@
             function tryRender() {
                 loaded++;
                 if (loaded < totalNeeded) return;
+
+                // Re-render LMP drawer in place with fresh Pull/DB data
                 const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData);
                 lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
                 renderLmpMergedTable();
                 updateLmpPullBtnTitle(initialFilter);
+
+                // Ensure drawer stayed open after DOM rebuild
+                if (lmpEl && !lmpEl.classList.contains('show')) {
+                    bootstrap.Modal.getOrCreateInstance(lmpEl).show();
+                }
 
                 if (refreshFromApi) {
                     if (pullHadError) {
@@ -8616,7 +8713,8 @@
                         if (refreshGoogle) labels.push('Google');
                         showToast('Pulled live LMP for ' + (labels.join(', ') || 'channels') + ' — ' + sku, 'success');
                     }
-                    patchPriceIncreaseLmpFromPull(sku, amazonData, ebayData, googleData);
+                    // Update main table + OV L30 LMP cells without page/modal refresh
+                    applyLmpPullResultsToOpenUi(sku, amazonData, ebayData, googleData);
                 }
 
                 const $btn = $('#lmpPullApiBtn');

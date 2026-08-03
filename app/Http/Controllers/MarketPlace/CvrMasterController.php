@@ -98,6 +98,7 @@ use App\Models\FbaPrice;
 use App\Models\FbaMonthlySale;
 use App\Models\FbaReportsMaster;
 use App\Models\FbaManualData;
+use App\Models\AliexpressDataView;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\FbaManualDataService;
@@ -236,7 +237,37 @@ class CvrMasterController extends Controller
             $walmartDataView = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // Amazon SPRICE / STANDARD_PRICE from amazon_data_view (same store as /amazon-tabulator-view)
-            $amazonDataViewRows = AmazonDataView::whereIn('sku', $skus)->get();
+            // SP also resolves across Sku Link LMP siblings (same as /amazon-standard-price).
+            $amazonSpLinkGroupService = null;
+            try {
+                $amazonSpLinkGroupService = app(LmpSkuGroupService::class);
+                $amazonSpLinkGroupService->prepareForSkus($skus);
+                $amazonSpLinkedMembers = [];
+                foreach ($skus as $skuForLink) {
+                    foreach ($amazonSpLinkGroupService->groupContaining((string) $skuForLink) as $member) {
+                        $m = trim((string) $member);
+                        if ($m !== '') {
+                            $amazonSpLinkedMembers[] = $m;
+                        }
+                    }
+                }
+                $amazonSpLinkedMembers = array_values(array_unique($amazonSpLinkedMembers));
+            } catch (\Throwable $e) {
+                $amazonSpLinkedMembers = $skus;
+            }
+            $amazonDataViewRows = AmazonDataView::where(function ($q) use ($skus, $amazonSpLinkedMembers) {
+                $q->whereIn('sku', $skus);
+                if (! empty($amazonSpLinkedMembers)) {
+                    $q->orWhereIn('sku', $amazonSpLinkedMembers);
+                    $upperMembers = array_values(array_unique(array_map(
+                        fn ($s) => strtoupper(trim((string) $s)),
+                        $amazonSpLinkedMembers
+                    )));
+                    if ($upperMembers !== []) {
+                        $q->orWhereIn(DB::raw('UPPER(TRIM(sku))'), $upperMembers);
+                    }
+                }
+            })->get();
             $amazonDataViewBySku = $amazonDataViewRows->keyBy('sku');
             $amazonDataViewBySkuUpper = $amazonDataViewRows->keyBy(fn ($r) => strtoupper(trim((string) $r->sku)));
 
@@ -1749,6 +1780,32 @@ class CvrMasterController extends Controller
                     if (isset($avVal['SPFT'])) $amazonSpft = round(floatval($avVal['SPFT']), 2);
                     if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
                 }
+                // Prefer SP from Sku Link LMP siblings when this SKU has none (or sync from group)
+                if ($amazonStandardPrice === null && $amazonSpLinkGroupService) {
+                    try {
+                        foreach ($amazonSpLinkGroupService->groupContaining((string) $sku) as $memberSku) {
+                            $memberKey = strtoupper(trim((string) $memberSku));
+                            if ($memberKey === '') {
+                                continue;
+                            }
+                            $memberRow = $amazonDataViewBySkuUpper->get($memberKey)
+                                ?? $amazonDataViewBySku->get($memberSku);
+                            if (! $memberRow || ! $memberRow->value) {
+                                continue;
+                            }
+                            $mv = is_array($memberRow->value)
+                                ? $memberRow->value
+                                : (json_decode($memberRow->value ?? '{}', true) ?? []);
+                            $mStd = $mv['STANDARD_PRICE'] ?? null;
+                            if (is_numeric($mStd) && floatval($mStd) > 0) {
+                                $amazonStandardPrice = round(floatval($mStd), 2);
+                                break;
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        // keep per-SKU SP
+                    }
+                }
 
                 // Temu SPRICE — same store as /temu-decrease (temu_data_view.value.sprice / SPRICE)
                 $temuDataViewRow = $temuDataViewBySku->get($sku)
@@ -2697,6 +2754,10 @@ class CvrMasterController extends Controller
                         }
                     }
                 }
+            }
+            // SP from Sku Link LMP siblings when this SKU has none (same as /amazon-standard-price)
+            if ($amazonStandardPrice === null) {
+                $amazonStandardPrice = $this->resolveAmazonStandardPriceFromSkuLinkGroup($fullSku);
             }
             
             [$amazonBuyerLink, $amazonSellerLink] = $getListingLinks(AmazonListingStatus::class, $fullSku);
@@ -4987,6 +5048,13 @@ class CvrMasterController extends Controller
                     return response()->json(['error' => 'Shein is not set up. Run migrations (shein_data_views).'], 503);
                 }
                 $dataView = \App\Models\SheinDataView::firstOrNew(['sku' => $skuToUse]);
+            } elseif ($marketplace === 'aliexpress') {
+                // Same store as /aliexpress-pricing (aliexpress_data_views.value.SPRICE)
+                if (!Schema::hasTable('aliexpress_data_views')) {
+                    return response()->json(['error' => 'AliExpress is not set up. Run migrations (aliexpress_data_views).'], 503);
+                }
+                $existingAeView = AliexpressDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+                $dataView = $existingAeView ?: new AliexpressDataView(['sku' => $skuToUse]);
             } elseif ($marketplace === 'tiendamia') {
                 $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
@@ -5258,6 +5326,12 @@ class CvrMasterController extends Controller
                 return false;
             }
             $dataView = \App\Models\SheinDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'aliexpress') {
+            if (!Schema::hasTable('aliexpress_data_views')) {
+                return false;
+            }
+            $existingAeView = AliexpressDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+            $dataView = $existingAeView ?: new AliexpressDataView(['sku' => $skuToUse]);
         } elseif ($marketplace === 'tiendamia') {
             $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
         } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
@@ -7430,6 +7504,57 @@ class CvrMasterController extends Controller
             return $pa <=> $pb;
         });
         return $out;
+    }
+
+    /**
+     * Resolve Amazon STANDARD_PRICE (SP) from Sku Link LMP siblings.
+     * Same behavior as /amazon-standard-price — first positive SP in the linked group.
+     */
+    private function resolveAmazonStandardPriceFromSkuLinkGroup(
+        string $sku,
+        ?LmpSkuGroupService $groupService = null
+    ): ?float {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $groupSkus = [$sku];
+        try {
+            $svc = $groupService ?? app(LmpSkuGroupService::class);
+            if ($groupService === null) {
+                $svc->prepareForSkus([$sku]);
+            }
+            $group = $svc->groupContaining($sku);
+            if (is_array($group) && $group !== []) {
+                $groupSkus = $group;
+            }
+        } catch (\Throwable $e) {
+            // fall back to single SKU
+        }
+
+        foreach ($groupSkus as $memberSku) {
+            $display = trim((string) $memberSku);
+            if ($display === '') {
+                continue;
+            }
+            $row = AmazonDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($display)])->first();
+            if (! $row) {
+                continue;
+            }
+            $val = is_array($row->value)
+                ? $row->value
+                : (json_decode($row->value ?? '{}', true) ?? []);
+            if (! is_array($val)) {
+                continue;
+            }
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                return round((float) $std, 2);
+            }
+        }
+
+        return null;
     }
 
     /**
