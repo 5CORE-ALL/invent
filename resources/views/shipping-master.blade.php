@@ -3423,7 +3423,7 @@
                         const cap = WT_ACT_DECL_OZ_SLAB_CAPS[i];
                         if (oz <= cap + 1e-9) {
                             // Keep precision so 2 oz = 0.125 stays inside oz_2 (lbMax 0.125).
-                            // 15.99 oz → ~1 lb billable → lands in the 1–2 lb slab.
+                            // 15.99 oz → 1 lb billable → stays in oz_1599 (see matchesSlabWeightBand).
                             const exact = cap / 16;
                             return cap >= 15.99 ? 1 : Math.round(exact * 10000) / 10000;
                         }
@@ -3587,6 +3587,10 @@
             /**
              * Slab Rates banding — uses Declared (billable) weight so outer Ship
              * lines up with the LB slab the Declared column rounds into.
+             *
+             * Special case: ACT in 12.01–15.99 oz rounds Declared to exactly 1.0 lb.
+             * Those SKUs belong in oz_1599, not the 1–2 lb upward band (which would
+             * otherwise match w >= 1 and leave oz_1599 always empty).
              */
             function matchesSlabWeightBand(item, band) {
                 if (!band || band === 'all') return true;
@@ -3594,7 +3598,18 @@
                     const act = itemWeightActLbResolved(item);
                     return act === null || act === 0;
                 }
-                return matchesLbWeightBandValue(itemWeightForSlabLb(item), band);
+                const w = itemWeightForSlabLb(item);
+                if (w === null || !Number.isFinite(w)) return false;
+
+                if (band === 'oz_1599') {
+                    const s = WT_ACT_OZ_1599_SLAB;
+                    return (w >= s.ozMin / 16 && w <= s.ozMax / 16) || Math.abs(w - 1) < 1e-9;
+                }
+                if (band === 'lb_101_2') {
+                    // Declared ceiling for ACT 1–2 lb is 2; exclude exactly 1.0 (oz_1599).
+                    return w > 1 && w <= 2;
+                }
+                return matchesLbWeightBandValue(w, band);
             }
 
             // Apply all filters

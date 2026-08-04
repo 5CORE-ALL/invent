@@ -107,8 +107,8 @@ class ShippingSlabRateService
     /** @return array<string, array{slab_key: string, slab_label: string, rate: ?float, mixed: bool}> */
     public function getAllSlabCarrierRates(string $carrier = 'ship'): array
     {
-        // Cache key bumped when banding switched from ACT → Declared slab weight.
-        return Cache::remember("shipping_slab_rates_decl_v2:{$carrier}", 300, function () use ($carrier) {
+        // Cache key bumped when oz_1599 started owning Declared = 1.0 lb.
+        return Cache::remember("shipping_slab_rates_decl_v3:{$carrier}", 300, function () use ($carrier) {
             $products = $this->loadShippingMasterRows();
             $result = [];
 
@@ -149,11 +149,19 @@ class ShippingSlabRateService
             }
         }
 
-        if ($this->matchesWtActOzLbBand($weightLb, 'oz_1599')) {
+        // Declared ceiling for 12.01–15.99 oz is exactly 1.0 lb → oz_1599.
+        if ($this->matchesWtActOzLbBand($weightLb, 'oz_1599') || abs($weightLb - 1.0) < 1e-9) {
             return 'oz_1599';
         }
 
         foreach (self::WT_ACT_UPWARD_LB_BANDS as $band) {
+            if ($band['key'] === 'lb_101_2') {
+                // Exclude exactly 1.0 (owned by oz_1599 above).
+                if ($weightLb > 1.0 && $weightLb <= 2.0) {
+                    return 'lb_101_2';
+                }
+                continue;
+            }
             if ($this->matchesWtActUpwardLbBand($weightLb, $band['key'])) {
                 return $band['key'];
             }
@@ -301,7 +309,7 @@ class ShippingSlabRateService
             foreach (self::WT_ACT_DECL_OZ_SLAB_CAPS as $cap) {
                 if ($oz <= $cap + 1e-9) {
                     // Keep precision so 2 oz = 0.125 stays inside oz_2 (lbMax 0.125).
-                    // 15.99 oz → 1 lb billable → lands in the 1–2 lb slab.
+                    // 15.99 oz → 1 lb billable → stays in oz_1599 (see matchesSlabWeightBand).
                     if ($cap >= 15.99) {
                         return 1.0;
                     }
@@ -339,7 +347,13 @@ class ShippingSlabRateService
         return $this->itemWeightActLbResolved($item);
     }
 
-    /** @param array<string, mixed> $item */
+    /**
+     * Slab Rates banding — Declared (billable) weight.
+     * ACT in 12.01–15.99 oz rounds Declared to 1.0 lb; those SKUs stay in oz_1599
+     * (not lb_101_2, which would otherwise match w >= 1 and empty oz_1599).
+     *
+     * @param  array<string, mixed>  $item
+     */
     private function matchesSlabWeightBand(array $item, string $band): bool
     {
         if ($band === 'lb_0') {
@@ -353,7 +367,19 @@ class ShippingSlabRateService
             return false;
         }
 
-        if ($band === 'oz_1599' || preg_match('/^oz_\d+$/', $band)) {
+        if ($band === 'oz_1599') {
+            $s = self::WT_ACT_OZ_1599_SLAB;
+
+            return ($w >= ($s['ozMin'] / 16) && $w <= ($s['ozMax'] / 16))
+                || abs($w - 1.0) < 1e-9;
+        }
+
+        if ($band === 'lb_101_2') {
+            // Declared ceiling for ACT 1–2 lb is 2; exclude exactly 1.0 (oz_1599).
+            return $w > 1.0 && $w <= 2.0;
+        }
+
+        if (preg_match('/^oz_\d+$/', $band)) {
             return $this->matchesWtActOzLbBand($w, $band);
         }
 
