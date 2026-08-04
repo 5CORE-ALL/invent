@@ -123,6 +123,16 @@
             max-width: 3em;
             transition: all 0.2s;
         }
+        /* Weight slab filters need readable labels (oz vs lb bands both start with "12.01…"). */
+        .table-responsive thead select.wt-slab-filter {
+            width: 12em;
+            min-width: 10em;
+            max-width: 16em;
+        }
+        .table-responsive thead th.th-wt-act-lb-filter,
+        .table-responsive thead th.item-dim-decl-header[data-col-key="wt_decl"] {
+            min-width: 10em;
+        }
 
         .table-responsive thead input:focus {
             background-color: white;
@@ -1112,7 +1122,7 @@
                                     </th>
                                     <th data-col-key="wt_act" data-col-label="Item WT ACT (OZ / LB)" class="th-has-filter item-dim-header th-wt-act-lb-filter" title="Below 1 lb shown in OZ; 1 lb and above shown in LB">
                                         <div class="th-vertical-label" style="font-size: 9px;">Item WT ACT<br>(OZ / LB)</div>
-                                        <select id="filterWtAct" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Item WT ACT (oz / lb)">
+                                        <select id="filterWtAct" class="form-control form-control-sm mt-1 wt-slab-filter" style="font-size: 9px; padding: 2px 4px;" title="Filter by Item WT ACT (oz / lb)">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
@@ -1140,7 +1150,7 @@
                                     </th>
                                     <th data-col-key="wt_decl" data-col-label="Itm wt GW Decl" class="th-has-filter item-dim-decl-header" title="Below 1 lb shown in OZ; 1 lb and above shown in LB. Copies ACT when Decl is empty.">
                                         <div class="th-vertical-label" style="font-size: 9px;">Itm wt GW Decl</div>
-                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1" style="font-size: 9px; padding: 2px 4px; max-width: 180px;" title="Filter by Itm wt GW Decl">
+                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1 wt-slab-filter" style="font-size: 9px; padding: 2px 4px;" title="Filter by Itm wt GW Decl (billable slab)">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
@@ -3518,16 +3528,25 @@
                 return `${ozMin} oz – ${ozMax} oz (${wtActOzToLb(ozMin)} – ${wtActOzToLb(ozMax)} lb)`;
             }
 
-            function populateWtActLbFilterOptions() {
-                const sel = document.getElementById('filterWtAct');
+            /** Short, distinct prefixes so closed <select> text is not ambiguous (oz vs lb). */
+            function wtSlabFilterOptionLabel(value, fullLabel) {
+                if (value === 'lb_0') return '0 lb';
+                if (value === 'oz_1599') return 'OZ · ' + fullLabel;
+                if (/^oz_\d+$/.test(value)) return 'OZ · ' + fullLabel;
+                if (/^lb_/.test(value)) return 'LB · ' + fullLabel;
+                return fullLabel;
+            }
+
+            function populateWeightSlabFilterSelect(sel) {
                 if (!sel) return;
                 while (sel.options.length > 2) {
                     sel.remove(2);
                 }
-                const add = (value, label) => {
+                const add = (value, fullLabel) => {
                     const o = document.createElement('option');
                     o.value = value;
-                    o.textContent = label;
+                    o.textContent = wtSlabFilterOptionLabel(value, fullLabel);
+                    o.title = fullLabel;
                     sel.appendChild(o);
                 };
                 add('lb_0', '0 lb');
@@ -3536,6 +3555,24 @@
                 });
                 add('oz_1599', wtActOz1599SlabLabel());
                 WT_ACT_UPWARD_LB_BANDS.forEach((b, i) => add(b.key, wtActUpwardBandLabel(b, i)));
+            }
+
+            function populateWtActLbFilterOptions() {
+                populateWeightSlabFilterSelect(document.getElementById('filterWtAct'));
+                populateWeightSlabFilterSelect(document.getElementById('filterWtDecl'));
+            }
+
+            /** Decl filter — billable Declared slab (same bands as column / Slab Rates). */
+            function matchesWtDeclLbBand(item, band) {
+                if (!band || band === 'all') return true;
+                if (band === 'missing') {
+                    return itemWeightDeclLbResolved(item) === null;
+                }
+                if (band === 'lb_0') {
+                    const w = itemWeightDeclLbRounded(item);
+                    return w === null || w === 0;
+                }
+                return matchesSlabWeightBand(item, band);
             }
 
             function matchesWtActOzLbBand(w, band) {
@@ -3651,7 +3688,7 @@
                 const filterUpsCol = document.getElementById('filterUpsCol')?.value || 'all';
                 const filterUspsCol = document.getElementById('filterUspsCol')?.value || 'all';
                 const filterUniCol = document.getElementById('filterUniCol')?.value || 'all';
-                const hasMissingDataFilter = filterStatusValue === 'missing' || filterLabelQty === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtAct === 'lb_0' || filterWtDecl === 'missing' ||
+                const hasMissingDataFilter = filterStatusValue === 'missing' || filterLabelQty === 'missing' || filterWtActKg === 'missing' || filterWtAct === 'missing' || filterWtAct === 'lb_0' || filterWtDecl === 'missing' || filterWtDecl === 'lb_0' ||
                                             filterL === 'missing' || filterW === 'missing' ||
                                             filterH === 'missing' || filterLDecl === 'missing' || filterWDecl === 'missing' || filterHDecl === 'missing';
 
@@ -3715,8 +3752,8 @@
                         return false;
                     }
 
-                    // WT DECL filter (missing only when no Decl and no ACT fallback)
-                    if (filterWtDecl === 'missing' && itemWeightDeclLbResolved(item) !== null) {
+                    // WT DECL filter — billable Declared slab bands (or Missing)
+                    if (filterWtDecl !== 'all' && !matchesWtDeclLbBand(item, filterWtDecl)) {
                         return false;
                     }
 
