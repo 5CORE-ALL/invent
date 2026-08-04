@@ -3570,16 +3570,20 @@ class CvrMasterController extends Controller
                 ->where('financial_status', '!=', 'refunded')
                 ->sum('quantity') ?? 0);
             
-            $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first();
+            $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first()
+                ?: MarketplacePercentage::where('marketplace', 'Shopify B2B')->first();
             $sb2bMargin = $sb2bMarketplace ? ($sb2bMarketplace->percentage / 100) : 0.95;
             
-            // GPFT% / GROI% — include Ship (aligned with SPRICE = Price×0.80 − Ship)
-            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp - $ship) / $sb2bPrice) * 100 : 0;
+            // GPFT% on listed B2B price — ship excluded (Apply uses STD×0.80 − Ship separately)
+            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp) / $sb2bPrice) * 100 : 0;
             $sb2bNPFT = $sb2bGPFT;
 
-            // Always calculate SPRICE = (Price × 0.80) − Ship
-            $sb2bCalcSprice = $sb2bPrice > 0
-                ? max(0.01, round(($sb2bPrice * 0.80) - $ship, 2))
+            // Suggested SPRICE = (STD PRC × 0.80) − Ship (fallback: B2B price × 0.80 − Ship)
+            $sb2bStdBase = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
+                ? (float) $amazonStandardPrice
+                : $sb2bPrice;
+            $sb2bCalcSprice = $sb2bStdBase > 0
+                ? max(0.01, round(($sb2bStdBase * 0.80) - $ship, 2))
                 : 0;
             
             $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
@@ -3589,7 +3593,7 @@ class CvrMasterController extends Controller
             if ($sb2bDataView) {
                 $val = is_array($sb2bDataView->value) ? $sb2bDataView->value : json_decode($sb2bDataView->value, true);
                 if (is_array($val)) {
-                    // Keep push metadata; SPRICE itself is always recalculated from Price/Ship
+                    // Keep push metadata; SPRICE itself is always recalculated from STD/Ship
                     $sb2bSuggested['sgpft'] = floatval($val['SGPFT'] ?? 0);
                     $sb2bSuggested['sroi'] = floatval($val['SROI'] ?? 0);
                     $sb2bSuggested['spft'] = floatval($val['SPFT'] ?? 0);
@@ -3607,7 +3611,7 @@ class CvrMasterController extends Controller
             }
             // Recalculate SGPFT/SROI from always-calculated SPRICE for modal display
             if ($sb2bCalcSprice > 0) {
-                $sb2bGross = ($sb2bCalcSprice * $sb2bMargin) - $lp - $ship;
+                $sb2bGross = ($sb2bCalcSprice * $sb2bMargin) - $lp;
                 $sb2bSuggested['sgpft'] = ($sb2bGross / $sb2bCalcSprice) * 100;
                 $sb2bSuggested['spft'] = $sb2bSuggested['sgpft'];
                 $sb2bSuggested['sroi'] = $lp > 0 ? ($sb2bGross / $lp) * 100 : 0;
@@ -3629,6 +3633,7 @@ class CvrMasterController extends Controller
                 'sroi' => $sb2bSuggested['sroi'],
                 'spft' => $sb2bSuggested['spft'],
                 'lp' => $lp,
+                // Product-master ship for Apply: (STD × 0.80) − Ship
                 'ship' => $ship,
                 'margin' => $sb2bMargin,
                 'pushed_by' => $sb2bPushedBy,
