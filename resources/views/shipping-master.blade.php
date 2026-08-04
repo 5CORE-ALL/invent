@@ -1205,6 +1205,11 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="bulkEditOnlyChangedHint" class="alert alert-warning py-2 mb-3" style="display: none; font-size: 13px;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk edit:</strong> only fields you change here are written to all selected SKUs.
+                        Unchanged fields keep each SKU&rsquo;s existing value.
+                    </div>
                     <form id="editDimWtForm">
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
@@ -1661,7 +1666,9 @@
             let tableData = [];
             let filteredData = [];
             let productUniqueParents = [];
-            let bulkEditList = null; // When set, save will update all these products with form values
+            let bulkEditList = null; // When set, save updates these products (changed fields only)
+            // Snapshot of edit-form values when bulk modal opens — used to detect which inputs the user changed
+            let bulkEditInitialValues = null;
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
 
@@ -4663,13 +4670,106 @@
                 return qty > 0 ? cbm / qty : 0;
             }
 
+            // Editable fields considered for bulk "only changed inputs" saves.
+            // Readonly marketplace ship fields are intentionally excluded.
+            const BULK_EDIT_TRACKED_FIELDS = [
+                { id: 'editLabelQty', key: 'label_qty', type: 'int' },
+                { id: 'editLabelType', key: 'label_type', type: 'label_type' },
+                { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
+                { id: 'editWtAct', key: 'wt_act', type: 'num' },
+                { id: 'editWtDecl', key: 'wt_decl', type: 'wt_decl' },
+                { id: 'editL', key: 'l', type: 'num' },
+                { id: 'editW', key: 'w', type: 'num' },
+                { id: 'editH', key: 'h', type: 'num' },
+                { id: 'editLDecl', key: 'l_decl', type: 'num' },
+                { id: 'editWDecl', key: 'w_decl', type: 'num' },
+                { id: 'editHDecl', key: 'h_decl', type: 'num' },
+                { id: 'editLCm', key: 'l_cm', type: 'num' },
+                { id: 'editWCm', key: 'w_cm', type: 'num' },
+                { id: 'editHCm', key: 'h_cm', type: 'num' },
+                { id: 'editCtnL', key: 'ctn_l', type: 'num' },
+                { id: 'editCtnW', key: 'ctn_w', type: 'num' },
+                { id: 'editCtnH', key: 'ctn_h', type: 'num' },
+                { id: 'editCtnQty', key: 'ctn_qty', type: 'num' },
+                { id: 'editCtnWeightKg', key: 'ctn_weight_kg', type: 'num' },
+                { id: 'editFbaShip', key: 'fba_ship_calculation', type: 'num' },
+                { id: 'editFbaManualShip', key: 'fba_manual_ship', type: 'num' },
+            ];
+
+            function snapshotBulkEditFormValues() {
+                const snap = {};
+                BULK_EDIT_TRACKED_FIELDS.forEach(f => {
+                    const el = document.getElementById(f.id);
+                    snap[f.id] = el ? String(el.value ?? '') : '';
+                });
+                return snap;
+            }
+
+            function parseBulkEditFieldValue(field, raw) {
+                const t = String(raw ?? '').trim();
+                if (field.type === 'label_type') {
+                    return normalizeLabelType(t);
+                }
+                if (field.type === 'wt_decl') {
+                    if (t === '') return null;
+                    const n = parseFloat(t);
+                    if (!Number.isFinite(n) || n <= 0) return null;
+                    return roundWeightLbUpToSlab(n);
+                }
+                if (field.type === 'int') {
+                    if (t === '') return null;
+                    const n = parseInt(t, 10);
+                    return Number.isFinite(n) ? n : null;
+                }
+                // num
+                if (t === '') return null;
+                const n = parseFloat(t);
+                return Number.isFinite(n) ? n : null;
+            }
+
+            /** Build payload with only inputs the user changed in the bulk edit modal. */
+            function getBulkChangedFormData() {
+                const data = {};
+                if (!bulkEditInitialValues) return data;
+
+                BULK_EDIT_TRACKED_FIELDS.forEach(f => {
+                    const el = document.getElementById(f.id);
+                    if (!el) return;
+                    const now = String(el.value ?? '');
+                    const was = bulkEditInitialValues[f.id] ?? '';
+                    if (now === was) return;
+                    data[f.key] = parseBulkEditFieldValue(f, now);
+                });
+
+                // Derived carton metrics only when their source inputs changed
+                if ('ctn_l' in data || 'ctn_w' in data || 'ctn_h' in data || 'ctn_qty' in data) {
+                    const ctnL = parseFloat(document.getElementById('editCtnL').value) || 0;
+                    const ctnW = parseFloat(document.getElementById('editCtnW').value) || 0;
+                    const ctnH = parseFloat(document.getElementById('editCtnH').value) || 0;
+                    const ctnQty = parseFloat(document.getElementById('editCtnQty').value) || 0;
+                    const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
+                    const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
+                    data.ctn_cbm = ctnCbm > 0 ? ctnCbm : null;
+                    data.ctn_cbm_each = ctnCbmEach > 0 ? ctnCbmEach : null;
+                }
+                if ('ctn_weight_kg' in data) {
+                    const kg = parseFloat(document.getElementById('editCtnWeightKg').value) || 0;
+                    data.ctn_weight_lb = kg > 0 ? kg * 2.21 : null;
+                }
+
+                return data;
+            }
+
             // Edit Shipping Master (modal)
             function editDimWt(product) {
                 const modalEl = document.getElementById('editDimWtModal');
                 const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 1)
+                const isBulk = !!(bulkEditList && bulkEditList.length > 1);
+                document.getElementById('editDimWtModalLabel').textContent = isBulk
                     ? ('Bulk Edit (' + bulkEditList.length + ' items)')
                     : 'Edit Shipping Master';
+                const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
+                if (bulkHint) bulkHint.style.display = isBulk ? 'block' : 'none';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -4738,6 +4838,9 @@
                 document.getElementById('editUni').value = shipNum(product.uni);
                 document.getElementById('editFbaShip').value = shipNum(product.fba_ship);
                 document.getElementById('editFbaManualShip').value = shipNum(product.fba_manual_ship);
+
+                // Snapshot after populate so bulk save only sends fields the user edits
+                bulkEditInitialValues = isBulk ? snapshotBulkEditFormValues() : null;
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -4826,11 +4929,19 @@
                     }
                     
                     if (bulkTargets && bulkTargets.length > 0) {
+                        // Bulk: apply ONLY fields the user changed — leave other SKU data intact
+                        const changedFields = getBulkChangedFormData();
+                        const changedKeys = Object.keys(changedFields);
+                        if (changedKeys.length === 0) {
+                            showToast('warning', 'No fields changed — nothing to update on selected SKUs.');
+                            return;
+                        }
+
                         let successCount = 0;
                         let failCount = 0;
                         for (const product of bulkTargets) {
                             const formData = {
-                                ...baseFormData,
+                                ...changedFields,
                                 product_id: product.id,
                                 sku: product.SKU,
                                 parent: product.Parent || ''
@@ -4844,16 +4955,16 @@
                                     },
                                     body: JSON.stringify(formData)
                                 });
-                                const data = await response.json();
                                 if (response.ok) successCount++; else failCount++;
                             } catch (e) {
                                 failCount++;
                             }
                         }
                         bulkEditList = null;
+                        bulkEditInitialValues = null;
                         document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
                         if (failCount === 0) {
-                            showToast('success', successCount + ' item(s) updated successfully!');
+                            showToast('success', successCount + ' item(s) updated (' + changedKeys.length + ' field(s) only)!');
                         } else {
                             showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
                         }
@@ -5149,7 +5260,10 @@
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
+                bulkEditInitialValues = null;
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
+                const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
+                if (bulkHint) bulkHint.style.display = 'none';
             });
 
             // Slab Rates: apply per-carrier rates to all SKUs in a weight slab.
