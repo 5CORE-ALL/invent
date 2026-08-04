@@ -1189,7 +1189,7 @@
                                     </th>
                                     <th data-col-key="wt_decl" data-col-label="Itm wt GW Decl" class="th-has-filter item-dim-decl-header" title="Below 1 lb shown in OZ; 1 lb and above shown in LB. Copies ACT when Decl is empty.">
                                         <div class="th-vertical-label" style="font-size: 9px;">Itm wt GW Decl</div>
-                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1 wt-slab-filter" style="font-size: 9px; padding: 2px 4px;" title="Filter by Itm wt GW Decl (billable slab)">
+                                        <select id="filterWtDecl" class="form-control form-control-sm mt-1 wt-slab-filter" style="font-size: 9px; padding: 2px 4px;" title="Filter by Itm wt GW Decl">
                                             <option value="all">All</option>
                                             <option value="missing">Missing</option>
                                         </select>
@@ -1305,7 +1305,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label for="editWtDecl" class="form-label">Itm wt GW Decl</label>
-                                <input type="number" step="0.01" min="0" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Rounds up to next slab (e.g. 1.1 → 2, 14.5 → 20)">
+                                <input type="number" step="0.01" min="0" class="form-control" id="editWtDecl" name="wt_decl" placeholder="Enter Itm wt GW Decl (LB)">
                             </div>
                         </div>
                         
@@ -1652,7 +1652,7 @@
                             Example: type <strong>6</strong> in Ship → Apply → all SKUs in that LB get <code>ship=6</code>, and outer Ship shows <strong>6</strong>.
                         </div>
                         <div class="text-muted mt-1">
-                            Slabs use <strong>Itm wt GW Decl</strong> (ACT rounded up to the billable slab).
+                            Slabs use <strong>Itm wt GW Decl</strong> (exact value; falls back to ACT when Decl is empty).
                             Carriers: Ship, Ship BB, TT 1 Ship, Temu ship, Temu GOFO, GOFO, Fedex, UPS, USPS, UNI.
                         </div>
                     </div>
@@ -2013,8 +2013,8 @@
                             if (Number.isFinite(declStored) && declStored > 0) {
                                 val = declStored;
                             } else {
-                                const rounded = roundWeightLbUpToSlab(itemWeightActLbResolved(src));
-                                val = rounded != null ? rounded : '';
+                                const actLb = itemWeightActLbResolved(src);
+                                val = actLb != null ? actLb : '';
                             }
                         } else if (field.key === 'l_decl' || field.key === 'w_decl' || field.key === 'h_decl') {
                             const actKey = field.key.replace('_decl', '');
@@ -2048,7 +2048,7 @@
                     const n = parseFloat(raw);
                     if (!Number.isFinite(n)) return;
                     if (field.key === 'wt_decl') {
-                        data.wt_decl = n > 0 ? roundWeightLbUpToSlab(n) : null;
+                        data.wt_decl = n > 0 ? n : null;
                     } else {
                         data[field.key] = n;
                     }
@@ -3670,16 +3670,15 @@
             }
 
             /**
-             * Declared LB for display / slabs:
-             * prefer saved wt_decl; otherwise ACT rounded up to the billable slab.
-             * (Previously always recomputed from ACT, so saved Decl looked like it never persisted.)
+             * Declared LB for display / slabs — exact value, no slab round-up.
+             * Prefer saved wt_decl; otherwise ACT (copies when Decl is empty).
              */
             function itemWeightDeclLbRounded(item) {
                 const declRaw = parseFloat(item?.wt_decl);
                 if (Number.isFinite(declRaw) && declRaw > 0) {
-                    return roundWeightLbUpToSlab(declRaw);
+                    return Math.round(declRaw * 100) / 100;
                 }
-                return roundWeightLbUpToSlab(itemWeightActLbResolved(item));
+                return itemWeightActLbResolved(item);
             }
 
             /**
@@ -4956,7 +4955,7 @@
                     if (t === '') return null;
                     const n = parseFloat(t);
                     if (!Number.isFinite(n) || n <= 0) return null;
-                    return roundWeightLbUpToSlab(n);
+                    return Math.round(n * 100) / 100;
                 }
                 if (field.type === 'int') {
                     if (t === '') return null;
@@ -5035,13 +5034,13 @@
                 document.getElementById('editLabelType').value = normalizeLabelType(product.label_type);
                 document.getElementById('editWtActKg').value = product.wt_act_kg || '';
                 document.getElementById('editWtAct').value = product.wt_act || '';
-                // Decl: show saved wt_decl when present; otherwise seed from ACT rounded to slab
+                // Decl: show saved wt_decl when present; otherwise seed from ACT (no slab round-up)
                 const declStored = parseFloat(product.wt_decl);
                 if (Number.isFinite(declStored) && declStored > 0) {
                     document.getElementById('editWtDecl').value = declStored;
                 } else {
-                    const declLbForEdit = roundWeightLbUpToSlab(itemWeightActLbResolved(product));
-                    document.getElementById('editWtDecl').value = declLbForEdit != null ? declLbForEdit : '';
+                    const actLbForEdit = itemWeightActLbResolved(product);
+                    document.getElementById('editWtDecl').value = actLbForEdit != null ? actLbForEdit : '';
                 }
                 document.getElementById('editL').value = product.l || '';
                 document.getElementById('editW').value = product.w || '';
@@ -5132,7 +5131,7 @@
                     if (wtDeclRaw !== '') {
                         const wtDeclNum = parseFloat(wtDeclRaw);
                         if (Number.isFinite(wtDeclNum) && wtDeclNum > 0) {
-                            wtDeclSave = roundWeightLbUpToSlab(wtDeclNum);
+                            wtDeclSave = Math.round(wtDeclNum * 100) / 100;
                         }
                     }
 
@@ -5595,8 +5594,7 @@
             });
 
             // Slab Rates: apply per-carrier rates to all SKUs in a weight slab.
-            // Bands use Declared (billable) weight — ACT rounded up to the slab
-            // ceiling — so outer Ship matches the LB slab Declared rounds into.
+            // Bands use exact Declared weight (fallback ACT) — no slab round-up.
 
             function getSlabDefinitions() {
                 const slabs = [{ key: 'lb_0', label: '0 lb' }];
