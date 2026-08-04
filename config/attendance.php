@@ -47,7 +47,7 @@ return [
     /*
     | System idle threshold (seconds) for marking IDLE in the desktop agent UI.
     */
-    'idle_threshold_seconds' => (int) env('ATTENDANCE_IDLE_THRESHOLD', 30),
+    'idle_threshold_seconds' => (int) env('ATTENDANCE_IDLE_THRESHOLD', 120),
 
     /*
     | Auto-close sessions with no heartbeat for this many minutes.

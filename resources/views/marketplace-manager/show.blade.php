@@ -75,6 +75,13 @@
                 <a href="{{ route('marketplace.products', $slug) }}" class="btn btn-outline-primary"><i class="ri-list-check me-1"></i> Listings</a>
                 <a href="{{ route('marketplace.orders', $slug) }}" class="btn btn-outline-primary"><i class="ri-shopping-bag-line me-1"></i> Orders</a>
                 <a href="{{ route('marketplace.settings', $slug) }}" class="btn btn-outline-primary"><i class="ri-settings-3-line me-1"></i> Sync Settings</a>
+                @if($slug === 'tiktok2')
+                    <a href="{{ route('tiktok2.pricing') }}" class="btn btn-outline-secondary"><i class="ri-line-chart-line me-1"></i> Pricing / Analytics</a>
+                    <a href="{{ route('tiktok2.listing.variation.verify') }}" class="btn btn-outline-secondary"><i class="ri-external-link-line me-1"></i> LVV</a>
+                @elseif($slug === 'pls')
+                    <a href="{{ route('pls.pricing') }}" class="btn btn-outline-secondary"><i class="ri-line-chart-line me-1"></i> PLS Pricing</a>
+                    <a href="{{ route('pls.listing.variation.verify') }}" class="btn btn-outline-secondary"><i class="ri-external-link-line me-1"></i> LVV</a>
+                @endif
                 @if($slug === 'aliexpress')
                     <a href="{{ route('listing.aliexpress') }}" class="btn btn-outline-secondary" target="_blank"><i class="ri-external-link-line me-1"></i> Listing Aliexpress (legacy)</a>
                 @endif

@@ -111,6 +111,83 @@ class Temu2ApiService extends TemuApiService
         }
     }
 
+    /**
+     * Verify Local Price Management permission via bg.local.goods.sku.list.price.query.
+     * Uses one sku_id + goods_id pair from temu2_metrics when available.
+     */
+    public function testPriceAccess(): array
+    {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Temu 2 API credentials missing. Set TEMU2_ACCESS_TOKEN (after authorizing Inventory Temu 2) in .env.',
+            ];
+        }
+
+        $sample = Temu2Metric::query()
+            ->whereNotNull('sku_id')->where('sku_id', '!=', '')
+            ->whereNotNull('goods_id')->where('goods_id', '!=', '')
+            ->first(['sku', 'sku_id', 'goods_id']);
+
+        if (! $sample) {
+            return [
+                'success' => false,
+                'message' => 'No Temu 2 SKUs with goods_id + sku_id yet. Run app:fetch-temu2-metrics --only=skus first, then retest price.',
+            ];
+        }
+
+        $requestBody = [
+            'type' => 'bg.local.goods.sku.list.price.query',
+            'querySupplierPriceBaseList' => [[
+                'goodsId' => (int) $sample->goods_id,
+                'skuIdList' => [(int) $sample->sku_id],
+            ]],
+            'language' => 'en',
+        ];
+
+        try {
+            $signedRequest = $this->generateSignValue($requestBody);
+            $url = $this->openApiRouterUrl();
+            $request = Http::withHeaders(['Content-Type' => 'application/json']);
+            if (config('filesystems.default') === 'local') {
+                $request = $request->withoutVerifying();
+            }
+            $response = $request->timeout(45)->post($url, $signedRequest);
+            $data = $response->json() ?? [];
+
+            if ($response->successful() && ($data['success'] ?? false)) {
+                $list = $data['result']['openapiGoodsSupplierPriceDTOList']
+                    ?? $data['result']['skuPriceInfoList']
+                    ?? [];
+
+                return [
+                    'success' => true,
+                    'message' => 'Price API OK (Local Price Management). Sample SKU '.$sample->sku.' returned '.count($list).' price block(s).',
+                    'sku' => $sample->sku,
+                ];
+            }
+
+            $errorCode = (string) ($data['errorCode'] ?? $response->status());
+            $errorMsg = (string) ($data['errorMsg'] ?? $response->body() ?: 'Unknown error');
+            $hint = '';
+            $lower = strtolower($errorMsg);
+            if (str_contains($lower, 'permission') || str_contains($lower, 'auth') || $errorCode === '7000019') {
+                $hint = ' Re-authorize Inventory Temu 2 with Local Price Management, then paste the new access token.';
+            }
+
+            return [
+                'success' => false,
+                'message' => trim($errorCode.': '.$errorMsg).$hint,
+                'error_code' => $errorCode,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Temu 2 price API test failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
     protected function resolveTemuGoodsAndSku(string $identifier): array
     {
         $id = trim($identifier);

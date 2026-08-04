@@ -85,6 +85,82 @@ class Temu2SyncController extends Controller
         ], ! empty($result['success']) ? 200 : 422);
     }
 
+    /**
+     * Save Temu 2 access token from Seller Center authorization (Inventory Temu 2).
+     */
+    public function saveAccessToken(Request $request): JsonResponse
+    {
+        $token = trim((string) $request->input('access_token', ''));
+        if ($token === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paste the Temu 2 access token from Seller Center → Authorization Management first.',
+            ]);
+        }
+
+        $ok = $this->updateEnvValue('TEMU2_ACCESS_TOKEN', $token);
+        if (! $ok) {
+            return response()->json([
+                'success' => false,
+                'message' => '.env is not writable. Set TEMU2_ACCESS_TOKEN manually, then refresh.',
+            ]);
+        }
+
+        config(['services.temu2.access_token' => $token]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'TEMU2_ACCESS_TOKEN saved. Click Test connection, then Test price API.',
+        ]);
+    }
+
+    /**
+     * Verify Local Price Management can call the price query used by fetch-temu2-metrics.
+     */
+    public function testPriceAccess(): JsonResponse
+    {
+        try {
+            $result = $this->temuApi->testPriceAccess();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Price API test failed: '.$e->getMessage(),
+            ]);
+        }
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'message' => $result['message'] ?? 'Price API test finished.',
+            'sku' => $result['sku'] ?? null,
+            'error_code' => $result['error_code'] ?? null,
+        ], ! empty($result['success']) ? 200 : 422);
+    }
+
+    protected function updateEnvValue(string $key, string $value): bool
+    {
+        $path = base_path('.env');
+        if (! is_file($path) || ! is_writable($path)) {
+            return false;
+        }
+
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            return false;
+        }
+
+        $escaped = '"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"';
+        $line = $key.'='.$escaped;
+        $pattern = '/^'.preg_quote($key, '/').'=.*$/m';
+
+        if (preg_match($pattern, $contents)) {
+            $contents = preg_replace_callback($pattern, static fn () => $line, $contents, 1);
+        } else {
+            $contents = rtrim($contents, "\n")."\n".$line."\n";
+        }
+
+        return file_put_contents($path, $contents) !== false;
+    }
+
     protected function maskCredential(string $value, int $showStart = 3, int $showEnd = 4): string
     {
         $value = trim($value);

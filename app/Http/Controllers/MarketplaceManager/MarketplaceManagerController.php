@@ -20,6 +20,8 @@ use App\Models\Ebay3Metric;
 use App\Models\TopDawgProduct;
 use App\Models\TemuMetric;
 use App\Models\Temu2Metric;
+use App\Models\TikTokProductTwo;
+use App\Models\PLSProduct;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -384,6 +386,12 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'doba' => Schema::hasTable('doba_metrics')
                 ? (int) \App\Models\DobaMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'tiktok2' => Schema::hasTable('tiktok_products_two')
+                ? (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+            'pls' => Schema::hasTable('pls_products')
+                ? (int) PLSProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
                 : 0,
             default => 0,
         };

@@ -775,6 +775,13 @@
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end ms-auto" role="group" aria-label="Carrier / platform badges">
                                 <button type="button"
+                                        id="sof-pull-tracking-btn"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        title="Pull tracking numbers from Shopify fulfillments into this page">
+                                    <i class="mdi mdi-barcode-scan me-1"></i>
+                                    <span class="sof-pull-tracking-label">Pull Tracking Number</span>
+                                </button>
+                                <button type="button"
                                         id="sof-refresh-shipment-btn"
                                         class="btn btn-sm btn-outline-primary"
                                         title="Refresh open shipment statuses via USPS / UPS APIs">
@@ -1191,6 +1198,79 @@
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    function formatTrackingCell(cell) {
+        const row = cell.getRow().getData() || {};
+        const tracking = (cell.getValue() || row.tracking_number || '').toString().trim();
+        const company = (row.tracking_company || '').toString().trim();
+        const shipStatus = (row.shipment_status || '').toString().trim();
+        const detail = (row.shipment_status_detail || '').toString().trim();
+        if (!tracking && !company && !shipStatus) {
+            return '<span class="sof-oc-missing">—</span>';
+        }
+        let html = '';
+        if (tracking) {
+            html += `<code style="font-size:0.78rem;color:#334155;word-break:break-all;">${escapeHtml(tracking)}</code>`;
+        } else {
+            html += '<span class="sof-oc-missing">No #</span>';
+        }
+        const meta = [];
+        if (company) meta.push(escapeHtml(company));
+        if (shipStatus) meta.push(escapeHtml(shipStatus));
+        if (meta.length) {
+            html += `<div style="font-size:0.7rem;color:#64748b;line-height:1.2;margin-top:2px;">${meta.join(' · ')}</div>`;
+        }
+        if (detail && shipStatus) {
+            html += `<div style="font-size:0.68rem;color:#94a3b8;line-height:1.2;" title="${escapeHtml(detail)}">${escapeHtml(detail.length > 42 ? detail.slice(0, 42) + '…' : detail)}</div>`;
+        }
+        return html;
+    }
+
+    function buildPulledTrackingTableHtml(rows) {
+        const list = Array.isArray(rows) ? rows : [];
+        if (!list.length) {
+            return '<p class="text-muted mb-0" style="font-size:0.9rem;">No Shopify orders were checked.</p>';
+        }
+        let body = '';
+        list.forEach(function (r) {
+            body += '<tr>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">' + escapeHtml(r.order_number || r.shopify_order_id || '—') + '</td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;"><code style="font-size:0.75rem;">' + escapeHtml(r.tracking_number || '—') + '</code></td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.tracking_company || '—') + '</td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.fulfillment_status || '—') + '</td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.shipment_status || '—') + '</td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;font-size:0.75rem;color:#64748b;">' + escapeHtml(r.note || '') + '</td>'
+                + '</tr>';
+        });
+        return '<div style="max-height:360px;overflow:auto;border:1px solid #e5e7eb;border-radius:6px;">'
+            + '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;text-align:left;">'
+            + '<thead><tr style="background:#f8fafc;position:sticky;top:0;">'
+            + '<th style="padding:6px;">Order</th><th style="padding:6px;">Tracking</th><th style="padding:6px;">Carrier</th>'
+            + '<th style="padding:6px;">Fulfillment</th><th style="padding:6px;">Ship status</th><th style="padding:6px;">Note</th>'
+            + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+    }
+
+    function reloadSofTrackingTables() {
+        if (fulfilledTable) {
+            fulfilledTableLoaded = false;
+            fulfilledTable.replaceData();
+        }
+        if (inTransitTable) {
+            inTransitTableLoaded = false;
+            inTransitTable.replaceData();
+        }
+        if (deliveredTable) {
+            deliveredTableLoaded = false;
+            deliveredTable.replaceData();
+        }
+        if (scanDoneTable) {
+            scanDoneTableLoaded = false;
+            scanDoneTable.replaceData();
+        }
+        if (table) {
+            table.replaceData();
+        }
     }
 
     function sumPending(rows) {
@@ -2463,6 +2543,8 @@
                 || String(data.order_id || '').toLowerCase().includes(q)
                 || String(data.sku || '').toLowerCase().includes(q)
                 || String(data.status_label || data.status || '').toLowerCase().includes(q)
+                || String(data.tracking_number || '').toLowerCase().includes(q)
+                || String(data.tracking_company || '').toLowerCase().includes(q)
                 || String(data.display_title || '').toLowerCase().includes(q);
         });
     }
@@ -2553,16 +2635,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -2671,16 +2747,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -2789,16 +2859,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -2907,16 +2971,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -3025,16 +3083,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -3161,16 +3213,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -3279,16 +3325,10 @@
                     {
                         title: 'Tracking',
                         field: 'tracking_number',
-                        minWidth: 150,
+                        minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number from marketplace order payload',
-                        formatter: function (cell) {
-                            const tracking = (cell.getValue() || '').toString().trim();
-                            if (!tracking) {
-                                return '<span class="sof-oc-missing">—</span>';
-                            }
-                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
-                        },
+                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        formatter: formatTrackingCell,
                     }
                 );
                 return cols;
@@ -3463,6 +3503,67 @@
         applyAllOrderFilters();
     });
 
+    $('#sof-pull-tracking-btn').on('click', function () {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        const $label = $btn.find('.sof-pull-tracking-label');
+        const prev = $label.text();
+        $btn.prop('disabled', true);
+        $label.text('Pulling…');
+
+        fetch('{{ route("sales.order.fulfillment.pull.tracking.numbers") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ limit: 40 }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Done.' : 'Pull failed.');
+                const rows = (res.json && res.json.data) ? res.json.data : [];
+                const summary = (res.json && res.json.summary) ? res.json.summary : {};
+                const summaryLine = 'Checked: ' + (summary.checked || 0)
+                    + ' · With tracking: ' + (summary.with_tracking || 0)
+                    + ' · Saved: ' + (summary.updated || 0)
+                    + ' · Empty: ' + (summary.empty || 0);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: res.ok ? 'success' : 'error',
+                        title: res.ok ? 'Pulled tracking numbers' : 'Pull failed',
+                        width: Math.min(920, window.innerWidth - 40),
+                        html: '<div style="text-align:left;font-size:0.9rem;">'
+                            + '<p class="mb-1">' + escapeHtml(msg) + '</p>'
+                            + '<p class="text-muted mb-2" style="font-size:0.8rem;">' + escapeHtml(summaryLine) + '</p>'
+                            + buildPulledTrackingTableHtml(rows)
+                            + '</div>',
+                        showConfirmButton: true,
+                        confirmButtonText: 'Close',
+                    });
+                } else {
+                    alert(msg + '\n' + summaryLine);
+                }
+                if (res.ok) {
+                    reloadSofTrackingTables();
+                }
+            })
+            .catch(function (err) {
+                const msg = err && err.message ? err.message : 'Network error';
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Pull failed', text: msg });
+                } else {
+                    alert(msg);
+                }
+            })
+            .finally(function () {
+                $btn.prop('disabled', false);
+                $label.text(prev);
+            });
+    });
+
     $('#sof-refresh-shipment-btn').on('click', function () {
         const $btn = $(this);
         if ($btn.prop('disabled')) return;
@@ -3479,24 +3580,29 @@
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 'X-Requested-With': 'XMLHttpRequest',
             },
-            body: JSON.stringify({ limit: 100, stale: 0 }),
+            // Prefer Label Created-linked packages (server-side); also sync open UPS/USPS broadly.
+            body: JSON.stringify({ limit: 200, stale: 0 }),
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
                 const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Updated.' : 'Update failed.');
+                const detail = (res.json && res.json.output) ? String(res.json.output) : '';
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         icon: res.ok ? 'success' : 'error',
                         title: res.ok ? 'Shipment status' : 'Update failed',
-                        text: msg,
-                        timer: res.ok ? 3500 : undefined,
+                        html: '<div style="text-align:left;white-space:pre-wrap;font-size:0.9rem;">'
+                            + escapeHtml(msg)
+                            + (detail ? '<hr><code style="font-size:0.8rem;">' + escapeHtml(detail) + '</code>' : '')
+                            + '</div>',
+                        timer: res.ok ? 4500 : undefined,
                         showConfirmButton: !res.ok,
                     });
                 } else {
-                    alert(msg);
+                    alert(msg + (detail ? '\n\n' + detail : ''));
                 }
-                if (res.ok && table) {
-                    table.replaceData();
+                if (res.ok) {
+                    reloadSofTrackingTables();
                 }
             })
             .catch(function (err) {
