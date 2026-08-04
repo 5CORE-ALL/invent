@@ -600,6 +600,11 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="bulkEditOnlyChangedHint" class="alert alert-warning py-2 mb-3" style="display: none; font-size: 13px;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk edit:</strong> only fields you change here are written to all selected SKUs.
+                        Unchanged fields keep each SKU&rsquo;s existing value.
+                    </div>
                     <form id="editDimWtForm">
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
@@ -861,8 +866,9 @@
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
             let verifiedFilter = null; // null = all, 0 = not verified only (red dots)
-            // When set (via multi-select + Action column Edit), save updates all these products
+            // When set (via multi-select + Action column Edit), save updates these products (changed fields only)
             let bulkEditList = null;
+            let bulkEditInitialValues = null;
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -2398,12 +2404,78 @@
                 lbEl.value = !isNaN(kg) ? (kg * CTN_KG_TO_LB_MODAL).toFixed(4) : '';
             }
 
+            const BULK_EDIT_TRACKED_FIELDS = [
+                { id: 'editCtnL', key: 'ctn_l', type: 'num' },
+                { id: 'editCtnW', key: 'ctn_w', type: 'num' },
+                { id: 'editCtnH', key: 'ctn_h', type: 'num' },
+                { id: 'editCtnQty', key: 'ctn_qty', type: 'num' },
+                { id: 'editCtnWeightKg', key: 'ctn_weight_kg', type: 'num' },
+                { id: 'editCtnInstructions', key: 'ctn_instructions', type: 'text100' },
+            ];
+
+            function snapshotBulkEditFormValues() {
+                const snap = {};
+                BULK_EDIT_TRACKED_FIELDS.forEach(f => {
+                    const el = document.getElementById(f.id);
+                    snap[f.id] = el ? String(el.value ?? '') : '';
+                });
+                const pkgEl = document.getElementById('editInstructionsItemPkg');
+                snap.editInstructionsItemPkg = pkgEl ? String(pkgEl.value ?? '') : '';
+                return snap;
+            }
+
+            function parseBulkEditFieldValue(field, raw) {
+                const t = String(raw ?? '').trim();
+                if (field.type === 'text100') {
+                    return t === '' ? null : t.slice(0, 100);
+                }
+                if (t === '') return null;
+                const n = parseFloat(t);
+                return Number.isFinite(n) ? n : null;
+            }
+
+            function getBulkChangedFormData() {
+                const data = {};
+                if (!bulkEditInitialValues) return data;
+                BULK_EDIT_TRACKED_FIELDS.forEach(f => {
+                    const el = document.getElementById(f.id);
+                    if (!el) return;
+                    const now = String(el.value ?? '');
+                    const was = bulkEditInitialValues[f.id] ?? '';
+                    if (now === was) return;
+                    data[f.key] = parseBulkEditFieldValue(f, now);
+                });
+                if ('ctn_l' in data || 'ctn_w' in data || 'ctn_h' in data || 'ctn_qty' in data) {
+                    const ctnL = parseFloat(document.getElementById('editCtnL').value) || 0;
+                    const ctnW = parseFloat(document.getElementById('editCtnW').value) || 0;
+                    const ctnH = parseFloat(document.getElementById('editCtnH').value) || 0;
+                    const ctnQty = parseFloat(document.getElementById('editCtnQty').value) || 0;
+                    const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
+                    const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
+                    data.ctn_cbm = ctnCbm > 0 ? ctnCbm : null;
+                    data.ctn_cbm_each = ctnCbmEach > 0 ? ctnCbmEach : null;
+                }
+                if ('ctn_weight_kg' in data) {
+                    const kg = parseFloat(document.getElementById('editCtnWeightKg').value);
+                    if (!isNaN(kg)) {
+                        data.ctn_weight_lb = parseFloat((kg * CTN_KG_TO_LB_MODAL).toFixed(4));
+                    } else {
+                        const lb = parseFloat(document.getElementById('editCtnWeightLb').value);
+                        data.ctn_weight_lb = !isNaN(lb) ? lb : null;
+                    }
+                }
+                return data;
+            }
+
             // Edit Dim Wt CTN (single, or bulk when multi-selected via pencil)
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
-                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 1)
+                const isBulk = !!(bulkEditList && bulkEditList.length > 1);
+                document.getElementById('editDimWtModalLabel').textContent = isBulk
                     ? ('Bulk Edit (' + bulkEditList.length + ' items)')
                     : 'Edit Dim Wt CTN';
+                const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
+                if (bulkHint) bulkHint.style.display = isBulk ? 'block' : 'none';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -2432,6 +2504,8 @@
                     pkgEl.disabled = false;
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
                 }
+
+                bulkEditInitialValues = isBulk ? snapshotBulkEditFormValues() : null;
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -2483,33 +2557,46 @@
                     const instructionsRaw = document.getElementById('editInstructionsItemPkg').value;
 
                     if (bulkTargets && bulkTargets.length > 1) {
+                        const payloadFields = getBulkChangedFormData();
+                        const instructionsChanged = !bulkEditInitialValues
+                            || String(instructionsRaw ?? '') !== String(bulkEditInitialValues.editInstructionsItemPkg ?? '');
+
+                        if (Object.keys(payloadFields).length === 0 && !instructionsChanged) {
+                            showToast('warning', 'No fields changed — nothing to update on selected SKUs.');
+                            return;
+                        }
+
                         let successCount = 0;
                         let failCount = 0;
                         for (const product of bulkTargets) {
                             if (isParentSkuString(product.SKU)) continue;
-                            const formData = {
-                                ...baseFormData,
-                                product_id: product.id,
-                                sku: product.SKU,
-                                parent: product.Parent || ''
-                            };
                             try {
-                                const response = await fetch('/dim-wt-master/update', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRF-TOKEN': csrfToken
-                                    },
-                                    body: JSON.stringify(formData)
-                                });
-                                if (!response.ok) {
-                                    failCount++;
-                                    continue;
+                                if (Object.keys(payloadFields).length > 0) {
+                                    const formData = {
+                                        ...payloadFields,
+                                        product_id: product.id,
+                                        sku: product.SKU,
+                                        parent: product.Parent || ''
+                                    };
+                                    const response = await fetch('/dim-wt-master/update', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-TOKEN': csrfToken
+                                        },
+                                        body: JSON.stringify(formData)
+                                    });
+                                    if (!response.ok) {
+                                        failCount++;
+                                        continue;
+                                    }
                                 }
-                                try {
-                                    await saveInstructionsItemPkg(product.id, product.SKU, instructionsRaw);
-                                } catch (pkgErr) {
-                                    console.error('Bulk instructions save error:', pkgErr);
+                                if (instructionsChanged) {
+                                    try {
+                                        await saveInstructionsItemPkg(product.id, product.SKU, instructionsRaw);
+                                    } catch (pkgErr) {
+                                        console.error('Bulk instructions save error:', pkgErr);
+                                    }
                                 }
                                 successCount++;
                             } catch (e) {
@@ -2517,9 +2604,10 @@
                             }
                         }
                         bulkEditList = null;
+                        bulkEditInitialValues = null;
                         document.getElementById('editDimWtModalLabel').textContent = 'Edit Dim Wt CTN';
                         if (failCount === 0) {
-                            showToast('success', successCount + ' item(s) updated successfully!');
+                            showToast('success', successCount + ' item(s) updated (changed fields only)!');
                         } else {
                             showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
                         }
@@ -2637,7 +2725,10 @@
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
+                bulkEditInitialValues = null;
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Dim Wt CTN';
+                const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
+                if (bulkHint) bulkHint.style.display = 'none';
             });
         });
     </script>

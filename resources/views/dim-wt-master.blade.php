@@ -750,6 +750,11 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="bulkEditOnlyChangedHint" class="alert alert-warning py-2 mb-3" style="display: none; font-size: 13px;">
+                        <i class="fas fa-layer-group me-1"></i>
+                        <strong>Bulk edit:</strong> only fields you change here are written to all selected SKUs.
+                        Unchanged fields keep each SKU&rsquo;s existing value.
+                    </div>
                     <form id="editDimWtForm">
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
@@ -1107,8 +1112,9 @@
             let productUniqueParents = [];
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
-            // When set (via multi-select + Action column Edit), save updates all these products
+            // When set (via multi-select + Action column Edit), save updates these products (changed fields only)
             let bulkEditList = null;
+            let bulkEditInitialValues = null;
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -2734,12 +2740,82 @@
                 return data;
             }
 
+            const BULK_EDIT_TRACKED_FIELDS = [
+                { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
+                { id: 'editWtAct', key: 'wt_act', type: 'num' },
+                { id: 'editWtDecl', key: 'wt_decl', type: 'num' },
+                { id: 'editL', key: 'l', type: 'num' },
+                { id: 'editW', key: 'w', type: 'num' },
+                { id: 'editH', key: 'h', type: 'num' },
+                { id: 'editLDecl', key: 'l_decl', type: 'num' },
+                { id: 'editWDecl', key: 'w_decl', type: 'num' },
+                { id: 'editHDecl', key: 'h_decl', type: 'num' },
+                { id: 'editLCm', key: 'l_cm', type: 'num' },
+                { id: 'editWCm', key: 'w_cm', type: 'num' },
+                { id: 'editHCm', key: 'h_cm', type: 'num' },
+                { id: 'editCtnL', key: 'ctn_l', type: 'num' },
+                { id: 'editCtnW', key: 'ctn_w', type: 'num' },
+                { id: 'editCtnH', key: 'ctn_h', type: 'num' },
+                { id: 'editCtnQty', key: 'ctn_qty', type: 'num' },
+                { id: 'editCtnInstructions', key: 'ctn_instructions', type: 'text100' },
+            ];
+
+            function snapshotBulkEditFormValues() {
+                const snap = {};
+                BULK_EDIT_TRACKED_FIELDS.forEach(f => {
+                    const el = document.getElementById(f.id);
+                    snap[f.id] = el ? String(el.value ?? '') : '';
+                });
+                const pkgEl = document.getElementById('editInstructionsItemPkg');
+                snap.editInstructionsItemPkg = pkgEl ? String(pkgEl.value ?? '') : '';
+                const verifiedEl = document.getElementById('editVerified');
+                snap.editVerified = verifiedEl ? String(verifiedEl.value ?? '0') : '0';
+                return snap;
+            }
+
+            function parseBulkEditFieldValue(field, raw) {
+                const t = String(raw ?? '').trim();
+                if (field.type === 'text100') {
+                    return t === '' ? null : t.slice(0, 100);
+                }
+                if (t === '') return null;
+                const n = parseFloat(t);
+                return Number.isFinite(n) ? n : null;
+            }
+
+            function getBulkChangedFormData() {
+                const data = {};
+                if (!bulkEditInitialValues) return data;
+                BULK_EDIT_TRACKED_FIELDS.forEach(f => {
+                    const el = document.getElementById(f.id);
+                    if (!el) return;
+                    const now = String(el.value ?? '');
+                    const was = bulkEditInitialValues[f.id] ?? '';
+                    if (now === was) return;
+                    data[f.key] = parseBulkEditFieldValue(f, now);
+                });
+                if ('ctn_l' in data || 'ctn_w' in data || 'ctn_h' in data || 'ctn_qty' in data) {
+                    const ctnL = parseFloat(document.getElementById('editCtnL').value) || 0;
+                    const ctnW = parseFloat(document.getElementById('editCtnW').value) || 0;
+                    const ctnH = parseFloat(document.getElementById('editCtnH').value) || 0;
+                    const ctnQty = parseFloat(document.getElementById('editCtnQty').value) || 0;
+                    const ctnCbm = calculateCtnCbm(ctnL, ctnW, ctnH);
+                    const ctnCbmEach = calculateCtnCbmEach(ctnCbm, ctnQty);
+                    data.ctn_cbm = ctnCbm > 0 ? ctnCbm : null;
+                    data.ctn_cbm_each = ctnCbmEach > 0 ? ctnCbmEach : null;
+                }
+                return data;
+            }
+
             // Edit Dimensions & Weight Master (single, or bulk when multi-selected via pencil)
             function editDimWt(product) {
                 const modal = new bootstrap.Modal(document.getElementById('editDimWtModal'));
-                document.getElementById('editDimWtModalLabel').textContent = (bulkEditList && bulkEditList.length > 1)
+                const isBulk = !!(bulkEditList && bulkEditList.length > 1);
+                document.getElementById('editDimWtModalLabel').textContent = isBulk
                     ? ('Bulk Edit (' + bulkEditList.length + ' items)')
                     : 'Edit Dimensions & Weight Master';
+                const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
+                if (bulkHint) bulkHint.style.display = isBulk ? 'block' : 'none';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -2810,6 +2886,8 @@
                     siblingsCb.checked = false;
                     siblingsCb.disabled = isParentSkuString(skuStr);
                 }
+
+                bulkEditInitialValues = isBulk ? snapshotBulkEditFormValues() : null;
                 
                 // Setup save button handler
                 const saveBtn = document.getElementById('saveDimWtBtn');
@@ -2902,44 +2980,68 @@
 
                     // Multi-target path: bulk selection and/or save-also-to-siblings
                     if (targets.length > 1 || applyToSiblings || (bulkTargets && bulkTargets.length > 1)) {
+                        const isBulkSelection = !!(bulkTargets && bulkTargets.length > 1);
+                        // Bulk: only changed fields. Sibling-copy from single edit: keep full form.
+                        const payloadFields = isBulkSelection ? getBulkChangedFormData() : baseFormData;
+                        const instructionsChanged = !isBulkSelection
+                            || !bulkEditInitialValues
+                            || String(instructionsRaw ?? '') !== String(bulkEditInitialValues.editInstructionsItemPkg ?? '');
+                        const verifiedChanged = !isBulkSelection
+                            || !bulkEditInitialValues
+                            || String(verifiedValue) !== String(bulkEditInitialValues.editVerified ?? '0');
+
+                        if (isBulkSelection
+                            && Object.keys(payloadFields).length === 0
+                            && !instructionsChanged
+                            && !verifiedChanged) {
+                            showToast('warning', 'No fields changed — nothing to update on selected SKUs.');
+                            return;
+                        }
+
                         let successCount = 0;
                         let failCount = 0;
                         for (const product of targets) {
                             if (isParentSkuString(product.SKU)) continue;
-                            const formData = {
-                                ...baseFormData,
-                                product_id: product.id,
-                                sku: product.SKU,
-                                parent: product.Parent || ''
-                            };
                             try {
-                                const response = await fetch('/dim-wt-master/update', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRF-TOKEN': csrfToken
-                                    },
-                                    body: JSON.stringify(formData)
-                                });
-                                if (!response.ok) {
-                                    failCount++;
-                                    continue;
-                                }
-                                try {
-                                    await saveInstructionsItemPkg(product.id, product.SKU, instructionsRaw);
-                                } catch (pkgErr) {
-                                    console.error('Bulk instructions save error:', pkgErr);
-                                }
-                                try {
-                                    await makeRequest('/product_master/update-verified', 'POST', {
+                                if (Object.keys(payloadFields).length > 0) {
+                                    const formData = {
+                                        ...payloadFields,
+                                        product_id: product.id,
                                         sku: product.SKU,
-                                        verified_data: verifiedValue
+                                        parent: product.Parent || ''
+                                    };
+                                    const response = await fetch('/dim-wt-master/update', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-TOKEN': csrfToken
+                                        },
+                                        body: JSON.stringify(formData)
                                     });
-                                    product.verified_data = verifiedValue;
-                                    if (!product.Values) product.Values = {};
-                                    product.Values.verified_data = verifiedValue;
-                                } catch (verErr) {
-                                    console.error('Bulk verified save error:', verErr);
+                                    if (!response.ok) {
+                                        failCount++;
+                                        continue;
+                                    }
+                                }
+                                if (instructionsChanged) {
+                                    try {
+                                        await saveInstructionsItemPkg(product.id, product.SKU, instructionsRaw);
+                                    } catch (pkgErr) {
+                                        console.error('Bulk instructions save error:', pkgErr);
+                                    }
+                                }
+                                if (verifiedChanged) {
+                                    try {
+                                        await makeRequest('/product_master/update-verified', 'POST', {
+                                            sku: product.SKU,
+                                            verified_data: verifiedValue
+                                        });
+                                        product.verified_data = verifiedValue;
+                                        if (!product.Values) product.Values = {};
+                                        product.Values.verified_data = verifiedValue;
+                                    } catch (verErr) {
+                                        console.error('Bulk verified save error:', verErr);
+                                    }
                                 }
                                 successCount++;
                             } catch (e) {
@@ -2947,11 +3049,14 @@
                             }
                         }
                         bulkEditList = null;
+                        bulkEditInitialValues = null;
                         document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
                         if (failCount === 0) {
-                            const msg = applyToSiblings
+                            const msg = applyToSiblings && !isBulkSelection
                                 ? (successCount + ' sibling SKU(s) updated successfully!')
-                                : (successCount + ' item(s) updated successfully!');
+                                : (successCount + ' item(s) updated'
+                                    + (isBulkSelection ? ' (changed fields only)' : '')
+                                    + '!');
                             showToast('success', msg);
                         } else {
                             showToast('warning', successCount + ' updated, ' + failCount + ' failed.');
@@ -3247,7 +3352,10 @@
             // Reset bulk edit state when edit modal is closed (e.g. without saving)
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
+                bulkEditInitialValues = null;
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Dimensions & Weight Master';
+                const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
+                if (bulkHint) bulkHint.style.display = 'none';
                 const siblingsCb = document.getElementById('editSaveAlsoToSiblings');
                 if (siblingsCb) siblingsCb.checked = false;
             });
