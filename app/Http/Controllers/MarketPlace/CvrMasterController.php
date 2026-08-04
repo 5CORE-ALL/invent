@@ -2133,6 +2133,15 @@ class CvrMasterController extends Controller
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonStandardPriceVals = $rows->pluck('amazon_standard_price')->filter(fn ($v) => $v !== null && $v > 0);
+                // Parent SP = lowest child SP (same idea as LMP lowest on outer). Mixed when children differ.
+                $amazonStandardPriceUnique = $amazonStandardPriceVals
+                    ->map(fn ($v) => round((float) $v, 2))
+                    ->unique()
+                    ->values();
+                $amazonStandardPriceMissing = $rows->contains(function ($r) {
+                    $sp = $r->amazon_standard_price ?? null;
+                    return $sp === null || $sp === '' || !is_numeric($sp) || floatval($sp) <= 0;
+                });
                 $temuSpriceVals = $rows->pluck('temu_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
                 $amazonSpftVals = $rows->pluck('amazon_spft')->filter(fn ($v) => $v !== null);
@@ -2145,7 +2154,11 @@ class CvrMasterController extends Controller
                     'inventory' => $rows->sum('inventory'),
                     'amazon_price' => $amazonPriceVals->isNotEmpty() ? round($amazonPriceVals->avg(), 2) : null,
                     'amazon_sprice' => $amazonSpriceVals->isNotEmpty() ? round($amazonSpriceVals->avg(), 2) : null,
-                    'amazon_standard_price' => $amazonStandardPriceVals->isNotEmpty() ? round($amazonStandardPriceVals->avg(), 2) : null,
+                    'amazon_standard_price' => $amazonStandardPriceUnique->isNotEmpty()
+                        ? round((float) $amazonStandardPriceUnique->min(), 2)
+                        : null,
+                    'amazon_standard_price_mixed' => $amazonStandardPriceUnique->count() > 1,
+                    'amazon_standard_price_missing' => $amazonStandardPriceMissing,
                     'amazon_sgpft' => $amazonSgpftVals->isNotEmpty() ? round($amazonSgpftVals->avg(), 2) : null,
                     'amazon_spft' => $amazonSpftVals->isNotEmpty() ? round($amazonSpftVals->avg(), 2) : null,
                     'amazon_sroi' => $amazonSroiVals->isNotEmpty() ? round($amazonSroiVals->avg(), 2) : null,

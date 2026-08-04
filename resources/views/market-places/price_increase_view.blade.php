@@ -4928,7 +4928,7 @@
                     title: "SP",
                     field: "amazon_standard_price",
                     hozAlign: "center",
-                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Manual only; blank unless filled. Dot vs Amazon price.",
+                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Parent shows lowest child SP; (1) when children differ.",
                     editor: "input",
                     minWidth: 70,
                     sorter: "number",
@@ -4938,17 +4938,35 @@
                     },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (rowData.is_parent_summary) return '';
                         const value = cell.getValue();
-                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
                         const std = parseFloat(value) || 0;
+                        // Parent: show lowest child SP; append (1) when children have different SPs.
+                        // Red when any child is missing SP.
+                        if (rowData.is_parent_summary) {
+                            const missing = !!rowData.amazon_standard_price_missing;
+                            const mixed = !!rowData.amazon_standard_price_mixed;
+                            const color = missing ? '#dc3545' : 'inherit';
+                            if (!value || std <= 0) {
+                                if (!missing) return '';
+                                return '<span style="font-weight:600;color:#dc3545;" title="One or more children missing SP">—</span>';
+                            }
+                            let tip = 'Lowest child SP $' + std.toFixed(2);
+                            if (missing) tip += ' — one or more children missing SP';
+                            else if (mixed) tip += ' — children have different SPs';
+                            return '<span style="font-weight:600;color:' + color + ';" title="' + tip.replace(/"/g, '&quot;') + '">$'
+                                + std.toFixed(2)
+                                + (mixed ? ' <span style="font-weight:500;color:' + (missing ? '#dc3545' : '#6c757d') + ';">(1)</span>' : '')
+                                + '</span>';
+                        }
+                        const currentPrice = parseFloat(rowData.amazon_price) || 0;
                         if (!value || std <= 0) return '';
                         const sku = rowData.sku || '';
-                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
+                        // Hold (SP = Amazon price): show price only — no yellow dot
                         if (currentPrice > 0 && currentPrice.toFixed(2) === std.toFixed(2)) {
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + '</span>';
+                            return '<span style="font-weight:600;" title="Hold (matches Amazon price) — SP">$'
+                                + std.toFixed(2) + '</span>';
                         }
+                        const dot = priceIncreaseSpChangeDotHtml(std, currentPrice, sku);
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
                             dot + ('$' + std.toFixed(2)) + '</span>';
                     }
@@ -5996,6 +6014,49 @@
             });
         });
 
+        /** Recompute parent-row SP from children: lowest value; mixed → (1); any missing → red. */
+        function refreshParentStandardPriceSummary(parentKey) {
+            const parentNorm = String(parentKey || '').trim().toUpperCase();
+            if (!parentNorm || !Array.isArray(fullDataset)) return;
+            const childVals = [];
+            let childCount = 0;
+            let missing = false;
+            fullDataset.forEach(function(row) {
+                if (!row || row.is_parent_summary) return;
+                if (String(row.parent || '').trim().toUpperCase() !== parentNorm) return;
+                childCount++;
+                const v = parseFloat(row.amazon_standard_price);
+                if (isFinite(v) && v > 0) {
+                    childVals.push(+v.toFixed(2));
+                } else {
+                    missing = true;
+                }
+            });
+            if (childCount === 0) missing = false;
+            const unique = Array.from(new Set(childVals));
+            const lowest = unique.length ? Math.min.apply(null, unique) : null;
+            const mixed = unique.length > 1;
+            const patch = {
+                amazon_standard_price: lowest,
+                amazon_standard_price_mixed: mixed,
+                amazon_standard_price_missing: missing
+            };
+            fullDataset.forEach(function(row) {
+                if (!row || !row.is_parent_summary) return;
+                if (String(row.parent || '').trim().toUpperCase() !== parentNorm) return;
+                row.amazon_standard_price = lowest;
+                row.amazon_standard_price_mixed = mixed;
+                row.amazon_standard_price_missing = missing;
+            });
+            if (!table) return;
+            (table.getRows() || []).forEach(function(r) {
+                const d = r.getData();
+                if (!d || !d.is_parent_summary) return;
+                if (String(d.parent || '').trim().toUpperCase() !== parentNorm) return;
+                r.update(patch);
+            });
+        }
+
         /** Apply STANDARD_PRICE to SKU + any linked SKUs returned by /save-amazon-sprice. */
         function applyStandardPriceToPriceIncreaseRows(sku, std, appliedSkus) {
             if (!table) return;
@@ -6006,12 +6067,14 @@
                     .filter(Boolean)
             );
             if (target) appliedSet.add(target);
+            const parentsToRefresh = new Set();
             (table.getRows() || []).forEach(function(r) {
                 const d = r.getData();
                 if (!d || d.is_parent_summary) return;
                 const rowSku = String(d.sku || '').trim().toUpperCase();
                 if (!rowSku || !appliedSet.has(rowSku)) return;
                 r.update({ amazon_standard_price: std });
+                if (d.parent) parentsToRefresh.add(String(d.parent).trim());
             });
             // Keep fullDataset in sync so parent/expand views keep the new SP
             if (Array.isArray(fullDataset)) {
@@ -6020,9 +6083,11 @@
                     const rowSku = String(row.sku || '').trim().toUpperCase();
                     if (rowSku && appliedSet.has(rowSku)) {
                         row.amazon_standard_price = std;
+                        if (row.parent) parentsToRefresh.add(String(row.parent).trim());
                     }
                 });
             }
+            parentsToRefresh.forEach(function(p) { refreshParentStandardPriceSummary(p); });
         }
 
         // Shared LMP modal SP box (lmp-modal-sp.js) → keep grid SP + modal toolbar SP in sync
@@ -6056,6 +6121,16 @@
                 const std = parseFloat(cell.getValue());
                 if (!sku || !isFinite(std) || std <= 0) {
                     row.update({ amazon_standard_price: null });
+                    if (Array.isArray(fullDataset)) {
+                        const skuU = String(sku || '').trim().toUpperCase();
+                        fullDataset.forEach(function(r) {
+                            if (!r || r.is_parent_summary) return;
+                            if (String(r.sku || '').trim().toUpperCase() === skuU) {
+                                r.amazon_standard_price = null;
+                            }
+                        });
+                    }
+                    if (rowData.parent) refreshParentStandardPriceSummary(rowData.parent);
                     return;
                 }
                 $.ajax({
