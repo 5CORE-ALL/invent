@@ -4403,7 +4403,9 @@ class CvrMasterController extends Controller
                 'sroi'        => $ppSuggestedBd['sroi'],
                 'spft'        => $ppSuggestedBd['spft'],
                 'lp'          => $lp,
-                'ship'        => 0, // not used in PP formulas
+                // Product-master ship kept for SP Apply: (SP × 1.15) − Ship.
+                // GPFT/ROI formulas still exclude ship on the frontend/pricing page.
+                'ship'        => $ship,
                 'margin'      => $ppMarginBd,
                 'pushed_by'   => null,
                 'pushed_at'   => null,
@@ -4717,8 +4719,10 @@ class CvrMasterController extends Controller
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
-                    if (in_array($mp, ['ppower', 'purchasingpower', 'purchase', 'topdawg', 'faire'], true)) {
-                        $row['ship'] = 0; // PP / TopDawg / Faire formulas never use ship
+                    // TopDawg / Faire formulas never use ship. PPower keeps product-master
+                    // ship for SP Apply ((SP × 1.15) − Ship); frontend formulas still exclude it.
+                    if (in_array($mp, ['topdawg', 'faire'], true)) {
+                        $row['ship'] = 0;
                     }
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');

@@ -1659,13 +1659,13 @@
                 {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
                 <div id="modal-target-controls" class="ovl30-toolbar">
                     <div class="ovl30-tool-group"
-                        title="Apply this SPRICE to all checked channels. Doba &amp; TopDawg get 25% less (×0.75).">
+                        title="Apply this SPRICE to checked channels. Doba always −25% (×0.75, included even if unchecked). TopDawg −25%. PPower = (SPRICE × 1.15) − Ship.">
                         <label for="modal-bulk-sprice-input">SPRICE</label>
                         <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
                             placeholder="0.00" step="0.01" min="0" style="width: 78px;"
-                            title="SPRICE applied to selected channels (Doba &amp; TopDawg = 25% less)">
+                            title="SPRICE applied to selected channels (Doba always −25%; PPower ×1.15 − Ship)">
                         <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
-                            title="Apply SPRICE to checked channels (Doba &amp; TopDawg −25%)" aria-label="Apply SPRICE">
+                            title="Apply SPRICE (Doba always −25%)" aria-label="Apply SPRICE">
                             Apply
                         </button>
                     </div>
@@ -1711,13 +1711,13 @@
                         </button>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Set this SPRICE on selected channels (often prefilled from SP). Doba &amp; TopDawg get 25% less (×0.75). With Siblings checked, sibling SKUs (including INV 0) get the same per-channel price.">
+                        title="Set this SPRICE on selected channels (often prefilled from SP). Doba always −25% (×0.75, included even if unchecked). TopDawg −25%. PPower = (SP × 1.15) − Ship.">
                         <label for="modal-sprice-same-input">$</label>
                         <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
-                            title="SPRICE from SP / this box (Doba &amp; TopDawg = 25% less)">
+                            title="SPRICE from SP / this box (Doba always −25%; PPower ×1.15 − Ship)">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
-                            title="Apply SPRICE to checked channels (Doba &amp; TopDawg −25%)" aria-label="Apply same SPRICE">
+                            title="Apply SPRICE (Doba always −25%)" aria-label="Apply same SPRICE">
                             Apply
                         </button>
                     </div>
@@ -3383,8 +3383,9 @@
             }
             showToast('Siblings Apply ON — saved for ' + sku + ' (+' + modalSiblingSkus.length + ' sibling(s))', 'success');
         });
-        // Group: A = Amazon + others (exclude Temu, Doba, B2B); D = Doba; T = Temu
-        const MODAL_GROUP_EXCLUDE_FROM_A = ['temu', 'temu2', 'doba', 'sb2b', 'shopifyb2b', 'shopify_b2b'];
+        // Group: A = Amazon + others (exclude Temu, B2B); Doba is in A so SP Apply can hit it (−25%).
+        // D = Doba-only; T = Temu
+        const MODAL_GROUP_EXCLUDE_FROM_A = ['temu', 'temu2', 'sb2b', 'shopifyb2b', 'shopify_b2b'];
         const MODAL_GROUP_CHANNELS = {
             D: ['doba'],
             T: ['temu', 'temu2'],
@@ -7030,13 +7031,20 @@
             }
 
             const $rows = [];
+            const seenMp = {};
             $('#ovl30DetailsTableBody tr').each(function() {
                 const $tr = $(this);
                 const mp = String($tr.attr('data-marketplace') || '');
                 if (!modalSelectedChannels.has(mp)) return;
                 if (!$tr.find('.editable-sprice').length) return;
                 $rows.push($tr);
+                seenMp[mp.toLowerCase()] = true;
             });
+            // Same Price: always include Doba at −25% even if unchecked
+            if (modalSamePriceModeActive && !seenMp.doba) {
+                const $doba = findModalDobaEditableRow();
+                if ($doba.length) $rows.push($doba);
+            }
             if (!$rows.length) {
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
@@ -7133,6 +7141,7 @@
 
                 $rows.forEach(function($tr) {
                     const mp = String($tr.attr('data-marketplace') || '');
+                    const mpLower = mp.toLowerCase();
                     const basePrice = parseFloat($tr.attr('data-price')) || 0;
                     const $input = $tr.find('.editable-sprice');
                     if (mode !== 'same' && !(basePrice > 0)) {
@@ -7141,7 +7150,11 @@
                         finishIfDone();
                         return;
                     }
-                    const newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
+                    let newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
+                    // Same-price apply: Doba always −25%; TopDawg −25%; PPower = ×1.15 − Ship
+                    if (mode === 'same') {
+                        newPrice = adjustAppliedSpriceForChannel(inputValue, $tr);
+                    }
                     const lp = parseFloat($tr.attr('data-lp')) || 0;
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
                     const margin = parseFloat($tr.attr('data-margin')) || 0.80;
@@ -7192,12 +7205,64 @@
             }
         });
 
-        // ==================== BULK SPRICE (same value on checked; Doba & TopDawg = 25% less; SB2B = Price×0.75 − Ship) ====================
+        // ==================== BULK SPRICE ====================
+        // Doba ALWAYS −25% (×0.75); TopDawg −25%; PPower = (SPRICE × 1.15) − Ship; SB2B = Price×0.75 − Ship
+        function isDobaChannel(mpLower) {
+            return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'doba';
+        }
         function isBulkSprice25OffChannel(mpLower) {
-            return mpLower === 'doba' || mpLower === 'topdawg';
+            const m = String(mpLower || '').toLowerCase().replace(/\s+/g, '');
+            return m === 'doba' || m === 'topdawg' || m === 'topdog';
+        }
+        function isBulkSpricePpowerChannel(mpLower) {
+            return mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase';
         }
         function isBulkSpriceSb2bChannel(mpLower) {
             return mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b';
+        }
+        /** Doba / TopDawg: always 25% less than the applied base. */
+        function sprice25OffFromBase(basePrice) {
+            return Math.max(0.01, +(Number(basePrice) * 0.75).toFixed(2));
+        }
+        /** PPower SP Apply: (base × 1.15) − Ship */
+        function ppowerSpriceFromBase(basePrice, rowShip) {
+            const ship = (isFinite(rowShip) && rowShip > 0) ? rowShip : 0;
+            return Math.max(0.01, +((basePrice * 1.15) - ship).toFixed(2));
+        }
+        /**
+         * Convert a shared apply base into the channel SPRICE.
+         * Doba always uses ×0.75 (never the full SP).
+         */
+        function adjustAppliedSpriceForChannel(basePrice, $tr) {
+            const mpLower = String(($tr && $tr.attr('data-marketplace')) || '').toLowerCase();
+            const base = Math.max(0.01, +Number(basePrice).toFixed(2));
+            if (isBulkSprice25OffChannel(mpLower)) {
+                return sprice25OffFromBase(base);
+            }
+            if (isBulkSpricePpowerChannel(mpLower)) {
+                const rowShip = parseFloat($tr.attr('data-ship')) || 0;
+                return ppowerSpriceFromBase(base, rowShip);
+            }
+            if (isBulkSpriceSb2bChannel(mpLower)) {
+                const channelPrice = parseFloat($tr.attr('data-price')) || 0;
+                const rowShip = parseFloat($tr.attr('data-ship')) || 0;
+                const p = channelPrice > 0 ? channelPrice : base;
+                return Math.max(0.01, +((p * 0.75) - rowShip).toFixed(2));
+            }
+            return base;
+        }
+        /** Find editable Doba row even if hidden / not checked (Doba always gets −25% on SP apply). */
+        function findModalDobaEditableRow() {
+            let $found = $();
+            $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
+                const $tr = $(this);
+                if (!isDobaChannel($tr.attr('data-marketplace'))) return;
+                if (!$tr.find('.editable-sprice').length) return;
+                if (String($tr.attr('data-editable') || '') === '0') return;
+                $found = $tr;
+                return false;
+            });
+            return $found;
         }
 
         function applyModalBulkSprice() {
@@ -7212,16 +7277,18 @@
                 showToast('Please select at least one channel (checkbox)', 'error');
                 return;
             }
-            const $rows = collectModalTargetRows();
+            const $rows = collectModalTargetRows({ alwaysIncludeDoba: true });
             if (!$rows.length) {
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
             }
 
-            const reducedPrice = +(basePrice * 0.75).toFixed(2); // 25% less for Doba & TopDawg
+            const reducedPrice = sprice25OffFromBase(basePrice); // Doba always −25%
             if (!confirm(
-                'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' selected channel(s)'
-                + '?\n\nDoba & TopDawg get 25% less: $' + reducedPrice.toFixed(2)
+                'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
+                + '?\n\nDoba always −25%: $' + reducedPrice.toFixed(2)
+                + '\nTopDawg −25%: $' + reducedPrice.toFixed(2)
+                + '\nPPower = (SPRICE × 1.15) − Ship'
                 + '\nSB2B = (Price × 0.75) − Ship'
                 + siblingsApplyLabel()
             )) return;
@@ -7235,17 +7302,7 @@
             let siblingsOk = 0;
             $rows.forEach(function($tr) {
                 const mp = String($tr.attr('data-marketplace') || '');
-                const mpLower = mp.toLowerCase();
-                let newPrice = +basePrice.toFixed(2);
-                if (isBulkSprice25OffChannel(mpLower)) {
-                    newPrice = reducedPrice;
-                } else if (isBulkSpriceSb2bChannel(mpLower)) {
-                    // Always: SPRICE = (channel Price × 0.75) − Ship
-                    const channelPrice = parseFloat($tr.attr('data-price')) || 0;
-                    const rowShip = parseFloat($tr.attr('data-ship')) || 0;
-                    const p = channelPrice > 0 ? channelPrice : basePrice;
-                    newPrice = Math.max(0.01, +((p * 0.75) - rowShip).toFixed(2));
-                }
+                const newPrice = adjustAppliedSpriceForChannel(basePrice, $tr);
                 $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
                 saveModalSpriceForRow($tr, newPrice, function(ok, res) {
                     if (ok) {
@@ -7266,7 +7323,7 @@
                             okCount
                                 ? ('SPRICE applied to ' + okCount + ' channel(s)'
                                     + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
-                                    + '. Doba & TopDawg = $' + reducedPrice.toFixed(2) + ' (−25%). Use Push to go live.')
+                                    + '. Doba always −25% ($' + reducedPrice.toFixed(2) + '). Use Push to go live.')
                                 : 'Failed to save SPRICE',
                             okCount ? 'success' : 'error'
                         );
@@ -7414,7 +7471,8 @@
             }
         });
 
-        // ==================== SAME $ SPRICE (SP / box → channels + siblings; Doba & TopDawg −25%) ====================
+        // ==================== SAME $ SPRICE (SP / box → channels + siblings) ====================
+        // Doba & TopDawg −25%; PPower = (SP × 1.15) − Ship
         function applyModalSameSpriceFromBox() {
             const rawInput = $('#modal-sprice-same-input').val();
             const samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -7427,24 +7485,22 @@
                 showToast('Please select at least one channel (checkbox)', 'error');
                 return;
             }
-            const $rows = collectModalTargetRows();
+            const $rows = collectModalTargetRows({ alwaysIncludeDoba: true });
             if (!$rows.length) {
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
             }
 
             const basePrice = Math.max(0.01, +samePrice.toFixed(2));
-            const reducedPrice = Math.max(0.01, +(basePrice * 0.75).toFixed(2)); // 25% less for Doba & TopDawg
+            const reducedPrice = sprice25OffFromBase(basePrice); // Doba always −25%
             const withSiblings = isModalSiblingsApply();
-
-            function channelPriceForMp(mpLower) {
-                return isBulkSprice25OffChannel(mpLower) ? reducedPrice : basePrice;
-            }
 
             function runSame() {
                 if (!confirm(
-                    'Set SPRICE to $' + basePrice.toFixed(2) + ' on ' + $rows.length + ' selected channel(s)'
-                    + '?\n\nDoba & TopDawg get 25% less: $' + reducedPrice.toFixed(2)
+                    'Set SPRICE to $' + basePrice.toFixed(2) + ' on ' + $rows.length + ' channel(s)'
+                    + '?\n\nDoba always −25%: $' + reducedPrice.toFixed(2)
+                    + '\nTopDawg −25%: $' + reducedPrice.toFixed(2)
+                    + '\nPPower = (SP × 1.15) − Ship'
                     + siblingsApplyLabel()
                     + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same per-channel SPRICE.' : '')
                 )) return;
@@ -7464,7 +7520,7 @@
                         okCount
                             ? ('SPRICE applied to ' + okCount + ' channel(s)'
                                 + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
-                                + '. Doba & TopDawg = $' + reducedPrice.toFixed(2) + ' (−25%). Use Push to go live.')
+                                + '. Doba always −25% ($' + reducedPrice.toFixed(2) + '). Use Push to go live.')
                             : 'Failed to save SPRICE',
                         okCount ? 'success' : 'error'
                     );
@@ -7472,8 +7528,7 @@
 
                 $rows.forEach(function($tr) {
                     const mp = String($tr.attr('data-marketplace') || '');
-                    const mpLower = mp.toLowerCase();
-                    const newPrice = channelPriceForMp(mpLower);
+                    const newPrice = adjustAppliedSpriceForChannel(basePrice, $tr);
                     const $input = $tr.find('.editable-sprice');
                     const lp = parseFloat($tr.attr('data-lp')) || 0;
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
@@ -7535,16 +7590,24 @@
         // ROI:  sprice = (LP × (1 + ROI%/100) + Ship) / margin
         // GPFT: sprice = (LP + Ship) / (margin − GPFT%/100)
 
-        function collectModalTargetRows() {
+        function collectModalTargetRows(opts) {
+            const alwaysIncludeDoba = !!(opts && opts.alwaysIncludeDoba);
             const $rows = [];
-            if (modalSelectedChannels.size === 0) return $rows;
+            const seen = {};
+            if (modalSelectedChannels.size === 0 && !alwaysIncludeDoba) return $rows;
             $('#ovl30DetailsTableBody tr:visible').each(function() {
                 const $tr = $(this);
                 if (!$tr.find('.editable-sprice').length) return;
                 const mp = String($tr.attr('data-marketplace') || '');
                 if (!modalSelectedChannels.has(mp)) return;
                 $rows.push($tr);
+                seen[mp.toLowerCase()] = true;
             });
+            // Doba always gets SP Apply at −25%, even if unchecked / in another group
+            if (alwaysIncludeDoba && !seen.doba) {
+                const $doba = findModalDobaEditableRow();
+                if ($doba.length) $rows.push($doba);
+            }
             return $rows;
         }
 
