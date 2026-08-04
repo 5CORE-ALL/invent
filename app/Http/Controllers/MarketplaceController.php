@@ -20,6 +20,7 @@ use App\Http\Controllers\MarketPlace\MacySyncController;
 use App\Http\Controllers\MarketPlace\DobaSyncController;
 use App\Http\Controllers\MarketPlace\TemuSyncController;
 use App\Http\Controllers\MarketPlace\Temu2SyncController;
+use App\Http\Controllers\MarketPlace\TikTokSyncController;
 use App\Http\Controllers\MarketPlace\TikTok2SyncController;
 use App\Http\Controllers\MarketPlace\PlsSyncController;
 use App\Services\MarketplaceManager\MarketplaceManagerQueueStatusService;
@@ -34,7 +35,7 @@ use Illuminate\View\View;
 class MarketplaceController extends Controller
 {
     /** Supported marketplace slugs (lowercase). */
-    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok2', 'pls'];
+    public const SUPPORTED_MARKETPLACES = ['reverb', 'amazon', 'ebay', 'walmart', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'aliexpress', 'alibaba', 'newegg', 'shein', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2', 'pls'];
 
     protected function getController(string $marketplace): ?object
     {
@@ -58,6 +59,7 @@ class MarketplaceController extends Controller
             'ebay3' => app(Ebay3SyncController::class),
             'faire' => app(FaireSyncController::class),
             'tiktok2' => app(TikTok2SyncController::class),
+            'tiktok' => app(TikTokSyncController::class),
             'pls' => app(PlsSyncController::class),
             'ebay', 'walmart' => null,
             default => null,
@@ -455,6 +457,9 @@ class MarketplaceController extends Controller
         if ($marketplace === 'tiktok2') {
             return app(TikTok2SyncController::class)->saveSettings($request);
         }
+        if ($marketplace === 'tiktok') {
+            return app(TikTokSyncController::class)->saveSettings($request);
+        }
         if ($marketplace === 'pls') {
             return app(PlsSyncController::class)->saveSettings($request);
         }
@@ -524,6 +529,14 @@ class MarketplaceController extends Controller
             }
 
             return app(TikTok2SyncController::class)->pushOrderToShopify($request, $id);
+        }
+        if (strtolower($marketplace) === 'tiktok') {
+            $id = (int) $request->input('order_id', $request->input('id', 0));
+            if ($id <= 0) {
+                return response()->json(['success' => false, 'message' => 'order_id required.'], 422);
+            }
+
+            return app(TikTokSyncController::class)->pushOrderToShopify($request, $id);
         }
         return response()->json(['success' => false], 404);
     }

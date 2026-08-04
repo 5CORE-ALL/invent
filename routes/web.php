@@ -722,6 +722,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/faire/sync-inventory', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncInventoryNow'])->name('faire.sync.inventory');
         Route::post('/faire/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncMismatchInventoryNow'])->name('faire.sync.mismatch.inventory');
         Route::post('/faire/sync-tracking', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'syncTrackingNow'])->name('faire.sync.tracking');
+        Route::get('/tiktok/connect', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'connect'])->name('tiktok.connect');
+        Route::post('/tiktok/test-connection', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'testConnection'])->name('tiktok.test');
+        Route::post('/tiktok/refresh-products', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'refreshProducts'])->name('tiktok.refresh');
+        Route::get('/tiktok/refresh-products/status', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'refreshProductsStatus'])->name('tiktok.refresh.status');
+        Route::post('/tiktok/fetch-orders', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'fetchOrders'])->name('tiktok.fetch.orders');
+        Route::post('/tiktok/sync-inventory', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'syncInventoryNow'])->name('tiktok.sync.inventory');
+        Route::post('/tiktok/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'syncMismatchInventoryNow'])->name('tiktok.sync.mismatch.inventory');
+        Route::post('/tiktok/sync-tracking', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'syncTrackingNow'])->name('tiktok.sync.tracking');
+        Route::post('/tiktok/push-order/{id}', [\App\Http\Controllers\MarketPlace\TikTokSyncController::class, 'pushOrderToShopify'])->name('tiktok.push.order');
         Route::get('/tiktok2/connect', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'connect'])->name('tiktok2.connect');
         Route::post('/tiktok2/test-connection', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'testConnection'])->name('tiktok2.test');
         Route::post('/tiktok2/refresh-products', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'refreshProducts'])->name('tiktok2.refresh');
@@ -743,14 +752,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/pls/sync-tracking', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'syncTrackingNow'])->name('pls.sync.tracking');
         Route::get('/{marketplace}', [\App\Http\Controllers\MarketplaceManager\MarketplaceManagerController::class, 'show'])
             ->name('show')
-            ->where('marketplace', 'amazon|aliexpress|alibaba|reverb|newegg|shein|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|ebay1|ebay2|ebay3|faire|tiktok2|pls');
+            ->where('marketplace', 'amazon|aliexpress|alibaba|reverb|newegg|shein|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls');
     });
 
     // Faire OAuth redirect (must match FAIRE_REDIRECT_URL)
     Route::get('/faire/callback', [\App\Http\Controllers\MarketPlace\FaireSyncController::class, 'oauthCallback'])->name('faire.oauth.callback');
 
     // Marketplace Sync: dynamic routes per marketplace (reverb, amazon, ebay, walmart, aliexpress, alibaba, newegg, shein, ebay2, ebay3, faire)
-    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok2|pls'])->group(function () {
+    Route::prefix('marketplace/{marketplace}')->where(['marketplace' => 'reverb|amazon|ebay|walmart|topdawg|temu|temu2|purchasingpower|wayfair|bestbuy|macy|doba|aliexpress|alibaba|newegg|shein|ebay1|ebay2|ebay3|faire|tiktok|tiktok2|pls'])->group(function () {
         Route::get('/products', [\App\Http\Controllers\MarketplaceController::class, 'products'])->name('marketplace.products');
         Route::get('/products/{shopifySku}', [\App\Http\Controllers\MarketplaceController::class, 'showProduct'])->name('marketplace.products.show')->whereNumber('shopifySku');
         Route::post('/products/{shopifySku}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullProduct'])->name('marketplace.products.pull')->whereNumber('shopifySku');

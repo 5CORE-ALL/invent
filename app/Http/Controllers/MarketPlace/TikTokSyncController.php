@@ -4,13 +4,13 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\RunMarketplaceInventorySyncJob;
-use App\Jobs\SyncTikTok2TrackingJob;
+use App\Jobs\SyncTikTokTrackingJob;
 use App\Models\MarketplaceSyncSettings;
-use App\Models\TikTokProductTwo;
-use App\Models\Tiktok2Order;
-use App\Services\MarketplaceManager\TikTok2OrderSyncService;
+use App\Models\TikTokProduct;
+use App\Models\TiktokOrder;
+use App\Services\MarketplaceManager\TikTokOrderSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
-use App\Services\TikTok2ShopService;
+use App\Services\TikTokShopService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -19,26 +19,26 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
-class TikTok2SyncController extends Controller
+class TikTokSyncController extends Controller
 {
     public function __construct(
-        protected TikTok2ShopService $tiktok,
+        protected TikTokShopService $tiktok,
         protected MarketplaceApiConfigService $apiConfig
     ) {}
 
     public function connect(Request $request): View
     {
-        $clientKey = (string) config('services.tiktok2.client_key', '');
-        $clientSecret = (string) config('services.tiktok2.client_secret', '');
-        $accessToken = (string) (config('services.tiktok2.access_token') ?: '');
-        $refreshToken = (string) (config('services.tiktok2.refresh_token') ?: '');
-        $shopId = (string) config('services.tiktok2.shop_id', '');
-        $redirectUri = (string) config('services.tiktok2.redirect_uri', '');
+        $clientKey = (string) config('services.tiktok.client_key', '');
+        $clientSecret = (string) config('services.tiktok.client_secret', '');
+        $accessToken = (string) (config('services.tiktok.access_token') ?: '');
+        $refreshToken = (string) (config('services.tiktok.refresh_token') ?: '');
+        $shopId = (string) config('services.tiktok.shop_id', '');
+        $redirectUri = (string) config('services.tiktok.redirect_uri', '');
         $hasAppCreds = filled($clientKey) && filled($clientSecret);
-        $connected = $this->apiConfig->isConfigured('tiktok2') && $this->tiktok->isAuthenticated();
+        $connected = $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated();
 
-        return view('marketplace.tiktok2.connect', [
-            'title' => 'TikTok 2 — Connect',
+        return view('marketplace.tiktok.connect', [
+            'title' => 'TikTok Shop — Connect',
             'connected' => $connected,
             'credentialsReady' => $hasAppCreds,
             'hasClientKey' => filled($clientKey),
@@ -51,10 +51,10 @@ class TikTok2SyncController extends Controller
             'maskedAccessToken' => $this->maskCredential($accessToken !== '' ? $accessToken : 'cached', 4, 4),
             'maskedShopId' => $this->maskCredential($shopId, 4, 4),
             'redirectUri' => $redirectUri,
-            'authorizeUrl' => $hasAppCreds ? route('tiktok2.oauth.connect') : null,
-            'exchangeUrl' => route('tiktok2.oauth.exchange'),
-            'flashSuccess' => $request->session()->pull('tiktok2_connect_success'),
-            'flashError' => $request->session()->pull('tiktok2_connect_error'),
+            'authorizeUrl' => $hasAppCreds ? route('tiktok.oauth.connect') : null,
+            'exchangeUrl' => route('tiktok.oauth.exchange'),
+            'flashSuccess' => $request->session()->pull('tiktok_connect_success'),
+            'flashError' => $request->session()->pull('tiktok_connect_error'),
         ]);
     }
 
@@ -63,7 +63,7 @@ class TikTok2SyncController extends Controller
         if (! $this->tiktok->isAuthenticated()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No TikTok 2 access token. Use Connect with TikTok 2 (OAuth) first.',
+                'message' => 'No TikTok Shop access token. Use Connect with TikTok Shop (OAuth) first.',
             ], 400);
         }
 
@@ -82,7 +82,7 @@ class TikTok2SyncController extends Controller
         if ($shop) {
             return response()->json([
                 'success' => true,
-                'message' => 'TikTok Shop 2 API working — '.($shop['name'] ?? 'shop').' (ID: '.($shop['id'] ?? 'n/a').')',
+                'message' => 'TikTok Shop API working — '.($shop['name'] ?? 'shop').' (ID: '.($shop['id'] ?? 'n/a').')',
                 'shop' => [
                     'id' => $shop['id'] ?? null,
                     'name' => $shop['name'] ?? null,
@@ -104,24 +104,24 @@ class TikTok2SyncController extends Controller
         if (! $this->tiktok->isAuthenticated()) {
             return response()->json([
                 'success' => false,
-                'message' => 'TikTok 2 is not connected. Authorize via Connect first.',
-                'connect_url' => route('marketplace.manager.tiktok2.connect'),
+                'message' => 'TikTok Shop is not connected. Authorize via Connect first.',
+                'connect_url' => route('marketplace.manager.tiktok.connect'),
             ], 401);
         }
 
         @set_time_limit(0);
 
         try {
-            $exit = Artisan::call('sync:tiktok-api-data', ['--channel' => 'tiktok2']);
+            $exit = Artisan::call('sync:tiktok-api-data', ['--channel' => 'tiktok']);
             $output = trim(Artisan::output());
-            $count = Schema::hasTable('tiktok_products_two')
-                ? (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+            $count = Schema::hasTable('tiktok_products')
+                ? (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
                 : 0;
 
             if ($exit !== 0) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'TikTok 2 product sync failed.',
+                    'message' => 'TikTok Shop product sync failed.',
                     'output' => $output,
                     'count' => $count,
                 ], 500);
@@ -129,12 +129,12 @@ class TikTok2SyncController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "TikTok 2 products synced ({$count} SKUs).",
+                'message' => "TikTok Shop products synced ({$count} SKUs).",
                 'count' => $count,
                 'output' => $output,
             ]);
         } catch (\Throwable $e) {
-            Log::error('TikTok 2 MM refreshProducts failed', ['error' => $e->getMessage()]);
+            Log::error('TikTok Shop MM refreshProducts failed', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
@@ -148,8 +148,8 @@ class TikTok2SyncController extends Controller
         if (! $this->tiktok->isAuthenticated()) {
             return response()->json([
                 'success' => false,
-                'message' => 'TikTok 2 is not connected. Authorize via Connect first.',
-                'connect_url' => route('marketplace.manager.tiktok2.connect'),
+                'message' => 'TikTok Shop is not connected. Authorize via Connect first.',
+                'connect_url' => route('marketplace.manager.tiktok.connect'),
             ], 401);
         }
 
@@ -159,23 +159,23 @@ class TikTok2SyncController extends Controller
         $import = filter_var($request->input('import', false), FILTER_VALIDATE_BOOLEAN);
 
         try {
-            $service = app(TikTok2OrderSyncService::class);
+            $service = app(TikTokOrderSyncService::class);
             $from = now()->subDays($days)->toDateString();
             $result = $service->sync($from, $import);
 
-            $count = Schema::hasTable('tiktok2_orders')
-                ? (int) Tiktok2Order::query()->count()
+            $count = Schema::hasTable('tiktok_orders')
+                ? (int) TiktokOrder::query()->count()
                 : 0;
 
             return response()->json([
                 'success' => ! empty($result['success']),
-                'message' => $result['message'] ?? "TikTok 2 orders fetched (last {$days} days). Rows in DB: {$count}.",
+                'message' => $result['message'] ?? "TikTok Shop orders fetched (last {$days} days). Rows in DB: {$count}.",
                 'count' => $count,
                 'days' => $days,
                 'upserted' => $result['upserted'] ?? 0,
             ], empty($result['success']) ? 500 : 200);
         } catch (\Throwable $e) {
-            Log::error('TikTok 2 MM fetchOrders failed', ['error' => $e->getMessage()]);
+            Log::error('TikTok Shop MM fetchOrders failed', ['error' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
@@ -186,15 +186,15 @@ class TikTok2SyncController extends Controller
 
     public function refreshProductsStatus(): JsonResponse
     {
-        $count = Schema::hasTable('tiktok_products_two')
-            ? (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+        $count = Schema::hasTable('tiktok_products')
+            ? (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
             : 0;
 
         return response()->json([
             'success' => true,
             'progress' => [
                 'status' => 'idle',
-                'message' => "{$count} SKUs in tiktok_products_two",
+                'message' => "{$count} SKUs in tiktok_products",
                 'count' => $count,
             ],
         ]);
@@ -206,11 +206,11 @@ class TikTok2SyncController extends Controller
         $searchName = trim((string) $request->input('search_name', ''));
         $apiError = null;
 
-        if (! Schema::hasTable('tiktok_products_two')) {
+        if (! Schema::hasTable('tiktok_products')) {
             $products = new LengthAwarePaginator([], 0, 50, 1);
-            $apiError = 'Table tiktok_products_two missing. Run migrations, then Sync products.';
+            $apiError = 'Table tiktok_products missing. Run migrations, then Sync products.';
         } else {
-            $q = TikTokProductTwo::query()->orderByDesc('updated_at')->orderByDesc('id');
+            $q = TikTokProduct::query()->orderByDesc('updated_at')->orderByDesc('id');
             if ($searchSku !== '') {
                 $q->where('sku', 'like', '%'.$searchSku.'%');
             }
@@ -223,13 +223,13 @@ class TikTok2SyncController extends Controller
             $products = $q->paginate(50)->withQueryString();
         }
 
-        return view('marketplace.tiktok2.products', [
+        return view('marketplace.tiktok.products', [
             'products' => $products,
-            'title' => 'TikTok 2 — Listings',
+            'title' => 'TikTok Shop — Listings',
             'searchSku' => $searchSku,
             'searchName' => $searchName,
             'apiError' => $apiError,
-            'connected' => $this->apiConfig->isConfigured('tiktok2') && $this->tiktok->isAuthenticated(),
+            'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
         ]);
     }
 
@@ -238,11 +238,11 @@ class TikTok2SyncController extends Controller
         $search = trim((string) $request->input('q', ''));
         $apiError = null;
 
-        if (! Schema::hasTable('tiktok2_orders')) {
+        if (! Schema::hasTable('tiktok_orders')) {
             $orders = new LengthAwarePaginator([], 0, 50, 1);
-            $apiError = 'Table tiktok2_orders missing. Run migrations, then Fetch orders.';
+            $apiError = 'Table tiktok_orders missing. Run migrations, then Fetch orders.';
         } else {
-            $q = Tiktok2Order::query()->orderByDesc('order_created_at')->orderByDesc('id');
+            $q = TiktokOrder::query()->orderByDesc('order_created_at')->orderByDesc('id');
             if ($search !== '') {
                 $q->where(function ($inner) use ($search) {
                     $inner->where('order_id', 'like', '%'.$search.'%')
@@ -253,43 +253,43 @@ class TikTok2SyncController extends Controller
             $orders = $q->paginate(50)->withQueryString();
         }
 
-        return view('marketplace.tiktok2.orders', [
+        return view('marketplace.tiktok.orders', [
             'orders' => $orders,
-            'title' => 'TikTok 2 — Orders',
+            'title' => 'TikTok Shop — Orders',
             'search' => $search,
             'apiError' => $apiError,
-            'connected' => $this->apiConfig->isConfigured('tiktok2') && $this->tiktok->isAuthenticated(),
+            'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
         ]);
     }
 
     public function showOrder(int $id): View
     {
-        $line = Tiktok2Order::query()->findOrFail($id);
-        $lines = Tiktok2Order::query()
+        $line = TiktokOrder::query()->findOrFail($id);
+        $lines = TiktokOrder::query()
             ->where('order_id', $line->order_id)
             ->orderBy('id')
             ->get();
 
-        return view('marketplace.tiktok2.order-show', [
-            'title' => 'TikTok 2 — Order '.$line->order_id,
+        return view('marketplace.tiktok.order-show', [
+            'title' => 'TikTok Shop — Order '.$line->order_id,
             'line' => $line,
             'lines' => $lines,
-            'connected' => $this->apiConfig->isConfigured('tiktok2') && $this->tiktok->isAuthenticated(),
+            'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
         ]);
     }
 
     public function syncSettings(Request $request): View
     {
-        return view('marketplace.tiktok2.settings', [
-            'settings' => MarketplaceSyncSettings::getFor('tiktok2'),
-            'title' => 'TikTok 2 — Sync Settings',
-            'connected' => $this->apiConfig->isConfigured('tiktok2') && $this->tiktok->isAuthenticated(),
+        return view('marketplace.tiktok.settings', [
+            'settings' => MarketplaceSyncSettings::getFor('tiktok'),
+            'title' => 'TikTok Shop — Sync Settings',
+            'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
         ]);
     }
 
     public function saveSettings(Request $request): JsonResponse
     {
-        $current = MarketplaceSyncSettings::getFor('tiktok2');
+        $current = MarketplaceSyncSettings::getFor('tiktok');
 
         $pricing = $this->mergeSettingsSection($current['pricing'] ?? [], $request->input('pricing', []), [
             'price_sync', 'use_sale_price', 'currency_conversion',
@@ -304,10 +304,10 @@ class TikTok2SyncController extends Controller
         $inventory['max_quantity'] = null;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only',
-            'keep_order_number_from_channel', 'push_tracking_to_tiktok2', 'sync_address_to_shopify',
+            'keep_order_number_from_channel', 'push_tracking_to_tiktok', 'sync_address_to_shopify',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
-            'auto_link_by_sku', 'create_products_on_tiktok2', 'sync_title', 'sync_images',
+            'auto_link_by_sku', 'create_products_on_tiktok', 'sync_title', 'sync_images',
         ]);
 
         if ($request->has('order.shopify_order_tags')) {
@@ -322,41 +322,41 @@ class TikTok2SyncController extends Controller
                 $order['shopify_store'] = $store;
             }
         }
-        $order['shopify_source_name'] = trim((string) $request->input('order.shopify_source_name', $order['shopify_source_name'] ?? 'tiktok2'));
-        $order['shopify_source_display_name'] = trim((string) $request->input('order.shopify_source_display_name', $order['shopify_source_display_name'] ?? 'TikTok 2'));
+        $order['shopify_source_name'] = trim((string) $request->input('order.shopify_source_name', $order['shopify_source_name'] ?? 'tiktok'));
+        $order['shopify_source_display_name'] = trim((string) $request->input('order.shopify_source_display_name', $order['shopify_source_display_name'] ?? 'TikTok Shop'));
 
-        MarketplaceSyncSettings::setFor('tiktok2', [
+        MarketplaceSyncSettings::setFor('tiktok', [
             'pricing' => $pricing,
             'inventory' => $inventory,
             'order' => $order,
             'listings' => $listings,
         ]);
 
-        return response()->json(['success' => true, 'message' => 'TikTok 2 sync settings saved.']);
+        return response()->json(['success' => true, 'message' => 'TikTok Shop sync settings saved.']);
     }
 
     public function syncInventoryNow(): JsonResponse
     {
-        $settings = MarketplaceSyncSettings::getFor('tiktok2');
+        $settings = MarketplaceSyncSettings::getFor('tiktok');
         if (! ($settings['inventory']['inventory_sync'] ?? false)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Inventory sync is disabled in TikTok 2 settings. Enable it first.',
+                'message' => 'Inventory sync is disabled in TikTok Shop settings. Enable it first.',
             ], 422);
         }
 
         if (! $this->tiktok->isAuthenticated()) {
             return response()->json([
                 'success' => false,
-                'message' => 'TikTok 2 is not connected.',
+                'message' => 'TikTok Shop is not connected.',
             ], 401);
         }
 
-        RunMarketplaceInventorySyncJob::dispatch('tiktok2');
+        RunMarketplaceInventorySyncJob::dispatch('tiktok');
 
         return response()->json([
             'success' => true,
-            'message' => 'Inventory sync job queued (Shopify → TikTok 2). Check back shortly.',
+            'message' => 'Inventory sync job queued (Shopify → TikTok Shop). Check back shortly.',
         ]);
     }
 
@@ -367,32 +367,32 @@ class TikTok2SyncController extends Controller
 
     public function syncTrackingNow(): JsonResponse
     {
-        $settings = MarketplaceSyncSettings::getFor('tiktok2');
-        if (! ($settings['order']['push_tracking_to_tiktok2'] ?? false)) {
+        $settings = MarketplaceSyncSettings::getFor('tiktok');
+        if (! ($settings['order']['push_tracking_to_tiktok'] ?? false)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tracking push is disabled in TikTok 2 settings. Enable it first.',
+                'message' => 'Tracking push is disabled in TikTok Shop settings. Enable it first.',
             ], 422);
         }
 
         if (! $this->tiktok->isAuthenticated()) {
             return response()->json([
                 'success' => false,
-                'message' => 'TikTok 2 is not connected.',
+                'message' => 'TikTok Shop is not connected.',
             ], 401);
         }
 
-        SyncTikTok2TrackingJob::dispatch(false, 40);
+        SyncTikTokTrackingJob::dispatch(false, 40);
 
         return response()->json([
             'success' => true,
-            'message' => 'Tracking sync job queued (Shopify → TikTok 2). Check back shortly.',
+            'message' => 'Tracking sync job queued (Shopify → TikTok Shop). Check back shortly.',
         ]);
     }
 
     public function pushOrderToShopify(Request $request, int $id): JsonResponse
     {
-        $order = Tiktok2Order::findOrFail($id);
+        $order = TiktokOrder::findOrFail($id);
 
         if ($order->shopify_order_id) {
             return response()->json([
@@ -402,7 +402,7 @@ class TikTok2SyncController extends Controller
             ]);
         }
 
-        $pushService = app(\App\Services\MarketplaceManager\TikTok2OrderPushService::class);
+        $pushService = app(\App\Services\MarketplaceManager\TikTokOrderPushService::class);
         $shopifyOrderId = $pushService->importToShopify($order);
 
         if ($shopifyOrderId) {

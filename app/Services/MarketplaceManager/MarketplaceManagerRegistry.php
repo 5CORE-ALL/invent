@@ -182,6 +182,15 @@ class MarketplaceManagerRegistry
                 'mp_channel_keys' => ['Faire'],
             ],
             [
+                'slug' => 'tiktok',
+                'label' => 'TikTok Shop',
+                'short' => 'TT',
+                'source_shop' => 'Shopify B2C',
+                'logo' => 'uploads/tiktok.png',
+                'enabled' => true,
+                'mp_channel_keys' => ['TikTok Shop', 'TikTok', 'Tiktok', 'tiktok', 'TikTokShop'],
+            ],
+            [
                 'slug' => 'tiktok2',
                 'label' => 'TikTok 2',
                 'short' => 'TT2',

@@ -41,6 +41,11 @@ class TiktokOrder extends Model
         'collection_time',
         'raw_json',
         'fetched_at',
+        'line_item_id',
+        'shopify_order_id',
+        'import_status',
+        'pushed_to_shopify_at',
+        'tracking_pushed_at',
     ];
 
     protected $casts = [
@@ -56,6 +61,8 @@ class TiktokOrder extends Model
         'delivery_time' => 'datetime',
         'collection_time' => 'datetime',
         'fetched_at' => 'datetime',
+        'pushed_to_shopify_at' => 'datetime',
+        'tracking_pushed_at' => 'datetime',
         'raw_json' => 'array',
     ];
 

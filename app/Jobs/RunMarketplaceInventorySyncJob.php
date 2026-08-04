@@ -10,6 +10,7 @@ use App\Services\MarketplaceManager\FaireInventorySyncService;
 use App\Services\MarketplaceManager\NeweggInventorySyncService;
 use App\Services\MarketplaceManager\ReverbInventorySyncService;
 use App\Services\MarketplaceManager\TikTok2InventorySyncService;
+use App\Services\MarketplaceManager\TikTokInventorySyncService;
 use App\Services\MarketplaceManager\WayfairInventorySyncService;
 use App\Services\MarketplaceManager\BestBuyInventorySyncService;
 use App\Services\MarketplaceManager\MacyInventorySyncService;
@@ -63,6 +64,7 @@ class RunMarketplaceInventorySyncJob implements ShouldQueue, ShouldBeUnique
             'macy' => app(MacyInventorySyncService::class)->syncFromShopify(false),
             'doba' => app(DobaInventorySyncService::class)->syncFromShopify(false),
             'tiktok2' => app(TikTok2InventorySyncService::class)->syncFromShopify(false),
+            'tiktok' => app(TikTokInventorySyncService::class)->syncFromShopify(false),
             default => ['updated' => 0, 'failed' => 0, 'message' => 'Unknown marketplace: '.$slug],
         };
 

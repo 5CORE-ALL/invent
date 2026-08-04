@@ -1892,6 +1892,43 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // TikTok Shop (1) Marketplace Manager
+        $schedule->job(new \App\Jobs\RunMarketplaceInventorySyncJob('tiktok'))
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTikTokTrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTikTokAddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:tiktok-api-data --channel=tiktok')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // TikTok 2 Marketplace Manager
         $schedule->job(new \App\Jobs\RunMarketplaceInventorySyncJob('tiktok2'))
             ->everyFourHours()
