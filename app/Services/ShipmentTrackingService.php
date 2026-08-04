@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Multi-carrier shipment tracking.
  *
- * Prefer native USPS / UPS APIs when credentials are configured; fall back to
+ * Prefer native USPS / UPS / FedEx APIs when credentials are configured; fall back to
  * 17TRACK aggregator when available.
  */
 class ShipmentTrackingService
@@ -54,7 +54,7 @@ class ShipmentTrackingService
 
     public function isConfigured(): bool
     {
-        return $this->has17Track() || $this->hasUsps() || $this->hasUps();
+        return $this->has17Track() || $this->hasUsps() || $this->hasUps() || $this->hasFedex();
     }
 
     public function has17Track(): bool
@@ -74,6 +74,12 @@ class ShipmentTrackingService
             && trim((string) config('services.ups.client_secret')) !== '';
     }
 
+    public function hasFedex(): bool
+    {
+        return trim((string) config('services.fedex.client_id')) !== ''
+            && trim((string) config('services.fedex.client_secret')) !== '';
+    }
+
     /**
      * Fetch normalized statuses for a batch of shipments.
      *
@@ -89,6 +95,7 @@ class ShipmentTrackingService
         $byProvider = [
             'usps' => [],
             'ups' => [],
+            'fedex' => [],
             '17track' => [],
         ];
 
@@ -119,17 +126,25 @@ class ShipmentTrackingService
             $out += $this->track17Track($byProvider['ups']);
         }
 
+        if (! empty($byProvider['fedex']) && $this->hasFedex()) {
+            $out += $this->trackFedex($byProvider['fedex']);
+        } elseif (! empty($byProvider['fedex']) && $this->has17Track()) {
+            $out += $this->track17Track($byProvider['fedex']);
+        }
+
         if (! empty($byProvider['17track'])) {
             if ($this->has17Track()) {
                 $out += $this->track17Track($byProvider['17track']);
             } else {
-                // No 17TRACK — try USPS/UPS by number pattern as last resort.
+                // No 17TRACK — try native carriers by number/carrier pattern as last resort.
                 foreach ($byProvider['17track'] as $s) {
                     $guess = $this->guessCarrierFromNumber($s['number']);
                     if ($guess === 'usps' && $this->hasUsps()) {
                         $out += $this->trackUsps([$s]);
                     } elseif ($guess === 'ups' && $this->hasUps()) {
                         $out += $this->trackUps([$s]);
+                    } elseif ($guess === 'fedex' && $this->hasFedex()) {
+                        $out += $this->trackFedex([$s]);
                     } else {
                         $out[$s['number']] = [
                             'status' => self::STATUS_NOT_FOUND,
@@ -151,13 +166,16 @@ class ShipmentTrackingService
             if (str_contains($c, 'usps') || str_contains($c, 'postal')) {
                 return 'usps';
             }
+            if (str_contains($c, 'fedex') || str_contains($c, 'federal express')) {
+                return 'fedex';
+            }
             if (str_contains($c, 'ups') && ! str_contains($c, 'usps')) {
                 return 'ups';
             }
         }
 
         $guess = $this->guessCarrierFromNumber($number);
-        if ($guess === 'usps' || $guess === 'ups') {
+        if ($guess === 'usps' || $guess === 'ups' || $guess === 'fedex') {
             return $guess;
         }
 
@@ -179,6 +197,10 @@ class ShipmentTrackingService
         }
         if (preg_match('/^[A-Z]{2}\d{9}[A-Z]{2}$/', $n)) {
             return 'usps';
+        }
+        // FedEx door-tag / express-ish: 12 digits, or 15 digits starting with 96
+        if (preg_match('/^\d{12}$/', $n) === 1 || preg_match('/^96\d{13}$/', $n) === 1) {
+            return 'fedex';
         }
 
         return null;
@@ -493,6 +515,223 @@ class ShipmentTrackingService
             return self::STATUS_INFO_RECEIVED;
         }
         if (str_contains($hay, 'in transit') || str_contains($hay, 'departed') || str_contains($hay, 'arrived') || $code === 'I' || $code === 'P' || $code === 'M') {
+            return self::STATUS_IN_TRANSIT;
+        }
+        if (str_contains($hay, 'not found')) {
+            return self::STATUS_NOT_FOUND;
+        }
+
+        return self::STATUS_IN_TRANSIT;
+    }
+
+    // ── FedEx ────────────────────────────────────────────────────────────────
+
+    /**
+     * @param  list<array{number: string, carrier: ?string}>  $shipments
+     * @return array<string, array{status: string, detail: ?string, provider: string}>
+     */
+    protected function trackFedex(array $shipments): array
+    {
+        $token = $this->fedexAccessToken();
+        if ($token === null) {
+            return [];
+        }
+
+        $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
+        $out = [];
+
+        // FedEx Track API accepts batches; keep chunks small for reliability.
+        foreach (array_chunk($shipments, 30) as $chunk) {
+            $trackingInfo = [];
+            foreach ($chunk as $s) {
+                $trackingInfo[] = [
+                    'trackingNumberInfo' => [
+                        'trackingNumber' => $s['number'],
+                    ],
+                ];
+            }
+
+            try {
+                $resp = Http::withToken($token)
+                    ->acceptJson()
+                    ->asJson()
+                    ->timeout($this->timeout)
+                    ->withHeaders([
+                        'x-locale' => 'en_US',
+                    ])
+                    ->post($base.'/track/v1/trackingnumbers', [
+                        'includeDetailedScans' => true,
+                        'trackingInfo' => $trackingInfo,
+                    ]);
+
+                if (! $resp->successful()) {
+                    Log::warning('ShipmentTracking: FedEx HTTP error', [
+                        'status' => $resp->status(),
+                        'body' => mb_substr($resp->body(), 0, 400),
+                    ]);
+                    foreach ($chunk as $s) {
+                        $out[$s['number']] = [
+                            'status' => self::STATUS_NOT_FOUND,
+                            'detail' => 'FedEx HTTP '.$resp->status(),
+                            'provider' => 'fedex',
+                        ];
+                    }
+
+                    continue;
+                }
+
+                $complete = data_get($resp->json(), 'output.completeTrackResults', []);
+                if (! is_array($complete)) {
+                    $complete = [];
+                }
+
+                $byNumber = [];
+                foreach ($complete as $block) {
+                    $tn = trim((string) data_get($block, 'trackingNumber', ''));
+                    $result = data_get($block, 'trackResults.0', []);
+                    if (! is_array($result)) {
+                        $result = [];
+                    }
+                    if ($tn === '') {
+                        $tn = trim((string) data_get($result, 'trackingNumberInfo.trackingNumber', ''));
+                    }
+                    if ($tn === '') {
+                        continue;
+                    }
+                    $byNumber[$tn] = $result;
+                }
+
+                foreach ($chunk as $s) {
+                    $number = $s['number'];
+                    $result = $byNumber[$number] ?? null;
+                    if ($result === null) {
+                        $out[$number] = [
+                            'status' => self::STATUS_NOT_FOUND,
+                            'detail' => null,
+                            'provider' => 'fedex',
+                        ];
+
+                        continue;
+                    }
+
+                    $errMsg = (string) (data_get($result, 'error.message') ?? '');
+                    if ($errMsg !== '') {
+                        $out[$number] = [
+                            'status' => self::STATUS_NOT_FOUND,
+                            'detail' => mb_substr($errMsg, 0, 480),
+                            'provider' => 'fedex',
+                        ];
+
+                        continue;
+                    }
+
+                    $code = (string) (
+                        data_get($result, 'latestStatusDetail.code')
+                        ?? data_get($result, 'latestStatusDetail.derivedCode')
+                        ?? data_get($result, 'scanEvents.0.derivedStatusCode')
+                        ?? ''
+                    );
+                    $statusDesc = (string) (
+                        data_get($result, 'latestStatusDetail.description')
+                        ?? data_get($result, 'latestStatusDetail.statusByLocale')
+                        ?? data_get($result, 'scanEvents.0.eventDescription')
+                        ?? data_get($result, 'scanEvents.0.derivedStatus')
+                        ?? ''
+                    );
+
+                    $out[$number] = [
+                        'status' => $this->normalizeFedexStatus($code, $statusDesc),
+                        'detail' => $statusDesc !== '' ? mb_substr($statusDesc, 0, 480) : null,
+                        'provider' => 'fedex',
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::error('ShipmentTracking: FedEx request failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                foreach ($chunk as $s) {
+                    $out[$s['number']] = [
+                        'status' => self::STATUS_NOT_FOUND,
+                        'detail' => $e->getMessage(),
+                        'provider' => 'fedex',
+                    ];
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    protected function fedexAccessToken(): ?string
+    {
+        $cached = Cache::get('fedex_oauth_access_token');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $id = trim((string) config('services.fedex.client_id'));
+        $secret = trim((string) config('services.fedex.client_secret'));
+        $base = rtrim((string) config('services.fedex.api_base', 'https://apis-sandbox.fedex.com'), '/');
+
+        $resp = Http::asForm()
+            ->acceptJson()
+            ->timeout($this->timeout)
+            ->post($base.'/oauth/token', [
+                'grant_type' => 'client_credentials',
+                'client_id' => $id,
+                'client_secret' => $secret,
+            ]);
+
+        if (! $resp->successful()) {
+            Log::warning('ShipmentTracking: FedEx OAuth failed', [
+                'status' => $resp->status(),
+                'body' => mb_substr($resp->body(), 0, 400),
+            ]);
+
+            return null;
+        }
+
+        $token = trim((string) $resp->json('access_token'));
+        if ($token === '') {
+            return null;
+        }
+
+        $expiresIn = (int) ($resp->json('expires_in') ?: 3600);
+        Cache::put('fedex_oauth_access_token', $token, now()->addSeconds(max(60, $expiresIn - 60)));
+
+        return $token;
+    }
+
+    protected function normalizeFedexStatus(string $code, string $description): string
+    {
+        $code = strtoupper(trim($code));
+        $hay = strtolower(trim($code.' '.$description));
+        if ($hay === '') {
+            return self::STATUS_PENDING;
+        }
+        if ($code === 'DL' || str_contains($hay, 'delivered')) {
+            return self::STATUS_DELIVERED;
+        }
+        if ($code === 'OD' || str_contains($hay, 'out for delivery')) {
+            return self::STATUS_OUT_FOR_DELIV;
+        }
+        if ($code === 'AF' || str_contains($hay, 'available for pickup') || str_contains($hay, 'hold at location')) {
+            return self::STATUS_PICKUP;
+        }
+        if (in_array($code, ['DE', 'SE', 'CA'], true)
+            || str_contains($hay, 'exception')
+            || str_contains($hay, 'delay')
+            || str_contains($hay, 'delivery exception')) {
+            return self::STATUS_EXCEPTION;
+        }
+        if ($code === 'OC' || str_contains($hay, 'shipment information sent') || str_contains($hay, 'label created')) {
+            return self::STATUS_INFO_RECEIVED;
+        }
+        if (in_array($code, ['IT', 'IX', 'AR', 'DP', 'PU', 'PX'], true)
+            || str_contains($hay, 'in transit')
+            || str_contains($hay, 'picked up')
+            || str_contains($hay, 'departed')
+            || str_contains($hay, 'arrived')) {
             return self::STATUS_IN_TRANSIT;
         }
         if (str_contains($hay, 'not found')) {

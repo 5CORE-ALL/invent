@@ -20,7 +20,7 @@ class SyncShipmentTrackingStatus extends Command
         {--limit= : Max distinct tracking numbers to process this run}
         {--only-open : Skip numbers already Delivered/Expired}
         {--stale=150 : Skip numbers checked within the last N minutes}
-        {--carrier= : Optional carrier filter (USPS, UPS, FedEx, GOFO, ...)}';
+        {--carrier= : Optional carrier filter (USPS, UPS, FEDEX, GOFO, ...)}';
 
     protected $description = 'Fetch live shipment status from the tracking provider and update shopify_raw_orders';
 
@@ -52,6 +52,13 @@ class SyncShipmentTrackingStatus extends Command
                 });
             } elseif ($carrierFilter === 'USPS') {
                 $query->whereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['%USPS%']);
+            } elseif ($carrierFilter === 'FEDEX') {
+                $query->where(function ($q) {
+                    $q->whereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['%FEDEX%'])
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['%FEDERAL EXPRESS%'])
+                        ->orWhereRaw("tracking_number REGEXP ?", ['^[0-9]{12}$'])
+                        ->orWhereRaw("tracking_number REGEXP ?", ['^96[0-9]{13}$']);
+                });
             } else {
                 $query->whereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['%'.$carrierFilter.'%']);
             }

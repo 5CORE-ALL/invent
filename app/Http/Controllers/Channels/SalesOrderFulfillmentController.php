@@ -1374,6 +1374,7 @@ class SalesOrderFulfillmentController extends Controller
                 'providers' => [
                     'usps' => $tracking->hasUsps(),
                     'ups' => $tracking->hasUps(),
+                    'fedex' => $tracking->hasFedex(),
                     '17track' => $tracking->has17Track(),
                 ],
             ], $exit === 0 ? 200 : 500);

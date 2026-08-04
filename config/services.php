@@ -379,6 +379,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | FedEx API (OAuth client credentials)
+    |--------------------------------------------------------------------------
+    |
+    | API Key / Secret Key from the FedEx Developer Portal project.
+    | Sandbox: https://apis-sandbox.fedex.com
+    | Production: https://apis.fedex.com
+    |
+    */
+    'fedex' => [
+        'client_id'     => env('FEDEX_CLIENT_ID', ''),
+        'client_secret' => env('FEDEX_CLIENT_SECRET', ''),
+        'api_base'      => env('FEDEX_API_BASE', 'https://apis-sandbox.fedex.com'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */
