@@ -5,7 +5,7 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'tiktok2') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> TikTok 2 Manager</a>
         @include('marketplace._page-heading', ['slug' => 'tiktok2', 'heading' => 'TikTok 2 Orders', 'mb' => 'mb-3'])
-        <p class="text-muted mb-3">Order lines from <code>tiktok2_orders</code>. Shopify import push is not wired yet — fetch stores locally.</p>
+        <p class="text-muted mb-3">Order lines from <code>tiktok2_orders</code>. Orders are auto-imported to Shopify when enabled in Settings.</p>
 
         @include('marketplace.tiktok2._nav', ['active' => 'orders'])
 
@@ -49,6 +49,7 @@
                                 <th>Product</th>
                                 <th>Qty</th>
                                 <th>Sale price</th>
+                                <th>Shopify</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -62,9 +63,20 @@
                                     <td>{{ \Illuminate\Support\Str::limit($o->product_name ?? '—', 40) }}</td>
                                     <td>{{ $o->quantity ?? 1 }}</td>
                                     <td>{{ is_numeric($o->sale_price) ? number_format((float) $o->sale_price, 2) : '—' }}</td>
+                                    <td onclick="event.stopPropagation()">
+                                        @if($o->shopify_order_id)
+                                            <span class="badge bg-success" title="Imported">✓ #{{ $o->shopify_order_id }}</span>
+                                        @elseif(($o->import_status ?? '') === 'queued')
+                                            <span class="badge bg-info">Queued</span>
+                                        @elseif(($o->import_status ?? '') === 'import_failed')
+                                            <button class="btn btn-xs btn-outline-danger btn-push-order" data-id="{{ $o->id }}" title="Retry push">Retry</button>
+                                        @else
+                                            <button class="btn btn-xs btn-outline-primary btn-push-order" data-id="{{ $o->id }}">Push</button>
+                                        @endif
+                                    </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7" class="text-muted text-center py-4">No orders. Click Fetch from TikTok 2.</td></tr>
+                                <tr><td colspan="8" class="text-muted text-center py-4">No orders. Click Fetch from TikTok 2.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -78,6 +90,35 @@
 
 @section('script')
 <script>
+document.querySelectorAll('.btn-push-order').forEach(btn => {
+    btn.addEventListener('click', async function (e) {
+        e.preventDefault();
+        const id = this.dataset.id;
+        this.disabled = true;
+        this.textContent = '…';
+        try {
+            const res = await fetch('/marketplace-manager/tiktok2/push-order/' + id, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                },
+            });
+            const data = await res.json();
+            if (data.success) {
+                this.outerHTML = '<span class="badge bg-success">✓ #' + (data.shopify_order_id || '') + '</span>';
+            } else {
+                this.textContent = 'Failed';
+                this.classList.add('btn-danger');
+                this.title = data.message || 'Push failed';
+            }
+        } catch (err) {
+            this.textContent = 'Error';
+            this.disabled = false;
+        }
+    });
+});
+
 document.getElementById('btn-fetch-orders')?.addEventListener('click', async function () {
     const btn = this;
     const out = document.getElementById('fetch-status');

@@ -67,6 +67,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'ebay2' => 'ebay2:sync-orders',
             'ebay3' => 'ebay3:sync-orders',
             'faire' => 'faire:sync-orders',
+            'tiktok2' => 'tiktok2:sync-orders',
             default => null,
         };
 
@@ -154,6 +155,8 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncEbay3AddressJob::dispatch(false, 25);
             } elseif ($slug === 'faire' && \App\Services\MarketplaceManager\FaireOrderPushService::canAutoSyncAddress()) {
                 \App\Jobs\SyncFaireAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'tiktok2' && \App\Services\MarketplaceManager\TikTok2OrderPushService::canAutoSyncAddress()) {
+                \App\Jobs\SyncTikTok2AddressJob::dispatch(false, 25);
             }
         } catch (\Throwable $e) {
             Log::warning('SyncMarketplaceOrdersJob: could not queue address sync', [

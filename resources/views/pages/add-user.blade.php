@@ -37,6 +37,22 @@
         #usersTabulator .tbl-dot--yellow { background: #eab308; }
         #usersTabulator .tbl-dot--red { background: #ef4444; }
         #usersTabulator .tbl-dot--gray { background: #9ca3af; }
+        #usersTabulator .stay-login-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 22px;
+            padding: 0 6px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            color: #fff;
+            border: none;
+        }
+        #usersTabulator .stay-login-badge--on { background: #22c55e; }
+        #usersTabulator .stay-login-badge--off { background: #9ca3af; }
         .status-toggle .btn { font-size: .8rem; }
         .status-toggle .btn.btn-outline-warning.active,
         .status-toggle .btn.btn-warning { color: #fff; }
@@ -2230,6 +2246,7 @@
                     'is_active' => (bool) $u->is_active,
                     'is_deleted' => $u->trashed(),
                     'account_status' => $accountStatus,
+                    'stay_logged_in' => (bool) ($u->stay_logged_in ?? false),
                     'bank_1' => $u->userSalary?->bank_1 ?? '',
                     'bank_2' => $u->userSalary?->bank_2 ?? '',
                     'upi_id' => $u->userSalary?->upi_id ?? '',
@@ -2319,6 +2336,24 @@
                         toggleActive(d, cell.getRow());
                     }
                 },
+                {
+                    title: 'Stay In', field: 'stay_logged_in', width: 80, hozAlign: 'center', headerSort: false,
+                    titleFormatter: () => '<span title="Stay logged in — skip scheduled auto-logout">Stay In</span>',
+                    formatter: (c) => {
+                        const on = !!c.getValue();
+                        const clickable = canEdit;
+                        const tip = on
+                            ? (clickable ? 'Stay logged in (1) — click to turn off' : 'Stay logged in (1)')
+                            : (clickable ? 'Normal logout (0) — click to stay logged in' : 'Normal logout (0)');
+                        const cls = on ? 'stay-login-badge--on' : 'stay-login-badge--off';
+                        const style = clickable ? 'cursor:pointer;' : '';
+                        return '<span class="stay-login-badge ' + cls + '" style="' + style + '" title="' + tip + '">' + (on ? '1' : '0') + '</span>';
+                    },
+                    cellClick: function (e, cell) {
+                        if (!canEdit) return;
+                        toggleStayLoggedIn(cell.getRow().getData(), cell.getRow());
+                    }
+                },
             ];
 
             if (canViewResume) {
@@ -2397,6 +2432,30 @@
                 },
             });
             window.usersTable = usersTable;
+
+            // Toggle stay_logged_in (0/1) — when 1, user skips scheduled auto-logout.
+            function toggleStayLoggedIn(d, row) {
+                const next = !d.stay_logged_in;
+                const msg = next
+                    ? 'Enable stay logged in for this user? They will not be logged out by the scheduled auto-logout.'
+                    : 'Disable stay logged in? This user will follow the normal logout schedule.';
+                if (!confirm(msg)) return;
+
+                fetch('/users/' + d.id + '/toggle-stay-logged-in', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        showToast(result.message, 'success');
+                        if (row) row.update({ stay_logged_in: !!result.stay_logged_in });
+                    } else {
+                        showToast(result.message || 'Failed to update stay logged in', 'error');
+                    }
+                })
+                .catch(() => showToast('Failed to update stay logged in', 'error'));
+            }
 
             // Toggle status by clicking the status dot (Active ↔ Inactive, or restore Deleted).
             function toggleActive(d, row) {

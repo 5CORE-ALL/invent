@@ -10,6 +10,7 @@ class TikTokProductTwo extends Model
 
     protected $fillable = [
         'product_id',
+        'sku_id',
         'sku',
         'price',
         'stock',

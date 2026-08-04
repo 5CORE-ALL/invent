@@ -45,15 +45,23 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
+        $remember = $this->filled('remember');
+
         if (!Auth::attempt(
             array_merge($this->only('email', 'password'), ['is_active' => true]),
-            $this->filled('remember')
+            $remember
         )) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
+        }
+
+        // Users marked stay_logged_in always get a long-lived remember cookie
+        $user = Auth::user();
+        if ($user && $user->staysLoggedIn() && ! $remember) {
+            Auth::login($user, true);
         }
 
         RateLimiter::clear($this->throttleKey());

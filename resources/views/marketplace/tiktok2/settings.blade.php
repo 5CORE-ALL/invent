@@ -7,6 +7,8 @@
     .settings-section-body { padding: 16px; }
     .sync-toggle-row { padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
     .sync-toggle-row:last-child { border-bottom: none; }
+    .settings-sub { margin-left: 2rem; padding: 6px 0; }
+    .settings-sub .form-label { font-size: 0.82rem; }
 </style>
 @endsection
 
@@ -15,84 +17,167 @@
     <div class="col-12">
         <a href="{{ route('marketplace.manager.show', 'tiktok2') }}" class="text-muted small"><i class="ri-arrow-left-line"></i> TikTok 2 Manager</a>
         @include('marketplace._page-heading', ['slug' => 'tiktok2', 'heading' => 'TikTok 2 Sync Settings', 'mb' => 'mb-3'])
-        <p class="text-muted mb-3">Configure sync toggles. Product/order pull uses Shop API. Inventory/tracking push to TikTok 2 is not implemented yet.</p>
+        <p class="text-muted mb-3">Configure inventory push (Shopify → TikTok 2), order fetch + import, tracking push, address sync, and listings auto-link.</p>
 
         @include('marketplace.tiktok2._nav', ['active' => 'settings'])
 
         <form id="tiktok2-settings-form">
             @csrf
+
+            {{-- INVENTORY --}}
+            <div class="settings-section">
+                <div class="settings-section-header">Inventory (Shopify → TikTok 2)</div>
+                <div class="settings-section-body">
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="inventory[inventory_sync]" value="1" {{ ($settings['inventory']['inventory_sync'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Sync stock quantities from Shopify to TikTok 2</span>
+                        </label>
+                    </div>
+                    <div class="settings-sub">
+                        <label class="form-label">Qty % of Shopify</label>
+                        <input type="number" class="form-control form-control-sm" name="inventory[quantity_calc_percent]"
+                               value="{{ $settings['inventory']['quantity_calc_percent'] ?? 100 }}"
+                               min="0" max="100" style="max-width:120px;">
+                        <div class="form-text mt-1">Always uses <strong>live Shopify</strong> stock. Shopify 0/− → marketplace <strong>0</strong>. Requires <code>sku_id</code> from product sync.</div>
+                    </div>
+                    <div class="settings-sub">
+                        <label class="form-label">Max quantity cap</label>
+                        <input type="number" class="form-control form-control-sm" name="inventory[max_quantity]"
+                               value="{{ $settings['inventory']['max_quantity'] ?? '' }}"
+                               min="0" style="max-width:120px;" placeholder="No cap">
+                        <small class="text-muted">Leave blank for no cap.</small>
+                    </div>
+                    <input type="hidden" name="inventory[min_quantity]" value="0">
+                </div>
+            </div>
+
+            {{-- PRICING --}}
             <div class="settings-section">
                 <div class="settings-section-header">Pricing</div>
                 <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="pricing[price_sync]" value="1" {{ ($settings['pricing']['price_sync'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Sync prices from Shopify to TikTok 2 <span class="text-muted">(push not implemented)</span></span>
+                            <span class="form-check-label">Sync prices from Shopify to TikTok 2 <span class="text-muted">(future)</span></span>
                         </label>
                     </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <div class="settings-section-header">Inventory</div>
-                <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="inventory[inventory_sync]" value="1" {{ ($settings['inventory']['inventory_sync'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Sync stock from Shopify to TikTok 2 <span class="text-muted">(push not implemented)</span></span>
+                            <input class="form-check-input" type="checkbox" name="pricing[use_sale_price]" value="1" {{ ($settings['pricing']['use_sale_price'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Use Shopify sale_price (else compare_at_price)</span>
                         </label>
                     </div>
-                    <input type="hidden" name="inventory[min_quantity]" value="0">
                 </div>
             </div>
 
+            {{-- ORDERS --}}
             <div class="settings-section">
-                <div class="settings-section-header">Orders</div>
+                <div class="settings-section-header">Orders (TikTok 2 → Shopify)</div>
                 <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[fetch_orders]" value="1" {{ ($settings['order']['fetch_orders'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Fetch orders from TikTok 2 on schedule</span>
                         </label>
+                        <div class="form-text ms-4">When on, the 15‑minute schedule pulls TikTok 2 orders into our DB. Manual <strong>Fetch</strong> on the Orders page always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Automatically import orders to Shopify <span class="text-muted">(import not implemented)</span></span>
+                            <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically import TikTok 2 orders to Shopify</span>
                         </label>
+                        <div class="form-text ms-4">ON by default. New orders are queued to Shopify on the 15‑minute schedule.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" name="order[push_tracking_to_tiktok2]" value="1" {{ ($settings['order']['push_tracking_to_tiktok2'] ?? false) ? 'checked' : '' }}>
-                            <span class="form-check-label">Push Shopify tracking to TikTok 2 <span class="text-muted">(not implemented)</span></span>
+                            <input class="form-check-input" type="checkbox" name="order[import_paid_orders_only]" value="1" {{ ($settings['order']['import_paid_orders_only'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Only auto-import paid orders</span>
+                        </label>
+                        <div class="form-text ms-4">When on, unpaid / payment-pending orders stay in our DB and are not queued or manually pushed to Shopify.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[sync_address_to_shopify]" value="1" {{ ($settings['order']['sync_address_to_shopify'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically sync TikTok 2 customer / shipping address to Shopify</span>
+                        </label>
+                        <div class="form-text ms-4">ON by default. Every 15 minutes the app fills missing Shopify shipping/billing/customer address from TikTok 2.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[push_tracking_to_tiktok2]" value="1" {{ ($settings['order']['push_tracking_to_tiktok2'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically push Shopify tracking numbers to TikTok 2</span>
+                        </label>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments and marks the order shipped on TikTok 2.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[keep_order_number_from_channel]" value="1" {{ ($settings['order']['keep_order_number_from_channel'] ?? true) ? 'checked' : '' }}>
+                            <span class="form-check-label">Keep TikTok order number in Shopify (#TT2-…)</span>
                         </label>
                     </div>
-                    <div class="mt-2">
-                        <label class="form-label small">Shopify import store</label>
-                        <select class="form-select form-select-sm" name="order[shopify_store]" style="max-width:400px;">
-                            @php $shopifyStore = $settings['order']['shopify_store'] ?? 'main'; @endphp
-                            <option value="main" {{ $shopifyStore === 'main' ? 'selected' : '' }}>Main B2C</option>
-                            <option value="5core" {{ $shopifyStore === '5core' ? 'selected' : '' }}>5Core</option>
-                            <option value="business" {{ $shopifyStore === 'business' ? 'selected' : '' }}>Business 5Core</option>
-                            <option value="prolightsounds" {{ $shopifyStore === 'prolightsounds' ? 'selected' : '' }}>ProLightSounds</option>
-                        </select>
+
+                    <hr class="my-3">
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small">Shopify import store</label>
+                            <select class="form-select form-select-sm" name="order[shopify_store]">
+                                @php $shopifyStore = $settings['order']['shopify_store'] ?? 'main'; @endphp
+                                <option value="main" {{ $shopifyStore === 'main' ? 'selected' : '' }}>Main B2C</option>
+                                <option value="5core" {{ $shopifyStore === '5core' ? 'selected' : '' }}>5Core</option>
+                                <option value="business" {{ $shopifyStore === 'business' ? 'selected' : '' }}>Business 5Core</option>
+                                <option value="prolightsounds" {{ $shopifyStore === 'prolightsounds' ? 'selected' : '' }}>ProLightSounds</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Shopify order tags</label>
+                            <input type="text" class="form-control form-control-sm" name="order[shopify_order_tags]"
+                                   value="{{ implode(', ', $settings['order']['shopify_order_tags'] ?? ['tiktok2']) }}">
+                        </div>
                     </div>
-                    <div class="mt-2">
-                        <label class="form-label small">Shopify order tags</label>
-                        <input type="text" class="form-control form-control-sm" name="order[shopify_order_tags]" value="{{ implode(', ', $settings['order']['shopify_order_tags'] ?? ['tiktok2']) }}" style="max-width:400px;">
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-4">
+                            <label class="form-label small">Channel handle (source_name)</label>
+                            <input type="text" class="form-control form-control-sm" name="order[shopify_source_name]"
+                                   value="{{ $settings['order']['shopify_source_name'] ?? 'tiktok2' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small">Channel display name</label>
+                            <input type="text" class="form-control form-control-sm" name="order[shopify_source_display_name]"
+                                   value="{{ $settings['order']['shopify_source_display_name'] ?? 'TikTok 2' }}">
+                        </div>
                     </div>
-                    <input type="hidden" name="order[shopify_source_name]" value="tiktok2">
-                    <input type="hidden" name="order[shopify_source_display_name]" value="TikTok 2">
                 </div>
             </div>
 
+            {{-- LISTINGS --}}
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
-                            <span class="form-check-label">Auto-link listings by SKU</span>
+                            <span class="form-check-label">Auto-link listings by SKU (during hourly product sync)</span>
+                        </label>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="listings[create_products_on_tiktok2]" value="1" {{ ($settings['listings']['create_products_on_tiktok2'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Create products on TikTok 2 from Shopify <span class="text-muted">(not implemented yet)</span></span>
+                        </label>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="listings[sync_title]" value="1" {{ ($settings['listings']['sync_title'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Sync titles from Shopify to TikTok 2</span>
+                        </label>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="listings[sync_images]" value="1" {{ ($settings['listings']['sync_images'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Sync images from Shopify to TikTok 2</span>
                         </label>
                     </div>
                 </div>
@@ -149,11 +234,11 @@
 
     document.getElementById('btn-sync-inventory-now')?.addEventListener('click', function () {
         const btn = this; btn.disabled = true;
-        postAction(@json(route('marketplace.manager.tiktok2.sync.inventory')), 'Checking inventory sync…').finally(() => { btn.disabled = false; });
+        postAction(@json(route('marketplace.manager.tiktok2.sync.inventory')), 'Queuing inventory sync…').finally(() => { btn.disabled = false; });
     });
     document.getElementById('btn-sync-tracking-now')?.addEventListener('click', function () {
         const btn = this; btn.disabled = true;
-        postAction(@json(route('marketplace.manager.tiktok2.sync.tracking')), 'Checking tracking sync…').finally(() => { btn.disabled = false; });
+        postAction(@json(route('marketplace.manager.tiktok2.sync.tracking')), 'Queuing tracking sync…').finally(() => { btn.disabled = false; });
     });
 })();
 </script>

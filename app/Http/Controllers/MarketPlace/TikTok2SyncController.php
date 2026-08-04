@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RunMarketplaceInventorySyncJob;
+use App\Jobs\SyncTikTok2TrackingJob;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\TikTokProductTwo;
 use App\Models\Tiktok2Order;
+use App\Services\MarketplaceManager\TikTok2OrderSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTok2ShopService;
 use Illuminate\Http\JsonResponse;
@@ -153,33 +156,24 @@ class TikTok2SyncController extends Controller
         @set_time_limit(0);
 
         $days = max(1, min(90, (int) $request->input('days', 60)));
+        $import = filter_var($request->input('import', false), FILTER_VALIDATE_BOOLEAN);
 
         try {
-            $exit = Artisan::call('tiktok:fetch-orders', [
-                '--channel' => 'tiktok2',
-                '--days' => $days,
-            ]);
-            $output = trim(Artisan::output());
+            $service = app(TikTok2OrderSyncService::class);
+            $from = now()->subDays($days)->toDateString();
+            $result = $service->sync($from, $import);
+
             $count = Schema::hasTable('tiktok2_orders')
                 ? (int) Tiktok2Order::query()->count()
                 : 0;
 
-            if ($exit !== 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'TikTok 2 order sync failed.',
-                    'output' => $output,
-                    'count' => $count,
-                ], 500);
-            }
-
             return response()->json([
-                'success' => true,
-                'message' => "TikTok 2 orders fetched (last {$days} days). Rows in DB: {$count}.",
+                'success' => ! empty($result['success']),
+                'message' => $result['message'] ?? "TikTok 2 orders fetched (last {$days} days). Rows in DB: {$count}.",
                 'count' => $count,
                 'days' => $days,
-                'output' => $output,
-            ]);
+                'upserted' => $result['upserted'] ?? 0,
+            ], empty($result['success']) ? 500 : 200);
         } catch (\Throwable $e) {
             Log::error('TikTok 2 MM fetchOrders failed', ['error' => $e->getMessage()]);
 
@@ -304,6 +298,13 @@ class TikTok2SyncController extends Controller
             'inventory_sync',
         ]);
         $inventory['min_quantity'] = 0;
+        if ($request->has('inventory.quantity_calc_percent')) {
+            $inventory['quantity_calc_percent'] = max(0, min(100, (int) $request->input('inventory.quantity_calc_percent')));
+        }
+        if ($request->has('inventory.max_quantity')) {
+            $val = $request->input('inventory.max_quantity');
+            $inventory['max_quantity'] = ($val !== null && $val !== '') ? (int) $val : null;
+        }
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only',
             'keep_order_number_from_channel', 'push_tracking_to_tiktok2', 'sync_address_to_shopify',
@@ -339,10 +340,27 @@ class TikTok2SyncController extends Controller
 
     public function syncInventoryNow(): JsonResponse
     {
+        $settings = MarketplaceSyncSettings::getFor('tiktok2');
+        if (! ($settings['inventory']['inventory_sync'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Inventory sync is disabled in TikTok 2 settings. Enable it first.',
+            ], 422);
+        }
+
+        if (! $this->tiktok->isAuthenticated()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'TikTok 2 is not connected.',
+            ], 401);
+        }
+
+        RunMarketplaceInventorySyncJob::dispatch('tiktok2');
+
         return response()->json([
-            'success' => false,
-            'message' => 'Shopify → TikTok 2 inventory push is not implemented yet. Use Sync products to pull live TikTok stock into tiktok_products_two.',
-        ], 422);
+            'success' => true,
+            'message' => 'Inventory sync job queued (Shopify → TikTok 2). Check back shortly.',
+        ]);
     }
 
     public function syncMismatchInventoryNow(): JsonResponse
@@ -352,9 +370,55 @@ class TikTok2SyncController extends Controller
 
     public function syncTrackingNow(): JsonResponse
     {
+        $settings = MarketplaceSyncSettings::getFor('tiktok2');
+        if (! ($settings['order']['push_tracking_to_tiktok2'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tracking push is disabled in TikTok 2 settings. Enable it first.',
+            ], 422);
+        }
+
+        if (! $this->tiktok->isAuthenticated()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'TikTok 2 is not connected.',
+            ], 401);
+        }
+
+        SyncTikTok2TrackingJob::dispatch(false, 40);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tracking sync job queued (Shopify → TikTok 2). Check back shortly.',
+        ]);
+    }
+
+    public function pushOrderToShopify(Request $request, int $id): JsonResponse
+    {
+        $order = Tiktok2Order::findOrFail($id);
+
+        if ($order->shopify_order_id) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Already imported to Shopify.',
+                'shopify_order_id' => (string) $order->shopify_order_id,
+            ]);
+        }
+
+        $pushService = app(\App\Services\MarketplaceManager\TikTok2OrderPushService::class);
+        $shopifyOrderId = $pushService->importToShopify($order);
+
+        if ($shopifyOrderId) {
+            return response()->json([
+                'success' => true,
+                'message' => "Imported to Shopify (order #{$shopifyOrderId}).",
+                'shopify_order_id' => $shopifyOrderId,
+            ]);
+        }
+
         return response()->json([
             'success' => false,
-            'message' => 'Shopify → TikTok 2 tracking push is not implemented yet. Order fetch still works from the Orders page.',
+            'message' => $pushService->lastFailureReason ?: 'Failed to push order to Shopify.',
         ], 422);
     }
 

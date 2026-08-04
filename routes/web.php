@@ -730,6 +730,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/tiktok2/sync-inventory', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'syncInventoryNow'])->name('tiktok2.sync.inventory');
         Route::post('/tiktok2/sync-mismatch-inventory', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'syncMismatchInventoryNow'])->name('tiktok2.sync.mismatch.inventory');
         Route::post('/tiktok2/sync-tracking', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'syncTrackingNow'])->name('tiktok2.sync.tracking');
+        Route::post('/tiktok2/push-order/{id}', [\App\Http\Controllers\MarketPlace\TikTok2SyncController::class, 'pushOrderToShopify'])->name('tiktok2.push.order');
         Route::get('/pls/connect', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'connect'])->name('pls.connect');
         Route::post('/pls/test-connection', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'testConnection'])->name('pls.test');
         Route::post('/pls/refresh-token', [\App\Http\Controllers\MarketPlace\PlsSyncController::class, 'refreshToken'])->name('pls.refresh');
@@ -6711,6 +6712,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/users/{user}/toggle-salary-visibility', [UserController::class, 'toggleSalaryVisibility'])
         ->middleware('auth')
         ->name('users.toggleSalaryVisibility');
+
+    Route::post('/users/{user}/toggle-stay-logged-in', [UserController::class, 'toggleStayLoggedIn'])
+        ->middleware('auth')
+        ->name('users.toggleStayLoggedIn');
 
     // Bank details: update only (blank fields are ignored so nothing is ever wiped)
     Route::post('/users/{user}/bank', [UserController::class, 'updateBank'])

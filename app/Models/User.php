@@ -38,6 +38,7 @@ class User extends Authenticatable
         'resume_original_name',
         'deactivated_at',
         'logined',
+        'stay_logged_in',
         'resource_department_id',
     ];
 
@@ -61,10 +62,19 @@ class User extends Authenticatable
         'password' => 'hashed',
         'is_active' => 'boolean',
         'show_in_salary' => 'boolean',
+        'stay_logged_in' => 'boolean',
         'date_of_joining' => 'date',
         'deactivated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+
+    /**
+     * Whether this user is exempt from scheduled auto-logout.
+     */
+    public function staysLoggedIn(): bool
+    {
+        return (bool) ($this->stay_logged_in ?? false);
+    }
 
     public function permission()
     {

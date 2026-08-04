@@ -228,6 +228,7 @@
         }
         #amz-cvr-toolbar > .badge,
         #amz-cvr-toolbar > .form-select,
+        #amz-cvr-toolbar > .form-control,
         #amz-cvr-toolbar > .btn {
             height: var(--amz-cvr-ctrl-h) !important;
             min-height: var(--amz-cvr-ctrl-h) !important;
@@ -251,10 +252,66 @@
             width: auto !important;
             min-width: 8.5rem;
         }
+        #amz-cvr-toolbar > .form-control {
+            padding: 0 0.65rem !important;
+            width: 160px !important;
+            min-width: 140px;
+            font-weight: 500 !important;
+        }
         #amz-cvr-toolbar > .btn {
             padding: 0 0.7rem !important;
             justify-content: center;
             width: var(--amz-cvr-ctrl-h);
+        }
+        #amz-cvr-toolbar > .amz-cvr-keep-wrap {
+            height: var(--amz-cvr-ctrl-h) !important;
+            margin: 0 !important;
+            padding: 0 0.55rem !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 0.35rem;
+            font-size: var(--amz-cvr-ctrl-fs) !important;
+            font-weight: 600 !important;
+            border: 1px solid #ced4da;
+            border-radius: var(--amz-cvr-ctrl-radius) !important;
+            background: #fff;
+            white-space: nowrap;
+            user-select: none;
+            cursor: pointer;
+        }
+        #amz-cvr-toolbar > .amz-cvr-keep-wrap .form-check-input {
+            margin: 0 !important;
+            cursor: pointer;
+        }
+        #amz-cvr-toolbar > .amz-cvr-keep-wrap .form-check-label {
+            margin: 0 !important;
+            cursor: pointer;
+            line-height: 1.2;
+        }
+        #amz-cvr-toolbar > .amz-cvr-keep-wrap:has(input:checked) {
+            background: #e7f1ff;
+            border-color: #0d6efd;
+            color: #0d6efd;
+        }
+        #amz-cvr-toolbar > #amz-cvr-export-group {
+            height: var(--amz-cvr-ctrl-h) !important;
+            margin: 0 !important;
+        }
+        #amz-cvr-toolbar > #amz-cvr-export-group > .btn {
+            height: var(--amz-cvr-ctrl-h) !important;
+            min-height: var(--amz-cvr-ctrl-h) !important;
+            max-height: var(--amz-cvr-ctrl-h) !important;
+            font-size: var(--amz-cvr-ctrl-fs) !important;
+            font-weight: 600 !important;
+            line-height: 1.2 !important;
+            border-radius: var(--amz-cvr-ctrl-radius) !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 0.35rem;
+            padding: 0 0.7rem !important;
+            width: auto !important;
+            box-sizing: border-box !important;
+            margin: 0 !important;
         }
     </style>
 @endsection
@@ -304,6 +361,31 @@
                             <option value="all">History date</option>
                             <option value="none">No history</option>
                         </select>
+                        <input type="text" id="amz-cvr-sku-search" class="form-control form-control-sm"
+                            placeholder="Search SKU..." title="Filter rows by SKU (partial match)">
+                        <label class="amz-cvr-keep-wrap form-check mb-0"
+                            title="Keep applied filters for 5 minutes after refresh (this user only)">
+                            <input type="checkbox" class="form-check-input" id="amz-cvr-keep-filters">
+                            <span class="form-check-label">Keep 5m</span>
+                        </label>
+                        <div class="btn-group" id="amz-cvr-export-group">
+                            <button type="button" class="btn btn-sm btn-success dropdown-toggle"
+                                data-bs-toggle="dropdown" aria-expanded="false" title="Export CSV">
+                                <i class="fa fa-download"></i> Export
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="#" id="amz-cvr-export-filtered">
+                                        <i class="fas fa-filter text-primary me-1"></i> Export Filtered
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="#" id="amz-cvr-export-all">
+                                        <i class="fas fa-list text-secondary me-1"></i> Export All
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
                         <button type="button" id="amz-cvr-issues-refresh-btn" class="btn btn-sm btn-outline-primary" title="Reload table">
                             <i class="fa fa-refresh"></i>
                         </button>
@@ -564,15 +646,92 @@
         let amz_cvr_issues = null;
         let amzCvrLmpCurrentSku = '';
         let amzCvrMlFilterActive = false;
+        let amzCvrSavedHistoryDate = null;
         const AMZ_CVR_COMPETITORS_URL = @json(route('amazon.competitors.get'));
         const AMZ_CVR_LMP_ADD_URL = @json(route('amazon.lmp.add'));
         const AMZ_CVR_LMP_DELETE_URL = @json(route('amazon.lmp.delete.post'));
         const AMZ_CVR_CSRF = @json(csrf_token());
+        const AMZ_CVR_USER_ID = @json(auth()->id());
+        const AMZ_CVR_FILTER_TTL_MS = 5 * 60 * 1000;
+        const AMZ_CVR_FILTER_STORAGE_KEY = 'amz_cvr_issues_filters_u' + String(AMZ_CVR_USER_ID || 'guest');
 
         function amzCvrEsc(s) {
             return String(s ?? '')
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function clearAmzCvrSavedFilters() {
+            try { localStorage.removeItem(AMZ_CVR_FILTER_STORAGE_KEY); } catch (e) {}
+            amzCvrSavedHistoryDate = null;
+        }
+
+        function collectAmzCvrFilterState() {
+            return {
+                cvr: (document.getElementById('amz-cvr-cvr-filter') || {}).value || 'all',
+                views: (document.getElementById('amz-cvr-views-filter') || {}).value || 'all',
+                historyDate: (document.getElementById('amz-cvr-history-date-filter') || {}).value || 'all',
+                sku: String((document.getElementById('amz-cvr-sku-search') || {}).value || ''),
+                ml: !!amzCvrMlFilterActive
+            };
+        }
+
+        function saveAmzCvrFilterState() {
+            if (!AMZ_CVR_USER_ID) return;
+            const keepEl = document.getElementById('amz-cvr-keep-filters');
+            if (!keepEl || !keepEl.checked) {
+                clearAmzCvrSavedFilters();
+                return;
+            }
+            try {
+                localStorage.setItem(AMZ_CVR_FILTER_STORAGE_KEY, JSON.stringify({
+                    userId: AMZ_CVR_USER_ID,
+                    expiresAt: Date.now() + AMZ_CVR_FILTER_TTL_MS,
+                    filters: collectAmzCvrFilterState()
+                }));
+            } catch (e) {}
+        }
+
+        function restoreAmzCvrFilterState() {
+            if (!AMZ_CVR_USER_ID) return false;
+            let raw = null;
+            try { raw = localStorage.getItem(AMZ_CVR_FILTER_STORAGE_KEY); } catch (e) { return false; }
+            if (!raw) return false;
+
+            let data = null;
+            try { data = JSON.parse(raw); } catch (e) {
+                clearAmzCvrSavedFilters();
+                return false;
+            }
+
+            if (!data || data.userId !== AMZ_CVR_USER_ID
+                || !data.expiresAt || Date.now() > Number(data.expiresAt)
+                || !data.filters) {
+                clearAmzCvrSavedFilters();
+                return false;
+            }
+
+            const f = data.filters;
+            const keepEl = document.getElementById('amz-cvr-keep-filters');
+            if (keepEl) keepEl.checked = true;
+
+            const cvrEl = document.getElementById('amz-cvr-cvr-filter');
+            if (cvrEl && f.cvr) cvrEl.value = f.cvr;
+
+            const viewsEl = document.getElementById('amz-cvr-views-filter');
+            if (viewsEl && f.views) viewsEl.value = f.views;
+
+            amzCvrSavedHistoryDate = f.historyDate ? String(f.historyDate) : null;
+            const histEl = document.getElementById('amz-cvr-history-date-filter');
+            if (histEl && (f.historyDate === 'all' || f.historyDate === 'none')) {
+                histEl.value = f.historyDate;
+            }
+
+            const skuEl = document.getElementById('amz-cvr-sku-search');
+            if (skuEl) skuEl.value = f.sku != null ? String(f.sku) : '';
+
+            amzCvrMlFilterActive = !!f.ml;
+            return true;
         }
 
         /** Missing L — same rule as Analytics Amz / map-issues: INV>0, REQ, price ≤ 0. */
@@ -785,7 +944,7 @@
         function refreshAmzCvrHistoryDateFilterOptions(rows) {
             const sel = document.getElementById('amz-cvr-history-date-filter');
             if (!sel) return;
-            const prev = sel.value || 'all';
+            const prev = amzCvrSavedHistoryDate || sel.value || 'all';
             const dateMap = {};
             let noneCount = 0;
             (rows || []).forEach(function(row) {
@@ -825,16 +984,23 @@
             sel.innerHTML = html;
             if (prev === 'all' || prev === 'none' || dateMap[prev]) {
                 sel.value = prev;
+                if (amzCvrSavedHistoryDate && String(amzCvrSavedHistoryDate) === String(prev)) {
+                    amzCvrSavedHistoryDate = null;
+                }
             } else {
                 sel.value = 'all';
             }
         }
 
-        function applyAmzCvrFilters() {
+        function applyAmzCvrFilters(opts) {
+            opts = opts || {};
             if (!amz_cvr_issues) return;
             const cvrFilter = (document.getElementById('amz-cvr-cvr-filter') || {}).value || 'all';
             const viewsFilter = (document.getElementById('amz-cvr-views-filter') || {}).value || 'all';
             const historyDateFilter = (document.getElementById('amz-cvr-history-date-filter') || {}).value || 'all';
+            const skuSearch = String((document.getElementById('amz-cvr-sku-search') || {}).value || '')
+                .trim()
+                .toLowerCase();
             amz_cvr_issues.clearFilter();
             if (amzCvrMlFilterActive) {
                 amz_cvr_issues.addFilter(function(data) {
@@ -856,6 +1022,12 @@
                     return amzCvrMatchesHistoryDateFilter(data, historyDateFilter);
                 });
             }
+            if (skuSearch) {
+                amz_cvr_issues.addFilter(function(data) {
+                    const sku = String(data['(Child) sku'] || '').toLowerCase();
+                    return sku.indexOf(skuSearch) !== -1;
+                });
+            }
             // Always keep latest history rows on top.
             amz_cvr_issues.setSort([
                 { column: 'audit_history_ts', dir: 'desc' },
@@ -863,10 +1035,107 @@
             ]);
             updateAmzCvrMlBadge();
             updateAmzCvrRowsBadge();
+            if (opts.persist) saveAmzCvrFilterState();
         }
 
         function applyAmzCvrMlFilter() {
             applyAmzCvrFilters();
+        }
+
+        function amzCvrCsvEscape(val) {
+            const s = String(val == null ? '' : val);
+            if (/[",\n\r]/.test(s)) {
+                return '"' + s.replace(/"/g, '""') + '"';
+            }
+            return s;
+        }
+
+        function amzCvrExportRow(row) {
+            const inv = parseFloat(row.INV) || 0;
+            const ovL30 = parseFloat(row.L30) || 0;
+            const dil = inv > 0 ? (ovL30 / inv) * 100 : 0;
+            const sold = parseFloat(row.A_L30) || 0;
+            const views = parseFloat(row.Sess30) || 0;
+            const cvr = views > 0 ? (sold / views) * 100 : 0;
+            const price = parseFloat(row.price) || 0;
+            const lmp = parseFloat(row.lmp_price) || 0;
+            const groi = row['GROI%'];
+            const rating = row.amz_avg_rating;
+            const reviewCount = parseInt(row.amz_review_count, 10) || 0;
+            const hist = amzCvrSortHistoryLatestFirst(row.audit_history);
+            const latest = hist.length ? hist[0] : null;
+
+            return {
+                Parent: row.Parent || '',
+                SKU: row['(Child) sku'] || '',
+                INV: Math.round(inv),
+                'OV L30': Math.round(ovL30),
+                'Dil%': Math.round(dil),
+                NR: row.NR || '',
+                'Missing Listing': isAmzCvrMissingL(row) ? 'M' : '',
+                Views: Math.round(views),
+                'Views L7': Math.round(parseFloat(row.Sess7) || 0),
+                Sold: Math.round(sold),
+                'CVR L30%': cvr.toFixed(2),
+                Rating: (rating !== null && rating !== undefined && rating !== '' && parseFloat(rating) > 0)
+                    ? parseFloat(rating).toFixed(1)
+                    : '',
+                Reviews: reviewCount || '',
+                Price: price > 0 ? price.toFixed(2) : '',
+                LMP: lmp > 0 ? lmp.toFixed(2) : '',
+                'GROI%': (groi === null || groi === undefined || groi === '')
+                    ? ''
+                    : (parseFloat(groi) || 0).toFixed(0),
+                'Latest Audit User': latest ? (latest.user || '') : '',
+                'Latest Audit Date': latest ? (latest.date_label || '') : '',
+                'Latest Audit Tasks': latest ? (parseInt(latest.task_count, 10) || 0) : '',
+                'Latest Audit CVR%': (latest && latest.cvr_l30 != null && latest.cvr_l30 !== '')
+                    ? (parseFloat(latest.cvr_l30) || 0).toFixed(2)
+                    : ''
+            };
+        }
+
+        function exportAmzCvrIssues(mode) {
+            if (!amz_cvr_issues) {
+                alert('Table is not ready yet.');
+                return;
+            }
+
+            let rows = [];
+            try {
+                rows = mode === 'all'
+                    ? (amz_cvr_issues.getData('all') || amz_cvr_issues.getData() || [])
+                    : (amz_cvr_issues.getData('active') || []);
+            } catch (e) {
+                rows = amz_cvr_issues.getData() || [];
+            }
+
+            if (!rows.length) {
+                alert(mode === 'all' ? 'No data to export.' : 'No filtered rows to export.');
+                return;
+            }
+
+            const mapped = rows.map(amzCvrExportRow);
+            const headers = Object.keys(mapped[0]);
+            const lines = [headers.map(amzCvrCsvEscape).join(',')];
+            mapped.forEach(function(r) {
+                lines.push(headers.map(function(h) { return amzCvrCsvEscape(r[h]); }).join(','));
+            });
+
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            const filename = (mode === 'all'
+                ? 'amz_cvr_issues_all_'
+                : 'amz_cvr_issues_filtered_') + stamp + '.csv';
+
+            const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         function openAmzCvrLmpModal(sku, options) {
@@ -2214,6 +2483,8 @@
                 document.body.appendChild(auditModalEl);
             }
 
+            restoreAmzCvrFilterState();
+
             amz_cvr_issues = new Tabulator('#amz_cvr_issues', {
                 ajaxURL: @json(route('amz.cvr.issues.data')),
                 ajaxResponse: function(url, params, response) {
@@ -2252,27 +2523,50 @@
 
             document.getElementById('amz-cvr-ml-badge')?.addEventListener('click', function() {
                 amzCvrMlFilterActive = !amzCvrMlFilterActive;
-                applyAmzCvrFilters();
+                applyAmzCvrFilters({ persist: true });
             });
 
             document.getElementById('amz-cvr-cvr-filter')?.addEventListener('change', function() {
-                applyAmzCvrFilters();
+                applyAmzCvrFilters({ persist: true });
             });
 
             document.getElementById('amz-cvr-views-filter')?.addEventListener('change', function() {
-                applyAmzCvrFilters();
+                applyAmzCvrFilters({ persist: true });
             });
 
             document.getElementById('amz-cvr-history-date-filter')?.addEventListener('change', function() {
-                applyAmzCvrFilters();
+                applyAmzCvrFilters({ persist: true });
                 if (amz_cvr_issues) {
                     amz_cvr_issues.redraw(true);
                 }
             });
 
+            document.getElementById('amz-cvr-sku-search')?.addEventListener('input', function() {
+                applyAmzCvrFilters({ persist: true });
+            });
+
+            document.getElementById('amz-cvr-keep-filters')?.addEventListener('change', function() {
+                if (this.checked) {
+                    saveAmzCvrFilterState();
+                } else {
+                    clearAmzCvrSavedFilters();
+                }
+            });
+
+            document.getElementById('amz-cvr-export-filtered')?.addEventListener('click', function(e) {
+                e.preventDefault();
+                exportAmzCvrIssues('filtered');
+            });
+
+            document.getElementById('amz-cvr-export-all')?.addEventListener('click', function(e) {
+                e.preventDefault();
+                exportAmzCvrIssues('all');
+            });
+
             document.getElementById('amz-cvr-avg-cvr-badge')?.addEventListener('click', function() {
                 openAmzCvrRollingChart(null);
             });
+
 
             document.getElementById('amzCvrRollingChartDays')?.addEventListener('change', function() {
                 amzCvrRollingChartDays = parseInt(this.value, 10);

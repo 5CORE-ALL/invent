@@ -1891,6 +1891,44 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(55)
             ->runInBackground()
             ->appendOutputTo($log);
+
+        // TikTok 2 Marketplace Manager
+        $schedule->job(new \App\Jobs\RunMarketplaceInventorySyncJob('tiktok2'))
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTikTok2TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTikTok2AddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('sync:tiktok-api-data --channel=tiktok2')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // $schedule->command('shopify:retry-pending-orders')
             //     ->hourly()
             //     ->timezone('UTC')

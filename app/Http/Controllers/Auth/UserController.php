@@ -25,7 +25,7 @@ class UserController extends Controller
         // Load all users (active, inactive, soft-deleted) for the merged table;
         // status filters run client-side. select() must run before withCount().
         $allUsers = User::withTrashed()
-            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'deleted_at', 'show_in_salary', 'resume_path', 'resume_original_name')
+            ->select('id', 'name', 'phone', 'email', 'designation', 'date_of_joining', 'avatar', 'is_active', 'deactivated_at', 'deleted_at', 'show_in_salary', 'stay_logged_in', 'resume_path', 'resume_original_name')
             ->with(['userRR', 'userSalary', 'docs'])
             ->withCount('rrPortfolioAssignments')
             ->orderBy('name')
@@ -994,6 +994,33 @@ class UserController extends Controller
             'success' => true,
             'message' => $user->show_in_salary ? 'User will now appear in salary tab' : 'User hidden from salary tab',
             'show_in_salary' => $user->show_in_salary
+        ]);
+    }
+
+    /**
+     * Toggle stay_logged_in (0/1). When 1, user is skipped by auto-logout.
+     */
+    public function toggleStayLoggedIn(Request $request, User $user)
+    {
+        if (! TeamManagementAccess::canEdit()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to perform this action.',
+            ], 403);
+        }
+
+        $user->stay_logged_in = ! $user->stay_logged_in;
+        if ($user->stay_logged_in) {
+            $user->logined = 1;
+        }
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => $user->stay_logged_in
+                ? 'User will stay logged in (skip auto-logout)'
+                : 'User will follow normal logout schedule',
+            'stay_logged_in' => (bool) $user->stay_logged_in,
         ]);
     }
 }

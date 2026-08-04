@@ -60,6 +60,7 @@ class MarketplaceOrderPaidFilter
             'doba' => self::isDobaPaid($order),
             'ebay1', 'ebay2', 'ebay3' => self::isEbayPaid($order),
             'faire' => self::isFairePaid($order),
+            'tiktok2' => self::isTikTok2Paid($order),
             'amazon' => self::isAmazonPaid($order),
             'reverb' => self::isReverbPaid($order),
             'aliexpress', 'alibaba' => self::isAliFamilyPaid($order),
@@ -228,6 +229,18 @@ class MarketplaceOrderPaidFilter
         // Faire unpaid / canceled-like states — treat everything else as importable.
         $unpaid = ['NEW', 'CANCELED', 'CANCELLED', 'DRAFT', 'PENDING_RETAILER_CONFIRMATION'];
         if ($state !== '' && in_array($state, $unpaid, true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected static function isTikTok2Paid(object $order): bool
+    {
+        $status = strtoupper(trim((string) ($order->order_status ?? '')));
+
+        $unpaid = ['UNPAID', 'ON_HOLD', 'CANCELLED', 'CANCELED'];
+        if ($status !== '' && in_array($status, $unpaid, true)) {
             return false;
         }
 

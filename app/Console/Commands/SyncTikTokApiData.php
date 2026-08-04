@@ -258,12 +258,20 @@ class SyncTikTokApiData extends Command
                     $price = $this->extractPrice($product);
                     $normalizedSku = strtoupper(trim($sku));
 
+                    $skuId = $this->extractSkuId($product);
+                    $updateData = [
+                        'product_id' => $productId,
+                        'price' => $price,
+                    ];
+                    if ($skuId !== null && \Illuminate\Support\Facades\Schema::hasColumn(
+                        (new $this->productModel)->getTable(), 'sku_id'
+                    )) {
+                        $updateData['sku_id'] = $skuId;
+                    }
+
                     $tiktokProduct = ($this->productModel)::updateOrCreate(
                         ['sku' => $normalizedSku],
-                        [
-                            'product_id' => $productId,
-                            'price' => $price,
-                        ]
+                        $updateData
                     );
 
                     if ($tiktokProduct->wasRecentlyCreated) {
@@ -559,6 +567,20 @@ class SyncTikTokApiData extends Command
         }
 
         return 0;
+    }
+
+    /**
+     * Extract SKU ID (TikTok's internal sku.id) from product data.
+     */
+    protected function extractSkuId(array $product): ?string
+    {
+        if (isset($product['skus']) && is_array($product['skus']) && ! empty($product['skus'])) {
+            $firstSku = $product['skus'][0];
+
+            return trim((string) ($firstSku['id'] ?? $firstSku['sku_id'] ?? '')) ?: null;
+        }
+
+        return null;
     }
 
     /**

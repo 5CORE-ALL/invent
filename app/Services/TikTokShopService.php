@@ -1344,6 +1344,157 @@ class TikTokShopService
         ]);
     }
 
+    /**
+     * Update inventory for a single SKU on TikTok Shop.
+     *
+     * @param  string  $productId  TikTok product ID
+     * @param  string  $skuId      TikTok SKU ID (from product.skus[].id)
+     * @param  int     $quantity   Available quantity to set
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductInventory(string $productId, string $skuId, int $quantity): array
+    {
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok access token not available.'];
+        }
+
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            // SDK: Product::updateInventory($product_id, $params)
+            $params = [
+                'skus' => [
+                    [
+                        'id' => $skuId,
+                        'inventory' => [
+                            ['quantity' => max(0, $quantity)],
+                        ],
+                    ],
+                ],
+            ];
+
+            $response = $this->client->Product->updateInventory($productId, $params);
+            $this->lastResponse = $response;
+
+            // Library may return data payload or wrapped {code, message, data}
+            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                return ['success' => false, 'message' => (string) ($response['message'] ?? 'TikTok inventory update failed.')];
+            }
+
+            return ['success' => true, 'message' => 'Inventory updated.'];
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                return $this->updateProductInventory($productId, $skuId, $quantity);
+            }
+
+            return ['success' => false, 'message' => 'Token expired and refresh failed: '.$e->getMessage()];
+        } catch (\Throwable $e) {
+            Log::error('TikTok updateProductInventory failed', [
+                'product_id' => $productId,
+                'sku_id' => $skuId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Mark a TikTok order as shipped with tracking info.
+     *
+     * @param  string  $orderId           TikTok order ID
+     * @param  string  $trackingNumber    Carrier tracking number
+     * @param  string  $shippingProvider  Shipping provider ID (required by TikTok)
+     * @return array{success: bool, message: string}
+     */
+    public function markOrderShipped(string $orderId, string $trackingNumber, string $shippingProvider = ''): array
+    {
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok access token not available.'];
+        }
+
+        if ($shippingProvider === '') {
+            return ['success' => false, 'message' => 'TikTok shipping_provider_id is required to mark shipped.'];
+        }
+
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            // SDK: Fulfillment::markPackageAsShipped($order_id, $tracking_number, $shipping_provider_id, $line_ids)
+            $response = $this->client->Fulfillment->markPackageAsShipped(
+                $orderId,
+                $trackingNumber,
+                $shippingProvider,
+                []
+            );
+            $this->lastResponse = $response;
+
+            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                return ['success' => false, 'message' => (string) ($response['message'] ?? 'TikTok ship order failed.')];
+            }
+
+            return ['success' => true, 'message' => "Order {$orderId} marked shipped."];
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                return $this->markOrderShipped($orderId, $trackingNumber, $shippingProvider);
+            }
+
+            return ['success' => false, 'message' => 'Token expired and refresh failed: '.$e->getMessage()];
+        } catch (\Throwable $e) {
+            // Fallback: update shipping info if package already exists
+            try {
+                $response = $this->client->Fulfillment->updateShippingInfo($orderId, $trackingNumber, $shippingProvider);
+                $this->lastResponse = $response;
+                if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                    return ['success' => false, 'message' => (string) ($response['message'] ?? $e->getMessage())];
+                }
+
+                return ['success' => true, 'message' => "Order {$orderId} shipping info updated."];
+            } catch (\Throwable $e2) {
+                Log::error('TikTok markOrderShipped failed', [
+                    'order_id' => $orderId,
+                    'tracking' => $trackingNumber,
+                    'error' => $e->getMessage(),
+                    'fallback_error' => $e2->getMessage(),
+                ]);
+
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+        }
+    }
+
+    /**
+     * Query eligible shipping services / providers for an order (best-effort).
+     *
+     * @return array|null
+     */
+    public function getShippingProviders(string $orderId): ?array
+    {
+        try {
+            if (! $this->accessToken) {
+                return null;
+            }
+
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $response = $this->client->Fulfillment->getEligibleShippingService($orderId, []);
+            $this->lastResponse = $response;
+
+            return $response['shipping_services']
+                ?? $response['shipping_providers']
+                ?? $response['data']['shipping_services']
+                ?? $response['data']['shipping_providers']
+                ?? (is_array($response) ? $response : null);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok getShippingProviders failed', ['order_id' => $orderId, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
     private function resolveTikTokProductIdForIdentifier(string $identifier): ?string
     {
         if (preg_match('/^\d+$/', $identifier)) {

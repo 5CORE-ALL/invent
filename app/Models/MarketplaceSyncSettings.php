@@ -123,6 +123,7 @@ class MarketplaceSyncSettings extends Model
         $isEbay2 = $marketplace === 'ebay2';
         $isEbay3 = $marketplace === 'ebay3';
         $isFaire = $marketplace === 'faire';
+        $isTikTok2 = $marketplace === 'tiktok2';
 
         $sourceName = 'aliexpress';
         $sourceDisplay = 'AliExpress';
@@ -177,6 +178,9 @@ class MarketplaceSyncSettings extends Model
         } elseif ($isFaire) {
             $sourceName = 'faire';
             $sourceDisplay = 'Faire';
+        } elseif ($isTikTok2) {
+            $sourceName = 'tiktok2';
+            $sourceDisplay = 'TikTok 2';
         }
 
         return [
@@ -200,7 +204,7 @@ class MarketplaceSyncSettings extends Model
                 'fetch_orders' => true,
                 // Newegg/Shein/Faire: keep order + address + tracking automation ON by default.
                 // Amazon stays local (Seller Central fulfillment); other channels default ON.
-                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isTemu || $isTemu2 || $isPurchasingPower || $isWayfair || $isBestBuy || $isMacy || $isDoba || $isEbay1 || $isEbay2 || $isEbay3 || $isFaire,
+                'auto_import_to_shopify' => $isNewegg || $isShein || $isTopDawg || $isTemu || $isTemu2 || $isPurchasingPower || $isWayfair || $isBestBuy || $isMacy || $isDoba || $isEbay1 || $isEbay2 || $isEbay3 || $isFaire || $isTikTok2,
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
@@ -221,9 +225,10 @@ class MarketplaceSyncSettings extends Model
                 'push_tracking_to_ebay2' => $isEbay2,
                 'push_tracking_to_ebay3' => $isEbay3,
                 'push_tracking_to_faire' => $isFaire,
+                'push_tracking_to_tiktok2' => $isTikTok2,
                 'push_tracking_to_amazon' => $isAmazon,
                 // Marketplace address → fill missing Shopify shipping + customer fields.
-                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'amazon'], true),
+                'sync_address_to_shopify' => in_array($marketplace, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'aliexpress', 'alibaba', 'reverb', 'faire', 'tiktok2', 'amazon'], true),
                 // Shein: Pending → To Be Shipped via export-address handleType=2 (off until enabled in Settings).
                 'auto_accept_on_shein' => false,
                 'tracking_send_notification' => false,
@@ -251,6 +256,7 @@ class MarketplaceSyncSettings extends Model
                 'create_products_on_ebay2' => false,
                 'create_products_on_ebay3' => false,
                 'create_products_on_faire' => false,
+                'create_products_on_tiktok2' => false,
                 'sync_title' => false,
                 'sync_images' => false,
             ],

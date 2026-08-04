@@ -19,16 +19,21 @@ class CheckUserLoggedIn
         // Check if user is authenticated
         if (Auth::check()) {
             $user = Auth::user();
+
+            // Users marked stay_logged_in keep their session through auto-logout
+            if ($user->staysLoggedIn()) {
+                if (isset($user->logined) && (int) $user->logined === 0) {
+                    $user->forceFill(['logined' => 1])->save();
+                }
+
+                return $next($request);
+            }
             
             // If logined field exists and is 0, logout the user
             if (isset($user->logined) && $user->logined == 0) {
                 Auth::logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
-                                
-
-                             
-                    
             }
         }
         

@@ -517,6 +517,14 @@ class MarketplaceController extends Controller
         if (strtolower($marketplace) === 'faire') {
             return app(FaireSyncController::class)->pushOrderToShopify($request);
         }
+        if (strtolower($marketplace) === 'tiktok2') {
+            $id = (int) $request->input('order_id', $request->input('id', 0));
+            if ($id <= 0) {
+                return response()->json(['success' => false, 'message' => 'order_id required.'], 422);
+            }
+
+            return app(TikTok2SyncController::class)->pushOrderToShopify($request, $id);
+        }
         return response()->json(['success' => false], 404);
     }
 
