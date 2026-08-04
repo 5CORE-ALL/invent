@@ -1097,6 +1097,12 @@
             background: #fb7701;
             color: #fff;
         }
+        #lmpModal .lmp-channel-icon.aliexpress {
+            background: #e43225;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 700;
+        }
         #lmpModal .lmp-channel-icon.bestbuy {
             background: #0046be;
             color: #fff;
@@ -1705,13 +1711,13 @@
                         </button>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Set this exact SPRICE on selected channels. With Siblings checked, every sibling SKU (including INV 0) gets the same price from this box.">
+                        title="Set this SPRICE on selected channels (often prefilled from SP). Doba &amp; TopDawg get 25% less (×0.75). With Siblings checked, sibling SKUs (including INV 0) get the same per-channel price.">
                         <label for="modal-sprice-same-input">$</label>
                         <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
-                            title="Exact SPRICE to set on selected channels (+ siblings when checked)">
+                            title="SPRICE from SP / this box (Doba &amp; TopDawg = 25% less)">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
-                            title="Set the same SPRICE from this box on checked channels (and siblings if checked)" aria-label="Apply same SPRICE">
+                            title="Apply SPRICE to checked channels (Doba &amp; TopDawg −25%)" aria-label="Apply same SPRICE">
                             Apply
                         </button>
                     </div>
@@ -3158,6 +3164,26 @@
             return null;
         }
 
+        /** Ebay1 ↔ Ebay2 ↔ Ebay3 family aliases */
+        function ebayChannelFamily(mp) {
+            const m = String(mp || '').toLowerCase();
+            if (m === 'ebay' || m === 'ebay1' || m === 'ebayone') return 'ebay1';
+            if (m === 'ebaytwo' || m === 'ebay2') return 'ebay2';
+            if (m === 'ebaythree' || m === 'ebay3') return 'ebay3';
+            return null;
+        }
+
+        /** Other eBay channels that share SPRICE with source */
+        function ebayPairedMarketplaces(mp) {
+            const family = ebayChannelFamily(mp);
+            if (!family) return [];
+            return ['ebay1', 'ebay2', 'ebay3'].filter(function(ch) { return ch !== family; });
+        }
+
+        function marketplaceMatchesEbayFamily(mp, family) {
+            return ebayChannelFamily(mp) === family;
+        }
+
         /** Mirror SPRICE into the paired Temu row in the open modal (UI only; backend already saved). */
         function syncTemuPairedSpriceInModal(sourceMp, sprice) {
             const other = temuPairedMarketplace(sourceMp);
@@ -3174,6 +3200,29 @@
                 if (String(item.marketplace || '').toLowerCase() === other) {
                     item.sprice = sprice > 0 ? sprice : 0;
                 }
+            });
+        }
+
+        /** Mirror SPRICE into Ebay1/2/3 paired rows in the open modal (UI only; backend already saved). */
+        function syncEbayPairedSpriceInModal(sourceMp, sprice) {
+            const others = ebayPairedMarketplaces(sourceMp);
+            if (!others.length) return;
+            const display = (sprice > 0) ? Number(sprice).toFixed(2) : '';
+            others.forEach(function(family) {
+                const $otherRow = $('#ovl30DetailsTableBody tr').filter(function() {
+                    return marketplaceMatchesEbayFamily($(this).attr('data-marketplace'), family);
+                }).first();
+                if ($otherRow.length) {
+                    const $input = $otherRow.find('.editable-sprice');
+                    if ($input.length) {
+                        $input.val(display).attr('data-ebay-synced', '1').trigger('input');
+                    }
+                }
+                ovl30ModalData.forEach(function(item) {
+                    if (marketplaceMatchesEbayFamily(item.marketplace, family)) {
+                        item.sprice = sprice > 0 ? sprice : 0;
+                    }
+                });
             });
         }
 
@@ -3269,7 +3318,7 @@
             });
         }
 
-        /** Apply same SPRICE to every sibling SKU (includes INV 0). Temu↔Temu2 both channels. */
+        /** Apply same SPRICE to every sibling SKU (includes INV 0). Temu↔Temu2 / Ebay1↔2↔3 channels. */
         function applySpriceToSiblingSkus(marketplace, sprice, metrics, done) {
             const list = (modalSiblingSkus || []).map(String).map(function(s) { return s.trim(); }).filter(Boolean);
             if (!list.length || !(sprice > 0) || !marketplace) {
@@ -3279,6 +3328,7 @@
             const channels = [marketplace];
             const paired = temuPairedMarketplace(marketplace);
             if (paired) channels.push(paired);
+            ebayPairedMarketplaces(marketplace).forEach(function(ch) { channels.push(ch); });
             let i = 0;
             let ok = 0;
             function next() {
@@ -3795,13 +3845,11 @@
             let snroiCount = 0;
             
             data.forEach(item => {
-                // Hide only when backend marks channel as not listed
+                // Show all channels; mute / dash metrics when not listed (do not hide)
                 const isListed = !(item.is_listed === false || item.is_listed === 0
                     || item.is_listed === '0' || item.is_listed === 'false');
-                if (!isListed) return;
-
-                const rowClass = '';
-                const textClass = '';
+                const rowClass = !isListed ? 'table-secondary' : '';
+                const textClass = !isListed ? 'text-muted fst-italic' : '';
                 
                 // Calculate CVR% (L30 / Views * 100). null/undefined views → N/A (channel has no view data)
                 const viewsMissing = item.views === null || item.views === undefined || item.views === '';
@@ -4034,6 +4082,7 @@
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'bestbuy', 'bestbuyusa', 'macy', 'macys',
+                    'ppower', 'purchasingpower', 'purchase',
                     'reverb', 'fba', 'topdawg', 'temu', 'temu2'
                 ];
                 const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
@@ -6641,9 +6690,13 @@
         // Auto-save on blur
         $(document).on('blur', '.editable-sprice', function() {
             const input = $(this);
-            // Paired Temu↔Temu2 UI sync — skip re-POST (already saved on the source channel)
+            // Paired Temu↔Temu2 / Ebay1↔2↔3 UI sync — skip re-POST (already saved on the source channel)
             if (input.attr('data-temu-synced')) {
                 input.removeAttr('data-temu-synced');
+                return;
+            }
+            if (input.attr('data-ebay-synced')) {
+                input.removeAttr('data-ebay-synced');
                 return;
             }
             const row = input.closest('tr');
@@ -6707,9 +6760,14 @@
                     if (isTemuMp) {
                         syncTemuPairedSpriceInModal(mpLower, sprice);
                     }
+                    const isEbayMp = !!ebayChannelFamily(mpLower);
+                    if (isEbayMp) {
+                        syncEbayPairedSpriceInModal(mpLower, sprice);
+                    }
                     const sibN = res && res.siblings_count ? res.siblings_count : 0;
                     let msg = 'Saved!';
                     if (isTemuMp) msg += ' (Temu + Temu2)';
+                    if (isEbayMp) msg += ' (Ebay1 + Ebay2 + Ebay3)';
                     if (sibN) msg += ' (+' + sibN + ' siblings)';
                     showToast(msg, 'success');
                 },
@@ -6885,6 +6943,9 @@
                 success: function(res) {
                     if (isTemuMp) {
                         syncTemuPairedSpriceInModal(mpLower, sprice);
+                    }
+                    if (ebayChannelFamily(mpLower)) {
+                        syncEbayPairedSpriceInModal(mpLower, sprice);
                     }
                     if (done) done(true, res);
                 },
@@ -7353,7 +7414,7 @@
             }
         });
 
-        // ==================== SAME $ SPRICE (exact price from box → channels + siblings) ====================
+        // ==================== SAME $ SPRICE (SP / box → channels + siblings; Doba & TopDawg −25%) ====================
         function applyModalSameSpriceFromBox() {
             const rawInput = $('#modal-sprice-same-input').val();
             const samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -7372,15 +7433,20 @@
                 return;
             }
 
-            const newPrice = Math.max(0.01, +samePrice.toFixed(2));
+            const basePrice = Math.max(0.01, +samePrice.toFixed(2));
+            const reducedPrice = Math.max(0.01, +(basePrice * 0.75).toFixed(2)); // 25% less for Doba & TopDawg
             const withSiblings = isModalSiblingsApply();
+
+            function channelPriceForMp(mpLower) {
+                return isBulkSprice25OffChannel(mpLower) ? reducedPrice : basePrice;
+            }
 
             function runSame() {
                 if (!confirm(
-                    'Set SPRICE to $' + newPrice.toFixed(2) + ' on ' + $rows.length + ' selected channel(s)'
+                    'Set SPRICE to $' + basePrice.toFixed(2) + ' on ' + $rows.length + ' selected channel(s)'
+                    + '?\n\nDoba & TopDawg get 25% less: $' + reducedPrice.toFixed(2)
                     + siblingsApplyLabel()
-                    + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get this same SPRICE.' : '')
-                    + '?'
+                    + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same per-channel SPRICE.' : '')
                 )) return;
 
                 const $btn = $('#modal-apply-sprice-same-btn');
@@ -7396,9 +7462,9 @@
                     $btn.prop('disabled', false).html(origHtml);
                     showToast(
                         okCount
-                            ? ('Same SPRICE $' + newPrice.toFixed(2) + ' applied to ' + okCount + ' channel(s)'
+                            ? ('SPRICE applied to ' + okCount + ' channel(s)'
                                 + (siblingsOk ? (' (+' + siblingsOk + ' siblings, incl. INV 0)') : '')
-                                + '. Use Push to go live.')
+                                + '. Doba & TopDawg = $' + reducedPrice.toFixed(2) + ' (−25%). Use Push to go live.')
                             : 'Failed to save SPRICE',
                         okCount ? 'success' : 'error'
                     );
@@ -7406,6 +7472,8 @@
 
                 $rows.forEach(function($tr) {
                     const mp = String($tr.attr('data-marketplace') || '');
+                    const mpLower = mp.toLowerCase();
+                    const newPrice = channelPriceForMp(mpLower);
                     const $input = $tr.find('.editable-sprice');
                     const lp = parseFloat($tr.attr('data-lp')) || 0;
                     const ship = parseFloat($tr.attr('data-ship')) || 0;
@@ -8709,6 +8777,9 @@
             if (!lmpEditState) return;
             lmpEditState.draftPrice = $('#lmpAddPrice').val();
             lmpEditState.draftLink = $('#lmpAddLink').val();
+            if ($('#lmpAddShip').length) {
+                lmpEditState.draftShip = $('#lmpAddShip').val();
+            }
             if ($('#lmpAddId').length) {
                 lmpEditState.draftExtId = $('#lmpAddId').val();
             }
@@ -8721,7 +8792,7 @@
             const ch = isEdit
                 ? lmpEditState.channel
                 : (($('#lmpAddChannel').val() || lmpModalCache.filter || 'amazon').toLowerCase());
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
             const label = labelMap[ch] || ch;
             const $box = $form.closest('.lmp-add-form-box');
             $box.find('strong').html(
@@ -8746,6 +8817,14 @@
                     : (lmpEditState.extId || '');
                 $('#lmpAddPrice').val(priceVal);
                 $('#lmpAddLink').val(linkVal);
+                if ($('#lmpAddShip').length) {
+                    const shipVal = lmpEditState.draftShip != null && lmpEditState.draftShip !== ''
+                        ? lmpEditState.draftShip
+                        : (lmpEditState.origDelivery != null && lmpEditState.origDelivery !== ''
+                            ? Number(lmpEditState.origDelivery).toFixed(2)
+                            : '0.00');
+                    $('#lmpAddShip').val(shipVal);
+                }
                 if ($('#lmpAddId').length) {
                     $('#lmpAddId').val(extVal);
                 }
@@ -8763,16 +8842,19 @@
         function enterLmpEditMode(row) {
             if (!row || !row.id) return;
             const priceStr = row.price != null && row.price !== '' ? String(row.price) : '';
+            const shipNum = parseFloat(row.delivery != null ? row.delivery : (row.shipCost != null ? row.shipCost : 0));
+            const shipStr = (!isNaN(shipNum) && shipNum >= 0) ? String(shipNum) : '0';
             lmpEditState = {
                 id: row.id,
                 channel: row.channel,
                 extId: row.extId || '',
                 origPrice: row.price,
                 origLink: row.link || '',
-                origDelivery: row.delivery != null ? row.delivery : null,
+                origDelivery: !isNaN(shipNum) ? shipNum : 0,
                 sourceSku: row.sourceSku || row.sku || '',
                 draftPrice: priceStr,
                 draftLink: row.link || '',
+                draftShip: shipStr,
                 draftExtId: row.extId || '',
             };
             lmpModalCache.filter = row.channel;
@@ -8899,7 +8981,7 @@
             if (refreshFromApi && lmpModalCache && lmpModalCache.sku === sku && lmpModalCache.filter) {
                 initialFilter = lmpModalCache.filter;
             } else {
-                initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu')
+                initialFilter = (marketplace === 'amazon' || marketplace === 'ebay' || marketplace === 'google' || marketplace === 'bestbuy' || marketplace === 'macy' || marketplace === 'reverb' || marketplace === 'temu' || marketplace === 'aliexpress')
                     ? marketplace
                     : 'all';
             }
@@ -8948,8 +9030,9 @@
             let macyData = null;
             let reverbData = null;
             let temuData = null;
+            let aliexpressData = null;
             let loaded = 0;
-            const totalNeeded = 7;
+            const totalNeeded = 8;
             let pullHadError = false;
 
             function tryRender() {
@@ -8957,7 +9040,7 @@
                 if (loaded < totalNeeded) return;
 
                 // Re-render LMP drawer in place with fresh Pull/DB data
-                const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData);
+                const rows = buildLmpMergedRows(sku, amazonData, ebayData, googleData, bestbuyData, macyData, reverbData, temuData, aliexpressData);
                 lmpModalCache = { sku: sku, rows: rows, filter: initialFilter, showAdd: showAdd };
                 renderLmpMergedTable();
                 updateLmpPullBtnTitle(initialFilter);
@@ -9092,6 +9175,21 @@
                 },
                 error: function() {
                     temuData = null;
+                    tryRender();
+                }
+            });
+
+            $.ajax({
+                url: '/aliexpress-lmp/data',
+                method: 'GET',
+                data: { sku: sku },
+                timeout: 10000,
+                success: function(res) {
+                    aliexpressData = res.success && res.competitors ? res : null;
+                    tryRender();
+                },
+                error: function() {
+                    aliexpressData = null;
                     tryRender();
                 }
             });
@@ -9241,6 +9339,9 @@
             if (channel === 'temu') {
                 return '<span class="lmp-channel-icon temu" title="Temu">T</span>';
             }
+            if (channel === 'aliexpress') {
+                return '<span class="lmp-channel-icon aliexpress" title="AliExpress">AE</span>';
+            }
             if (channel === 'bestbuy') {
                 return '<span class="lmp-channel-icon bestbuy" title="Best Buy">BB</span>';
             }
@@ -9253,7 +9354,7 @@
             return '';
         }
 
-        function buildLmpMergedRows(sku, amazonRes, ebayRes, googleRes, bestbuyRes, macyRes, reverbRes, temuRes) {
+        function buildLmpMergedRows(sku, amazonRes, ebayRes, googleRes, bestbuyRes, macyRes, reverbRes, temuRes, aliexpressRes) {
             const rows = [];
             const amzList = (amazonRes && amazonRes.competitors) ? amazonRes.competitors : [];
             const ebayList = (ebayRes && ebayRes.competitors) ? ebayRes.competitors : [];
@@ -9262,6 +9363,7 @@
             const macyList = (macyRes && macyRes.competitors) ? macyRes.competitors : [];
             const reverbList = (reverbRes && reverbRes.competitors) ? reverbRes.competitors : [];
             const temuList = (temuRes && temuRes.competitors) ? temuRes.competitors : [];
+            const aliexpressList = (aliexpressRes && aliexpressRes.competitors) ? aliexpressRes.competitors : [];
 
             amzList.forEach(function(amz) {
                 const price = parseFloat(amz.price) || 0;
@@ -9450,6 +9552,34 @@
                 });
             });
 
+            aliexpressList.forEach(function(ae) {
+                const price = parseFloat(ae.price) || 0;
+                if (price <= 0) return;
+                let ship = parseFloat(ae.shipping_cost != null ? ae.shipping_cost
+                    : (ae.ship != null ? ae.ship : ae.delivery));
+                if (isNaN(ship) || ship < 0) ship = 0;
+                const totalPrice = parseFloat(ae.total_price);
+                rows.push({
+                    channel: 'aliexpress',
+                    id: ae.id,
+                    sku: sku,
+                    price: price,
+                    shipCost: ship,
+                    totalPrice: (!isNaN(totalPrice) && totalPrice > 0) ? totalPrice : (price + ship),
+                    ignored: !!ae.ignored,
+                    link: ae.link || ae.product_link || '',
+                    extId: '',
+                    image: ae.image || '',
+                    title: ae.product_title || ae.title || '',
+                    rating: null,
+                    reviews: null,
+                    old_price: null,
+                    delivery: ship,
+                    sourceSku: ae.source_sku || sku,
+                    source: 'AliExpress',
+                });
+            });
+
             // Sort by channel L1 metric (Amazon/Google = item price; eBay/etc = P+S)
             rows.sort(function(a, b) {
                 const pa = lmpRankValue(a) || a.price || 0;
@@ -9585,6 +9715,8 @@
             const macyLowest = macyPrices.length ? Math.min.apply(null, macyPrices) : null;
             const reverbLowest = reverbPrices.length ? Math.min.apply(null, reverbPrices) : null;
             const temuLowest = temuPrices.length ? Math.min.apply(null, temuPrices) : null;
+            const aePrices = activeRanked('aliexpress');
+            const aliexpressLowest = aePrices.length ? Math.min.apply(null, aePrices) : null;
             const channelLowest = {
                 amazon: amzLowest,
                 ebay: ebayLowest,
@@ -9593,6 +9725,7 @@
                 macy: macyLowest,
                 reverb: reverbLowest,
                 temu: temuLowest,
+                aliexpress: aliexpressLowest,
             };
 
             const counts = {
@@ -9604,6 +9737,7 @@
                 macy: allRows.filter(function(r) { return r.channel === 'macy'; }).length,
                 reverb: allRows.filter(function(r) { return r.channel === 'reverb'; }).length,
                 temu: allRows.filter(function(r) { return r.channel === 'temu'; }).length,
+                aliexpress: allRows.filter(function(r) { return r.channel === 'aliexpress'; }).length,
             };
 
             let html = '';
@@ -9617,6 +9751,7 @@
                 { key: 'macy', label: 'Macy' },
                 { key: 'reverb', label: 'Reverb' },
                 { key: 'temu', label: 'Temu' },
+                { key: 'aliexpress', label: 'AliExpress' },
             ].forEach(function(opt) {
                 const active = filter === opt.key ? ' active' : '';
                 let btnClass = 'btn-outline-secondary';
@@ -9628,6 +9763,7 @@
                     else if (opt.key === 'macy') btnClass = 'btn-danger';
                     else if (opt.key === 'reverb') btnClass = 'btn-danger';
                     else if (opt.key === 'temu') btnClass = 'btn-warning';
+                    else if (opt.key === 'aliexpress') btnClass = 'btn-danger';
                     else btnClass = 'btn-dark';
                 }
                 html += '<button type="button" class="btn ' + btnClass + active + ' lmp-channel-filter-btn" data-filter="' + opt.key + '">'
@@ -9658,6 +9794,10 @@
                 // Direct Temu LMP (raw L1 — no Recovery calculation)
                 badgeParts.push('<span class="badge" style="background:#fb7701;color:#fff;" title="Temu LMP (direct)">'
                     + 'Temu $' + temuLowest.toFixed(2) + '</span>');
+            }
+            if (aliexpressLowest != null) {
+                badgeParts.push('<span class="badge" style="background:#e43225;color:#fff;" title="AliExpress LMP">'
+                    + 'AE $' + aliexpressLowest.toFixed(2) + '</span>');
             }
             if (badgeParts.length) {
                 html += '<div class="lmp-lowest-badges">' + badgeParts.join('') + '</div>';
@@ -9744,7 +9884,7 @@
                     ? row.reviews.toLocaleString()
                     : '<span class="text-muted">-</span>';
                 const shipCost = getLmpRowShipCost(row);
-                const shipChannelLabel = ({ ebay: 'eBay', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb' })[row.channel];
+                const shipChannelLabel = ({ ebay: 'eBay', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', aliexpress: 'AliExpress', temu: 'Temu' })[row.channel];
                 const deliveryCell = (shipCost !== null)
                     ? formatLmpDelivery(
                         shipCost,
@@ -9826,7 +9966,7 @@
 
         function buildLmpAddFormHtml(sku, channel) {
             const ch = (channel || 'amazon').toLowerCase();
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
             const label = labelMap[ch] || ch;
             let idField = '';
             if (ch === 'amazon') {
@@ -9840,13 +9980,28 @@
                 idField = '<div class="col-4"><label class="form-label mb-0 small">Product ID</label>'
                     + '<input type="text" class="form-control" id="lmpAddId" placeholder="Product ID" required></div>';
             } else {
-                // Temu: price + link only
+                // Temu / AliExpress: no ASIN/item id
                 idField = '';
             }
+            const showShip = (ch === 'aliexpress');
+            const shipField = showShip
+                ? ('<div class="col-2"><label class="form-label mb-0 small">Ship</label>'
+                    + '<input type="text" class="form-control" id="lmpAddShip" inputmode="decimal" placeholder="0.00" autocomplete="off" title="Shipping cost (Del)"></div>')
+                : '';
+            let priceCol = idField ? 'col-3' : 'col-4';
+            let linkCol = idField ? 'col-3' : 'col-5';
+            if (showShip && !idField) {
+                priceCol = 'col-3';
+                linkCol = 'col-4';
+            } else if (showShip && idField) {
+                priceCol = 'col-2';
+                linkCol = 'col-3';
+            }
+            const chLabel = ({ aliexpress: 'AliExpress' })[ch] || label;
             return '<div class="lmp-add-form-box">'
                 + '<div class="d-flex align-items-center justify-content-between mb-1">'
-                + '<strong style="font-size:12px;"><i class="fas fa-plus-circle text-success me-1"></i>Add ' + label + ' LMP</strong>'
-                + '<select class="form-select form-select-sm" id="lmpAddChannel" style="width:110px;">'
+                + '<strong style="font-size:12px;"><i class="fas fa-plus-circle text-success me-1"></i>Add ' + chLabel + ' LMP</strong>'
+                + '<select class="form-select form-select-sm" id="lmpAddChannel" style="width:120px;">'
                 + '<option value="amazon"' + (ch === 'amazon' ? ' selected' : '') + '>Amazon</option>'
                 + '<option value="ebay"' + (ch === 'ebay' ? ' selected' : '') + '>eBay</option>'
                 + '<option value="google"' + (ch === 'google' ? ' selected' : '') + '>Google</option>'
@@ -9854,14 +10009,16 @@
                 + '<option value="macy"' + (ch === 'macy' ? ' selected' : '') + '>Macy</option>'
                 + '<option value="reverb"' + (ch === 'reverb' ? ' selected' : '') + '>Reverb</option>'
                 + '<option value="temu"' + (ch === 'temu' ? ' selected' : '') + '>Temu</option>'
+                + '<option value="aliexpress"' + (ch === 'aliexpress' ? ' selected' : '') + '>AliExpress</option>'
                 + '</select></div>'
                 + '<form id="lmpAddForm" class="row g-1 align-items-end" novalidate data-sku="' + String(sku || '').replace(/"/g, '&quot;') + '">'
                 + '<input type="hidden" id="lmpEditId" value="">'
                 + '<input type="hidden" id="lmpFormChannel" value="' + ch + '">'
                 + idField
-                + '<div class="' + (idField ? 'col-3' : 'col-4') + '"><label class="form-label mb-0 small">Price</label>'
+                + '<div class="' + priceCol + '"><label class="form-label mb-0 small">Price</label>'
                 + '<input type="text" class="form-control" id="lmpAddPrice" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>'
-                + '<div class="' + (idField ? 'col-3' : 'col-5') + '"><label class="form-label mb-0 small">Link</label>'
+                + shipField
+                + '<div class="' + linkCol + '"><label class="form-label mb-0 small">Link</label>'
                 + '<input type="text" class="form-control" id="lmpAddLink" placeholder="https://..." autocomplete="off"></div>'
                 + '<div class="col-auto d-flex gap-1">'
                 + '<button type="submit" class="btn btn-success btn-sm" id="lmpAddSubmitBtn"><i class="fas fa-plus me-1"></i>Add</button>'
@@ -9897,7 +10054,7 @@
             return m ? m[1] : '';
         }
 
-        $(document).on('input change', '#lmpAddPrice, #lmpAddLink, #lmpAddId', function() {
+        $(document).on('input change', '#lmpAddPrice, #lmpAddShip, #lmpAddLink, #lmpAddId', function() {
             syncLmpEditDraftFromForm();
         });
 
@@ -10010,6 +10167,86 @@
             });
         }
 
+        function saveAliexpressLmpEntries(sku, entries, done) {
+            if (!sku) {
+                done(false, 'Missing SKU');
+                return;
+            }
+            $.ajax({
+                url: '/aliexpress-lmp/save',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Accept': 'application/json',
+                },
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    sku: sku,
+                    lmp_entries: entries,
+                },
+                success: function(r) { done(!!(r && r.success), (r && (r.message || r.error)) || 'AliExpress LMP saved'); },
+                error: function(xhr) {
+                    let msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || 'Failed to save AliExpress LMP';
+                    if (xhr.responseJSON && xhr.responseJSON.errors) {
+                        const first = Object.values(xhr.responseJSON.errors)[0];
+                        if (Array.isArray(first) && first[0]) msg = first[0];
+                    }
+                    done(false, msg);
+                }
+            });
+        }
+
+        function withAliexpressLmpEntries(sku, mutator, done) {
+            $.ajax({
+                url: '/aliexpress-lmp/data',
+                method: 'GET',
+                data: { sku: sku },
+                success: function(res) {
+                    const existing = (res && res.competitors) ? res.competitors : [];
+                    const entries = existing.map(function(c) {
+                        let ship = parseFloat(c.ship != null ? c.ship
+                            : (c.shipping_cost != null ? c.shipping_cost : c.delivery));
+                        if (isNaN(ship) || ship < 0) ship = 0;
+                        return {
+                            price: c.price,
+                            ship: ship,
+                            delivery: ship,
+                            link: c.link || c.product_link || null,
+                            ignored: !!c.ignored,
+                            source_sku: c.source_sku || sku,
+                        };
+                    });
+                    const next = mutator(entries, existing);
+                    if (next === false) {
+                        done(false, 'AliExpress LMP entry not found');
+                        return;
+                    }
+                    saveAliexpressLmpEntries(sku, next, done);
+                },
+                error: function() {
+                    done(false, 'Failed to load AliExpress LMP entries');
+                }
+            });
+        }
+
+        function findAliexpressEntryIndex(entries, editId, origPrice, origLink) {
+            const idMatch = String(editId || '').match(/^aliexpress-(\d+)$/i);
+            if (idMatch) {
+                const idx = parseInt(idMatch[1], 10) - 1;
+                if (idx >= 0 && idx < entries.length) return idx;
+            }
+            const op = parseLmpPriceInput(origPrice);
+            const ol = String(origLink || '').trim().toUpperCase();
+            for (let i = 0; i < entries.length; i++) {
+                const ep = parseLmpPriceInput(entries[i].price);
+                const el = String(entries[i].link || '').trim().toUpperCase();
+                if (!isNaN(op) && !isNaN(ep) && Math.abs(ep - op) < 0.001 && el === ol) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         $(document).on('change', '.lmp-ignore-cb', function() {
             const $cb = $(this);
             const id = $cb.attr('data-id') || $cb.data('id');
@@ -10103,7 +10340,7 @@
             if (channel === 'bestbuy' && !idVal) idVal = extractBestbuyItemId(link);
             if (channel === 'macy' && !idVal) idVal = extractMacyItemId(link);
             if (channel === 'reverb' && !idVal) idVal = extractReverbItemId(link);
-            if (channel !== 'temu' && !idVal) {
+            if (channel !== 'temu' && channel !== 'aliexpress' && !idVal) {
                 showToast(
                     channel === 'amazon' ? 'ASIN is required'
                         : ((channel === 'ebay' || channel === 'bestbuy' || channel === 'macy' || channel === 'reverb') ? 'Item ID is required' : 'Product ID is required'),
@@ -10266,6 +10503,57 @@
                 });
                 return;
             }
+
+            // AliExpress: save to aliexpress_lmp_data_sheet via /aliexpress-lmp/save (price + ship)
+            if (channel === 'aliexpress') {
+                let ship = parseLmpPriceInput($('#lmpAddShip').val());
+                if (isNaN(ship) || ship < 0) ship = 0;
+                if (isEdit) {
+                    const origPrice = lmpEditState ? lmpEditState.origPrice : null;
+                    const origLink = lmpEditState ? lmpEditState.origLink : '';
+                    const sourceSku = (lmpEditState && lmpEditState.sourceSku) ? lmpEditState.sourceSku : sku;
+                    withAliexpressLmpEntries(sku, function(entries) {
+                        const idx = findAliexpressEntryIndex(entries, editId, origPrice, origLink);
+                        if (idx < 0) return false;
+                        const prev = entries[idx] || {};
+                        entries[idx] = {
+                            price: price,
+                            ship: ship,
+                            delivery: ship,
+                            link: link || null,
+                            ignored: !!prev.ignored,
+                            source_sku: prev.source_sku || sourceSku || sku,
+                        };
+                        return entries;
+                    }, done);
+                    return;
+                }
+                withAliexpressLmpEntries(sku, function(entries) {
+                    entries.push({
+                        price: price,
+                        ship: ship,
+                        delivery: ship,
+                        link: link || null,
+                        ignored: false,
+                        source_sku: sku,
+                    });
+                    return entries;
+                }, function(ok, msg) {
+                    if (!ok && msg === 'Failed to load AliExpress LMP entries') {
+                        saveAliexpressLmpEntries(sku, [{
+                            price: price,
+                            ship: ship,
+                            delivery: ship,
+                            link: link || null,
+                            ignored: false,
+                            source_sku: sku,
+                        }], done);
+                        return;
+                    }
+                    done(ok, msg || 'AliExpress LMP added');
+                });
+                return;
+            }
         });
 
         $(document).on('click', '.lmp-channel-filter-btn', function(e) {
@@ -10374,7 +10662,10 @@
                 : (list[0].marketplace || 'amazon');
 
             const temuItems = list.filter(function(r) { return r.marketplace === 'temu'; });
-            const apiItems = list.filter(function(r) { return r.marketplace !== 'temu'; });
+            const aliexpressItems = list.filter(function(r) { return r.marketplace === 'aliexpress'; });
+            const apiItems = list.filter(function(r) {
+                return r.marketplace !== 'temu' && r.marketplace !== 'aliexpress';
+            });
             let success = 0;
             let failed = 0;
 
@@ -10420,22 +10711,69 @@
                     return;
                 }
                 let removedCount = 0;
-                withTemuLmpEntries(sku, function(entries) {
-                    const indices = [];
+                // Match against API competitors[] (parallel to mapped entries) by temu-N id,
+                // then rewrite remaining rows back into temu_lmp via /temu-lmp/save.
+                withTemuLmpEntries(sku, function(entries, existing) {
+                    const removeIds = {};
                     temuItems.forEach(function(item) {
-                        const idx = findTemuEntryIndex(entries, item.id, item.price, item.link);
-                        if (idx >= 0 && indices.indexOf(idx) === -1) indices.push(idx);
+                        const id = String(item.id || '').trim();
+                        if (id) removeIds[id] = true;
                     });
-                    if (!indices.length) return false;
-                    // Delete high→low so earlier indices stay valid
-                    indices.sort(function(a, b) { return b - a; });
-                    indices.forEach(function(idx) { entries.splice(idx, 1); });
-                    removedCount = indices.length;
-                    return entries;
+                    const next = [];
+                    const list = Array.isArray(existing) ? existing : [];
+                    for (let i = 0; i < list.length; i++) {
+                        const c = list[i] || {};
+                        const id = String(c.id || ('temu-' + (i + 1)));
+                        if (removeIds[id]) {
+                            removedCount++;
+                            continue;
+                        }
+                        // Prefer mapped entry (has delivery/source_sku); fall back to competitor fields
+                        if (entries[i]) {
+                            next.push(entries[i]);
+                        } else {
+                            let delivery = parseFloat(c.delivery != null ? c.delivery : c.shipping_cost);
+                            if (isNaN(delivery) || delivery < 0) delivery = 0;
+                            next.push({
+                                price: c.price,
+                                delivery: delivery,
+                                link: c.link || c.product_link || null,
+                                ignored: !!c.ignored,
+                                source_sku: c.source_sku || sku,
+                            });
+                        }
+                    }
+                    // Fallback: if id match failed, try price+link match on remaining
+                    if (removedCount === 0) {
+                        temuItems.forEach(function(item) {
+                            const idx = findTemuEntryIndex(next, item.id, item.price, item.link);
+                            if (idx >= 0) {
+                                next.splice(idx, 1);
+                                removedCount++;
+                            }
+                        });
+                    }
+                    if (!removedCount) return false;
+                    return next;
                 }, function(ok) {
                     if (ok) {
                         success += removedCount;
-                        failed += (temuItems.length - removedCount);
+                        failed += Math.max(0, temuItems.length - removedCount);
+                        // Optimistic UI: drop deleted Temu rows from cache immediately
+                        if (removedCount > 0 && lmpModalCache && Array.isArray(lmpModalCache.rows)) {
+                            const dropIds = {};
+                            temuItems.forEach(function(item) {
+                                const id = String(item.id || '').trim();
+                                if (id) dropIds[id] = true;
+                            });
+                            lmpModalCache.rows = lmpModalCache.rows.filter(function(r) {
+                                if (r.channel !== 'temu') return true;
+                                return !dropIds[String(r.id || '')];
+                            });
+                            if (typeof renderLmpMergedTable === 'function') {
+                                renderLmpMergedTable();
+                            }
+                        }
                     } else {
                         failed += temuItems.length;
                     }
@@ -10443,8 +10781,83 @@
                 });
             }
 
+            function runAliexpressDeletes(done) {
+                if (!aliexpressItems.length) {
+                    done();
+                    return;
+                }
+                let removedCount = 0;
+                withAliexpressLmpEntries(sku, function(entries, existing) {
+                    const removeIds = {};
+                    aliexpressItems.forEach(function(item) {
+                        const id = String(item.id || '').trim();
+                        if (id) removeIds[id] = true;
+                    });
+                    const next = [];
+                    const list = Array.isArray(existing) ? existing : [];
+                    for (let i = 0; i < list.length; i++) {
+                        const c = list[i] || {};
+                        const id = String(c.id || ('aliexpress-' + (i + 1)));
+                        if (removeIds[id]) {
+                            removedCount++;
+                            continue;
+                        }
+                        if (entries[i]) {
+                            next.push(entries[i]);
+                        } else {
+                            let ship = parseFloat(c.ship != null ? c.ship
+                                : (c.shipping_cost != null ? c.shipping_cost : c.delivery));
+                            if (isNaN(ship) || ship < 0) ship = 0;
+                            next.push({
+                                price: c.price,
+                                ship: ship,
+                                delivery: ship,
+                                link: c.link || c.product_link || null,
+                                ignored: !!c.ignored,
+                                source_sku: c.source_sku || sku,
+                            });
+                        }
+                    }
+                    if (removedCount === 0) {
+                        aliexpressItems.forEach(function(item) {
+                            const idx = findAliexpressEntryIndex(next, item.id, item.price, item.link);
+                            if (idx >= 0) {
+                                next.splice(idx, 1);
+                                removedCount++;
+                            }
+                        });
+                    }
+                    if (!removedCount) return false;
+                    return next;
+                }, function(ok) {
+                    if (ok) {
+                        success += removedCount;
+                        failed += Math.max(0, aliexpressItems.length - removedCount);
+                        if (removedCount > 0 && lmpModalCache && Array.isArray(lmpModalCache.rows)) {
+                            const dropIds = {};
+                            aliexpressItems.forEach(function(item) {
+                                const id = String(item.id || '').trim();
+                                if (id) dropIds[id] = true;
+                            });
+                            lmpModalCache.rows = lmpModalCache.rows.filter(function(r) {
+                                if (r.channel !== 'aliexpress') return true;
+                                return !dropIds[String(r.id || '')];
+                            });
+                            if (typeof renderLmpMergedTable === 'function') {
+                                renderLmpMergedTable();
+                            }
+                        }
+                    } else {
+                        failed += aliexpressItems.length;
+                    }
+                    done();
+                });
+            }
+
             runTemuDeletes(function() {
-                runApiDeletes(finish);
+                runAliexpressDeletes(function() {
+                    runApiDeletes(finish);
+                });
             });
         }
 
@@ -10484,7 +10897,7 @@
             const price = btn.attr('data-price') || btn.data('price');
             const extId = btn.attr('data-ext-id') || btn.data('ext-id') || '';
             const link = btn.attr('data-link') || btn.closest('tr').find('a.text-primary').attr('href') || '';
-            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu' };
+            const labelMap = { amazon: 'Amazon', ebay: 'eBay', google: 'Google', bestbuy: 'BestBuy', macy: 'Macy', reverb: 'Reverb', temu: 'Temu', aliexpress: 'AliExpress' };
             const label = labelMap[marketplace] || marketplace;
 
             const selected = collectCheckedLmpRows();
@@ -11183,23 +11596,27 @@
 
             const wasInDotView = !!dotExpandedParent;
             dotExpandedParent = null;
+            const skuParentFilter = $('#sku-parent-filter').val();
+
+            // Parent Only rebuilds its own dataset from fullDataset
+            if (skuParentFilter === 'parent') {
+                table.clearFilter();
+                expandedParent = null;
+                buildParentView();
+                return;
+            }
 
             const doFilters = function() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
-                const skuParentFilter = $('#sku-parent-filter').val();
 
                 table.clearFilter();
 
-                // SKU/Parent filter
+                // SKU Only — hide parent summary rows
                 if (skuParentFilter === 'sku') {
                     table.addFilter(function(data) {
                         return data.is_parent_summary !== true;
                     });
-                } else if (skuParentFilter === 'parent') {
-                    expandedParent = null;
-                    buildParentView();
-                    return;
                 }
 
                 if (inventoryFilter === 'zero') {
@@ -11281,7 +11698,15 @@
                 updateSummary();
             };
 
-            if (wasInDotView && fullDataset.length > 0) {
+            // Parent Only / dot-expand replace table data — must restore fullDataset for SKU Only / Both
+            const currentLen = (typeof table.getDataCount === 'function')
+                ? table.getDataCount('all')
+                : ((table.getData('all') || []).length);
+            const needsFullRestore = fullDataset.length > 0 && (
+                wasInDotView || currentLen !== fullDataset.length
+            );
+
+            if (needsFullRestore) {
                 suppressDataLoadedHandler = true;
                 table.setData(fullDataset).then(doFilters);
             } else {

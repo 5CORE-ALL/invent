@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ReverbProduct;
@@ -103,6 +104,8 @@ use App\Models\FbaMonthlySale;
 use App\Models\FbaReportsMaster;
 use App\Models\FbaManualData;
 use App\Models\AliexpressDataView;
+use App\Models\AliexpressLmpDataSheet;
+use App\Models\PurchasingPowerDataView;
 use App\Models\FaireMetric;
 use App\Models\FaireDailyData;
 use App\Models\FaireDataView;
@@ -122,6 +125,7 @@ use App\Services\Ebay2ApiService;
 use App\Services\EbayThreeApiService;
 use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
+use App\Services\PurchasingPowerApiService;
 use App\Support\TemuGoodsIdHelper;
 
 class CvrMasterController extends Controller
@@ -940,14 +944,15 @@ class CvrMasterController extends Controller
                 Log::warning('Could not fetch eBay LMP: ' . $e->getMessage());
             }
 
-            // Temu / Temu 2 LMP — slim columns only (never TemuLmp::all() full hydrate)
+            // Temu / Temu 2 LMP — L1 columns only for list view (skip heavy lmp_entries JSON blobs;
+            // drawer loads full entries via /cvr-master-temu-lmp on demand)
             $temuLmpByNormalizedSku = [];
             $temuLmpSkuGroupService = null;
             try {
                 if (Schema::hasTable('temu_lmp')) {
                     foreach (
                         TemuLmp::query()
-                            ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2', 'lmp_entries'])
+                            ->select(['id', 'sku', 'lmp', 'lmp_link', 'lmp_2', 'lmp_link_2'])
                             ->get() as $temuLmpRow
                     ) {
                         $temuLmpByNormalizedSku[self::normalizeTemuSkuForCvr((string) ($temuLmpRow->sku ?? ''))] = $temuLmpRow;
@@ -1207,23 +1212,6 @@ class CvrMasterController extends Controller
                 // Formula: GPFT% - AD%
                 $walmartPFT = $walmartGPFT - $walmartAD;
 
-                // Log calculations for SKUs with Walmart data
-                if ($walmartPrice > 0 || $walmartL30Qty > 0 || $walmartAdSpend > 0) {
-                    Log::info("CVR Master - WM Calculations", [
-                        'sku' => $sku,
-                        'normalized_sku' => $normalizedSku,
-                        'wm_price' => $walmartPrice,
-                        'lp' => $lp,
-                        'ship' => $ship,
-                        'qty' => $walmartL30Qty,
-                        'w_l30' => $wL30,
-                        'ad_spend' => $walmartAdSpend,
-                        'gpft' => round($walmartGPFT, 2),
-                        'ad_percent' => round($walmartAD, 2),
-                        'pft' => round($walmartPFT, 2)
-                    ]);
-                }
-
                 // === TIKTOK (same as /tiktok-pricing) ===
                 $skuUpperTt = strtoupper((string) $sku);
                 $skuNormTt = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
@@ -1397,19 +1385,6 @@ class CvrMasterController extends Controller
                 // Doba PFT% = GPFT% (no ads — same as /doba-tabulator)
                 $dobaPFT = $dobaGPFT;
                 
-                // Log Doba calculations for debugging
-                if ($dobaPrice > 0) {
-                    Log::info("CVR Master - Doba Calculations", [
-                        'sku' => $sku,
-                        'doba_price' => $dobaPrice,
-                        'doba_percentage' => $dobaPercentage,
-                        'lp' => $lp,
-                        'ship' => $ship,
-                        'gpft' => round($dobaGPFT, 2),
-                        'pft' => round($dobaPFT, 2)
-                    ]);
-                }
-
                 // === AMAZON CALCULATIONS ===
                 $amazonSheet = $amazonDatasheets->get($sku);
                 $amazonPrice = $amazonSheet ? floatval($amazonSheet->price ?? 0) : 0;
@@ -2253,90 +2228,78 @@ class CvrMasterController extends Controller
                 $finalResult[] = (object) $parentRow;
             }
 
-            // Log summary
-            $wmDataCount = collect($finalResult)->filter(function($row) {
-                return ($row->wm_views ?? 0) > 0 || ($row->wm_gpft ?? 0) != 0;
-            })->count();
-            
-            Log::info('CVR Master - Final Results Summary', [
-                'total_rows' => count($finalResult),
-                'rows_with_wm_data' => $wmDataCount,
-                'sample_wm_data' => collect($finalResult)->filter(function($row) {
-                    return ($row->wm_views ?? 0) > 0;
-                })->take(3)->map(function($row) {
-                    return [
-                        'sku' => $row->sku,
-                        'wm_views' => $row->wm_views ?? 0,
-                        'wm_cvr' => $row->wm_cvr ?? 0,
-                        'wm_gpft' => $row->wm_gpft ?? 0,
-                        'wm_ad' => $row->wm_ad ?? 0,
-                        'wm_pft' => $row->wm_pft ?? 0,
-                    ];
-                })->values()->toArray()
-            ]);
-
-            // Auto-save SKU-wise daily snapshot on refresh (for Inv, OV L30, Price, CVR, NPFT, NROI graphs per SKU)
+            // Daily SKU snapshots for charts — at most once/day, bulk upsert (was N× updateOrCreate on every refresh)
             try {
-                $childRows = collect($finalResult)->filter(fn($r) => empty($r->is_parent_summary));
                 $today = now('America/Los_Angeles')->toDateString();
-                $saved = 0;
-                foreach ($childRows as $row) {
-                    $raw = is_string($row->sku ?? null) ? $row->sku : (string) ($row->sku ?? '');
-                    $sku = preg_replace('/\s+/', ' ', trim($raw));
-                    if ($sku === '') continue;
-                    // inventory column is unsigned — clamp negatives so one bad SKU cannot abort the batch
-                    $invClamped = max(0, (int) ($row->inventory ?? 0));
-                    $snapshotPayload = [
-                        'inventory' => $invClamped,
-                        'overall_l30' => max(0, (int) ($row->overall_l30 ?? 0)),
-                        'avg_price' => isset($row->avg_price) && $row->avg_price > 0 ? round((float) $row->avg_price, 2) : null,
-                        'avg_cvr' => isset($row->avg_cvr) && $row->avg_cvr !== null ? round((float) $row->avg_cvr, 2) : null,
-                        'dil_percent' => isset($row->dil_percent) && $row->dil_percent !== null ? round((float) $row->dil_percent, 2) : null,
-                        'amazon_price' => isset($row->amazon_price) && $row->amazon_price > 0 ? round((float) $row->amazon_price, 2) : null,
-                        'rating' => isset($row->rating) && $row->rating > 0 ? round((float) $row->rating, 2) : null,
-                        'total_views' => max(0, (int) ($row->total_views ?? 0)),
-                    ];
-                    // Avg NPFT% / Avg NROI% (same fields as pricing-master-cvr main table / parent blue row)
-                    if (Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_pft')) {
-                        $snapshotPayload['avg_pft'] = isset($row->avg_pft) && $row->avg_pft !== null
-                            ? round((float) $row->avg_pft, 2) : null;
-                    }
-                    if (Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_nroi')) {
-                        $snapshotPayload['avg_nroi'] = isset($row->avg_nroi) && $row->avg_nroi !== null
-                            ? round((float) $row->avg_nroi, 2) : null;
-                    }
-                    try {
-                        PricingMasterDailySnapshotSku::updateOrCreate(
-                            ['snapshot_date' => $today, 'sku' => $sku],
-                            $snapshotPayload
-                        );
-                        $saved++;
-                    } catch (\Throwable $rowEx) {
-                        Log::warning('Master Analytics SKU snapshot row failed', [
+                $snapDoneKey = 'cvr_master_sku_snapshot_done_' . $today;
+                if (! Cache::has($snapDoneKey)) {
+                    $childRows = collect($finalResult)->filter(fn ($r) => empty($r->is_parent_summary));
+                    $hasAvgPft = Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_pft');
+                    $hasAvgNroi = Schema::hasColumn('pricing_master_daily_snapshots_sku', 'avg_nroi');
+                    $now = now()->toDateTimeString();
+                    $batch = [];
+                    foreach ($childRows as $row) {
+                        $raw = is_string($row->sku ?? null) ? $row->sku : (string) ($row->sku ?? '');
+                        $sku = preg_replace('/\s+/', ' ', trim($raw));
+                        if ($sku === '') {
+                            continue;
+                        }
+                        $payload = [
+                            'snapshot_date' => $today,
                             'sku' => $sku,
-                            'error' => $rowEx->getMessage(),
-                        ]);
+                            'inventory' => max(0, (int) ($row->inventory ?? 0)),
+                            'overall_l30' => max(0, (int) ($row->overall_l30 ?? 0)),
+                            'avg_price' => isset($row->avg_price) && $row->avg_price > 0 ? round((float) $row->avg_price, 2) : null,
+                            'avg_cvr' => isset($row->avg_cvr) && $row->avg_cvr !== null ? round((float) $row->avg_cvr, 2) : null,
+                            'dil_percent' => isset($row->dil_percent) && $row->dil_percent !== null ? round((float) $row->dil_percent, 2) : null,
+                            'amazon_price' => isset($row->amazon_price) && $row->amazon_price > 0 ? round((float) $row->amazon_price, 2) : null,
+                            'rating' => isset($row->rating) && $row->rating > 0 ? round((float) $row->rating, 2) : null,
+                            'total_views' => max(0, (int) ($row->total_views ?? 0)),
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                        if ($hasAvgPft) {
+                            $payload['avg_pft'] = isset($row->avg_pft) && $row->avg_pft !== null
+                                ? round((float) $row->avg_pft, 2) : null;
+                        }
+                        if ($hasAvgNroi) {
+                            $payload['avg_nroi'] = isset($row->avg_nroi) && $row->avg_nroi !== null
+                                ? round((float) $row->avg_nroi, 2) : null;
+                        }
+                        $batch[] = $payload;
                     }
-                }
-                if ($saved > 0) {
-                    Log::info('Master Analytics SKU snapshot saved', ['date' => $today, 'count' => $saved]);
-                    // Also save daily totals for aggregate chart (Total INV, OV L30, etc.)
-                    $totalInv = $childRows->sum(fn($r) => (int) ($r->inventory ?? 0));
-                    $totalOvL30 = $childRows->sum(fn($r) => (int) ($r->overall_l30 ?? 0));
-                    $avgPrice = $childRows->filter(fn($r) => isset($r->avg_price) && $r->avg_price > 0)->isNotEmpty()
-                        ? round($childRows->filter(fn($r) => isset($r->avg_price) && $r->avg_price > 0)->avg('avg_price'), 2) : null;
-                    $totalViews = $childRows->sum(fn($r) => (int) ($r->total_views ?? 0));
-                    $avgCvr = $totalViews > 0 && $totalOvL30 > 0
-                        ? round(($totalOvL30 / $totalViews) * 100, 2) : null;
-                    PricingMasterDailySnapshot::updateOrCreate(
-                        ['snapshot_date' => $today],
-                        [
-                            'total_inv' => $totalInv,
-                            'total_ov_l30' => $totalOvL30,
-                            'avg_price' => $avgPrice,
-                            'avg_cvr' => $avgCvr,
-                        ]
-                    );
+                    $updateCols = [
+                        'inventory', 'overall_l30', 'avg_price', 'avg_cvr', 'dil_percent',
+                        'amazon_price', 'rating', 'total_views', 'updated_at',
+                    ];
+                    if ($hasAvgPft) {
+                        $updateCols[] = 'avg_pft';
+                    }
+                    if ($hasAvgNroi) {
+                        $updateCols[] = 'avg_nroi';
+                    }
+                    foreach (array_chunk($batch, 500) as $chunk) {
+                        PricingMasterDailySnapshotSku::upsert($chunk, ['snapshot_date', 'sku'], $updateCols);
+                    }
+                    if ($batch !== []) {
+                        $totalInv = $childRows->sum(fn ($r) => (int) ($r->inventory ?? 0));
+                        $totalOvL30 = $childRows->sum(fn ($r) => (int) ($r->overall_l30 ?? 0));
+                        $avgPrice = $childRows->filter(fn ($r) => isset($r->avg_price) && $r->avg_price > 0)->isNotEmpty()
+                            ? round($childRows->filter(fn ($r) => isset($r->avg_price) && $r->avg_price > 0)->avg('avg_price'), 2) : null;
+                        $totalViews = $childRows->sum(fn ($r) => (int) ($r->total_views ?? 0));
+                        $avgCvr = $totalViews > 0 && $totalOvL30 > 0
+                            ? round(($totalOvL30 / $totalViews) * 100, 2) : null;
+                        PricingMasterDailySnapshot::updateOrCreate(
+                            ['snapshot_date' => $today],
+                            [
+                                'total_inv' => $totalInv,
+                                'total_ov_l30' => $totalOvL30,
+                                'avg_price' => $avgPrice,
+                                'avg_cvr' => $avgCvr,
+                            ]
+                        );
+                    }
+                    Cache::put($snapDoneKey, 1, now()->endOfDay());
                 }
             } catch (\Exception $e) {
                 Log::warning('Master Analytics SKU daily snapshot save failed: ' . $e->getMessage());
@@ -2755,6 +2718,68 @@ class CvrMasterController extends Controller
                 );
                 // Direct Temu LMP (raw competitor price — no Recovery calculation)
                 return $resolved['price'];
+            };
+
+            // AliExpress LMP from aliexpress_lmp_data_sheet (/aliexpress-lmp)
+            $resolveAliexpressLmpPrice = function (?string $lookupSku = null) use ($fullSku, $cacheLmp) {
+                $skuVal = trim((string) ($lookupSku ?: $fullSku));
+                if ($skuVal === '' || ! Schema::hasTable('aliexpress_lmp_data_sheet')) {
+                    return null;
+                }
+
+                return $cacheLmp('aliexpress', $skuVal, function () use ($skuVal) {
+                    $normalize = static function ($s) {
+                        $s = strtoupper(trim((string) $s));
+                        $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+                        $s = preg_replace('/\s+/', ' ', $s);
+
+                        return $s;
+                    };
+                    $target = $normalize($skuVal);
+                    $row = \App\Models\AliexpressLmpDataSheet::where('sku', $skuVal)->first()
+                        ?? \App\Models\AliexpressLmpDataSheet::query()
+                            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($skuVal)])
+                            ->first();
+                    if (! $row) {
+                        $row = \App\Models\AliexpressLmpDataSheet::query()
+                            ->whereRaw(
+                                'UPPER(REPLACE(REPLACE(REPLACE(TRIM(sku), CHAR(10), " "), CHAR(13), " "), CHAR(9), " ")) LIKE ?',
+                                ['%'.str_replace(' ', '%', $target).'%']
+                            )
+                            ->limit(20)
+                            ->get()
+                            ->first(fn ($r) => $normalize((string) $r->sku) === $target);
+                    }
+                    if (! $row) {
+                        return null;
+                    }
+                    $entries = is_array($row->lmp_entries) ? $row->lmp_entries : null;
+                    $prices = [];
+                    if (is_array($entries)) {
+                        // Explicit [] means cleared — do not fall back to legacy columns
+                        // Landed LMP = price + ship (same as Del / P+S in LMP drawer)
+                        foreach ($entries as $e) {
+                            if (! is_array($e) || ! empty($e['ignored'])) {
+                                continue;
+                            }
+                            $p = isset($e['price']) && is_numeric($e['price']) ? (float) $e['price'] : 0;
+                            if ($p > 0) {
+                                $shipRaw = $e['ship'] ?? $e['delivery'] ?? 0;
+                                $ship = is_numeric($shipRaw) ? max(0, (float) $shipRaw) : 0;
+                                $prices[] = $p + $ship;
+                            }
+                        }
+                    } else {
+                        if ($row->lmp !== null && (float) $row->lmp > 0) {
+                            $prices[] = (float) $row->lmp;
+                        }
+                        if ($row->lmp_2 !== null && (float) $row->lmp_2 > 0) {
+                            $prices[] = (float) $row->lmp_2;
+                        }
+                    }
+
+                    return count($prices) > 0 ? round(min($prices), 2) : null;
+                });
             };
 
             // TikTok LMP: query only linked SKUs (not full tiktok_sku_competitors table)
@@ -4780,6 +4805,11 @@ class CvrMasterController extends Controller
                     $lmpChannel = 'tiktok';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
                     $lmpPrice = $resolveTiktokLmpPrice($rowSku) ?? $tiktokLmpPrice;
+                } elseif ($mp === 'aliexpress') {
+                    // Same aliexpress_lmp_data_sheet store as /aliexpress-lmp
+                    $lmpChannel = 'aliexpress';
+                    $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
+                    $lmpPrice = $resolveAliexpressLmpPrice($rowSku);
                 }
 
                 $row['lmp_channel'] = $lmpChannel;
@@ -5589,6 +5619,7 @@ class CvrMasterController extends Controller
             'macy' => "Macy's",
             'reverb' => 'Reverb',
             'topdawg' => 'TopDawg',
+            'ppower' => 'PPower',
         ];
 
         $all = [];
@@ -5711,6 +5742,13 @@ class CvrMasterController extends Controller
                 }
                 $existingAeView = AliexpressDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
                 $dataView = $existingAeView ?: new AliexpressDataView(['sku' => $skuToUse]);
+            } elseif ($marketplace === 'ppower' || $marketplace === 'purchasingpower' || $marketplace === 'purchase') {
+                // Same store as /purchasing-power-pricing (purchasing_power_data_views.value.SPRICE)
+                if (!Schema::hasTable('purchasing_power_data_views')) {
+                    return response()->json(['error' => 'Purchasing Power is not set up. Run migrations (purchasing_power_data_views).'], 503);
+                }
+                $existingPpView = PurchasingPowerDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+                $dataView = $existingPpView ?: new PurchasingPowerDataView(['sku' => $skuToUse]);
             } elseif ($marketplace === 'tiendamia') {
                 $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
@@ -5861,6 +5899,24 @@ class CvrMasterController extends Controller
                 }
             }
 
+            // Ebay1 ↔ Ebay2 ↔ Ebay3: same SPRICE on any one applies to the other two (same SKU)
+            foreach ($this->ebaySiblingChannels($marketplace) as $otherEbay) {
+                try {
+                    if ($sprice > 0) {
+                        $this->applySuggestedSpriceToSku($skuToUse, $otherEbay, $payload);
+                    } else {
+                        $this->clearSuggestedSpriceOnSku($skuToUse, $otherEbay);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR Ebay SPRICE cross-apply failed', [
+                        'sku' => $skuToUse,
+                        'from' => $marketplace,
+                        'to' => $otherEbay,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, $payload);
         } catch (\Exception $e) {
             Log::error('Error saving suggested data: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -6003,6 +6059,12 @@ class CvrMasterController extends Controller
             }
             $existingAeView = AliexpressDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
             $dataView = $existingAeView ?: new AliexpressDataView(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'ppower' || $marketplace === 'purchasingpower' || $marketplace === 'purchase') {
+            if (!Schema::hasTable('purchasing_power_data_views')) {
+                return false;
+            }
+            $existingPpView = PurchasingPowerDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+            $dataView = $existingPpView ?: new PurchasingPowerDataView(['sku' => $skuToUse]);
         } elseif ($marketplace === 'tiendamia') {
             $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
         } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
@@ -6067,7 +6129,28 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Clear SPRICE keys on one SKU/channel (used to keep Temu ↔ Temu2 in sync on clear).
+     * Other eBay channels that should receive the same SPRICE (Ebay1 ↔ Ebay2 ↔ Ebay3).
+     *
+     * @return list<string>
+     */
+    private function ebaySiblingChannels(string $marketplace): array
+    {
+        $m = strtolower(trim($marketplace));
+        if (in_array($m, ['ebay', 'ebay1'], true)) {
+            return ['ebay2', 'ebay3'];
+        }
+        if (in_array($m, ['ebaytwo', 'ebay2'], true)) {
+            return ['ebay1', 'ebay3'];
+        }
+        if (in_array($m, ['ebaythree', 'ebay3'], true)) {
+            return ['ebay1', 'ebay2'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Clear SPRICE keys on one SKU/channel (used to keep Temu ↔ Temu2 / Ebay1↔2↔3 in sync on clear).
      */
     private function clearSuggestedSpriceOnSku(string $sku, string $marketplace): bool
     {
@@ -6092,6 +6175,15 @@ class CvrMasterController extends Controller
             }
             $dataView = Temu2DataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
                 ?: Temu2DataView::where('sku', $fullSku)->first();
+        } elseif ($marketplace === 'ebay' || $marketplace === 'ebay1') {
+            $dataView = EbayDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
+                ?: EbayDataView::where('sku', $fullSku)->first();
+        } elseif ($marketplace === 'ebaytwo' || $marketplace === 'ebay2') {
+            $dataView = EbayTwoDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
+                ?: EbayTwoDataView::where('sku', $fullSku)->first();
+        } elseif ($marketplace === 'ebaythree' || $marketplace === 'ebay3') {
+            $dataView = EbayThreeDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($fullSku)])->first()
+                ?: EbayThreeDataView::where('sku', $fullSku)->first();
         } else {
             return false;
         }
@@ -6123,6 +6215,7 @@ class CvrMasterController extends Controller
      * After a successful SPRICE save, optionally copy the same SPRICE to sibling child SKUs (same parent).
      * Never applies 0 to siblings.
      * Temu / Temu2: siblings get both channels (same as primary Temu↔Temu2 cross-apply).
+     * Ebay1 / Ebay2 / Ebay3: siblings get all three channels.
      */
     private function finishSuggestedSaveWithSiblings(Request $request, string $fullSku, string $marketplace, array $payload)
     {
@@ -6135,6 +6228,10 @@ class CvrMasterController extends Controller
         if ($marketplace === 'temu' || $marketplace === 'temu2') {
             $channels[] = $marketplace === 'temu' ? 'temu2' : 'temu';
         }
+        foreach ($this->ebaySiblingChannels($marketplace) as $ebayCh) {
+            $channels[] = $ebayCh;
+        }
+        $channels = array_values(array_unique($channels));
 
         // Siblings Apply only when there is a real (non-zero) suggested price
         if ($applySiblings && $sprice > 0) {
@@ -6260,6 +6357,8 @@ class CvrMasterController extends Controller
                 $response = $this->pushToBestBuy($sku, $price);
             } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
                 $response = $this->pushToMacy($sku, $price);
+            } elseif ($marketplace === 'ppower' || $marketplace === 'purchasingpower' || $marketplace === 'purchase') {
+                $response = $this->pushToPurchasingPower($sku, $price);
             } elseif ($marketplace === 'topdawg') {
                 $response = $this->pushToTopDawg($sku, $price);
             } elseif ($marketplace === 'temu') {
@@ -6279,7 +6378,7 @@ class CvrMasterController extends Controller
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, Reverb, TopDawg, Temu, Temu2, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Reverb, TopDawg, Temu, Temu2, FBA."
                 ], 400);
             }
 
@@ -7155,6 +7254,33 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push price to Purchasing Power via Mirakl MCM PRI01 (PURCHASING_POWER_MCM_API_KEY).
+     */
+    private function pushToPurchasingPower($sku, $price)
+    {
+        try {
+            $result = app(PurchasingPowerApiService::class)->updatePrice($sku, $price);
+            if (!empty($result['success'])) {
+                $this->savePricePushStatus($sku, 'ppower', 'pushed', $price);
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to PPower for SKU: $sku"),
+                    'result' => $result,
+                ]);
+            }
+            $this->savePricePushStatus($sku, 'ppower', 'error', $price);
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Failed to push price to Purchasing Power',
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'ppower', 'error', $price);
+            Log::error('CVR Master - Purchasing Power push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Purchasing Power API error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Push price to Reverb via ReverbApiService (uses reverb_products.reverb_listing_id when available).
      */
     private function pushToReverb($sku, $price)
@@ -7508,6 +7634,10 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'tiktok') {
                 $dataView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
                     ?: TiktokShopDataView::where('sku', $sku)->first();
+            } elseif (in_array($marketplace, ['ppower', 'purchasingpower', 'purchase'], true)
+                && Schema::hasTable('purchasing_power_data_views')) {
+                $dataView = PurchasingPowerDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
+                    ?: PurchasingPowerDataView::where('sku', $sku)->first();
             }
         } catch (\Throwable $e) {
             return [];
@@ -7666,6 +7796,10 @@ class CvrMasterController extends Controller
                 $dataView = BestbuyUSADataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
                 $dataView = MacyDataView::firstOrNew(['sku' => $sku]);
+            } elseif (in_array($marketplace, ['ppower', 'purchasingpower', 'purchase'], true)
+                && Schema::hasTable('purchasing_power_data_views')) {
+                $existingPp = PurchasingPowerDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                $dataView = $existingPp ?: new PurchasingPowerDataView(['sku' => $sku]);
             } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
                 $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
@@ -8077,8 +8211,9 @@ class CvrMasterController extends Controller
         if (is_string($entries)) {
             $entries = json_decode($entries, true);
         }
-        if (is_array($entries) && count($entries) > 0) {
-            return $entries;
+        // Trust lmp_entries when present (including []) so deletes are not undone by legacy lmp/lmp_2.
+        if (is_array($entries)) {
+            return array_values($entries);
         }
 
         $lmpEntries = [];
@@ -8350,7 +8485,7 @@ class CvrMasterController extends Controller
 
             $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
             $competitors = [];
-            foreach ($resolved['entries'] as $idx => $entry) {
+            foreach ($resolved['entries'] as $entry) {
                 $price = isset($entry['price']) && $entry['price'] !== '' ? floatval($entry['price']) : 0;
                 $deliveryRaw = $entry['delivery'] ?? 0;
                 $delivery = (is_numeric($deliveryRaw) && (float) $deliveryRaw > 0) ? (float) $deliveryRaw : 0.0;
@@ -8362,8 +8497,9 @@ class CvrMasterController extends Controller
                 if ($price <= 0) {
                     continue;
                 }
+                // Dense id (temu-1..) must match returned competitors[] index used by frontend delete/edit
                 $competitors[] = [
-                    'id' => 'temu-' . ($idx + 1),
+                    'id' => 'temu-' . (count($competitors) + 1),
                     // Keep item Price as base; Del/P+S use delivery separately in the LMP drawer
                     'price' => round($price, 2),
                     'base_price' => round($price, 2),
@@ -8393,7 +8529,8 @@ class CvrMasterController extends Controller
 
     /**
      * Toggle LMP competitor ignored flag (same behavior as /temu-decrease ignore for L1).
-     * Amazon / eBay / Google: column on *_sku_competitors. Temu: lmp_entries[].ignored.
+     * Amazon / eBay / Google: column on *_sku_competitors.
+     * Temu / AliExpress: lmp_entries[].ignored.
      */
     public function toggleLmpIgnored(Request $request)
     {
@@ -8402,11 +8539,118 @@ class CvrMasterController extends Controller
         $id = $request->input('id');
         $sku = trim((string) $request->input('sku', ''));
 
-        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu'], true)) {
+        if (!in_array($marketplace, ['amazon', 'ebay', 'google', 'bestbuy', 'macy', 'reverb', 'temu', 'aliexpress'], true)) {
             return response()->json(['success' => false, 'error' => 'Invalid marketplace'], 400);
         }
 
         try {
+            if ($marketplace === 'aliexpress') {
+                if ($sku === '') {
+                    return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+                }
+                if (! Schema::hasTable('aliexpress_lmp_data_sheet')) {
+                    return response()->json(['success' => false, 'error' => 'AliExpress LMP table not available'], 404);
+                }
+                $idx = preg_match('/^aliexpress-(\d+)$/i', (string) $id, $mm) ? ((int) $mm[1] - 1) : -1;
+                if ($idx < 0) {
+                    return response()->json(['success' => false, 'error' => 'Invalid AliExpress LMP id'], 400);
+                }
+
+                $row = AliexpressLmpDataSheet::where('sku', $sku)->first()
+                    ?? AliexpressLmpDataSheet::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+                if (! $row) {
+                    // Loose match (same normalize idea as AliexpressController)
+                    $target = strtoupper(trim(preg_replace('/\s+/', ' ', $sku)));
+                    $target = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $target);
+                    $row = AliexpressLmpDataSheet::query()
+                        ->whereRaw(
+                            'UPPER(REPLACE(REPLACE(REPLACE(TRIM(sku), CHAR(10), " "), CHAR(13), " "), CHAR(9), " ")) LIKE ?',
+                            ['%'.str_replace(' ', '%', $target).'%']
+                        )
+                        ->get()
+                        ->first(function ($r) use ($target) {
+                            $s = strtoupper(trim(preg_replace('/\s+/', ' ', (string) $r->sku)));
+                            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+
+                            return $s === $target;
+                        });
+                }
+                if (! $row) {
+                    return response()->json(['success' => false, 'error' => 'AliExpress LMP entry not found'], 404);
+                }
+
+                $entries = is_array($row->lmp_entries) ? $row->lmp_entries : [];
+                // Same dense list as getAliexpressLmpData (skip price <= 0) so aliexpress-N ids match
+                $dense = [];
+                $denseMap = []; // dense index => original entries index
+                foreach ($entries as $ei => $entry) {
+                    if (! is_array($entry)) {
+                        continue;
+                    }
+                    $p = isset($entry['price']) && $entry['price'] !== '' && $entry['price'] !== null
+                        ? (float) $entry['price']
+                        : 0.0;
+                    if ($p <= 0) {
+                        continue;
+                    }
+                    $denseMap[count($dense)] = $ei;
+                    $dense[] = $entry;
+                }
+                if ($idx >= count($dense)) {
+                    return response()->json(['success' => false, 'error' => 'AliExpress LMP entry not found'], 404);
+                }
+
+                $origIdx = $denseMap[$idx];
+                $entries[$origIdx]['ignored'] = $ignored;
+
+                $activeLanded = [];
+                $firstLink = null;
+                foreach ($entries as $e) {
+                    if (! is_array($e) || ! empty($e['ignored'])) {
+                        continue;
+                    }
+                    $p = isset($e['price']) && is_numeric($e['price']) ? (float) $e['price'] : 0;
+                    if ($p <= 0) {
+                        continue;
+                    }
+                    $shipRaw = $e['ship'] ?? $e['delivery'] ?? 0;
+                    $ship = is_numeric($shipRaw) ? max(0, (float) $shipRaw) : 0;
+                    $landed = round($p + $ship, 2);
+                    $activeLanded[] = $landed;
+                    if ($firstLink === null && ! empty($e['link'])) {
+                        $firstLink = $e['link'];
+                    }
+                }
+                $firstPrice = count($activeLanded) > 0 ? min($activeLanded) : null;
+                if ($firstPrice !== null && $firstLink === null) {
+                    foreach ($entries as $e) {
+                        if (! is_array($e) || ! empty($e['ignored'])) {
+                            continue;
+                        }
+                        $p = isset($e['price']) && is_numeric($e['price']) ? (float) $e['price'] : 0;
+                        if ($p <= 0) {
+                            continue;
+                        }
+                        $shipRaw = $e['ship'] ?? $e['delivery'] ?? 0;
+                        $ship = is_numeric($shipRaw) ? max(0, (float) $shipRaw) : 0;
+                        if (abs(round($p + $ship, 2) - (float) $firstPrice) < 0.00001) {
+                            $firstLink = $e['link'] ?? null;
+                            break;
+                        }
+                    }
+                }
+
+                $row->update([
+                    'lmp' => $firstPrice,
+                    'lmp_link' => $firstLink,
+                    'lmp_entries' => array_values($entries),
+                    'lmp_2' => null,
+                    'lmp_link_2' => null,
+                ]);
+
+                return response()->json(['success' => true, 'ignored' => $ignored, 'message' => $ignored ? 'Ignored for L1' : 'Included in L1']);
+            }
+
             if ($marketplace === 'temu') {
                 if ($sku === '') {
                     return response()->json(['success' => false, 'error' => 'SKU required'], 400);
@@ -8418,7 +8662,18 @@ class CvrMasterController extends Controller
 
                 [$temuLmpByNormalizedSku, $groupService] = $this->loadTemuLmpMapForSkus([$sku]);
                 $resolved = $this->resolveTemuLmpForSku($sku, $temuLmpByNormalizedSku, $groupService);
-                $merged = $resolved['entries'];
+                // Same dense list as getTemuLmpData (skip price <= 0) so temu-N ids match
+                $merged = [];
+                foreach ($resolved['entries'] as $entry) {
+                    if (! is_array($entry)) {
+                        continue;
+                    }
+                    $p = isset($entry['price']) && $entry['price'] !== '' ? floatval($entry['price']) : 0;
+                    if ($p <= 0) {
+                        continue;
+                    }
+                    $merged[] = $entry;
+                }
                 if ($idx >= count($merged)) {
                     return response()->json(['success' => false, 'error' => 'Temu LMP entry not found'], 404);
                 }

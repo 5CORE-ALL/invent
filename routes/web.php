@@ -5268,6 +5268,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress/l60-sales', [AliexpressController::class, 'getL60Sales'])->name('aliexpress.get.l60.sales');
     Route::get('/aliexpress-tabulator', [AliexpressController::class, 'aliexpressTabulatorView'])->name('aliexpress.tabulator.view');
     Route::get('/aliexpress-lmp', [AliexpressController::class, 'aliexpressLmpPage'])->name('aliexpress.lmp');
+    Route::get('/aliexpress-lmp/data', [AliexpressController::class, 'getAliexpressLmpData'])->name('aliexpress.lmp.data');
     Route::post('/aliexpress-lmp/upload', [AliexpressController::class, 'uploadAliexpressLmp'])->name('aliexpress.lmp.upload');
     Route::post('/aliexpress-lmp/save', [AliexpressController::class, 'saveAliexpressLmp'])->name('aliexpress.lmp.save');
     Route::get('/aliexpress-lmp/sample', [AliexpressController::class, 'downloadAliexpressLmpSample'])->name('aliexpress.lmp.sample');

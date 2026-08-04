@@ -4956,11 +4956,19 @@ class TemuController extends Controller
                 ->first();
         }
 
+        if ($existing && count($lmpEntries) === 0) {
+            // Full delete — removes row so linked-SKU merge cannot resurrect stale LMP
+            $existing->delete();
+
+            return;
+        }
+
         $payload = [
             'sku' => $existing ? (string) $existing->sku : $sku,
             'lmp' => $firstPrice,
             'lmp_link' => $firstLink,
-            'lmp_entries' => $lmpEntries,
+            // Always persist array (including []) so extract does not fall back to legacy columns
+            'lmp_entries' => array_values($lmpEntries),
             'lmp_2' => null,
             'lmp_link_2' => null,
         ];
@@ -5741,6 +5749,14 @@ class TemuController extends Controller
             return [];
         }
 
+        // Must prepare before groupContaining — otherwise the union graph is empty and
+        // delete/save only clears the current SKU while linked siblings still supply LMP on reload.
+        try {
+            $this->lmpSkuGroupService->prepareForSkus([$sku]);
+        } catch (\Throwable $e) {
+            // fall through to single-SKU write
+        }
+
         $group = $this->lmpSkuGroupService->groupContaining($sku);
 
         return $this->normalizeLinkedSkuGroup($group !== [] ? $group : [$sku]);
@@ -5827,8 +5843,9 @@ class TemuController extends Controller
         }
 
         $entries = $temuLmpRow->lmp_entries;
-        if (is_array($entries) && count($entries) > 0) {
-            return $entries;
+        // Trust lmp_entries when present (including []) so deletes are not undone by legacy lmp/lmp_2.
+        if (is_array($entries)) {
+            return array_values($entries);
         }
 
         $lmpEntries = [];

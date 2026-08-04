@@ -1862,48 +1862,155 @@ class AliexpressController extends Controller
     /**
      * Save LMP entries from grid modal (normalized SKU match; same rules as Temu saveTemuLmp).
      */
+    /**
+     * LMP drawer data for /price-increase (same shape as /cvr-master-temu-lmp).
+     * Source: aliexpress_lmp_data_sheet (/aliexpress-lmp).
+     */
+    public function getAliexpressLmpData(Request $request)
+    {
+        try {
+            $sku = trim((string) $request->query('sku', $request->input('sku', '')));
+            if ($sku === '') {
+                return response()->json(['success' => false, 'error' => 'SKU required'], 400);
+            }
+
+            $row = $this->findAliexpressLmpRow($sku);
+            $entries = $row ? $this->extractAliexpressLmpEntries($row) : [];
+            $competitors = [];
+            $landedPrices = [];
+            foreach ($entries as $entry) {
+                $price = isset($entry['price']) && $entry['price'] !== '' && $entry['price'] !== null
+                    ? (float) $entry['price']
+                    : 0.0;
+                if ($price <= 0) {
+                    continue;
+                }
+                $ship = isset($entry['ship']) && $entry['ship'] !== '' && $entry['ship'] !== null
+                    ? max(0, (float) $entry['ship'])
+                    : (isset($entry['delivery']) && $entry['delivery'] !== '' && $entry['delivery'] !== null
+                        ? max(0, (float) $entry['delivery'])
+                        : 0.0);
+                $total = round($price + $ship, 2);
+                if (empty($entry['ignored'])) {
+                    $landedPrices[] = $total;
+                }
+                $competitors[] = [
+                    'id' => 'aliexpress-'.(count($competitors) + 1),
+                    'price' => round($price, 2),
+                    'base_price' => round($price, 2),
+                    'delivery' => round($ship, 2),
+                    'shipping_cost' => round($ship, 2),
+                    'ship' => round($ship, 2),
+                    'total_price' => $total,
+                    'ignored' => ! empty($entry['ignored']),
+                    'product_link' => $entry['link'] ?? null,
+                    'link' => $entry['link'] ?? null,
+                    'source_sku' => $entry['source_sku'] ?? ($row->sku ?? $sku),
+                    'product_title' => '',
+                    'image' => null,
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'lmp' => count($landedPrices) > 0 ? round(min($landedPrices), 2) : null,
+                'competitors' => $competitors,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('AliExpress LMP data error: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'error' => 'Failed to fetch AliExpress LMP'], 500);
+        }
+    }
+
     public function saveAliexpressLmp(Request $request)
     {
         $request->validate([
             'sku' => 'required|string|max:255',
             'lmp_entries' => 'nullable|array',
             'lmp_entries.*.price' => 'nullable|numeric|min:0',
+            'lmp_entries.*.ship' => 'nullable|numeric|min:0',
+            'lmp_entries.*.delivery' => 'nullable|numeric|min:0',
             'lmp_entries.*.link' => 'nullable|string|max:2000',
         ]);
 
         $sku = trim($request->sku);
         $rawEntries = $request->input('lmp_entries', []);
+        // Explicit empty array means clear all LMP for this SKU (do not resurrect legacy columns)
+        if (! is_array($rawEntries)) {
+            $rawEntries = [];
+        }
         $lmpEntries = [];
         foreach ($rawEntries as $e) {
+            if (! is_array($e)) {
+                continue;
+            }
             $price = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
                 ? $this->sanitizePrice($e['price'])
                 : null;
-            $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim($e['link']) : null;
+            // Do not use sanitizePrice() for ship — PHP empty(0) would drop free shipping
+            $shipRaw = $e['ship'] ?? $e['delivery'] ?? null;
+            if ($shipRaw === '' || $shipRaw === null) {
+                $ship = 0.0;
+            } else {
+                $cleanedShip = preg_replace('/US\s*\$|[$,\s]/', '', (string) $shipRaw);
+                $ship = is_numeric($cleanedShip) ? max(0, (float) $cleanedShip) : 0.0;
+            }
+            $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim((string) $e['link']) : null;
             if ($price !== null || $link !== null) {
-                $lmpEntries[] = ['price' => $price, 'link' => $link];
+                $entry = [
+                    'price' => $price,
+                    'ship' => round($ship, 2),
+                    'delivery' => round($ship, 2),
+                    'link' => $link,
+                ];
+                if (! empty($e['ignored'])) {
+                    $entry['ignored'] = true;
+                }
+                if (! empty($e['source_sku'])) {
+                    $entry['source_sku'] = trim((string) $e['source_sku']);
+                }
+                $lmpEntries[] = $entry;
             }
         }
-        $prices = array_values(array_filter(array_map(static function ($e) {
-            return $e['price'] ?? null;
+        // Store landed LMP (price + ship) so OV L30 matches Del / P+S
+        $activePrices = array_values(array_filter(array_map(static function ($e) {
+            if (! empty($e['ignored'])) {
+                return null;
+            }
+            $p = isset($e['price']) ? (float) $e['price'] : 0;
+            if ($p <= 0) {
+                return null;
+            }
+            $s = isset($e['ship']) ? max(0, (float) $e['ship']) : 0;
+
+            return round($p + $s, 2);
         }, $lmpEntries)));
-        $firstPrice = count($prices) > 0 ? min($prices) : null;
-        $firstLink = $lmpEntries[0]['link'] ?? null;
+        $firstPrice = count($activePrices) > 0 ? min($activePrices) : null;
+        $firstLink = null;
+        foreach ($lmpEntries as $e) {
+            if (empty($e['ignored']) && ! empty($e['link'])) {
+                $firstLink = $e['link'];
+                break;
+            }
+        }
+        if ($firstLink === null) {
+            $firstLink = $lmpEntries[0]['link'] ?? null;
+        }
 
-        $normalizeSku = static function ($s) {
-            $s = strtoupper(trim((string) $s));
-            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
-            $s = preg_replace('/\s+/', ' ', $s);
+        $existing = $this->findAliexpressLmpRow($sku);
 
-            return $s;
-        };
+        if ($lmpEntries === []) {
+            if ($existing) {
+                $existing->delete();
+            }
 
-        $targetNormalized = $normalizeSku($sku);
-        $existing = AliexpressLmpDataSheet::all()->first(function ($row) use ($normalizeSku, $targetNormalized) {
-            return $normalizeSku($row->sku) === $targetNormalized;
-        });
+            return response()->json(['success' => true, 'message' => 'AliExpress LMP cleared']);
+        }
 
         $payload = [
-            'sku' => $sku,
+            'sku' => $existing ? $existing->sku : $sku,
             'lmp' => $firstPrice,
             'lmp_link' => $firstLink,
             'lmp_entries' => $lmpEntries,
@@ -1918,6 +2025,106 @@ class AliexpressController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'LMP saved successfully']);
+    }
+
+    /**
+     * Normalize SKU for AliExpress LMP sheet matching (same as pricing page).
+     */
+    private function normalizeAliexpressLmpSku(string $value): string
+    {
+        $s = strtoupper(trim($value));
+        $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+        $s = preg_replace('/\s+/', ' ', $s);
+
+        return $s;
+    }
+
+    private function findAliexpressLmpRow(string $sku): ?AliexpressLmpDataSheet
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! Schema::hasTable('aliexpress_lmp_data_sheet')) {
+            return null;
+        }
+
+        $exact = AliexpressLmpDataSheet::where('sku', $sku)->first();
+        if ($exact) {
+            return $exact;
+        }
+
+        $target = $this->normalizeAliexpressLmpSku($sku);
+
+        return AliexpressLmpDataSheet::query()
+            ->whereRaw(
+                'UPPER(REPLACE(REPLACE(REPLACE(TRIM(sku), CHAR(10), " "), CHAR(13), " "), CHAR(9), " ")) LIKE ?',
+                ['%'.str_replace(' ', '%', $target).'%']
+            )
+            ->get()
+            ->first(function ($row) use ($target) {
+                return $this->normalizeAliexpressLmpSku((string) $row->sku) === $target;
+            });
+    }
+
+    /**
+     * @return list<array{price:?float,ship?:float,delivery?:float,link:?string,ignored?:bool,source_sku?:string}>
+     */
+    private function extractAliexpressLmpEntries($row): array
+    {
+        if (! $row) {
+            return [];
+        }
+
+        // Trust explicit empty JSON array — do not resurrect legacy lmp / lmp_2
+        if (is_array($row->lmp_entries)) {
+            if ($row->lmp_entries === []) {
+                return [];
+            }
+            $out = [];
+            foreach ($row->lmp_entries as $e) {
+                if (! is_array($e)) {
+                    continue;
+                }
+                $price = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
+                    ? (float) $e['price']
+                    : null;
+                $shipRaw = $e['ship'] ?? $e['delivery'] ?? 0;
+                $ship = ($shipRaw !== '' && $shipRaw !== null) ? max(0, (float) $shipRaw) : 0.0;
+                $link = isset($e['link']) && trim((string) $e['link']) !== '' ? trim((string) $e['link']) : null;
+                if ($price === null && $link === null) {
+                    continue;
+                }
+                $entry = [
+                    'price' => $price,
+                    'ship' => round($ship, 2),
+                    'delivery' => round($ship, 2),
+                    'link' => $link,
+                ];
+                if (! empty($e['ignored'])) {
+                    $entry['ignored'] = true;
+                }
+                if (! empty($e['source_sku'])) {
+                    $entry['source_sku'] = trim((string) $e['source_sku']);
+                }
+                $out[] = $entry;
+            }
+
+            return $out;
+        }
+
+        $legacy = [];
+        if ($row->lmp !== null || $row->lmp_link) {
+            $legacy[] = [
+                'price' => $row->lmp !== null ? (float) $row->lmp : null,
+                'link' => $row->lmp_link ? trim((string) $row->lmp_link) : null,
+            ];
+        }
+        if ($row->lmp_2 !== null || $row->lmp_link_2) {
+            $legacy[] = [
+                'price' => $row->lmp_2 !== null ? (float) $row->lmp_2 : null,
+                'link' => $row->lmp_link_2 ? trim((string) $row->lmp_link_2) : null,
+            ];
+        }
+
+        return $legacy;
     }
 
     /**

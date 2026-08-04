@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\PurchasingPowerProduct;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Purchasing Power — Mirakl Connect channel + MCM seller APIs (OF21 / OR11).
+ * Purchasing Power — Mirakl Connect channel + MCM seller APIs (OF21 / OR11 / PRI01).
  */
 class PurchasingPowerApiService extends BestBuyApiService
 {
@@ -234,6 +235,292 @@ class PurchasingPowerApiService extends BestBuyApiService
                 'message' => 'Connection test failed: '.$e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Push listed price via Mirakl MCM PRI01 (uses PURCHASING_POWER_MCM_API_KEY).
+     * Overrides BestBuy Connect updatePrice — PP seller price lives on MCM offers, not Connect catalog.
+     *
+     * @return array{success: bool, message: string, status_code?: int|null, import_id?: string|null}
+     */
+    public function updatePrice(string $sku, float $price): array
+    {
+        $sku = trim($sku);
+        $price = round((float) $price, 2);
+
+        if ($sku === '' || $price <= 0) {
+            return ['success' => false, 'message' => 'Valid SKU and price are required.', 'status_code' => 422];
+        }
+
+        $apiKey = trim((string) config('services.purchasingpower.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.purchasingpower.mcm_base_url', ''), '/');
+        if ($apiKey === '' || $baseUrl === '') {
+            return [
+                'success' => false,
+                'message' => 'Purchasing Power MCM API key/base URL not configured (PURCHASING_POWER_MCM_API_KEY).',
+                'status_code' => 401,
+            ];
+        }
+
+        // Confirm offer exists (OF21) before pricing import
+        $offerSku = $this->resolveMcmOfferSku($sku, $apiKey, $baseUrl);
+        if ($offerSku === null) {
+            return [
+                'success' => false,
+                'message' => "No Purchasing Power MCM offer found for SKU: {$sku}",
+                'status_code' => 404,
+            ];
+        }
+
+        $csv = "offer-sku;price\n"
+            .'"'.str_replace('"', '""', $offerSku).'";'
+            .number_format($price, 2, '.', '')."\n";
+
+        $query = [];
+        $shopId = config('services.purchasingpower.shop_id');
+        if ($shopId !== null && $shopId !== '') {
+            $query['shop_id'] = (int) $shopId;
+        }
+
+        try {
+            $url = $baseUrl.'/api/offers/pricing/imports';
+            if ($query !== []) {
+                $url .= '?'.http_build_query($query);
+            }
+
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(60)
+                ->attach('file', $csv, 'pp-price-'.preg_replace('/[^A-Za-z0-9_-]+/', '_', $offerSku).'.csv')
+                ->post($url);
+
+            if (! $response->successful()) {
+                Log::warning('Purchasing Power MCM PRI01 price push failed', [
+                    'sku' => $sku,
+                    'offer_sku' => $offerSku,
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 800),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => 'Purchasing Power price push failed: HTTP '.$response->status().' '.substr($response->body(), 0, 300),
+                    'status_code' => $response->status(),
+                ];
+            }
+
+            $json = $response->json() ?? [];
+            $importId = $json['import_id'] ?? $json['importId'] ?? null;
+            if ($importId === null || $importId === '') {
+                return [
+                    'success' => false,
+                    'message' => 'Purchasing Power price push accepted no import_id.',
+                    'status_code' => $response->status(),
+                ];
+            }
+
+            $import = $this->waitForPricingImport((string) $importId, $apiKey, $baseUrl);
+            $linesOk = (int) ($import['lines_in_success'] ?? 0);
+            $linesErr = (int) ($import['lines_in_error'] ?? 0);
+            $offersUpdated = (int) ($import['offers_updated'] ?? 0);
+            $status = strtoupper((string) ($import['status'] ?? ''));
+
+            if ($linesErr > 0 || $linesOk < 1 || $offersUpdated < 1) {
+                $errMsg = $this->fetchPricingImportErrorSummary((string) $importId, $apiKey, $baseUrl);
+                Log::warning('Purchasing Power MCM PRI01 completed with errors', [
+                    'sku' => $sku,
+                    'offer_sku' => $offerSku,
+                    'import_id' => $importId,
+                    'status' => $status,
+                    'lines_in_success' => $linesOk,
+                    'lines_in_error' => $linesErr,
+                    'error' => $errMsg,
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $errMsg !== ''
+                        ? ('Purchasing Power price push failed: '.$errMsg)
+                        : ('Purchasing Power price push failed (import '.$importId.' status '.$status.')'),
+                    'status_code' => 400,
+                    'import_id' => (string) $importId,
+                ];
+            }
+
+            // Keep local listed price in sync only after MCM confirms update
+            try {
+                PurchasingPowerProduct::updateOrCreate(
+                    ['sku' => $offerSku],
+                    ['price' => $price]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Purchasing Power local price sync after PRI01 failed', [
+                    'sku' => $offerSku,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            Log::info('Purchasing Power MCM PRI01 price push complete', [
+                'sku' => $sku,
+                'offer_sku' => $offerSku,
+                'price' => $price,
+                'import_id' => $importId,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Price $'.number_format($price, 2).' pushed to Purchasing Power for SKU: '.$offerSku
+                    .' (import '.$importId.')',
+                'status_code' => $response->status(),
+                'import_id' => (string) $importId,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Purchasing Power MCM PRI01 exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Purchasing Power API error: '.$e->getMessage(),
+                'status_code' => null,
+            ];
+        }
+    }
+
+    /**
+     * Resolve live MCM shop_sku via OF21 only (no stale local fallback).
+     */
+    private function resolveMcmOfferSku(string $sku, string $apiKey, string $baseUrl): ?string
+    {
+        $candidates = array_values(array_unique(array_filter([
+            $sku,
+            strtoupper($sku),
+        ])));
+
+        foreach ($candidates as $candidate) {
+            $params = ['sku' => $candidate, 'max' => 20];
+            $shopId = config('services.purchasingpower.shop_id');
+            if ($shopId !== null && $shopId !== '') {
+                $params['shop_id'] = (int) $shopId;
+            }
+
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get($baseUrl.'/api/offers', $params);
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $offers = $response->json('offers') ?? [];
+                if (! is_array($offers) || $offers === []) {
+                    continue;
+                }
+
+                $skuUpper = strtoupper(trim($candidate));
+                foreach ($offers as $offer) {
+                    if (! is_array($offer)) {
+                        continue;
+                    }
+                    $shopSku = trim((string) ($offer['shop_sku'] ?? ''));
+                    if ($shopSku !== '' && strtoupper($shopSku) === $skuUpper) {
+                        return $shopSku;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Purchasing Power OF21 lookup failed', [
+                    'sku' => $candidate,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function waitForPricingImport(string $importId, string $apiKey, string $baseUrl): array
+    {
+        for ($i = 0; $i < 15; $i++) {
+            if ($i > 0) {
+                usleep(1500000);
+            }
+            try {
+                $response = Http::withoutVerifying()
+                    ->withHeaders([
+                        'Authorization' => $apiKey,
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get($baseUrl.'/api/offers/pricing/imports', ['import_id' => $importId]);
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $row = ($response->json('data') ?? [])[0] ?? null;
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $status = strtoupper((string) ($row['status'] ?? ''));
+                if (in_array($status, ['COMPLETE', 'FAILED', 'CANCELLED'], true)) {
+                    return $row;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Purchasing Power PRI01 status poll failed', [
+                    'import_id' => $importId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return [];
+    }
+
+    private function fetchPricingImportErrorSummary(string $importId, string $apiKey, string $baseUrl): string
+    {
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'Authorization' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->timeout(30)
+                ->get($baseUrl.'/api/offers/pricing/imports/'.$importId.'/error_report');
+
+            if (! $response->successful()) {
+                return '';
+            }
+
+            $body = trim((string) $response->body());
+            $lines = preg_split("/\r\n|\n|\r/", $body) ?: [];
+            // Skip CSV header; return first error line condensed
+            foreach ($lines as $idx => $line) {
+                if ($idx === 0) {
+                    continue;
+                }
+                $line = trim($line);
+                if ($line !== '') {
+                    return substr($line, 0, 300);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        return '';
     }
 
     /**

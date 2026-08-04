@@ -9551,22 +9551,52 @@
                     return;
                 }
                 let removedCount = 0;
-                withTemuLmpEntries(sku, function(entries) {
-                    const indices = [];
+                // Match against API competitors[] (parallel to mapped entries) by temu-N id,
+                // then rewrite remaining rows back into temu_lmp via /temu-lmp/save.
+                withTemuLmpEntries(sku, function(entries, existing) {
+                    const removeIds = {};
                     temuItems.forEach(function(item) {
-                        const idx = findTemuEntryIndex(entries, item.id, item.price, item.link);
-                        if (idx >= 0 && indices.indexOf(idx) === -1) indices.push(idx);
+                        const id = String(item.id || '').trim();
+                        if (id) removeIds[id] = true;
                     });
-                    if (!indices.length) return false;
-                    // Delete high→low so earlier indices stay valid
-                    indices.sort(function(a, b) { return b - a; });
-                    indices.forEach(function(idx) { entries.splice(idx, 1); });
-                    removedCount = indices.length;
-                    return entries;
+                    const next = [];
+                    const list = Array.isArray(existing) ? existing : [];
+                    for (let i = 0; i < list.length; i++) {
+                        const c = list[i] || {};
+                        const id = String(c.id || ('temu-' + (i + 1)));
+                        if (removeIds[id]) {
+                            removedCount++;
+                            continue;
+                        }
+                        if (entries[i]) {
+                            next.push(entries[i]);
+                        } else {
+                            let delivery = parseFloat(c.delivery != null ? c.delivery : c.shipping_cost);
+                            if (isNaN(delivery) || delivery < 0) delivery = 0;
+                            next.push({
+                                price: c.price,
+                                delivery: delivery,
+                                link: c.link || c.product_link || null,
+                                ignored: !!c.ignored,
+                                source_sku: c.source_sku || sku,
+                            });
+                        }
+                    }
+                    if (removedCount === 0) {
+                        temuItems.forEach(function(item) {
+                            const idx = findTemuEntryIndex(next, item.id, item.price, item.link);
+                            if (idx >= 0) {
+                                next.splice(idx, 1);
+                                removedCount++;
+                            }
+                        });
+                    }
+                    if (!removedCount) return false;
+                    return next;
                 }, function(ok) {
                     if (ok) {
                         success += removedCount;
-                        failed += (temuItems.length - removedCount);
+                        failed += Math.max(0, temuItems.length - removedCount);
                     } else {
                         failed += temuItems.length;
                     }

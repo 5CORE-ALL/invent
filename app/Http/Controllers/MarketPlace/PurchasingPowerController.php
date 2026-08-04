@@ -321,7 +321,7 @@ class PurchasingPowerController extends Controller
                 'sroi_percent'       => $sroi,
                 'sgpft_percent'      => $sgpft,
                 'price_push_success' => false,
-                'price_push_message' => 'No API push configured for Purchasing Power',
+                'price_push_message' => 'SPRICE saved. Use Push to send price to Purchasing Power (MCM PRI01).',
             ]);
         } catch (\Exception $e) {
             Log::error('PP SPRICE tabulator save failed: ' . $e->getMessage());
