@@ -5930,8 +5930,11 @@ class CvrMasterController extends Controller
                 'avg_pft' => $avgPft,
             ];
 
+            // Promo/CPN can skip pair sync so Temu-only apply does not copy to Temu2 / Ebay siblings
+            $skipPairSync = filter_var($request->input('skip_pair_sync', false), FILTER_VALIDATE_BOOLEAN);
+
             // Temu ↔ Temu2: any suggested price on one auto-applies to the other (same SKU)
-            if ($marketplace === 'temu' || $marketplace === 'temu2') {
+            if (!$skipPairSync && ($marketplace === 'temu' || $marketplace === 'temu2')) {
                 $otherTemu = $marketplace === 'temu' ? 'temu2' : 'temu';
                 try {
                     if ($sprice > 0) {
@@ -5950,7 +5953,7 @@ class CvrMasterController extends Controller
             }
 
             // Ebay1 ↔ Ebay2 ↔ Ebay3: same SPRICE on any one applies to the other two (same SKU)
-            foreach ($this->ebaySiblingChannels($marketplace) as $otherEbay) {
+            foreach ($skipPairSync ? [] : $this->ebaySiblingChannels($marketplace) as $otherEbay) {
                 try {
                     if ($sprice > 0) {
                         $this->applySuggestedSpriceToSku($skuToUse, $otherEbay, $payload);

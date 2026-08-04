@@ -256,8 +256,18 @@
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-price { width: 68px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-std-prc { width: 64px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-promo,
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-promo-pct,
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-cpn,
-        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-dsc { width: 64px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-cpn-pct,
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-dsc { width: 52px; }
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-promo-pct-th {
+            background: #fd7e14 !important;
+            color: #000 !important;
+        }
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-cpn-pct-th {
+            background: #e83e8c !important;
+            color: #000 !important;
+        }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-lmp { width: 64px; }
         #ovl30DetailsModal .modal-vertical-header th.ovl30-std-prc-th {
             background: #20c997 !important;
@@ -276,10 +286,12 @@
             color: #fff !important;
         }
         #ovl30DetailsModal .editable-std-prc,
-        #ovl30DetailsModal .editable-promo,
-        #ovl30DetailsModal .editable-cpn,
+        #ovl30DetailsModal .editable-pm-dollar,
+        #ovl30DetailsModal .editable-pm-pct,
+        #ovl30DetailsModal .editable-cpn-dollar,
+        #ovl30DetailsModal .editable-cpn-pct,
         #ovl30DetailsModal .editable-dsc {
-            width: 4em !important;
+            width: 3.2em !important;
             min-width: 0 !important;
             max-width: 100% !important;
             display: inline-block;
@@ -297,8 +309,10 @@
             appearance: textfield;
         }
         #ovl30DetailsModal .editable-std-prc:focus,
-        #ovl30DetailsModal .editable-promo:focus,
-        #ovl30DetailsModal .editable-cpn:focus,
+        #ovl30DetailsModal .editable-pm-dollar:focus,
+        #ovl30DetailsModal .editable-pm-pct:focus,
+        #ovl30DetailsModal .editable-cpn-dollar:focus,
+        #ovl30DetailsModal .editable-cpn-pct:focus,
         #ovl30DetailsModal .editable-dsc:focus {
             border: none !important;
             background: transparent !important;
@@ -307,29 +321,37 @@
         }
         #ovl30DetailsModal .editable-std-prc::-webkit-outer-spin-button,
         #ovl30DetailsModal .editable-std-prc::-webkit-inner-spin-button,
-        #ovl30DetailsModal .editable-promo::-webkit-outer-spin-button,
-        #ovl30DetailsModal .editable-promo::-webkit-inner-spin-button,
-        #ovl30DetailsModal .editable-cpn::-webkit-outer-spin-button,
-        #ovl30DetailsModal .editable-cpn::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-pm-dollar::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-pm-dollar::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-pm-pct::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-pm-pct::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-cpn-dollar::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-cpn-dollar::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-cpn-pct::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-cpn-pct::-webkit-inner-spin-button,
         #ovl30DetailsModal .editable-dsc::-webkit-outer-spin-button,
         #ovl30DetailsModal .editable-dsc::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
         }
         #ovl30DetailsModal .ovl30-std-prc-wrap,
-        #ovl30DetailsModal .ovl30-promo-wrap,
-        #ovl30DetailsModal .ovl30-cpn-wrap,
+        #ovl30DetailsModal .ovl30-pm-dollar-wrap,
+        #ovl30DetailsModal .ovl30-pm-pct-wrap,
+        #ovl30DetailsModal .ovl30-cpn-dollar-wrap,
+        #ovl30DetailsModal .ovl30-cpn-pct-wrap,
         #ovl30DetailsModal .ovl30-dsc-wrap {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 4px;
         }
-        #ovl30DetailsModal #modal-promo-input,
-        #ovl30DetailsModal #modal-cpn-input,
+        #ovl30DetailsModal #modal-pm-dollar-input,
+        #ovl30DetailsModal #modal-pm-pct-input,
+        #ovl30DetailsModal #modal-cpn-dollar-input,
+        #ovl30DetailsModal #modal-cpn-pct-input,
         #ovl30DetailsModal #modal-dsc-input {
             font-weight: 700;
-            width: 72px;
+            width: 56px;
         }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-link { width: 40px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-check { width: 34px; }
@@ -732,7 +754,13 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
-        /* Right: Views→LMP (8–15), SPRICE→SPFT (20–24) — Promo/CPN/DSC center via class; STD PRC col 19 */
+        /* Right: Views→LMP (5–12), SPRICE→SPFT (22–26) — Promo/CPN/Diff/DSC after STD via class */
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(6),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(7),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(7),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(8),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(8),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(9),
@@ -743,55 +771,53 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(11),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(12),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(26),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(26) {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
+        }
+        /* Center: Miss, Link, Check, Suggest, STD, Push, By, Hist */
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24) {
-            text-align: right !important;
-            font-variant-numeric: tabular-nums;
-        }
-        /* Center: Miss, Link, Check, Suggest, STD PRC, Push, By, Hist */
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(26),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(26),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(27),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(27) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(27),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(28),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(28),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(29),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(29) {
             text-align: center !important;
         }
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(15) .lmp-channel-price,
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(15) .lmp-add-btn {
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(12) .lmp-add-btn {
             font-size: inherit;
             white-space: nowrap;
         }
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-std-prc-th,
         #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-std-prc-cell,
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-promo-th,
-        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-promo-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-pm-dollar-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-promo-pct-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-pm-pct-cell,
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-cpn-th,
-        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-cpn-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-cpn-dollar-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-cpn-pct-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-cpn-pct-cell,
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-dsc-th,
         #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-dsc-cell {
             text-align: center !important;
@@ -1803,22 +1829,42 @@
                         </button>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Promotion per marketplace: 10% or $1 off each channel’s own SPRICE (different results per channel).">
-                        <label for="modal-promo-input">Promotion</label>
-                        <input type="text" id="modal-promo-input" class="form-control form-control-sm text-end fw-bold"
-                            placeholder="10% or 1" title="1 = $1 less on each channel SPRICE; 10% = 10% less on each">
-                        <button type="button" id="modal-apply-promo-btn" class="btn btn-sm btn-warning"
-                            title="Apply promotion to each channel’s SPRICE" aria-label="Apply Promotion">
+                        title="PM $: dollar off SPRICE — check channel(s) first (e.g. Temu only).">
+                        <label for="modal-pm-dollar-input">PM $</label>
+                        <input type="text" id="modal-pm-dollar-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="1" title="$ less on checked channels">
+                        <button type="button" id="modal-apply-pm-dollar-btn" class="btn btn-sm btn-warning"
+                            title="Apply PM $ to checked channels only" aria-label="Apply PM $">
                             <i class="fas fa-check"></i>
                         </button>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="CPN per marketplace: 10% or $1 off each channel’s own SPRICE (same as Promotion).">
-                        <label for="modal-cpn-input">CPN</label>
-                        <input type="text" id="modal-cpn-input" class="form-control form-control-sm text-end fw-bold"
-                            placeholder="10% or 1" title="1 = $1 less on each channel SPRICE; 10% = 10% less on each">
-                        <button type="button" id="modal-apply-cpn-btn" class="btn btn-sm btn-danger"
-                            title="Apply CPN to each channel’s SPRICE" aria-label="Apply CPN">
+                        title="PM %: percent off SPRICE — check channel(s) first.">
+                        <label for="modal-pm-pct-input">PM %</label>
+                        <input type="text" id="modal-pm-pct-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="10" title="% less on checked channels">
+                        <button type="button" id="modal-apply-pm-pct-btn" class="btn btn-sm btn-warning"
+                            title="Apply PM % to checked channels only" aria-label="Apply PM %">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="CPN $: dollar off SPRICE — check channel(s) first.">
+                        <label for="modal-cpn-dollar-input">CPN $</label>
+                        <input type="text" id="modal-cpn-dollar-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="1" title="$ less on checked channels">
+                        <button type="button" id="modal-apply-cpn-dollar-btn" class="btn btn-sm btn-danger"
+                            title="Apply CPN $ to checked channels only" aria-label="Apply CPN $">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="CPN %: percent off SPRICE — check channel(s) first.">
+                        <label for="modal-cpn-pct-input">CPN %</label>
+                        <input type="text" id="modal-cpn-pct-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="10" title="% less on checked channels">
+                        <button type="button" id="modal-apply-cpn-pct-btn" class="btn btn-sm btn-danger"
+                            title="Apply CPN % to checked channels only" aria-label="Apply CPN %">
                             <i class="fas fa-check"></i>
                         </button>
                     </div>
@@ -1846,9 +1892,6 @@
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-icon">
                                 <col class="ovl30-col-price">
-                                <col class="ovl30-col-promo">
-                                <col class="ovl30-col-cpn">
-                                <col class="ovl30-col-dsc">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
@@ -1861,6 +1904,11 @@
                                 <col class="ovl30-col-check">
                                 <col class="ovl30-col-icon">
                                 <col class="ovl30-col-std-prc">
+                                <col class="ovl30-col-promo">
+                                <col class="ovl30-col-promo-pct">
+                                <col class="ovl30-col-cpn">
+                                <col class="ovl30-col-cpn-pct">
+                                <col class="ovl30-col-dsc">
                                 <col class="ovl30-col-sprice">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
@@ -1876,9 +1924,6 @@
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-promo-th" title="Promotion — 1 = $1 off each channel SPRICE; 10% = 10% off each (different per marketplace)."><span>Promotion</span></th>
-                                    <th class="ovl30-cpn-th" title="CPN — 1 = $1 off each channel SPRICE; 10% = 10% off each (same as Promotion)."><span>CPN</span></th>
-                                    <th class="ovl30-dsc-th" title="DSC — dollar only off each channel SPRICE (e.g. 1 = $1 off). No %."><span>DSC</span></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1897,6 +1942,11 @@
                                         </button>
                                     </th>
                                     <th class="ovl30-std-prc-th" title="Standard Price (SP) — one value for all marketplaces on this SKU (amazon_data_view.STANDARD_PRICE). Editable on any channel row."><span>STD PRC</span></th>
+                                    <th class="ovl30-promo-th" title="PM $ — enter dollar amount less; Enter applies this channel only"><span>PM $</span></th>
+                                    <th class="ovl30-promo-pct-th" title="PM % — enter percent less; Enter applies this channel only"><span>PM %</span></th>
+                                    <th class="ovl30-cpn-th" title="CPN $ — enter dollar amount less; Enter applies this channel only"><span>CPN $</span></th>
+                                    <th class="ovl30-cpn-pct-th" title="CPN % — enter percent less; Enter applies this channel only"><span>CPN %</span></th>
+                                    <th class="ovl30-dsc-th" title="DSC — dollar only off each channel SPRICE (e.g. 1 = $1 off). No %."><span>DSC</span></th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1926,18 +1976,6 @@
                                             style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"
                                             title="View Price history (Rolling L30)"></i>
                                     </th>
-                                    <th class="ovl30-promo-th text-center">
-                                        <input type="text" id="modal-promo-header-input" class="form-control form-control-sm text-end editable-promo"
-                                            placeholder="1 or 10%" title="Off each channel’s own SPRICE — different per marketplace">
-                                    </th>
-                                    <th class="ovl30-cpn-th text-center">
-                                        <input type="text" id="modal-cpn-header-input" class="form-control form-control-sm text-end editable-cpn"
-                                            placeholder="1 or 10%" title="CPN off each channel’s own SPRICE — same as Promotion">
-                                    </th>
-                                    <th class="ovl30-dsc-th text-center">
-                                        <input type="text" id="modal-dsc-header-input" class="form-control form-control-sm text-end editable-dsc"
-                                            placeholder="$1" title="DSC $ off each channel’s own SPRICE — dollar only">
-                                    </th>
                                     <th class="text-end ovl30-metric-col" id="modal-total-views">0</th>
                                     <th class="text-end ovl30-metric-col">
                                         <span id="modal-avg-cvr">0%</span>
@@ -1956,6 +1994,26 @@
                                     <th></th>
                                     <th></th>
                                     <th class="ovl30-std-prc-th"></th>
+                                    <th class="ovl30-promo-th text-center">
+                                        <input type="text" id="modal-pm-dollar-header-input" class="form-control form-control-sm text-end"
+                                            placeholder="$" title="PM $ seed for checked channels">
+                                    </th>
+                                    <th class="ovl30-promo-pct-th text-center">
+                                        <input type="text" id="modal-pm-pct-header-input" class="form-control form-control-sm text-end"
+                                            placeholder="%" title="PM % seed for checked channels">
+                                    </th>
+                                    <th class="ovl30-cpn-th text-center">
+                                        <input type="text" id="modal-cpn-dollar-header-input" class="form-control form-control-sm text-end"
+                                            placeholder="$" title="CPN $ seed for checked channels">
+                                    </th>
+                                    <th class="ovl30-cpn-pct-th text-center">
+                                        <input type="text" id="modal-cpn-pct-header-input" class="form-control form-control-sm text-end"
+                                            placeholder="%" title="CPN % seed for checked channels">
+                                    </th>
+                                    <th class="ovl30-dsc-th text-center">
+                                        <input type="text" id="modal-dsc-header-input" class="form-control form-control-sm text-end editable-dsc"
+                                            placeholder="$1" title="DSC $ off each channel’s own SPRICE — dollar only">
+                                    </th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
                                     <th class="text-end" id="modal-avg-sroi">0%</th>
                                     <th class="text-end" id="modal-avg-snroi">0%</th>
@@ -1969,7 +2027,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="27" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="29" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -3082,11 +3140,19 @@
             // Restore per-SKU siblings preference (saved when user ticks Siblings for this SKU)
             $('#modal-siblings-apply-cb').prop('checked', getSiblingsPrefForSku(sku));
             $('#modal-std-sp-input').val('');
-            modalPromotionRaw = '';
-            modalCpnRaw = '';
+            modalPmDollarRaw = '';
+            modalPmPctRaw = '';
+            modalCpnDollarRaw = '';
+            modalCpnPctRaw = '';
             modalDscRaw = '';
-            $('#modal-promo-input, #modal-promo-header-input, .editable-promo').val('');
-            $('#modal-cpn-input, #modal-cpn-header-input, .editable-cpn').val('');
+            modalPmDollarByChannel = {};
+            modalPmPctByChannel = {};
+            modalCpnDollarByChannel = {};
+            modalCpnPctByChannel = {};
+            $('#modal-pm-dollar-input, #modal-pm-dollar-header-input').val('');
+            $('#modal-pm-pct-input, #modal-pm-pct-header-input').val('');
+            $('#modal-cpn-dollar-input, #modal-cpn-dollar-header-input').val('');
+            $('#modal-cpn-pct-input, #modal-cpn-pct-header-input').val('');
             $('#modal-dsc-input, #modal-dsc-header-input, .editable-dsc').val('');
             refreshModalSiblingSkus(sku);
             
@@ -3197,7 +3263,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="27" class="text-center text-muted py-4">
+                    <td colspan="29" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3208,7 +3274,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="27" class="text-center text-muted py-4">
+                    <td colspan="29" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3218,7 +3284,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="27" class="text-center text-danger py-4">
+                    <td colspan="29" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -3235,9 +3301,15 @@
         let modalClearSpriceModeActive = false;
         let modalSelectedChannels = new Set();
         let modalSiblingSkus = []; // other SKUs sharing the same parent
-        let modalPromotionRaw = ''; // shared Promo value (e.g. "10%" or "10")
-        let modalCpnRaw = ''; // shared CPN value (same format as Promotion)
+        let modalPmDollarRaw = '';
+        let modalPmPctRaw = '';
+        let modalCpnDollarRaw = '';
+        let modalCpnPctRaw = '';
         let modalDscRaw = ''; // shared DSC value (dollar only, e.g. "1" or "5")
+        let modalPmDollarByChannel = {}; // { temu: '1', ... }
+        let modalPmPctByChannel = {};    // { temu: '10', ... }
+        let modalCpnDollarByChannel = {};
+        let modalCpnPctByChannel = {};
 
         function getModalPrimarySku() {
             const sku = String($('#modalSkuName').text() || '').trim();
@@ -4329,42 +4401,6 @@
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
-                        <td class="text-center ovl30-promo-cell ${textClass}">
-                            ${(() => {
-                                if (!isListed) return '-';
-                                const promoVal = String(typeof modalPromotionRaw !== 'undefined' ? modalPromotionRaw : '')
-                                    .replace(/"/g, '&quot;');
-                                return '<span class="ovl30-promo-wrap">'
-                                    + '<input type="text" class="form-control form-control-sm editable-promo" '
-                                    + 'value="' + promoVal + '" placeholder="10%" '
-                                    + 'title="1 = $1 off this channel SPRICE; 10% = % off (per marketplace)">'
-                                    + '</span>';
-                            })()}
-                        </td>
-                        <td class="text-center ovl30-cpn-cell ${textClass}">
-                            ${(() => {
-                                if (!isListed) return '-';
-                                const cpnVal = String(typeof modalCpnRaw !== 'undefined' ? modalCpnRaw : '')
-                                    .replace(/"/g, '&quot;');
-                                return '<span class="ovl30-cpn-wrap">'
-                                    + '<input type="text" class="form-control form-control-sm editable-cpn" '
-                                    + 'value="' + cpnVal + '" placeholder="10%" '
-                                    + 'title="CPN: 1 = $1 off this channel SPRICE; 10% = % off (same as Promotion)">'
-                                    + '</span>';
-                            })()}
-                        </td>
-                        <td class="text-center ovl30-dsc-cell ${textClass}">
-                            ${(() => {
-                                if (!isListed) return '-';
-                                const dscVal = String(typeof modalDscRaw !== 'undefined' ? modalDscRaw : '')
-                                    .replace(/"/g, '&quot;');
-                                return '<span class="ovl30-dsc-wrap">'
-                                    + '<input type="text" class="form-control form-control-sm editable-dsc" '
-                                    + 'value="' + dscVal + '" placeholder="$1" '
-                                    + 'title="DSC: dollar only — e.g. 1 = $1 off this channel SPRICE (no %)">'
-                                    + '</span>';
-                            })()}
-                        </td>
                         <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : views.toLocaleString())}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${!isListed ? '-' : (viewsMissing ? 'N/A' : (views > 0 ? '<span style="' + styleForCellColor(cvrColor) + '">' + cvr.toFixed(1) + '%</span>' + cvrChartDot : '-'))}</td>
                         <td class="text-end ovl30-metric-col ${textClass}">${isListed && price > 0 && lp > 0 ? '<span style="' + styleForCellColor(groiColor) + '">' + Math.round(groi) + '%</span>' : '-'}</td>
@@ -4432,6 +4468,70 @@
                                     + '<input type="number" class="form-control form-control-sm editable-std-prc" '
                                     + 'value="' + valAttr + '" step="0.01" min="0" '
                                     + 'placeholder="" title="Standard Price (STD PRC) — same SP for all marketplaces">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-pm-dollar-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const mpKey = String(item.marketplace || '').toLowerCase().replace(/\s+/g, '');
+                                const v = String((modalPmDollarByChannel && modalPmDollarByChannel[mpKey]) || '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-pm-dollar-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-pm-dollar" '
+                                    + 'value="' + v + '" placeholder="$" '
+                                    + 'title="PM $ — type amount; auto-saves ($ less on this channel SPRICE)">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-pm-pct-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const mpKey = String(item.marketplace || '').toLowerCase().replace(/\s+/g, '');
+                                const v = String((modalPmPctByChannel && modalPmPctByChannel[mpKey]) || '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-pm-pct-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-pm-pct" '
+                                    + 'value="' + v + '" placeholder="%" '
+                                    + 'title="PM % — type percent; auto-saves (% less on this channel SPRICE)">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-cpn-dollar-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const mpKey = String(item.marketplace || '').toLowerCase().replace(/\s+/g, '');
+                                const v = String((modalCpnDollarByChannel && modalCpnDollarByChannel[mpKey]) || '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-cpn-dollar-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-cpn-dollar" '
+                                    + 'value="' + v + '" placeholder="$" '
+                                    + 'title="CPN $ — type amount; auto-saves ($ less on this channel SPRICE)">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-cpn-pct-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const mpKey = String(item.marketplace || '').toLowerCase().replace(/\s+/g, '');
+                                const v = String((modalCpnPctByChannel && modalCpnPctByChannel[mpKey]) || '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-cpn-pct-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-cpn-pct" '
+                                    + 'value="' + v + '" placeholder="%" '
+                                    + 'title="CPN % — type percent; auto-saves (% less on this channel SPRICE)">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-dsc-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const dscVal = String(typeof modalDscRaw !== 'undefined' ? modalDscRaw : '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-dsc-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-dsc" '
+                                    + 'value="' + dscVal + '" placeholder="$1" '
+                                    + 'title="DSC: dollar only — e.g. 1 = $1 off this channel SPRICE (no %)">'
                                     + '</span>';
                             })()}
                         </td>
@@ -6932,22 +7032,30 @@
             }
         });
 
-        // ==================== PROMOTION (per-channel SPRICE) ====================
-        // "1" = $1 less on EACH channel’s current SPRICE (different per marketplace).
-        // "10%" = 10% less on EACH channel’s current SPRICE.
-        // STD channel rules (SB2B/TopDawg/Faire/Purchase) are for SPRICE $ Apply, not Promotion.
-        function parseModalPromotion(raw) {
+        // ==================== PM $ / PM % / CPN $ / CPN % (per-channel only) ====================
+        // $ column → dollar less. % column → percent less. Enter = that row; toolbar = checked only.
+        function parseModalDollarAmount(raw) {
             const s = String(raw == null ? '' : raw).trim();
-            if (!s) return null;
-            const pct = s.match(/^(-?\d+(?:\.\d+)?)\s*%$/);
-            if (pct) {
-                const value = parseFloat(pct[1]);
-                if (!isFinite(value) || value === 0) return null;
-                return { type: 'percent', value: value, label: value + '%' };
-            }
+            if (!s || /%/.test(s)) return null;
             const num = parseFloat(s.replace(/[$,\s]/g, '').replace(',', '.'));
             if (!isFinite(num) || num === 0) return null;
-            return { type: 'dollar', value: num, label: '$' + Math.abs(num).toFixed(2) };
+            return { type: 'dollar', value: Math.abs(num), label: '$' + Math.abs(num).toFixed(2) };
+        }
+
+        function parseModalPercentAmount(raw) {
+            const s = String(raw == null ? '' : raw).trim();
+            if (!s) return null;
+            const num = parseFloat(s.replace(/[%$,\s]/g, '').replace(',', '.'));
+            if (!isFinite(num) || num === 0) return null;
+            return { type: 'percent', value: Math.abs(num), label: Math.abs(num) + '%' };
+        }
+
+        function parseModalPromotion(raw) {
+            // Legacy helper for DSC / callers that still pass "1" or "10%"
+            const s = String(raw == null ? '' : raw).trim();
+            if (!s) return null;
+            if (/%/.test(s)) return parseModalPercentAmount(s);
+            return parseModalDollarAmount(s);
         }
 
         function applyPromotionToSpriceBase(base, promo) {
@@ -6958,29 +7066,20 @@
             return Math.max(0.01, +Number(next).toFixed(2));
         }
 
-        function syncModalPromotionInputs(raw, exceptEl) {
-            modalPromotionRaw = String(raw == null ? '' : raw);
-            const $except = exceptEl ? $(exceptEl) : $();
-            $('#modal-promo-input, #modal-promo-header-input, .editable-promo').each(function() {
-                if ($except.length && this === $except[0]) return;
-                if ($(this).is(':focus') && !$except.length) return;
-                $(this).val(modalPromotionRaw);
-            });
+        function mpKeyFromRow($tr) {
+            return String(($tr && $tr.attr('data-marketplace')) || '').toLowerCase().replace(/\s+/g, '');
         }
 
-        function collectModalPromoTargetRows() {
+        function collectCheckedPromoRows() {
             const $rows = [];
             const seen = {};
-            // Prefer checked channels; if none checked, all listed editable rows
-            const requireSelected = modalSelectedChannels.size > 0;
+            if (modalSelectedChannels.size === 0) return $rows;
             $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
                 const $tr = $(this);
                 if (!$tr.find('.editable-sprice').length) return;
                 if (String($tr.attr('data-editable') || '') === '0') return;
-                const rowSku = String($tr.attr('data-sku') || '');
-                if (!rowSku || rowSku === 'Not Listed') return;
                 const mp = String($tr.attr('data-marketplace') || '');
-                if (requireSelected && !modalSelectedChannels.has(mp)) return;
+                if (!modalSelectedChannels.has(mp)) return;
                 const key = mp.toLowerCase().replace(/\s+/g, '');
                 if (seen[key]) return;
                 seen[key] = true;
@@ -6989,220 +7088,377 @@
             return $rows;
         }
 
-        function applyModalPromotionToAll() {
-            const raw = String($('#modal-promo-input').val() || modalPromotionRaw || '').trim();
-            const promo = parseModalPromotion(raw);
-            if (!promo) {
-                showToast('Enter a promotion (e.g. 1 or 10%)', 'error');
-                $('#modal-promo-input').focus();
+        // DSC still targets all editable SPRICE rows (PM/CPN use checked-only)
+        function collectModalPromoTargetRows() {
+            const $rows = [];
+            $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
+                const $tr = $(this);
+                if (!$tr.find('.editable-sprice').length) return;
+                if (String($tr.attr('data-editable') || '') === '0') return;
+                const rowSku = String($tr.attr('data-sku') || '');
+                if (!rowSku || rowSku === 'Not Listed') return;
+                $rows.push($tr);
+            });
+            return $rows;
+        }
+
+        function discountFieldMeta(kind, mode) {
+            // kind: 'pm' | 'cpn' ; mode: 'dollar' | 'percent'
+            if (kind === 'cpn' && mode === 'percent') {
+                return {
+                    label: 'CPN %',
+                    inputSel: '.editable-cpn-pct',
+                    map: function() { return modalCpnPctByChannel; },
+                    setMap: function(k, v) { modalCpnPctByChannel[k] = v; },
+                    $btn: function() { return $('#modal-apply-cpn-pct-btn'); },
+                    parse: parseModalPercentAmount,
+                    err: 'Enter CPN % (e.g. 10)'
+                };
+            }
+            if (kind === 'cpn') {
+                return {
+                    label: 'CPN $',
+                    inputSel: '.editable-cpn-dollar',
+                    map: function() { return modalCpnDollarByChannel; },
+                    setMap: function(k, v) { modalCpnDollarByChannel[k] = v; },
+                    $btn: function() { return $('#modal-apply-cpn-dollar-btn'); },
+                    parse: parseModalDollarAmount,
+                    err: 'Enter CPN $ (e.g. 1)'
+                };
+            }
+            if (mode === 'percent') {
+                return {
+                    label: 'PM %',
+                    inputSel: '.editable-pm-pct',
+                    map: function() { return modalPmPctByChannel; },
+                    setMap: function(k, v) { modalPmPctByChannel[k] = v; },
+                    $btn: function() { return $('#modal-apply-pm-pct-btn'); },
+                    parse: parseModalPercentAmount,
+                    err: 'Enter PM % (e.g. 10)'
+                };
+            }
+            return {
+                label: 'PM $',
+                inputSel: '.editable-pm-dollar',
+                map: function() { return modalPmDollarByChannel; },
+                setMap: function(k, v) { modalPmDollarByChannel[k] = v; },
+                $btn: function() { return $('#modal-apply-pm-dollar-btn'); },
+                parse: parseModalDollarAmount,
+                err: 'Enter PM $ (e.g. 1)'
+            };
+        }
+
+        function parseMoneyVal(raw) {
+            const n = parseFloat(String(raw == null ? '' : raw).replace(/[$,\s]/g, '').replace(',', '.'));
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
+
+        function getRowSpriceNow($tr) {
+            const $inp = $tr.find('.editable-sprice');
+            if ($inp.length) {
+                const v = parseMoneyVal($inp.val());
+                if (v > 0) return v;
+            }
+            const text = parseMoneyVal($tr.find('.ovl30-sprice-cell').text());
+            if (text > 0) return text;
+            // Fall back to channel Price if SPRICE empty
+            return parseMoneyVal($tr.attr('data-price'));
+        }
+
+        function discountAppliedAttr(kind, mode) {
+            return 'data-' + kind + '-' + (mode === 'percent' ? 'pct' : 'dollar') + '-applied';
+        }
+
+        function getDiscountBase($tr, kind, mode) {
+            let base = getRowSpriceNow($tr);
+            const prev = parseFloat($tr.attr(discountAppliedAttr(kind, mode)) || 0) || 0;
+            // Undo previous apply of THIS field so re-typing recalculates from pre-discount SPRICE
+            if (mode === 'dollar' && prev > 0) {
+                base = base + prev;
+            } else if (mode === 'percent' && prev > 0 && prev < 100) {
+                base = base / (1 - (prev / 100));
+            }
+            return +Number(base).toFixed(2);
+        }
+
+        function setRowSpriceUi($tr, newPrice) {
+            const $inp = $tr.find('.editable-sprice');
+            if ($inp.length) {
+                $inp.val(newPrice.toFixed(2)).trigger('input');
                 return;
             }
-            syncModalPromotionInputs(raw);
-            const $rows = collectModalPromoTargetRows();
+            // Non-editable display: still show updated SPRICE
+            const $cell = $tr.find('.ovl30-sprice-cell');
+            if ($cell.length) {
+                $cell.html('<span class="ovl30-sprice-wrap">$' + newPrice.toFixed(2) + '</span>');
+            }
+        }
+
+        function applyDiscountToRows($rows, raw, kind, mode, $btn, opts) {
+            opts = opts || {};
+            const meta = discountFieldMeta(kind, mode);
+            const promo = meta.parse(raw);
+            if (!promo) {
+                if (!opts.silent) showToast(meta.err, 'error');
+                return;
+            }
             if (!$rows.length) {
-                showToast('No editable SPRICE rows — check channels or enter SPRICE first', 'error');
+                if (!opts.silent) showToast('Check the channel(s) to apply — e.g. only Temu', 'error');
                 return;
             }
             const modeLabel = promo.type === 'percent'
-                ? (promo.value + '% less on each channel SPRICE')
-                : ('$' + Math.abs(promo.value).toFixed(2) + ' less on each channel SPRICE');
-            if (!confirm(
-                'Apply promotion (' + modeLabel + ') to ' + $rows.length
-                + ' channel(s)?\n\nEach marketplace keeps its own SPRICE, then the discount is applied'
-                + ' (so results differ by channel).'
-                + siblingsApplyLabel()
-            )) return;
+                ? (promo.value + '% less on SPRICE')
+                : ('$' + Math.abs(promo.value).toFixed(2) + ' less on SPRICE');
+            const names = $rows.map(function($tr) { return $tr.attr('data-marketplace'); }).join(', ');
+            // Confirm only for multi-channel toolbar apply
+            if (!opts.skipConfirm && $rows.length > 1) {
+                if (!confirm(
+                    'Apply ' + meta.label + ' (' + modeLabel + ') to:\n' + names
+                    + '\n\nOnly these channel(s) — not all marketplaces.'
+                )) return;
+            }
 
-            const $btn = $('#modal-apply-promo-btn');
-            const origHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            const $applyBtn = $btn && $btn.length ? $btn : meta.$btn();
+            const origHtml = $applyBtn && $applyBtn.length ? $applyBtn.html() : '';
+            if ($applyBtn && $applyBtn.length) $applyBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
 
             let doneCount = 0;
             let okCount = 0;
             let skipped = 0;
-            let siblingsOk = 0;
+            const displayVal = promo.type === 'percent'
+                ? String(promo.value)
+                : String(+Number(promo.value).toFixed(2));
+            const appliedAttr = discountAppliedAttr(kind, mode);
 
             $rows.forEach(function($tr) {
                 const mp = String($tr.attr('data-marketplace') || '');
-                let base = parseFloat($tr.find('.editable-sprice').val());
-                if (!(base > 0)) base = parseFloat($tr.attr('data-price')) || 0;
+                const key = mpKeyFromRow($tr);
+                $tr.find(meta.inputSel).val(displayVal);
+                meta.setMap(key, displayVal);
+
+                const base = getDiscountBase($tr, kind, mode);
                 const newPrice = applyPromotionToSpriceBase(base, promo);
                 if (!(newPrice > 0) || !(base > 0)) {
                     skipped++;
                     doneCount++;
-                    if (doneCount === $rows.length) {
-                        $btn.prop('disabled', false).html(origHtml);
-                        showToast(
-                            okCount
-                                ? ('Promotion applied to ' + okCount + ' channel(s)'
-                                    + (skipped ? ('; skipped ' + skipped) : '')
-                                    + '. Use Push to go live.')
-                                : 'No channel SPRICE to discount — set SPRICE first',
-                            okCount ? 'success' : 'error'
-                        );
+                    if (doneCount === $rows.length && $applyBtn && $applyBtn.length) {
+                        $applyBtn.prop('disabled', false).html(origHtml);
+                        if (!opts.silent) {
+                            showToast(okCount ? (meta.label + ' applied to ' + okCount + ' channel(s)') : 'No SPRICE/Price to discount', okCount ? 'success' : 'error');
+                        }
                     }
                     return;
                 }
-                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
-                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
+
+                // Update UI immediately so user sees SPRICE change even before AJAX finishes
+                setRowSpriceUi($tr, newPrice);
+                $tr.attr(appliedAttr, String(promo.value));
+
+                saveModalSpriceForRow($tr, newPrice, function(ok) {
                     if (ok) {
                         okCount++;
-                        if (res && res.siblings_count) {
-                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
-                        }
                         if (Array.isArray(ovl30ModalData)) {
                             ovl30ModalData.forEach(function(item) {
-                                if (String(item.marketplace || '') === mp) {
-                                    item.sprice = newPrice;
-                                }
+                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
                             });
                         }
                     }
                     doneCount++;
                     if (doneCount === $rows.length) {
-                        $btn.prop('disabled', false).html(origHtml);
-                        showToast(
-                            okCount
-                                ? ('Promotion: ' + modeLabel + ' on ' + okCount + ' channel(s)'
-                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
-                                    + (skipped ? ('; skipped ' + skipped) : '')
-                                    + '. Use Push to go live.')
-                                : 'Failed to apply promotion',
-                            okCount ? 'success' : 'error'
-                        );
-                    }
-                });
-            });
-        }
-
-        $(document).on('input', '#modal-promo-input, #modal-promo-header-input, .editable-promo', function() {
-            syncModalPromotionInputs($(this).val(), this);
-        });
-        $(document).on('click', '#modal-apply-promo-btn', function(e) {
-            e.preventDefault();
-            applyModalPromotionToAll();
-        });
-        $(document).on('keydown', '#modal-promo-input, #modal-promo-header-input, .editable-promo', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                syncModalPromotionInputs($(this).val(), this);
-                applyModalPromotionToAll();
-            }
-        });
-
-        // ==================== CPN (same as Promotion — per-channel SPRICE) ====================
-        function syncModalCpnInputs(raw, exceptEl) {
-            modalCpnRaw = String(raw == null ? '' : raw);
-            const $except = exceptEl ? $(exceptEl) : $();
-            $('#modal-cpn-input, #modal-cpn-header-input, .editable-cpn').each(function() {
-                if ($except.length && this === $except[0]) return;
-                if ($(this).is(':focus') && !$except.length) return;
-                $(this).val(modalCpnRaw);
-            });
-        }
-
-        function applyModalCpnToAll() {
-            const raw = String($('#modal-cpn-input').val() || modalCpnRaw || '').trim();
-            const promo = parseModalPromotion(raw);
-            if (!promo) {
-                showToast('Enter a CPN (e.g. 1 or 10%)', 'error');
-                $('#modal-cpn-input').focus();
-                return;
-            }
-            syncModalCpnInputs(raw);
-            const $rows = collectModalPromoTargetRows();
-            if (!$rows.length) {
-                showToast('No editable SPRICE rows — check channels or enter SPRICE first', 'error');
-                return;
-            }
-            const modeLabel = promo.type === 'percent'
-                ? (promo.value + '% less on each channel SPRICE')
-                : ('$' + Math.abs(promo.value).toFixed(2) + ' less on each channel SPRICE');
-            if (!confirm(
-                'Apply CPN (' + modeLabel + ') to ' + $rows.length
-                + ' channel(s)?\n\nEach marketplace keeps its own SPRICE, then the discount is applied'
-                + ' (so results differ by channel).'
-                + siblingsApplyLabel()
-            )) return;
-
-            const $btn = $('#modal-apply-cpn-btn');
-            const origHtml = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-
-            let doneCount = 0;
-            let okCount = 0;
-            let skipped = 0;
-            let siblingsOk = 0;
-
-            $rows.forEach(function($tr) {
-                const mp = String($tr.attr('data-marketplace') || '');
-                let base = parseFloat($tr.find('.editable-sprice').val());
-                if (!(base > 0)) base = parseFloat($tr.attr('data-price')) || 0;
-                const newPrice = applyPromotionToSpriceBase(base, promo);
-                if (!(newPrice > 0) || !(base > 0)) {
-                    skipped++;
-                    doneCount++;
-                    if (doneCount === $rows.length) {
-                        $btn.prop('disabled', false).html(origHtml);
-                        showToast(
-                            okCount
-                                ? ('CPN applied to ' + okCount + ' channel(s)'
-                                    + (skipped ? ('; skipped ' + skipped) : '')
-                                    + '. Use Push to go live.')
-                                : 'No channel SPRICE to discount — set SPRICE first',
-                            okCount ? 'success' : 'error'
-                        );
-                    }
-                    return;
-                }
-                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
-                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
-                    if (ok) {
-                        okCount++;
-                        if (res && res.siblings_count) {
-                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
-                        }
-                        if (Array.isArray(ovl30ModalData)) {
-                            ovl30ModalData.forEach(function(item) {
-                                if (String(item.marketplace || '') === mp) {
-                                    item.sprice = newPrice;
-                                }
-                            });
+                        if ($applyBtn && $applyBtn.length) $applyBtn.prop('disabled', false).html(origHtml);
+                        if (!opts.silent) {
+                            showToast(
+                                okCount
+                                    ? (meta.label + ': ' + modeLabel + ' → $' + newPrice.toFixed(2)
+                                        + ($rows.length > 1 ? (' on ' + names) : (' on ' + names))
+                                        + (skipped ? '; skipped ' + skipped : '')
+                                        + '. Use Push to go live.')
+                                    : 'Failed to save ' + meta.label,
+                                okCount ? 'success' : 'error'
+                            );
                         }
                     }
-                    doneCount++;
-                    if (doneCount === $rows.length) {
-                        $btn.prop('disabled', false).html(origHtml);
-                        showToast(
-                            okCount
-                                ? ('CPN: ' + modeLabel + ' on ' + okCount + ' channel(s)'
-                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
-                                    + (skipped ? ('; skipped ' + skipped) : '')
-                                    + '. Use Push to go live.')
-                                : 'Failed to apply CPN',
-                            okCount ? 'success' : 'error'
-                        );
-                    }
-                });
+                }, { applySiblings: false, skipPairSync: true });
             });
         }
 
-        $(document).on('input', '#modal-cpn-input, #modal-cpn-header-input, .editable-cpn', function() {
-            syncModalCpnInputs($(this).val(), this);
+        function applyModalPmDollar() {
+            const raw = String($('#modal-pm-dollar-input').val() || $('#modal-pm-dollar-header-input').val() || modalPmDollarRaw || '').trim();
+            modalPmDollarRaw = raw;
+            applyDiscountToRows(collectCheckedPromoRows(), raw, 'pm', 'dollar', $('#modal-apply-pm-dollar-btn'));
+        }
+        function applyModalPmPct() {
+            const raw = String($('#modal-pm-pct-input').val() || $('#modal-pm-pct-header-input').val() || modalPmPctRaw || '').trim();
+            modalPmPctRaw = raw;
+            applyDiscountToRows(collectCheckedPromoRows(), raw, 'pm', 'percent', $('#modal-apply-pm-pct-btn'));
+        }
+        function applyModalCpnDollar() {
+            const raw = String($('#modal-cpn-dollar-input').val() || $('#modal-cpn-dollar-header-input').val() || modalCpnDollarRaw || '').trim();
+            modalCpnDollarRaw = raw;
+            applyDiscountToRows(collectCheckedPromoRows(), raw, 'cpn', 'dollar', $('#modal-apply-cpn-dollar-btn'));
+        }
+        function applyModalCpnPct() {
+            const raw = String($('#modal-cpn-pct-input').val() || $('#modal-cpn-pct-header-input').val() || modalCpnPctRaw || '').trim();
+            modalCpnPctRaw = raw;
+            applyDiscountToRows(collectCheckedPromoRows(), raw, 'cpn', 'percent', $('#modal-apply-cpn-pct-btn'));
+        }
+
+        // Row Enter / typing → auto-apply + save this channel (no click outside needed)
+        function applyRowDiscountFromInput(el, kind, mode, opts) {
+            opts = opts || {};
+            const $el = $(el);
+            const raw = String($el.val() || '').trim();
+            if (!raw) return;
+            const $tr = $el.closest('tr');
+            if (!$tr.length || !$tr.attr('data-marketplace')) return;
+            // Skip duplicate apply for same value
+            const stamp = kind + '|' + mode + '|' + raw;
+            if ($el.data('ovl30-last-apply') === stamp) return;
+            $el.data('ovl30-last-apply', stamp);
+            const $btn = discountFieldMeta(kind, mode).$btn();
+            applyDiscountToRows([$tr], raw, kind, mode, $btn, {
+                skipConfirm: true,
+                silent: !!opts.silent
+            });
+        }
+
+        function scheduleRowDiscountAutoSave(el, kind, mode) {
+            const $el = $(el);
+            $el.removeData('ovl30-last-apply');
+            const key = mpKeyFromRow($el.closest('tr'));
+            const raw = String($el.val() || '');
+            if (kind === 'pm' && mode === 'dollar' && key) modalPmDollarByChannel[key] = raw;
+            if (kind === 'pm' && mode === 'percent' && key) modalPmPctByChannel[key] = raw;
+            if (kind === 'cpn' && mode === 'dollar' && key) modalCpnDollarByChannel[key] = raw;
+            if (kind === 'cpn' && mode === 'percent' && key) modalCpnPctByChannel[key] = raw;
+
+            const prevTimer = $el.data('ovl30-autosave-timer');
+            if (prevTimer) clearTimeout(prevTimer);
+            // Debounce: save ~350ms after user stops typing (no click / Enter needed)
+            const timer = setTimeout(function() {
+                $el.removeData('ovl30-autosave-timer');
+                applyRowDiscountFromInput(el, kind, mode, { silent: true });
+            }, 350);
+            $el.data('ovl30-autosave-timer', timer);
+        }
+
+        $(document).on('input', '.editable-pm-dollar', function() {
+            scheduleRowDiscountAutoSave(this, 'pm', 'dollar');
         });
-        $(document).on('click', '#modal-apply-cpn-btn', function(e) {
-            e.preventDefault();
-            applyModalCpnToAll();
+        $(document).on('input', '.editable-pm-pct', function() {
+            scheduleRowDiscountAutoSave(this, 'pm', 'percent');
         });
-        $(document).on('keydown', '#modal-cpn-input, #modal-cpn-header-input, .editable-cpn', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                syncModalCpnInputs($(this).val(), this);
-                applyModalCpnToAll();
-            }
+        $(document).on('input', '.editable-cpn-dollar', function() {
+            scheduleRowDiscountAutoSave(this, 'cpn', 'dollar');
+        });
+        $(document).on('input', '.editable-cpn-pct', function() {
+            scheduleRowDiscountAutoSave(this, 'cpn', 'percent');
         });
 
-        // ==================== DSC (like Promotion, dollar only — no %) ====================
+        function syncToolbarPair(a, b, setter) {
+            const v = String($(a).val() || '');
+            setter(v);
+            if (document.activeElement !== $(b)[0]) $(b).val(v);
+        }
+        $(document).on('input', '#modal-pm-dollar-input, #modal-pm-dollar-header-input', function() {
+            const other = this.id === 'modal-pm-dollar-input' ? '#modal-pm-dollar-header-input' : '#modal-pm-dollar-input';
+            syncToolbarPair(this, other, function(v) { modalPmDollarRaw = v; });
+        });
+        $(document).on('input', '#modal-pm-pct-input, #modal-pm-pct-header-input', function() {
+            const other = this.id === 'modal-pm-pct-input' ? '#modal-pm-pct-header-input' : '#modal-pm-pct-input';
+            syncToolbarPair(this, other, function(v) { modalPmPctRaw = v; });
+        });
+        $(document).on('input', '#modal-cpn-dollar-input, #modal-cpn-dollar-header-input', function() {
+            const other = this.id === 'modal-cpn-dollar-input' ? '#modal-cpn-dollar-header-input' : '#modal-cpn-dollar-input';
+            syncToolbarPair(this, other, function(v) { modalCpnDollarRaw = v; });
+        });
+        $(document).on('input', '#modal-cpn-pct-input, #modal-cpn-pct-header-input', function() {
+            const other = this.id === 'modal-cpn-pct-input' ? '#modal-cpn-pct-header-input' : '#modal-cpn-pct-input';
+            syncToolbarPair(this, other, function(v) { modalCpnPctRaw = v; });
+        });
+
+        $(document).on('click', '#modal-apply-pm-dollar-btn', function(e) { e.preventDefault(); applyModalPmDollar(); });
+        $(document).on('click', '#modal-apply-pm-pct-btn', function(e) { e.preventDefault(); applyModalPmPct(); });
+        $(document).on('click', '#modal-apply-cpn-dollar-btn', function(e) { e.preventDefault(); applyModalCpnDollar(); });
+        $(document).on('click', '#modal-apply-cpn-pct-btn', function(e) { e.preventDefault(); applyModalCpnPct(); });
+
+        $(document).on('keydown', '.editable-pm-dollar', function(e) {
+            if (e.key !== 'Enter' && e.keyCode !== 13) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'pm', 'dollar', { silent: false });
+        });
+        $(document).on('keydown', '.editable-pm-pct', function(e) {
+            if (e.key !== 'Enter' && e.keyCode !== 13) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'pm', 'percent', { silent: false });
+        });
+        $(document).on('keydown', '.editable-cpn-dollar', function(e) {
+            if (e.key !== 'Enter' && e.keyCode !== 13) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'cpn', 'dollar', { silent: false });
+        });
+        $(document).on('keydown', '.editable-cpn-pct', function(e) {
+            if (e.key !== 'Enter' && e.keyCode !== 13) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'cpn', 'percent', { silent: false });
+        });
+
+        // Blur still applies if debounce hasn't fired yet
+        $(document).on('blur', '.editable-pm-dollar', function() {
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'pm', 'dollar', { silent: true });
+        });
+        $(document).on('blur', '.editable-pm-pct', function() {
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'pm', 'percent', { silent: true });
+        });
+        $(document).on('blur', '.editable-cpn-dollar', function() {
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'cpn', 'dollar', { silent: true });
+        });
+        $(document).on('blur', '.editable-cpn-pct', function() {
+            const t = $(this).data('ovl30-autosave-timer');
+            if (t) clearTimeout(t);
+            $(this).removeData('ovl30-autosave-timer');
+            applyRowDiscountFromInput(this, 'cpn', 'percent', { silent: true });
+        });
+
+        $(document).on('keydown', '#modal-pm-dollar-input, #modal-pm-dollar-header-input', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); applyModalPmDollar(); }
+        });
+        $(document).on('keydown', '#modal-pm-pct-input, #modal-pm-pct-header-input', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); applyModalPmPct(); }
+        });
+        $(document).on('keydown', '#modal-cpn-dollar-input, #modal-cpn-dollar-header-input', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); applyModalCpnDollar(); }
+        });
+        $(document).on('keydown', '#modal-cpn-pct-input, #modal-cpn-pct-header-input', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); applyModalCpnPct(); }
+        });
+
+        // ==================== DSC (dollar only — no %) ====================
         function parseModalDsc(raw) {
             const s = String(raw == null ? '' : raw).trim();
             if (!s) return null;
@@ -7582,14 +7838,18 @@
                     sroi: sroi,
                     amazon_margin: margin,
                     apply_siblings: applySiblings,
+                    skip_pair_sync: opts.skipPairSync ? 1 : 0,
                     _token: '{{ csrf_token() }}'
                 },
                 success: function(res) {
-                    if (isTemuMp) {
-                        syncTemuPairedSpriceInModal(mpLower, sprice);
-                    }
-                    if (ebayChannelFamily(mpLower)) {
-                        syncEbayPairedSpriceInModal(mpLower, sprice);
+                    // Promo/CPN applies set skipPairSync so Temu does not copy to Temu2 / all
+                    if (!opts.skipPairSync) {
+                        if (isTemuMp) {
+                            syncTemuPairedSpriceInModal(mpLower, sprice);
+                        }
+                        if (ebayChannelFamily(mpLower)) {
+                            syncEbayPairedSpriceInModal(mpLower, sprice);
+                        }
                     }
                     if (done) done(true, res);
                 },
