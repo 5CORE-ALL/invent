@@ -410,6 +410,45 @@
             background-color: #fff5f5 !important;
             transition: all 0.25s ease;
         }
+        /* Multi-package edit panels (Label QTY >= 2 Combo SKUs) */
+        .edit-package-card {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            background: #f8fafc;
+        }
+        .edit-package-card.pkg-tone-1 { background: #fff7ed; border-color: #fdba74; }
+        .edit-package-card.pkg-tone-2 { background: #eff6ff; border-color: #93c5fd; }
+        .edit-package-card.pkg-tone-3 { background: #f5f3ff; border-color: #c4b5fd; }
+        .edit-package-card .edit-package-title {
+            font-weight: 700;
+            font-size: 13px;
+            margin-bottom: 10px;
+            color: #0f172a;
+        }
+        .edit-package-card .edit-package-title .pkg-badge {
+            display: inline-block;
+            padding: 1px 7px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            background: #ffedd5;
+            color: #9a3412;
+            margin-right: 6px;
+        }
+        .edit-package-card .edit-package-title .pkg-sku {
+            color: #0369a1;
+            font-weight: 600;
+        }
+        .edit-package-card .form-label {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        .edit-package-card .form-control {
+            font-size: 12px;
+            padding: 4px 8px;
+        }
         /* Cells holding only the M badge shouldn't inherit the red "alert"
            text color or the yellow ship-col background — the badge speaks for
            itself. */
@@ -1241,6 +1280,15 @@
                             </div>
                         </div>
                         
+                        <div id="editPackagesSection" style="display: none;">
+                            <div class="alert alert-info py-2 mb-3" style="font-size: 13px;">
+                                <i class="fas fa-boxes me-1"></i>
+                                <strong>Multi-package Combo:</strong> Label Qty is 2+ — edit each package&rsquo;s weight &amp; dimensions below (saved to each component SKU).
+                            </div>
+                            <div id="editPackagesContainer"></div>
+                        </div>
+
+                        <div id="editSingleItemDimsSection">
                         <div class="row mb-1">
                             <div class="col-12">
                                 <small class="text-secondary fw-semibold">Item Dimension</small>
@@ -1303,6 +1351,7 @@
                                 <input type="number" step="0.01" class="form-control" id="editHCm" name="h_cm" placeholder="Enter Item Height (CM)">
                             </div>
                         </div>
+                        </div><!-- /editSingleItemDimsSection -->
                         
                         <div class="row mb-1">
                             <div class="col-12">
@@ -1679,6 +1728,8 @@
             let bulkEditList = null; // When set, save updates these products (changed fields only)
             // Snapshot of edit-form values when bulk modal opens — used to detect which inputs the user changed
             let bulkEditInitialValues = null;
+            /** Multi-package Combo edit: { sourceProduct, packages: [{ packageIndex, packageCount, componentSku, product }] } */
+            let editPackageMode = null;
             let isProductNavigationActive = false;
             let currentProductParentIndex = -1;
 
@@ -1869,6 +1920,146 @@
                 const key = normalizeSkuKey(sku);
                 if (!key) return null;
                 return tableData.find(d => normalizeSkuKey(d.SKU) === key) || null;
+            }
+
+            /**
+             * Multi-package Combo edit targets: Label QTY >= 2 and SKU is A + B (+ …)
+             * with at least 2 resolvable component products.
+             */
+            function getMultiPackageEditTargets(product) {
+                if (!product || isParentSkuItem(product)) return null;
+                const labelQty = getLabelQtyNumber(product);
+                if (!Number.isFinite(labelQty) || labelQty < 2) return null;
+                if (!isComboSkuItem(product)) return null;
+                const components = parseComboComponentSkus(product.SKU);
+                if (components.length < 2) return null;
+
+                const packages = [];
+                for (let i = 0; i < labelQty; i++) {
+                    const componentSku = components[i] || null;
+                    const componentProduct = componentSku ? findProductBySkuKey(componentSku) : null;
+                    packages.push({
+                        packageIndex: i + 1,
+                        packageCount: labelQty,
+                        componentSku,
+                        product: componentProduct
+                    });
+                }
+                if (packages.filter(p => p.product).length < 2) return null;
+                return { sourceProduct: product, packages };
+            }
+
+            const EDIT_PACKAGE_DIM_FIELDS = [
+                { key: 'wt_act_kg', label: 'Weight ACT (Kg)', step: '0.01' },
+                { key: 'wt_act', label: 'WT ACT (LB)', step: '0.01' },
+                { key: 'wt_decl', label: 'Itm wt GW Decl', step: '0.01' },
+                { key: 'l', label: 'L (inch)', step: '0.01' },
+                { key: 'w', label: 'W (inch)', step: '0.01' },
+                { key: 'h', label: 'H (inch)', step: '0.01' },
+                { key: 'l_decl', label: 'L Decl', step: '0.01' },
+                { key: 'w_decl', label: 'W Decl', step: '0.01' },
+                { key: 'h_decl', label: 'H Decl', step: '0.01' }
+            ];
+
+            function editPkgInputId(pkgIndex, fieldKey) {
+                return `editPkg${pkgIndex}_${fieldKey}`;
+            }
+
+            function clearEditPackageModeUi() {
+                editPackageMode = null;
+                const section = document.getElementById('editPackagesSection');
+                const single = document.getElementById('editSingleItemDimsSection');
+                const container = document.getElementById('editPackagesContainer');
+                if (section) section.style.display = 'none';
+                if (single) single.style.display = '';
+                if (container) container.innerHTML = '';
+            }
+
+            function renderEditPackagePanels(mode) {
+                const section = document.getElementById('editPackagesSection');
+                const single = document.getElementById('editSingleItemDimsSection');
+                const container = document.getElementById('editPackagesContainer');
+                if (!section || !container) return;
+
+                container.innerHTML = '';
+                mode.packages.forEach((pkg, idx) => {
+                    const tone = (pkg.packageIndex % 3) || 3;
+                    const card = document.createElement('div');
+                    card.className = `edit-package-card pkg-tone-${tone}`;
+                    card.dataset.packageIndex = String(pkg.packageIndex);
+
+                    const title = document.createElement('div');
+                    title.className = 'edit-package-title';
+                    const skuLabel = pkg.componentSku
+                        ? escapeHtml(pkg.componentSku)
+                        : '<span class="text-danger">component SKU missing</span>';
+                    const missingNote = pkg.product
+                        ? ''
+                        : ' <span class="text-danger" style="font-weight:600;">(not in catalog — cannot save)</span>';
+                    title.innerHTML = `<span class="pkg-badge">Pkg ${pkg.packageIndex}/${pkg.packageCount}</span>`
+                        + `<span class="pkg-sku">${skuLabel}</span>${missingNote}`;
+                    card.appendChild(title);
+
+                    const row = document.createElement('div');
+                    row.className = 'row g-2';
+                    const src = pkg.product || {};
+                    EDIT_PACKAGE_DIM_FIELDS.forEach(field => {
+                        const col = document.createElement('div');
+                        col.className = 'col-md-4 col-lg-2';
+                        const inputId = editPkgInputId(idx, field.key);
+                        let val = src[field.key];
+                        if (field.key === 'wt_decl') {
+                            const declStored = parseFloat(src.wt_decl);
+                            if (Number.isFinite(declStored) && declStored > 0) {
+                                val = declStored;
+                            } else {
+                                const rounded = roundWeightLbUpToSlab(itemWeightActLbResolved(src));
+                                val = rounded != null ? rounded : '';
+                            }
+                        } else if (field.key === 'l_decl' || field.key === 'w_decl' || field.key === 'h_decl') {
+                            const actKey = field.key.replace('_decl', '');
+                            if (val == null || val === '') val = src[actKey];
+                        }
+                        const disabled = pkg.product ? '' : ' disabled';
+                        col.innerHTML = `<label class="form-label" for="${inputId}">${field.label}</label>`
+                            + `<input type="number" step="${field.step}" class="form-control" id="${inputId}"`
+                            + ` data-pkg-idx="${idx}" data-field="${field.key}"`
+                            + ` value="${val != null && val !== '' ? escapeHtml(String(val)) : ''}"${disabled}>`;
+                        row.appendChild(col);
+                    });
+                    card.appendChild(row);
+                    container.appendChild(card);
+                });
+
+                section.style.display = '';
+                if (single) single.style.display = 'none';
+            }
+
+            function collectEditPackageFormData(pkgIndex) {
+                const data = {};
+                EDIT_PACKAGE_DIM_FIELDS.forEach(field => {
+                    const el = document.getElementById(editPkgInputId(pkgIndex, field.key));
+                    if (!el || el.disabled) return;
+                    const raw = el.value.trim();
+                    if (raw === '') {
+                        data[field.key] = null;
+                        return;
+                    }
+                    const n = parseFloat(raw);
+                    if (!Number.isFinite(n)) return;
+                    if (field.key === 'wt_decl') {
+                        data.wt_decl = n > 0 ? roundWeightLbUpToSlab(n) : null;
+                    } else {
+                        data[field.key] = n;
+                    }
+                });
+                // Keep CM in sync from inch when L/W/H present
+                ['l', 'w', 'h'].forEach(k => {
+                    if (data[k] != null && Number.isFinite(data[k])) {
+                        data[k + '_cm'] = Math.round(data[k] * 2.54 * 100) / 100;
+                    }
+                });
+                return data;
             }
 
             function packageRowBgClass(packageIndex, packageCount) {
@@ -2335,14 +2526,21 @@
                     row.appendChild(verifiedCell);
 
                     // Action column
-                    // Primary row edits the Combo/source SKU; extra Combo package rows edit the component SKU.
+                    // Multi-package Combo → edit opens Combo with Pkg 1 + Pkg 2 panels.
+                    // Otherwise: primary row edits source; extra package row edits component.
                     const actionCell = document.createElement('td');
                     actionCell.className = 'text-center';
-                    const editTarget = (pkg.isExtraPackage && pkg.componentItem) ? pkg.componentItem : sourceItem;
+                    const multiPkgEdit = getMultiPackageEditTargets(sourceItem);
+                    const editTarget = multiPkgEdit
+                        ? sourceItem
+                        : ((pkg.isExtraPackage && pkg.componentItem) ? pkg.componentItem : sourceItem);
                     const showDelete = !pkg.isExtraPackage;
+                    const editTitle = multiPkgEdit
+                        ? `Edit ${multiPkgEdit.packages.length} packages`
+                        : (pkg.isExtraPackage ? 'Edit component package' : 'Edit');
                     actionCell.innerHTML = `
                         <div class="d-inline-flex action-btns">
-                            <button type="button" class="btn btn-sm btn-outline-warning edit-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="${pkg.isExtraPackage ? 'Edit component package' : 'Edit'}">
+                            <button type="button" class="btn btn-sm btn-outline-warning edit-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="${escapeHtml(editTitle)}">
                                 <i class="bi bi-pencil-square"></i>
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-info history-btn" data-id="${editTarget.id != null ? String(editTarget.id) : ''}" data-sku="${escapeHtml(editTarget.SKU)}" title="History — see who changed what">
@@ -4814,6 +5012,18 @@
                     : 'Edit Shipping Master';
                 const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
                 if (bulkHint) bulkHint.style.display = isBulk ? 'block' : 'none';
+
+                // Multi-package Combo (Label Qty 2+ with A + B components) → one panel per package
+                clearEditPackageModeUi();
+                if (!isBulk) {
+                    const multi = getMultiPackageEditTargets(product);
+                    if (multi) {
+                        editPackageMode = multi;
+                        renderEditPackagePanels(multi);
+                        document.getElementById('editDimWtModalLabel').textContent =
+                            'Edit Shipping Master — ' + multi.packages.length + ' packages';
+                    }
+                }
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
@@ -5025,33 +5235,106 @@
                         throw new Error('Missing product id — reopen Edit and try again.');
                     }
 
+                    const postUpdate = async (payload) => {
+                        const response = await fetch('/dim-wt-master/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            const msg = data.message
+                                || (data.errors ? Object.values(data.errors).flat().join(' ') : null)
+                                || 'Failed to save data';
+                            throw new Error(msg);
+                        }
+                        return data;
+                    };
+
+                    // Multi-package Combo: save Combo meta + each package's dims to component SKUs
+                    if (editPackageMode && editPackageMode.packages && editPackageMode.packages.length >= 2) {
+                        const comboPayload = {
+                            product_id: productId,
+                            sku: document.getElementById('editSku').value,
+                            parent: document.getElementById('editParent').value,
+                            ctn_l: baseFormData.ctn_l,
+                            ctn_w: baseFormData.ctn_w,
+                            ctn_h: baseFormData.ctn_h,
+                            ctn_cbm: baseFormData.ctn_cbm,
+                            ctn_qty: baseFormData.ctn_qty,
+                            ctn_cbm_each: baseFormData.ctn_cbm_each,
+                            ctn_weight_kg: baseFormData.ctn_weight_kg,
+                            ctn_weight_lb: baseFormData.ctn_weight_lb,
+                            label_type: baseFormData.label_type
+                        };
+                        if (baseFormData.label_qty !== undefined) comboPayload.label_qty = baseFormData.label_qty;
+                        if (baseFormData.fba_ship_calculation !== undefined) {
+                            comboPayload.fba_ship_calculation = baseFormData.fba_ship_calculation;
+                        }
+                        if (baseFormData.fba_manual_ship !== undefined) {
+                            comboPayload.fba_manual_ship = baseFormData.fba_manual_ship;
+                        }
+
+                        await postUpdate(comboPayload);
+
+                        let pkgOk = 0;
+                        let pkgFail = 0;
+                        for (let i = 0; i < editPackageMode.packages.length; i++) {
+                            const pkg = editPackageMode.packages[i];
+                            if (!pkg.product || !pkg.product.id) {
+                                pkgFail++;
+                                continue;
+                            }
+                            const pkgData = collectEditPackageFormData(i);
+                            try {
+                                await postUpdate({
+                                    ...pkgData,
+                                    product_id: pkg.product.id,
+                                    sku: pkg.product.SKU,
+                                    parent: pkg.product.Parent || ''
+                                });
+                                pkgOk++;
+                                const mem = tableData.find(d =>
+                                    String(d.id) === String(pkg.product.id)
+                                    || normalizeSkuKey(d.SKU) === normalizeSkuKey(pkg.product.SKU)
+                                );
+                                if (mem) {
+                                    Object.keys(pkgData).forEach(k => {
+                                        if (pkgData[k] !== undefined) mem[k] = pkgData[k];
+                                    });
+                                }
+                            } catch (e) {
+                                console.error('Package save failed', pkg.componentSku, e);
+                                pkgFail++;
+                            }
+                        }
+
+                        clearEditPackageModeUi();
+                        if (pkgFail === 0) {
+                            showToast('success', `Combo + ${pkgOk} package(s) updated successfully!`);
+                        } else {
+                            showToast('warning', `Combo saved; ${pkgOk} package(s) updated, ${pkgFail} failed.`);
+                        }
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
+                        modal.hide();
+                        loadData();
+                        return;
+                    }
+
                     const formData = {
                         ...baseFormData,
                         product_id: productId,
                         sku: document.getElementById('editSku').value,
                         parent: document.getElementById('editParent').value
                     };
-                    
-                    const response = await fetch('/dim-wt-master/update', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify(formData)
-                    });
-                    
-                    const data = await response.json().catch(() => ({}));
-                    
-                    if (!response.ok) {
-                        const msg = data.message
-                            || (data.errors ? Object.values(data.errors).flat().join(' ') : null)
-                            || 'Failed to save data';
-                        throw new Error(msg);
-                    }
-                    
+
+                    await postUpdate(formData);
+
                     showToast('success', 'Shipping Master updated successfully!');
                     
                     // Patch in-memory row so Decl/ACT show saved values immediately
@@ -5305,6 +5588,7 @@
             document.getElementById('editDimWtModal').addEventListener('hidden.bs.modal', function() {
                 bulkEditList = null;
                 bulkEditInitialValues = null;
+                clearEditPackageModeUi();
                 document.getElementById('editDimWtModalLabel').textContent = 'Edit Shipping Master';
                 const bulkHint = document.getElementById('bulkEditOnlyChangedHint');
                 if (bulkHint) bulkHint.style.display = 'none';
