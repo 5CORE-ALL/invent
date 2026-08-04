@@ -340,6 +340,8 @@
         #sof-pending-total-badge,
         #sof-fulfilled-24h-badge,
         #sof-scan-done-24h-badge,
+        #sof-in-transit-badge,
+        #sof-in-received-badge,
         #sof-invoiced-badge,
         #sof-delivered-badge,
         #sof-all-order-badge {
@@ -349,6 +351,8 @@
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col,
+        #sof-in-transit-table.tabulator .tabulator-header .tabulator-col,
+        #sof-in-received-table.tabulator .tabulator-header .tabulator-col,
         #sof-invoiced-table.tabulator .tabulator-header .tabulator-col,
         #sof-delivered-table.tabulator .tabulator-header .tabulator-col,
         #sof-all-order-table.tabulator .tabulator-header .tabulator-col {
@@ -357,6 +361,8 @@
         #sof-pending-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
+        #sof-in-transit-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
+        #sof-in-received-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-invoiced-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-delivered-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title,
         #sof-all-order-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
@@ -377,6 +383,8 @@
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
         #sof-scan-done-table.tabulator .tabulator-header .tabulator-col,
+        #sof-in-transit-table.tabulator .tabulator-header .tabulator-col,
+        #sof-in-received-table.tabulator .tabulator-header .tabulator-col,
         #sof-invoiced-table.tabulator .tabulator-header .tabulator-col,
         #sof-delivered-table.tabulator .tabulator-header .tabulator-col,
         #sof-all-order-table.tabulator .tabulator-header .tabulator-col {
@@ -386,6 +394,8 @@
         #sof-pending-table .tabulator-row .tabulator-cell,
         #sof-fulfilled-table .tabulator-row .tabulator-cell,
         #sof-scan-done-table .tabulator-row .tabulator-cell,
+        #sof-in-transit-table .tabulator-row .tabulator-cell,
+        #sof-in-received-table .tabulator-row .tabulator-cell,
         #sof-invoiced-table .tabulator-row .tabulator-cell,
         #sof-delivered-table .tabulator-row .tabulator-cell,
         #sof-all-order-table .tabulator-row .tabulator-cell {
@@ -394,12 +404,16 @@
         #sof-pending-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-fulfilled-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-scan-done-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
+        #sof-in-transit-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
+        #sof-in-received-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-invoiced-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-delivered-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-all-order-table .tabulator-row .tabulator-cell:has(.sof-order-id-wrap),
         #sof-pending-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-fulfilled-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-scan-done-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
+        #sof-in-transit-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
+        #sof-in-received-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-invoiced-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-delivered-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap),
         #sof-all-order-table .tabulator-row .tabulator-cell:has(.sof-text-dot-wrap) {
@@ -408,12 +422,16 @@
         #sof-pending-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-fulfilled-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-scan-done-table .tabulator-row:has(.sof-order-id-wrap:hover),
+        #sof-in-transit-table .tabulator-row:has(.sof-order-id-wrap:hover),
+        #sof-in-received-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-invoiced-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-delivered-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-all-order-table .tabulator-row:has(.sof-order-id-wrap:hover),
         #sof-pending-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-fulfilled-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-scan-done-table .tabulator-row:has(.sof-text-dot-wrap:hover),
+        #sof-in-transit-table .tabulator-row:has(.sof-text-dot-wrap:hover),
+        #sof-in-received-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-invoiced-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-delivered-table .tabulator-row:has(.sof-text-dot-wrap:hover),
         #sof-all-order-table .tabulator-row:has(.sof-text-dot-wrap:hover) {
@@ -442,6 +460,30 @@
             padding: 0.35rem 0.7rem;
             border-radius: 50rem;
             border: 1px solid #9ec5fe;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .sof-in-transit-badge {
+            display: inline-block;
+            background: #ffe5d0;
+            color: #9a3412;
+            font-weight: 500;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 50rem;
+            border: 1px solid #fdba74;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .sof-in-received-badge {
+            display: inline-block;
+            background: #d1fae5;
+            color: #065f46;
+            font-weight: 500;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.7rem;
+            border-radius: 50rem;
+            border: 1px solid #6ee7b7;
             line-height: 1.2;
             white-space: nowrap;
         }
@@ -709,16 +751,22 @@
                                 <span class="badge fs-6 p-2" id="sof-pending-total-badge" style="background:#fff3cd; color:#856404; font-weight:600; border:1px solid #ffe69c;" title="Pending / unfulfilled orders from the last 30 days across Marketplace Manager channels">
                                     Pending: <span id="sof-pending-total">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-fulfilled-24h-badge" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / shipped orders from the last 30 days across Marketplace Manager channels">
-                                    Label Created: <span id="sof-fulfilled-24h">0</span>
+                                <span class="badge fs-6 p-2" id="sof-fulfilled-24h-badge" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / No Scan orders from the last 30 days across Marketplace Manager channels">
+                                    Label Created / No Scan: <span id="sof-fulfilled-24h">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-scan-done-24h-badge" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Scan Done — status Received only, last 30 days">
-                                    Scan Done: <span id="sof-scan-done-24h">0</span>
+                                <span class="badge fs-6 p-2" id="sof-scan-done-24h-badge" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Shipped/Received orders from the last 30 days">
+                                    Shipped/Received: <span id="sof-scan-done-24h">0</span>
+                                </span>
+                                <span class="badge fs-6 p-2" id="sof-in-transit-badge" style="background:#ffe5d0; color:#9a3412; font-weight:600; border:1px solid #fdba74;" title="In Transit orders from the last 30 days">
+                                    In Transit: <span id="sof-in-transit-total">0</span>
+                                </span>
+                                <span class="badge fs-6 p-2" id="sof-in-received-badge" style="background:#d1fae5; color:#065f46; font-weight:600; border:1px solid #6ee7b7;" title="In Received orders from the last 30 days">
+                                    In Received: <span id="sof-in-received-total">0</span>
                                 </span>
                                 <span class="badge fs-6 p-2" id="sof-invoiced-badge" style="background:#e2d9f3; color:#432874; font-weight:600; border:1px solid #c5b3e6;" title="Invoiced orders from the last 30 days">
                                     Invoiced: <span id="sof-invoiced-total">0</span>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-delivered-badge" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered / Received in the last 30 days (Faire DELIVERED, Shein/Reverb Received, etc.)">
+                                <span class="badge fs-6 p-2" id="sof-delivered-badge" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered orders from the last 30 days">
                                     Delivered: <span id="sof-delivered-total">0</span>
                                 </span>
                                 <span class="badge fs-6 p-2" id="sof-all-order-badge" style="background:#e9ecef; color:#343a40; font-weight:600; border:1px solid #ced4da;" title="All marketplace orders from the last 30 days (original status)">
@@ -776,14 +824,28 @@
                             <button class="nav-link" id="sof-fulfilled-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-fulfilled-pane" type="button" role="tab"
                                     aria-controls="sof-fulfilled-pane" aria-selected="false">
-                                Label Created <span class="badge ms-1" id="sof-fulfilled-tab-count" style="background:#d1e7dd;color:#0f5132;border:1px solid #a3cfbb;">0</span>
+                                Label Created / No Scan <span class="badge ms-1" id="sof-fulfilled-tab-count" style="background:#d1e7dd;color:#0f5132;border:1px solid #a3cfbb;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" id="sof-scan-done-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-scan-done-pane" type="button" role="tab"
                                     aria-controls="sof-scan-done-pane" aria-selected="false">
-                                Scan Done <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
+                                Shipped/Received <span class="badge ms-1" id="sof-scan-done-tab-count" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-in-transit-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-in-transit-pane" type="button" role="tab"
+                                    aria-controls="sof-in-transit-pane" aria-selected="false">
+                                In Transit <span class="badge ms-1" id="sof-in-transit-tab-count" style="background:#ffe5d0;color:#9a3412;border:1px solid #fdba74;">0</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="sof-in-received-tab" data-bs-toggle="tab"
+                                    data-bs-target="#sof-in-received-pane" type="button" role="tab"
+                                    aria-controls="sof-in-received-pane" aria-selected="false">
+                                In Received <span class="badge ms-1" id="sof-in-received-tab-count" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">0</span>
                             </button>
                         </li>
                         <li class="nav-item" role="presentation">
@@ -866,7 +928,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Label Created / shipped orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2">Label Created / No Scan orders from the last 30 days.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -883,8 +945,42 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Scan Done — status Received only, last 30 days.</p>
+                            <p class="small text-muted mb-2">Shipped/Received orders from the last 30 days.</p>
                             <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sof-in-transit-pane" role="tabpanel" aria-labelledby="sof-in-transit-tab">
+                            <div id="sof-in-transit-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
+                                <div class="d-flex flex-wrap align-items-end gap-3">
+                                    <div class="flex-grow-1" style="min-width:200px;">
+                                        <label class="sof-filter-label" for="sof-in-transit-search">Search</label>
+                                        <input type="text" id="sof-in-transit-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
+                                    </div>
+                                    <div class="d-flex align-items-end gap-2">
+                                        <button type="button" class="btn btn-sm btn-primary" id="sof-in-transit-filter-apply">Apply</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-in-transit-filter-clear">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-2">In Transit orders from the last 30 days.</p>
+                            <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sof-in-received-pane" role="tabpanel" aria-labelledby="sof-in-received-tab">
+                            <div id="sof-in-received-filter-bar" class="mb-2" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
+                                <div class="d-flex flex-wrap align-items-end gap-3">
+                                    <div class="flex-grow-1" style="min-width:200px;">
+                                        <label class="sof-filter-label" for="sof-in-received-search">Search</label>
+                                        <input type="text" id="sof-in-received-search" class="form-control form-control-sm" placeholder="Search by Channel, Order ID, SKU, Status...">
+                                    </div>
+                                    <div class="d-flex align-items-end gap-2">
+                                        <button type="button" class="btn btn-sm btn-primary" id="sof-in-received-filter-apply">Apply</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-in-received-filter-clear">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-2">In Received orders from the last 30 days.</p>
+                            <div id="sof-in-received-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
                         <div class="tab-pane fade" id="sof-invoiced-pane" role="tabpanel" aria-labelledby="sof-invoiced-tab">
@@ -1061,6 +1157,14 @@
     let scanDoneRows = [];
     let scanDoneTableLoaded = false;
     let scanDoneTableLoading = false;
+    let inTransitTable = null;
+    let inTransitRows = [];
+    let inTransitTableLoaded = false;
+    let inTransitTableLoading = false;
+    let inReceivedTable = null;
+    let inReceivedRows = [];
+    let inReceivedTableLoaded = false;
+    let inReceivedTableLoading = false;
     let invoicedTable = null;
     let invoicedRows = [];
     let invoicedTableLoaded = false;
@@ -1158,6 +1262,26 @@
             tabBtn.click();
         }
         ensureScanDoneTable();
+    }
+
+    function switchToInTransitTab() {
+        const tabBtn = document.getElementById('sof-in-transit-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        ensureInTransitTable();
+    }
+
+    function switchToInReceivedTab() {
+        const tabBtn = document.getElementById('sof-in-received-tab');
+        if (tabBtn && typeof bootstrap !== 'undefined') {
+            bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        } else if (tabBtn) {
+            tabBtn.click();
+        }
+        ensureInReceivedTable();
     }
 
     function switchToInvoicedTab() {
@@ -1342,7 +1466,7 @@
             return r;
         });
 
-        [pendingTable, fulfilledTable, scanDoneTable, invoicedTable, deliveredTable, allOrderTable].forEach(function (t) {
+        [pendingTable, fulfilledTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, allOrderTable].forEach(function (t) {
             if (!t) return;
             t.getRows().forEach(function (r) {
                 if (Number(r.getData().channel_id) === id) {
@@ -1363,6 +1487,18 @@
             return r;
         });
         scanDoneRows = scanDoneRows.map(function (r) {
+            if (Number(r.channel_id) === id) {
+                return Object.assign({}, r, { ch_orders_link: savedLink });
+            }
+            return r;
+        });
+        inTransitRows = inTransitRows.map(function (r) {
+            if (Number(r.channel_id) === id) {
+                return Object.assign({}, r, { ch_orders_link: savedLink });
+            }
+            return r;
+        });
+        inReceivedRows = inReceivedRows.map(function (r) {
             if (Number(r.channel_id) === id) {
                 return Object.assign({}, r, { ch_orders_link: savedLink });
             }
@@ -1791,6 +1927,12 @@
             const scanDone24h = (response && response.scan_done_24h != null)
                 ? Number(response.scan_done_24h)
                 : 0;
+            const inTransitTotal = (response && response.in_transit_total != null)
+                ? Number(response.in_transit_total)
+                : 0;
+            const inReceivedTotal = (response && response.in_received_total != null)
+                ? Number(response.in_received_total)
+                : 0;
             const invoicedTotal = (response && response.invoiced_total != null)
                 ? Number(response.invoiced_total)
                 : 0;
@@ -1805,6 +1947,8 @@
             const pendingEl = document.getElementById('sof-pending-total');
             const fulfilledEl = document.getElementById('sof-fulfilled-24h');
             const scanDoneEl = document.getElementById('sof-scan-done-24h');
+            const inTransitEl = document.getElementById('sof-in-transit-total');
+            const inReceivedEl = document.getElementById('sof-in-received-total');
             const invoicedEl = document.getElementById('sof-invoiced-total');
             const deliveredEl = document.getElementById('sof-delivered-total');
             const allOrderEl = document.getElementById('sof-all-order-total');
@@ -1812,6 +1956,8 @@
             if (pendingEl) pendingEl.textContent = pendingTotal.toLocaleString();
             if (fulfilledEl) fulfilledEl.textContent = fulfilled24h.toLocaleString();
             if (scanDoneEl) scanDoneEl.textContent = scanDone24h.toLocaleString();
+            if (inTransitEl) inTransitEl.textContent = inTransitTotal.toLocaleString();
+            if (inReceivedEl) inReceivedEl.textContent = inReceivedTotal.toLocaleString();
             if (invoicedEl) invoicedEl.textContent = invoicedTotal.toLocaleString();
             if (deliveredEl) deliveredEl.textContent = deliveredTotal.toLocaleString();
             if (allOrderEl) allOrderEl.textContent = allOrderTotal.toLocaleString();
@@ -1822,6 +1968,14 @@
             const scanDoneTabCount = document.getElementById('sof-scan-done-tab-count');
             if (scanDoneTabCount && !scanDoneTableLoaded) {
                 scanDoneTabCount.textContent = scanDone24h.toLocaleString();
+            }
+            const inTransitTabCount = document.getElementById('sof-in-transit-tab-count');
+            if (inTransitTabCount && !inTransitTableLoaded) {
+                inTransitTabCount.textContent = inTransitTotal.toLocaleString();
+            }
+            const inReceivedTabCount = document.getElementById('sof-in-received-tab-count');
+            if (inReceivedTabCount && !inReceivedTableLoaded) {
+                inReceivedTabCount.textContent = inReceivedTotal.toLocaleString();
             }
             const invoicedTabCount = document.getElementById('sof-invoiced-tab-count');
             if (invoicedTabCount && !invoicedTableLoaded) {
@@ -2317,7 +2471,7 @@
 
         fulfilledTable = new Tabulator('#sof-fulfilled-table', {
             layout: 'fitColumns',
-            placeholder: 'Loading Label Created orders…',
+            placeholder: 'Loading Label Created / No Scan orders…',
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, true],
@@ -2361,8 +2515,8 @@
                 const cols = orderListColumns('sof-fulfilled-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Label Created';
-                        c.headerTooltip = 'Label Created status';
+                        c.title = 'Label Created / No Scan';
+                        c.headerTooltip = 'Label Created / No Scan status';
                     }
                 });
                 // After Date (index 3 after Channel, Ch Orders, Order ID, Date) insert Updated + Tracking
@@ -2436,7 +2590,7 @@
 
         scanDoneTable = new Tabulator('#sof-scan-done-table', {
             layout: 'fitColumns',
-            placeholder: 'Loading Scan Done orders…',
+            placeholder: 'Loading Shipped/Received orders…',
             pagination: true,
             paginationSize: 50,
             paginationSizeSelector: [25, 50, 100, true],
@@ -2480,8 +2634,244 @@
                 const cols = orderListColumns('sof-scan-done-badge');
                 cols.forEach(function (c) {
                     if (c.field === 'status_label') {
-                        c.title = 'Scan Done';
-                        c.headerTooltip = 'Status Received';
+                        c.title = 'Shipped/Received';
+                        c.headerTooltip = 'Shipped / Received status';
+                    }
+                });
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                cols.splice(insertAt, 0,
+                    {
+                        title: 'Updated',
+                        field: 'updated_at',
+                        minWidth: 140,
+                        headerHozAlign: 'center',
+                        formatter: function (cell) {
+                            const v = cell.getValue();
+                            if (!v) return '—';
+                            try {
+                                const d = new Date(String(v).replace(' ', 'T'));
+                                if (!isNaN(d.getTime())) {
+                                    return d.toLocaleString(undefined, {
+                                        month: 'short', day: '2-digit',
+                                        hour: '2-digit', minute: '2-digit',
+                                    });
+                                }
+                            } catch (e) {}
+                            return escapeHtml(v);
+                        },
+                    },
+                    {
+                        title: 'Tracking',
+                        field: 'tracking_number',
+                        minWidth: 150,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Tracking number from marketplace order payload',
+                        formatter: function (cell) {
+                            const tracking = (cell.getValue() || '').toString().trim();
+                            if (!tracking) {
+                                return '<span class="sof-oc-missing">—</span>';
+                            }
+                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
+                        },
+                    }
+                );
+                return cols;
+            })(),
+        });
+    }
+
+    function applyInTransitFilters() {
+        if (!inTransitTable) return;
+        const q = ($('#sof-in-transit-search').val() || '').trim().toLowerCase();
+        if (!q) {
+            inTransitTable.clearFilter(true);
+            return;
+        }
+        inTransitTable.setFilter(function (data) {
+            return String(data.channel_label || '').toLowerCase().includes(q)
+                || String(data.order_id || '').toLowerCase().includes(q)
+                || String(data.sku || '').toLowerCase().includes(q)
+                || String(data.status_label || data.status || '').toLowerCase().includes(q)
+                || String(data.display_title || '').toLowerCase().includes(q);
+        });
+    }
+
+    function ensureInTransitTable() {
+        if (inTransitTable || inTransitTableLoading) {
+            if (inTransitTable) {
+                setTimeout(function () { inTransitTable.redraw(true); }, 50);
+            }
+            return;
+        }
+        inTransitTableLoading = true;
+
+        inTransitTable = new Tabulator('#sof-in-transit-table', {
+            layout: 'fitColumns',
+            placeholder: 'Loading In Transit orders…',
+            pagination: true,
+            paginationSize: 50,
+            paginationSizeSelector: [25, 50, 100, true],
+            movableColumns: false,
+            initialSort: [
+                { column: 'updated_at', dir: 'desc' },
+            ],
+            ajaxURL: '{{ route("sales.order.fulfillment.in.transit.data") }}',
+            ajaxConfig: 'GET',
+            ajaxRequestFunc: function (url, config, params) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: params,
+                        timeout: 0,
+                        success: resolve,
+                        error: reject,
+                    });
+                });
+            },
+            ajaxResponse: function (url, params, response) {
+                inTransitRows = (response && response.success && Array.isArray(response.data))
+                    ? response.data
+                    : [];
+                inTransitTableLoaded = true;
+                inTransitTableLoading = false;
+                const count = (response && response.count != null)
+                    ? Number(response.count)
+                    : inTransitRows.length;
+                const tabCount = document.getElementById('sof-in-transit-tab-count');
+                if (tabCount) tabCount.textContent = count.toLocaleString();
+                const inTransitEl = document.getElementById('sof-in-transit-total');
+                if (inTransitEl) inTransitEl.textContent = count.toLocaleString();
+                return inTransitRows;
+            },
+            dataLoaded: function () {
+                applyInTransitFilters();
+            },
+            columns: (function () {
+                const cols = orderListColumns('sof-in-transit-badge');
+                cols.forEach(function (c) {
+                    if (c.field === 'status_label') {
+                        c.title = 'In Transit';
+                        c.headerTooltip = 'In Transit status';
+                    }
+                });
+                const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
+                const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
+                cols.splice(insertAt, 0,
+                    {
+                        title: 'Updated',
+                        field: 'updated_at',
+                        minWidth: 140,
+                        headerHozAlign: 'center',
+                        formatter: function (cell) {
+                            const v = cell.getValue();
+                            if (!v) return '—';
+                            try {
+                                const d = new Date(String(v).replace(' ', 'T'));
+                                if (!isNaN(d.getTime())) {
+                                    return d.toLocaleString(undefined, {
+                                        month: 'short', day: '2-digit',
+                                        hour: '2-digit', minute: '2-digit',
+                                    });
+                                }
+                            } catch (e) {}
+                            return escapeHtml(v);
+                        },
+                    },
+                    {
+                        title: 'Tracking',
+                        field: 'tracking_number',
+                        minWidth: 150,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Tracking number from marketplace order payload',
+                        formatter: function (cell) {
+                            const tracking = (cell.getValue() || '').toString().trim();
+                            if (!tracking) {
+                                return '<span class="sof-oc-missing">—</span>';
+                            }
+                            return `<code style="font-size:0.8rem;color:#334155;">${escapeHtml(tracking)}</code>`;
+                        },
+                    }
+                );
+                return cols;
+            })(),
+        });
+    }
+
+    function applyInReceivedFilters() {
+        if (!inReceivedTable) return;
+        const q = ($('#sof-in-received-search').val() || '').trim().toLowerCase();
+        if (!q) {
+            inReceivedTable.clearFilter(true);
+            return;
+        }
+        inReceivedTable.setFilter(function (data) {
+            return String(data.channel_label || '').toLowerCase().includes(q)
+                || String(data.order_id || '').toLowerCase().includes(q)
+                || String(data.sku || '').toLowerCase().includes(q)
+                || String(data.status_label || data.status || '').toLowerCase().includes(q)
+                || String(data.display_title || '').toLowerCase().includes(q);
+        });
+    }
+
+    function ensureInReceivedTable() {
+        if (inReceivedTable || inReceivedTableLoading) {
+            if (inReceivedTable) {
+                setTimeout(function () { inReceivedTable.redraw(true); }, 50);
+            }
+            return;
+        }
+        inReceivedTableLoading = true;
+
+        inReceivedTable = new Tabulator('#sof-in-received-table', {
+            layout: 'fitColumns',
+            placeholder: 'Loading In Received orders…',
+            pagination: true,
+            paginationSize: 50,
+            paginationSizeSelector: [25, 50, 100, true],
+            movableColumns: false,
+            initialSort: [
+                { column: 'updated_at', dir: 'desc' },
+            ],
+            ajaxURL: '{{ route("sales.order.fulfillment.in.received.data") }}',
+            ajaxConfig: 'GET',
+            ajaxRequestFunc: function (url, config, params) {
+                return new Promise(function (resolve, reject) {
+                    $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: params,
+                        timeout: 0,
+                        success: resolve,
+                        error: reject,
+                    });
+                });
+            },
+            ajaxResponse: function (url, params, response) {
+                inReceivedRows = (response && response.success && Array.isArray(response.data))
+                    ? response.data
+                    : [];
+                inReceivedTableLoaded = true;
+                inReceivedTableLoading = false;
+                const count = (response && response.count != null)
+                    ? Number(response.count)
+                    : inReceivedRows.length;
+                const tabCount = document.getElementById('sof-in-received-tab-count');
+                if (tabCount) tabCount.textContent = count.toLocaleString();
+                const inReceivedEl = document.getElementById('sof-in-received-total');
+                if (inReceivedEl) inReceivedEl.textContent = count.toLocaleString();
+                return inReceivedRows;
+            },
+            dataLoaded: function () {
+                applyInReceivedFilters();
+            },
+            columns: (function () {
+                const cols = orderListColumns('sof-in-received-badge');
+                cols.forEach(function (c) {
+                    if (c.field === 'status_label') {
+                        c.title = 'In Received';
+                        c.headerTooltip = 'Received status';
                     }
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
@@ -2911,6 +3301,12 @@
     document.getElementById('sof-scan-done-tab')?.addEventListener('shown.bs.tab', function () {
         ensureScanDoneTable();
     });
+    document.getElementById('sof-in-transit-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureInTransitTable();
+    });
+    document.getElementById('sof-in-received-tab')?.addEventListener('shown.bs.tab', function () {
+        ensureInReceivedTable();
+    });
     document.getElementById('sof-invoiced-tab')?.addEventListener('shown.bs.tab', function () {
         ensureInvoicedTable();
     });
@@ -2926,6 +3322,12 @@
     });
     document.getElementById('sof-scan-done-24h-badge')?.addEventListener('click', function () {
         switchToScanDoneTab();
+    });
+    document.getElementById('sof-in-transit-badge')?.addEventListener('click', function () {
+        switchToInTransitTab();
+    });
+    document.getElementById('sof-in-received-badge')?.addEventListener('click', function () {
+        switchToInReceivedTab();
     });
     document.getElementById('sof-invoiced-badge')?.addEventListener('click', function () {
         switchToInvoicedTab();
@@ -2987,6 +3389,32 @@
     $('#sof-scan-done-filter-clear').on('click', function () {
         $('#sof-scan-done-search').val('');
         applyScanDoneFilters();
+    });
+
+    $('#sof-in-transit-filter-apply').on('click', applyInTransitFilters);
+    $('#sof-in-transit-search').on('keyup', function (e) {
+        if (e.key === 'Enter') {
+            applyInTransitFilters();
+            return;
+        }
+        applyInTransitFilters();
+    });
+    $('#sof-in-transit-filter-clear').on('click', function () {
+        $('#sof-in-transit-search').val('');
+        applyInTransitFilters();
+    });
+
+    $('#sof-in-received-filter-apply').on('click', applyInReceivedFilters);
+    $('#sof-in-received-search').on('keyup', function (e) {
+        if (e.key === 'Enter') {
+            applyInReceivedFilters();
+            return;
+        }
+        applyInReceivedFilters();
+    });
+    $('#sof-in-received-filter-clear').on('click', function () {
+        $('#sof-in-received-search').val('');
+        applyInReceivedFilters();
     });
 
     $('#sof-invoiced-filter-apply').on('click', applyInvoicedFilters);

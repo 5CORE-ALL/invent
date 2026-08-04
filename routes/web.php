@@ -532,6 +532,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-order-fulfillment/pending-data', [SalesOrderFulfillmentController::class, 'pendingData'])->name('sales.order.fulfillment.pending.data');
     Route::get('/sales-order-fulfillment/fulfilled-data', [SalesOrderFulfillmentController::class, 'fulfilledData'])->name('sales.order.fulfillment.fulfilled.data');
     Route::get('/sales-order-fulfillment/scan-done-data', [SalesOrderFulfillmentController::class, 'scanDoneData'])->name('sales.order.fulfillment.scan.done.data');
+    Route::get('/sales-order-fulfillment/in-transit-data', [SalesOrderFulfillmentController::class, 'inTransitData'])->name('sales.order.fulfillment.in.transit.data');
+    Route::get('/sales-order-fulfillment/in-received-data', [SalesOrderFulfillmentController::class, 'inReceivedData'])->name('sales.order.fulfillment.in.received.data');
     Route::get('/sales-order-fulfillment/invoiced-data', [SalesOrderFulfillmentController::class, 'invoicedData'])->name('sales.order.fulfillment.invoiced.data');
     Route::get('/sales-order-fulfillment/delivered-data', [SalesOrderFulfillmentController::class, 'deliveredData'])->name('sales.order.fulfillment.delivered.data');
     Route::get('/sales-order-fulfillment/all-order-data', [SalesOrderFulfillmentController::class, 'allOrderData'])->name('sales.order.fulfillment.all.order.data');

@@ -127,6 +127,8 @@ class SalesOrderFulfillmentController extends Controller
             });
             $fulfilled24h = $this->fulfilledLast24HoursCount();
             $scanDone24h = $this->scanDoneLast24HoursCount();
+            $inTransitTotal = $this->inTransitOrdersCount();
+            $inReceivedTotal = $this->inReceivedOrdersCount();
             $invoicedTotal = $this->invoicedOrdersCount();
             $deliveredTotal = $this->deliveredOrdersCount();
             $allOrderTotal = $this->allOrdersCount();
@@ -139,6 +141,8 @@ class SalesOrderFulfillmentController extends Controller
                 'pending_total' => $pendingTotal,
                 'fulfilled_24h' => $fulfilled24h,
                 'scan_done_24h' => $scanDone24h,
+                'in_transit_total' => $inTransitTotal,
+                'in_received_total' => $inReceivedTotal,
                 'invoiced_total' => $invoicedTotal,
                 'delivered_total' => $deliveredTotal,
                 'all_order_total' => $allOrderTotal,
@@ -153,6 +157,8 @@ class SalesOrderFulfillmentController extends Controller
                 'pending_total' => 0,
                 'fulfilled_24h' => 0,
                 'scan_done_24h' => 0,
+                'in_transit_total' => 0,
+                'in_received_total' => 0,
                 'invoiced_total' => 0,
                 'delivered_total' => 0,
                 'all_order_total' => 0,
@@ -188,7 +194,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Label Created (shipped / fulfilled) orders — last 30 days.
+     * Label Created / No Scan (fulfilled) orders — last 30 days.
      */
     public function fulfilledData(): JsonResponse
     {
@@ -214,7 +220,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Scan Done — status Received only, last 30 days.
+     * Shipped/Received — status Shipped / Received, last 30 days.
      */
     public function scanDoneData(): JsonResponse
     {
@@ -232,7 +238,59 @@ class SalesOrderFulfillmentController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load Scan Done orders.',
+                'message' => 'Failed to load Shipped/Received orders.',
+                'data' => [],
+                'count' => 0,
+            ], 500);
+        }
+    }
+
+    /**
+     * In Transit — last 30 days.
+     */
+    public function inTransitData(): JsonResponse
+    {
+        try {
+            $rows = $this->collectOrderRows(
+                fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug),
+                true
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => $rows,
+                'count' => count($rows),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load In Transit orders.',
+                'data' => [],
+                'count' => 0,
+            ], 500);
+        }
+    }
+
+    /**
+     * In Received — last 30 days.
+     */
+    public function inReceivedData(): JsonResponse
+    {
+        try {
+            $rows = $this->collectOrderRows(
+                fn (string $slug) => $this->scopedToLast30Days($this->inReceivedOrdersQuery($slug), $slug),
+                true
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => $rows,
+                'count' => count($rows),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load In Received orders.',
                 'data' => [],
                 'count' => 0,
             ], 500);
@@ -771,12 +829,14 @@ class SalesOrderFulfillmentController extends Controller
             $slug === 'wayfair' && $lower === 'open' => 'Pending',
             in_array($slug, ['bestbuy', 'macy'], true)
                 && in_array(str_replace([' ', '-'], '_', $upper), ['AWAITING_SHIPMENT', 'SHIPPING'], true) => 'Pending',
+            $slug === 'purchasingpower' && str_replace([' ', '-'], '_', $upper) === 'SHIPPING' => 'In Transit',
             $slug === 'purchasingpower'
                 && (
-                    in_array(str_replace([' ', '-'], '_', $upper), ['SHIPPING', 'TO_COLLECT'], true)
+                    str_replace([' ', '-'], '_', $upper) === 'TO_COLLECT'
                     || str_contains($lower, 'awaiting shipment')
                 ) => 'Pending',
             $slug === 'doba' && str_replace([' ', '-'], '_', $upper) === 'UNSHIPPED' => 'Pending',
+            $slug === 'doba' && in_array(str_replace([' ', '-'], '_', $upper), ['IN_TRANSIT', 'INTRANSIT'], true) => 'In Transit',
             default => $status !== '' ? str_replace('_', ' ', $status) : '—',
         };
     }
@@ -928,7 +988,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Count of Label Created orders in the last 30 days (all MM channels).
+     * Count of Label Created / No Scan orders in the last 30 days (all MM channels).
      * JSON key remains fulfilled_24h for frontend compatibility.
      */
     protected function fulfilledLast24HoursCount(): int
@@ -939,13 +999,33 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Count of Scan Done (Received) orders in the last 30 days.
+     * Count of Shipped/Received orders in the last 30 days.
      * JSON key remains scan_done_24h for frontend compatibility.
      */
     protected function scanDoneLast24HoursCount(): int
     {
         return $this->countAllOrders(
             fn (string $slug) => $this->scopedToLast30Days($this->scanDoneOrdersQuery($slug), $slug)
+        );
+    }
+
+    /**
+     * Count of In Transit orders in the last 30 days.
+     */
+    protected function inTransitOrdersCount(): int
+    {
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
+        );
+    }
+
+    /**
+     * Count of In Received orders in the last 30 days.
+     */
+    protected function inReceivedOrdersCount(): int
+    {
+        return $this->countAllOrders(
+            fn (string $slug) => $this->scopedToLast30Days($this->inReceivedOrdersQuery($slug), $slug)
         );
     }
 
@@ -1023,7 +1103,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Restrict to rows updated/touched since $since (Label Created / Scan Done windows).
+     * Restrict to rows updated/touched since $since (Label Created / No Scan / Shipped-Received windows).
      */
     protected function applyUpdatedSinceFilter(Builder $query, mixed $since, string $slug): Builder
     {
@@ -1122,8 +1202,8 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Not Scan / shipped rows for a marketplace
-     * (excludes Received → Scan Done, Invoiced → Invoiced, Delivered → Delivered).
+     * Label Created / No Scan rows for a marketplace
+     * (excludes Shipped / Received → Shipped/Received tab, Invoiced → Invoiced, Delivered → Delivered).
      */
     protected function fulfilledOrdersQuery(string $slug): ?Builder
     {
@@ -1134,31 +1214,48 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'ebay1', 'ebay2', 'ebay3' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['FULFILLED']),
-            'shein' => $base->where('status', 'Shipped'),
-            'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['shipped', 'picked_up']),
-            'aliexpress', 'alibaba' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['WAIT_BUYER_ACCEPT_GOODS']),
+            // Shein / Ali / TopDawg / Mirakl "Shipped" → Shipped/Received tab
+            'shein', 'aliexpress', 'alibaba', 'topdawg', 'bestbuy', 'macy' => null,
+            'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['picked_up']),
             'amazon' => $base->whereHas('order', fn (Builder $q) => $q->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLYSHIPPED']
             )),
-            'topdawg' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['shipped']),
             'temu' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['SHIPPED', 'PARTIALLY_SHIPPED']
             ),
-            'purchasingpower' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
-                ['SHIPPED', 'SHIPPING']
-            ),
-            'wayfair' => null, // all open POs stay Pending
-            'bestbuy', 'macy' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['SHIPPED']),
-            'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)", ['IN TRANSIT', 'IN_TRANSIT']),
+            // Purchasing Power SHIPPING / Doba In Transit → In Transit tab
+            'purchasingpower', 'doba', 'wayfair' => null,
             default => null,
         };
     }
 
     /**
-     * Scan Done — status Received only (Shein / Reverb / Mirakl Received).
+     * In Transit — carrier / marketplace in-transit statuses.
+     */
+    protected function inTransitOrdersQuery(string $slug): ?Builder
+    {
+        $base = $this->allOrdersQuery($slug);
+        if ($base === null) {
+            return null;
+        }
+
+        return match ($slug) {
+            'doba' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(order_status, ''))) IN (?, ?)",
+                ['IN TRANSIT', 'IN_TRANSIT']
+            ),
+            'purchasingpower' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(status, ''))) = ?",
+                ['SHIPPING']
+            ),
+            default => null,
+        };
+    }
+
+    /**
+     * Shipped/Received tab — status Shipped (Received → In Received tab).
      */
     protected function scanDoneOrdersQuery(string $slug): ?Builder
     {
@@ -1168,10 +1265,39 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return match ($slug) {
+            'shein' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['shipped']),
+            'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['shipped']),
+            'aliexpress', 'alibaba' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(status, ''))) = ?",
+                ['WAIT_BUYER_ACCEPT_GOODS']
+            ),
+            'topdawg' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['shipped']),
+            'purchasingpower' => $base->whereRaw(
+                "UPPER(TRIM(COALESCE(status, ''))) = ?",
+                ['SHIPPED']
+            ),
+            'bestbuy', 'macy' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['SHIPPED']),
+            default => null,
+        };
+    }
+
+    /**
+     * In Received — status Received across MM channels.
+     */
+    protected function inReceivedOrdersQuery(string $slug): ?Builder
+    {
+        $base = $this->allOrdersQuery($slug);
+        if ($base === null) {
+            return null;
+        }
+
+        return match ($slug) {
             'shein', 'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['received']),
             'purchasingpower' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['RECEIVED']),
-            'bestbuy', 'macy' => null, // Received folded into Delivered for Mirakl
-            default => null,
+            'bestbuy', 'macy' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['RECEIVED']),
+            'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon', 'temu', 'faire',
+            'aliexpress', 'alibaba', 'topdawg', 'doba' => null,
+            default => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['received']),
         };
     }
 
@@ -1190,7 +1316,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Delivered — delivered / received / completed across MM channels.
+     * Delivered — delivered / completed across MM channels (Received → In Received tab).
      */
     protected function deliveredOrdersQuery(string $slug): ?Builder
     {
@@ -1201,7 +1327,8 @@ class SalesOrderFulfillmentController extends Controller
 
         return match ($slug) {
             'faire' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['DELIVERED']),
-            'shein', 'reverb' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['received']),
+            // Shein / Reverb / Purchasing Power Received → In Received tab
+            'shein', 'reverb', 'purchasingpower' => null,
             'ebay1', 'ebay2', 'ebay3', 'newegg', 'wayfair', 'amazon' => null,
             'aliexpress', 'alibaba' => $base->whereRaw(
                 "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?, ?)",
@@ -1212,15 +1339,14 @@ class SalesOrderFulfillmentController extends Controller
                 "UPPER(TRIM(COALESCE(parent_order_status_text, order_status_text, ''))) IN (?, ?)",
                 ['DELIVERED', 'PARTIALLY_DELIVERED']
             ),
-            'purchasingpower' => $base->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['RECEIVED']),
             'bestbuy', 'macy' => $base->whereRaw(
-                "UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)",
-                ['DELIVERED', 'RECEIVED']
+                "UPPER(TRIM(COALESCE(status, ''))) = ?",
+                ['DELIVERED']
             ),
             'doba' => $base->whereRaw("UPPER(TRIM(COALESCE(order_status, ''))) = ?", ['COMPLETED']),
             default => $base->whereRaw(
-                "LOWER(TRIM(COALESCE(status, ''))) IN (?, ?)",
-                ['delivered', 'received']
+                "LOWER(TRIM(COALESCE(status, ''))) = ?",
+                ['delivered']
             ),
         };
     }
@@ -1288,7 +1414,8 @@ class SalesOrderFulfillmentController extends Controller
                 ['UN_SHIPPING', 'PENDING']
             ),
             'purchasingpower' => $base->where(function (Builder $q) {
-                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) IN (?, ?)", ['SHIPPING', 'TO_COLLECT'])
+                // SHIPPING → In Transit tab
+                $q->whereRaw("UPPER(TRIM(COALESCE(status, ''))) = ?", ['TO_COLLECT'])
                     ->orWhereRaw("LOWER(TRIM(COALESCE(status, ''))) LIKE ?", ['%awaiting shipment%']);
             }),
             'wayfair' => $base->whereRaw("LOWER(TRIM(COALESCE(status, ''))) = ?", ['open']),
