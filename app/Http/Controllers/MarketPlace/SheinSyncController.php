@@ -690,6 +690,25 @@ class SheinSyncController extends Controller
     }
 
     /**
+     * Accept a Pending Shein order (export-address handleType=2 → To Be Shipped).
+     */
+    public function acceptOrderOnShein(int $id): JsonResponse
+    {
+        if (! $this->apiConfig->isConfigured('shein')) {
+            return response()->json(['success' => false, 'message' => 'Shein not connected.']);
+        }
+
+        $line = SheinOrderMetric::query()->findOrFail($id);
+        $result = app(SheinOrderDetailService::class)->acceptOrderOnShein((string) $line->order_id);
+
+        return response()->json([
+            'success' => ! empty($result['success']),
+            'skipped' => ! empty($result['skipped']),
+            'message' => $result['message'] ?? 'Accept finished.',
+        ], ! empty($result['success']) || ! empty($result['skipped']) ? 200 : 422);
+    }
+
+    /**
      * Push Shopify fulfillment tracking number to Shein (Ship Order).
      */
     public function pushTrackingToShein(int $id): JsonResponse
@@ -1056,7 +1075,7 @@ class SheinSyncController extends Controller
         $inventory['min_quantity'] = 0;
         $order = $this->mergeSettingsSection($current['order'] ?? [], $request->input('order', []), [
             'fetch_orders', 'auto_import_to_shopify', 'import_paid_orders_only', 'keep_order_number_from_channel',
-            'push_tracking_to_shein', 'sync_address_to_shopify',
+            'push_tracking_to_shein', 'sync_address_to_shopify', 'auto_accept_on_shein',
         ]);
         $listings = $this->mergeSettingsSection($current['listings'] ?? [], $request->input('listings', []), [
             'auto_link_by_sku', 'create_products_on_shein', 'sync_title', 'sync_images',

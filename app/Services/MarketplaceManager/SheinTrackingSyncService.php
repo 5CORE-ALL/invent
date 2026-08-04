@@ -90,14 +90,38 @@ class SheinTrackingSyncService
             ];
         }
 
+        // Shein requires accept (Pending → To Be Shipped) before tracking upload works.
+        if ($this->orderDetailService->isPendingOrder($line)) {
+            $accept = $this->orderDetailService->acceptOrderOnShein($orderId);
+            if (empty($accept['success'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Accept order on Shein first (Pending), then push tracking. '.($accept['message'] ?? ''),
+                    'shopify_tracking' => $shopifyTracking,
+                    'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
+                ];
+            }
+            $line->refresh();
+        }
+
         $shipCarrier = $this->resolveShipCarrier($shopifyCarrier, $sheinCarrier);
         $shipService = $this->resolveShipService($shopifyCarrier, $sheinCarrier);
         $items = $this->buildShipItems($orderId);
 
         if ($items === []) {
+            // Refresh order detail so goodsId is available from Shein, then retry once.
+            try {
+                $this->orderDetailService->fetchAndPersistOrderDetail($orderId);
+            } catch (\Throwable $e) {
+                // ignore
+            }
+            $items = $this->buildShipItems($orderId);
+        }
+
+        if ($items === []) {
             return [
                 'success' => false,
-                'message' => 'No Shein Seller Part # line items found to ship.',
+                'message' => 'No Shein goodsId line items found to ship. Pull the order from Shein, then retry.',
                 'shopify_tracking' => $shopifyTracking,
                 'shopify_carrier' => $shopifyCarrier !== '' ? $shopifyCarrier : null,
             ];
@@ -110,6 +134,10 @@ class SheinTrackingSyncService
             $shipService,
             $items
         );
+
+        if (! empty($result['express_id_code'])) {
+            $shipCarrier = (string) $result['express_id_code'];
+        }
 
         if (empty($result['success'])) {
             $message = (string) ($result['message'] ?? 'Failed to push tracking to Shein.');
@@ -354,29 +382,93 @@ class SheinTrackingSyncService
     }
 
     /**
-     * @return list<array{seller_part_number: string, quantity: int, shein_item_number?: string|null}>
+     * @return list<array{seller_part_number: string, quantity: int, goods_id: int, shein_item_number?: string|null}>
      */
     protected function buildShipItems(string $orderId): array
     {
         $lines = SheinOrderMetric::query()
             ->where('order_id', $orderId)
             ->orderBy('id')
-            ->get(['sku', 'product_id', 'quantity']);
+            ->get();
 
         $items = [];
+        $seenGoods = [];
+
         foreach ($lines as $row) {
             $sku = trim((string) $row->sku);
-            if ($sku === '' || in_array($sku, ['__order__', '__unknown__'], true)) {
+            if ($sku === '__order__') {
+                // Fall through — may still hold goodsIds in order payload.
+            } elseif ($sku === '' || $sku === '__unknown__') {
                 continue;
             }
-            $items[] = [
-                'seller_part_number' => $sku,
-                'quantity' => max(1, (int) ($row->quantity ?? 1)),
-                'shein_item_number' => trim((string) ($row->product_id ?? '')) ?: null,
-            ];
+
+            foreach ($this->extractGoodsIdsFromLine($row) as $goodsId) {
+                if (isset($seenGoods[$goodsId])) {
+                    continue;
+                }
+                $seenGoods[$goodsId] = true;
+                $items[] = [
+                    'seller_part_number' => $sku !== '' && $sku !== '__order__' ? $sku : (string) $goodsId,
+                    'quantity' => max(1, (int) ($row->quantity ?? 1)),
+                    'goods_id' => $goodsId,
+                    'shein_item_number' => (string) $goodsId,
+                ];
+            }
         }
 
         return $items;
+    }
+
+    /**
+     * @return list<int>
+     */
+    protected function extractGoodsIdsFromLine(SheinOrderMetric $row): array
+    {
+        $ids = [];
+        $raw = is_array($row->raw_payload) ? $row->raw_payload : [];
+        $line = is_array($raw['line'] ?? null) ? $raw['line'] : [];
+        $order = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+
+        $candidates = [
+            $line['goodsId'] ?? null,
+            $line['goods_id'] ?? null,
+            $order['goodsId'] ?? null,
+        ];
+
+        // product_id is often skuCode; only use when numeric (real goodsId).
+        $productId = trim((string) ($row->product_id ?? ''));
+        if ($productId !== '' && ctype_digit($productId)) {
+            $candidates[] = $productId;
+        }
+
+        $goodsList = is_array($order['orderGoodsInfoList'] ?? null) ? $order['orderGoodsInfoList'] : [];
+        $sku = trim((string) $row->sku);
+        foreach ($goodsList as $goods) {
+            if (! is_array($goods)) {
+                continue;
+            }
+            $goodsSku = trim((string) ($goods['sellerSku'] ?? $goods['goodsSn'] ?? $goods['skuCode'] ?? ''));
+            if ($sku !== '' && $sku !== '__order__' && $goodsSku !== '' && strcasecmp($sku, $goodsSku) !== 0) {
+                // Still collect when __order__ placeholder or sku mismatch unknown — for __order__ take all.
+                if ($sku !== '__order__') {
+                    continue;
+                }
+            }
+            $candidates[] = $goods['goodsId'] ?? $goods['goods_id'] ?? null;
+        }
+
+        // If line sku matched nothing, and this is a normal line, try any goodsId on this line node only.
+        foreach ($candidates as $candidate) {
+            if ($candidate === null || $candidate === '') {
+                continue;
+            }
+            if (! is_numeric($candidate)) {
+                continue;
+            }
+            $ids[] = (int) $candidate;
+        }
+
+        return array_values(array_unique($ids));
     }
 
     protected function resolveShipCarrier(string $shopifyCarrier, string $sheinCarrier): string
@@ -393,9 +485,12 @@ class SheinTrackingSyncService
             if ($mapped !== '') {
                 return $mapped;
             }
+
+            return $existing;
         }
 
-        return 'Other Carrier';
+        // SheinApiService::resolveExpressIdCode will map this against express-channel list.
+        return $shopifyCarrier !== '' ? $shopifyCarrier : 'UPS';
     }
 
     protected function resolveShipService(string $shopifyCarrier, string $sheinCarrier): string

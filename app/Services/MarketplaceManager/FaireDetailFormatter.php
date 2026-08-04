@@ -4,7 +4,6 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\FaireMetric;
 use App\Models\FaireOrderMetric;
-use App\Models\FairePricingPrice;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -1664,12 +1663,17 @@ class FaireDetailFormatter
     }
 
     /**
-     * Prefer live/API variant stock for this SKU, else local faire_stock from pricing sync.
+     * Faire stock from products API: live variant qty, else faire_metric.inventory.
      *
      * @param  array<int, array<string, mixed>>  $variants
      */
     protected function resolveProductAeStock(array $variants, ?FaireMetric $metric, string $shopifySku): ?int
     {
+        // Prefer inventory already stored from Faire products API link-map.
+        if ($metric !== null && $metric->inventory !== null) {
+            return (int) $metric->inventory;
+        }
+
         $targets = array_values(array_filter([
             strtoupper(trim($shopifySku)),
             strtoupper(trim((string) ($metric?->sku ?? ''))),
@@ -1725,11 +1729,11 @@ class FaireDetailFormatter
     protected function pricingSyncedAt(string $shopifySku): ?\Carbon\Carbon
     {
         $sku = trim($shopifySku);
-        if ($sku === '' || ! Schema::hasTable('faire_pricing_prices')) {
+        if ($sku === '' || ! Schema::hasTable('faire_metric')) {
             return null;
         }
 
-        $row = FairePricingPrice::query()
+        $row = FaireMetric::query()
             ->where(function ($q) use ($sku) {
                 $q->where('sku', $sku)->orWhere('sku', strtoupper($sku));
             })

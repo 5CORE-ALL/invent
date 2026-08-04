@@ -406,6 +406,13 @@
                         </ul>
                     </div>
 
+                    @if (!empty($tiktokPricingClientConfig['syncFromApi'] ?? null))
+                    <button type="button" id="tt2-sync-api-btn" class="btn btn-sm btn-success"
+                        title="Fetch products + orders from TikTok Shop 2 API">
+                        <i class="fas fa-cloud-download-alt"></i> Sync API
+                    </button>
+                    @endif
+
                     {{-- Export always; Upload/Sample only when upload path is set (TikTok 2). TikTok 1 is API-only. --}}
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm btn-info dropdown-toggle" data-bs-toggle="dropdown"
@@ -3978,6 +3985,41 @@
                 $('#l30-upload-file').off('change').on('change', function() {
                     doUploadReport(this, 'L30', 'upload-status-container');
                 }).trigger('click');
+            });
+
+            $('#tt2-sync-api-btn').on('click', function() {
+                if (!TTP_CFG.syncFromApi) return;
+                const $btn = $(this);
+                if (!confirm('Fetch TikTok 2 products + orders from the Shop API now?')) return;
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Syncing…');
+                $.ajax({
+                    url: TTP_CFG.syncFromApi,
+                    method: 'POST',
+                    data: {
+                        products: 1,
+                        orders: 1,
+                        days: 60,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(res) {
+                        alert(res.message || 'TikTok 2 sync completed.');
+                        if (table) table.setData();
+                    },
+                    error: function(xhr) {
+                        const res = xhr.responseJSON || {};
+                        const msg = res.message || 'TikTok 2 sync failed.';
+                        if (res.connect_url) {
+                            if (confirm(msg + '\n\nOpen Connect page now?')) {
+                                window.open(res.connect_url, '_blank');
+                            }
+                        } else {
+                            alert(msg);
+                        }
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html('<i class="fas fa-cloud-download-alt"></i> Sync API');
+                    }
+                });
             });
 
             // Copy SKU button handler

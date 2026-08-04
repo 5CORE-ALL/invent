@@ -347,6 +347,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | USPS API (OAuth consumer credentials)
+    |--------------------------------------------------------------------------
+    |
+    | Consumer Key / Secret from the USPS Developer Portal app.
+    | Callback URL must match the value registered on the USPS app.
+    |
+    */
+    'usps' => [
+        'consumer_key'    => env('USPS_CONSUMER_KEY', ''),
+        'consumer_secret' => env('USPS_CONSUMER_SECRET', ''),
+        'callback_url'    => env('USPS_CALLBACK_URL', 'http://127.0.0.1:8000/admin'),
+        'api_base'        => env('USPS_API_BASE', 'https://apis.usps.com'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | UPS API (OAuth client credentials)
+    |--------------------------------------------------------------------------
+    |
+    | Client ID / Secret from the UPS Developer Portal app.
+    | Production base: https://onlinetools.ups.com
+    | CIE/sandbox base: https://wwwcie.ups.com
+    |
+    */
+    'ups' => [
+        'client_id'     => env('UPS_CLIENT_ID', ''),
+        'client_secret' => env('UPS_CLIENT_SECRET', ''),
+        'api_base'      => env('UPS_API_BASE', 'https://onlinetools.ups.com'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */
@@ -822,6 +854,25 @@ return [
         'access_token' => env('TIKTOK_ACCESS_TOKEN'),
         'refresh_token' => env('TIKTOK_REFRESH_TOKEN'),
         'app_id' => env('TIKTOK_APP_ID'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | TikTok Shop 2 (second Partner Center app / shop)
+    |--------------------------------------------------------------------------
+    */
+    'tiktok2' => [
+        'client_key' => env('TIKTOK2_CLIENT_KEY'),
+        'client_secret' => env('TIKTOK2_CLIENT_SECRET'),
+        'redirect_uri' => env('TIKTOK2_REDIRECT_URI', 'https://inventory.5coremanagement.com/index'),
+        'auth_base' => env('TIKTOK2_AUTH_BASE', env('TIKTOK_AUTH_BASE', 'https://auth.tiktok-shops.com')),
+        'api_base' => env('TIKTOK2_API_BASE', env('TIKTOK_API_BASE', 'https://open-api.tiktokglobalshop.com')),
+        'shop_id' => env('TIKTOK2_SHOP_ID'),
+        'app_key' => env('TIKTOK2_APP_KEY', env('TIKTOK2_CLIENT_KEY')),
+        'app_secret' => env('TIKTOK2_APP_SECRET', env('TIKTOK2_CLIENT_SECRET')),
+        'access_token' => env('TIKTOK2_ACCESS_TOKEN'),
+        'refresh_token' => env('TIKTOK2_REFRESH_TOKEN'),
+        'app_id' => env('TIKTOK2_APP_ID'),
     ],
 
     /*

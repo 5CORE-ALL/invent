@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Tiktok2Order;
 use App\Models\TiktokOrder;
+use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -11,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 class FetchTikTokOrders extends Command
 {
     protected $signature = 'tiktok:fetch-orders
+        {--channel=tiktok : tiktok (→ tiktok_orders) or tiktok2 (→ tiktok2_orders)}
         {--days=60 : Rolling window of days to fetch (create_time)}
         {--from= : Start date Y-m-d (overrides --days start)}
         {--to= : End date Y-m-d (default: today)}
@@ -18,10 +21,22 @@ class FetchTikTokOrders extends Command
         {--chunk-days=15 : Split API requests into N-day windows}
         {--prune : Delete rows older than the fetch window after import}';
 
-    protected $description = 'Fetch TikTok Shop order raw sales data into tiktok_orders (line-item level)';
+    protected $description = 'Fetch TikTok / TikTok 2 Shop order raw sales data (line-item level)';
 
-    public function handle(TikTokShopService $tiktok): int
+    public function handle(): int
     {
+        $channel = strtolower(trim((string) $this->option('channel')));
+        if (! in_array($channel, ['tiktok', 'tiktok2'], true)) {
+            $this->error('Invalid --channel. Use tiktok or tiktok2.');
+
+            return self::FAILURE;
+        }
+
+        $tiktok = $channel === 'tiktok2' ? app(TikTok2ShopService::class) : app(TikTokShopService::class);
+        $orderModel = $channel === 'tiktok2' ? Tiktok2Order::class : TiktokOrder::class;
+        $configKey = $channel === 'tiktok2' ? 'tiktok2' : 'tiktok';
+        $label = $channel === 'tiktok2' ? 'TikTok 2' : 'TikTok';
+
         $tiktok->setOutputCallback(function (string $type, string $message) {
             match ($type) {
                 'error' => $this->error($message),
@@ -31,15 +46,16 @@ class FetchTikTokOrders extends Command
         });
 
         if (! $tiktok->isAuthenticated()) {
-            $access = config('services.tiktok.access_token');
-            $refresh = config('services.tiktok.refresh_token');
+            $access = config("services.{$configKey}.access_token");
+            $refresh = config("services.{$configKey}.refresh_token");
             if ($access) {
                 $tiktok->setTokens($access, $refresh);
             }
         }
 
         if (! $tiktok->isAuthenticated()) {
-            $this->error('No TikTok access token. Run OAuth or set TIKTOK_ACCESS_TOKEN / TIKTOK_REFRESH_TOKEN.');
+            $prefix = strtoupper($configKey);
+            $this->error("No {$label} access token. Run OAuth or set {$prefix}_ACCESS_TOKEN / {$prefix}_REFRESH_TOKEN.");
 
             return self::FAILURE;
         }
@@ -89,7 +105,7 @@ class FetchTikTokOrders extends Command
             foreach ($orders as $order) {
                 $lines = $this->mapOrderToRows($order, $shopRegion);
                 foreach ($lines as $row) {
-                    TiktokOrder::updateOrCreate(
+                    $orderModel::updateOrCreate(
                         [
                             'order_id' => $row['order_id'],
                             'line_item_id' => $row['line_item_id'],
@@ -106,12 +122,13 @@ class FetchTikTokOrders extends Command
         }
 
         if ($this->option('prune')) {
-            $deleted = TiktokOrder::where('order_created_at', '<', $from)->delete();
+            $deleted = $orderModel::where('order_created_at', '<', $from)->delete();
             $this->info("Pruned {$deleted} rows older than window start.");
         }
 
-        $this->info("Done. Orders fetched={$totalOrders} line-rows upserted={$upserted} (processed lines={$totalLines})");
+        $this->info("Done ({$label}). Orders fetched={$totalOrders} line-rows upserted={$upserted} (processed lines={$totalLines})");
         Log::info('tiktok:fetch-orders completed', [
+            'channel' => $channel,
             'orders' => $totalOrders,
             'upserted' => $upserted,
             'from' => $from->toIso8601String(),

@@ -52,6 +52,10 @@ use App\Models\WalmartListingViewsData;
 use App\Models\WalmartCampaignReport;
 use App\Models\WalmartDataView;
 use App\Models\TikTokProduct;
+use App\Models\TikTokProductTwo;
+use App\Models\Tiktok2Order;
+use App\Models\TiktokTwoShopDataView;
+use App\Models\TiktokTwoShopListingStatus;
 use App\Models\ChannelMaster;
 use App\Models\BestbuyUsaProduct;
 use App\Models\BestbuyPriceData;
@@ -99,6 +103,10 @@ use App\Models\FbaMonthlySale;
 use App\Models\FbaReportsMaster;
 use App\Models\FbaManualData;
 use App\Models\AliexpressDataView;
+use App\Models\FaireMetric;
+use App\Models\FaireDailyData;
+use App\Models\FaireDataView;
+use App\Models\FaireListingStatus;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
 use App\Services\FbaManualDataService;
@@ -382,6 +390,44 @@ class CvrMasterController extends Controller
                 'tiktok_spend_skus' => count($tiktokSpendBySku),
                 'tiktok_percentage' => $tiktokPercentage * 100 . '%'
             ]);
+
+            // TikTok 2 — same formulas as /tiktok-2-pricing (API products + tiktok2_orders; Ads% = 0)
+            $tiktok2Marketplace = MarketplacePercentage::where('marketplace', 'TiktokShop2')
+                ->orWhere('marketplace', 'TikTok 2')
+                ->orWhere('marketplace', 'TiktokShop')
+                ->first();
+            $tiktok2Percentage = $tiktok2Marketplace ? ((float) $tiktok2Marketplace->percentage / 100) : 0.80;
+            $tiktok2Products = collect();
+            $tiktok2L30BySku = [];
+            $tiktok2ShopByNormSku = [];
+            try {
+                if (Schema::hasTable('tiktok_products_two')) {
+                    $tiktok2Products = TikTokProductTwo::whereIn('sku', $skusUpperTt)
+                        ->get()
+                        ->keyBy(fn ($item) => strtoupper((string) $item->sku));
+                }
+                if (Tiktok2Order::tableReady()) {
+                    $tiktok2L30BySku = Tiktok2Order::soldQtyL30($skusUpperTt, 30);
+                }
+                if (Schema::hasTable('tiktok_two_shop_data_views') && $skusUpperTt !== []) {
+                    TiktokTwoShopDataView::query()
+                        ->whereIn(DB::raw('UPPER(TRIM(sku))'), $skusUpperTt)
+                        ->get()
+                        ->each(function ($row) use (&$tiktok2ShopByNormSku) {
+                            $k = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $row->sku)));
+                            if ($k !== '') {
+                                $tiktok2ShopByNormSku[$k] = $row;
+                            }
+                        });
+                }
+                Log::info('CVR Master - TikTok 2 Data fetched', [
+                    'tiktok2_products' => $tiktok2Products->count(),
+                    'tiktok2_l30_skus' => count(array_filter($tiktok2L30BySku, fn ($q) => (int) $q > 0)),
+                    'tiktok2_percentage' => ($tiktok2Percentage * 100) . '%',
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('CVR Master - TikTok 2 data fetch skipped: ' . $e->getMessage());
+            }
 
             // Get BestBuy percentage from MarketplacePercentage (default 80%)
             $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
@@ -711,6 +757,33 @@ class CvrMasterController extends Controller
                 ]);
             } catch (\Exception $e) {
                 Log::warning('CVR Master - Shein data fetch skipped: ' . $e->getMessage());
+            }
+
+            // Faire — same sources/formulas as /faire-pricing (products API → faire_metric; no sheet)
+            // Price/inventory from faire_metric; L30 from faire_daily_data; ship excluded; Ads% = 0
+            $faireMarketplace = MarketplacePercentage::where('marketplace', 'Faire')->first();
+            $fairePercentage = $faireMarketplace ? ((float) $faireMarketplace->percentage / 100) : 0.75;
+            $faireMetricByNorm = [];
+            $faireL30ByNorm = [];
+            try {
+                if (Schema::hasTable('faire_metric')) {
+                    foreach (FaireMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'price', 'inventory', 'product_id']) as $row) {
+                        $nk = $this->normalizeFaireSkuForCvr((string) ($row->sku ?? ''));
+                        if ($nk !== '') {
+                            $faireMetricByNorm[$nk] = $row;
+                        }
+                    }
+                }
+                if (Schema::hasTable('faire_daily_data')) {
+                    $faireL30ByNorm = $this->fetchFaireL30ByNormalizedSku();
+                }
+                Log::info('CVR Master - Faire Data fetched', [
+                    'faire_metrics' => count($faireMetricByNorm),
+                    'faire_l30_skus' => count($faireL30ByNorm),
+                    'faire_percentage' => ($fairePercentage * 100) . '%',
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('CVR Master - Faire data fetch skipped: ' . $e->getMessage());
             }
 
             // TopDawg — same sources/formulas as /topdawg-pricing
@@ -1196,6 +1269,35 @@ class CvrMasterController extends Controller
                 // PFT% = GPFT% − TACOS% (same as /tiktok-pricing)
                 $tiktokPFT = $tiktokGPFT - $tiktokAD;
 
+                // === TIKTOK 2 (same as /tiktok-2-pricing; Ads% = 0) ===
+                $tiktok2Product = $tiktok2Products->get($skuUpperTt);
+                $tiktok2Price = $tiktok2Product ? floatval($tiktok2Product->price ?? 0) : 0;
+                $tt2VideoViews = $tiktok2Product ? intval($tiktok2Product->video_views ?? $tiktok2Product->views ?? 0) : 0;
+                $tt2AdsViews = $tiktok2Product ? intval($tiktok2Product->ads_views ?? 0) : 0;
+                $tt2AfflViews = $tiktok2Product ? intval($tiktok2Product->affl_views ?? 0) : 0;
+                $tt2ShopRow = $tiktok2ShopByNormSku[$skuNormTt] ?? null;
+                if ($tt2ShopRow) {
+                    $tt2Val = is_array($tt2ShopRow->value)
+                        ? $tt2ShopRow->value
+                        : (json_decode($tt2ShopRow->value ?? '{}', true) ?: []);
+                    if (array_key_exists('video_views', $tt2Val)) {
+                        $tt2VideoViews = intval($tt2Val['video_views']);
+                    }
+                    if (array_key_exists('ads_views', $tt2Val)) {
+                        $tt2AdsViews = intval($tt2Val['ads_views']);
+                    }
+                    if (array_key_exists('affl_views', $tt2Val)) {
+                        $tt2AfflViews = intval($tt2Val['affl_views']);
+                    }
+                }
+                $tiktok2Views = $tt2VideoViews + $tt2AdsViews + $tt2AfflViews;
+                $tiktok2L30 = (int) ($tiktok2L30BySku[$skuUpperTt] ?? 0);
+                $tt2Ship = 0;
+                $tiktok2GPFT = $tiktok2Price > 0
+                    ? round((($tiktok2Price * $tiktok2Percentage - $lp - $tt2Ship) / $tiktok2Price) * 100, 2)
+                    : 0;
+                $tiktok2PFT = $tiktok2GPFT; // Ads% = 0
+
                 // BestBuy — same as /bestbuy-pricing BB Price: sheet first, else product
                 $bestbuyProduct = $bestbuyProducts->get($sku);
                 $bestbuyPriceItem = $bestbuyPriceData->get(strtoupper((string) $sku));
@@ -1497,6 +1599,20 @@ class CvrMasterController extends Controller
                     : 0;
                 $tdPFT = $tdGPFT; // No ads
 
+                // === FAIRE (same as /faire-pricing) ===
+                // Price from faire_metric (products API); L30 from faire_daily_data; no ship; Ads% = 0
+                $faireNormKey = $this->normalizeFaireSkuForCvr((string) $sku);
+                $faireMetric = ($faireNormKey !== '' && isset($faireMetricByNorm[$faireNormKey]))
+                    ? $faireMetricByNorm[$faireNormKey]
+                    : null;
+                $fairePrice = $faireMetric ? floatval($faireMetric->price ?? 0) : 0;
+                $faireViews = 0; // /faire-pricing does not track views
+                $faireL30 = ($faireNormKey !== '') ? (int) ($faireL30ByNorm[$faireNormKey] ?? 0) : 0;
+                $faireGPFT = $fairePrice > 0
+                    ? round((($fairePrice * $fairePercentage - $lp) / $fairePrice) * 100, 2)
+                    : 0;
+                $fairePFT = $faireGPFT; // No ads
+
                 // Calculate aggregated metrics across all marketplaces
                 
                 // Get views from all marketplaces
@@ -1526,15 +1642,15 @@ class CvrMasterController extends Controller
                 
                 // Total Views (sum of all marketplace views) — Walmart excluded from this page
                 $totalViews = $amazonViews + $ebay1Views + $ebay2Views + $ebay3Views + $temuViews + $temu2Views
-                              + $tiktokViews + $bbViews + $sb2cViews
-                              + $macyViews + $reverbViews + $dobaViews + $sheinViews + $tdViews; // AliExpress has no views tracked
+                              + $tiktokViews + $tiktok2Views + $bbViews + $sb2cViews
+                              + $macyViews + $reverbViews + $dobaViews + $sheinViews + $tdViews + $faireViews; // AliExpress/Faire have no views tracked
                 // Get L30 from all marketplaces
                 $ebay1L30 = $ebay1Metric ? intval($ebay1Metric->ebay_l30 ?? 0) : 0;
                 $ebay2L30 = $ebay2Metric ? intval($ebay2Metric->ebay_l30 ?? 0) : 0;
                 $ebay3L30 = $ebay3Metric ? intval($ebay3Metric->ebay_l30 ?? 0) : 0;
                 // Walmart / Tiendamia excluded from SW L30 on this page
                 $walmartL30 = 0;
-                // $tiktokL30 already set from tiktok_orders above
+                // $tiktokL30 / $tiktok2L30 already set above
                 $bbL30 = $bestbuyProduct ? intval($bestbuyProduct->m_l30 ?? 0) : 0;
                 $sb2cL30 = 0; // Shopify B2C L30 is in overall_l30 (already counted)
                 $macyL30 = $macyProduct ? intval($macyProduct->m_l30 ?? 0) : 0;
@@ -1543,8 +1659,8 @@ class CvrMasterController extends Controller
                 
                 // Total L30 across marketplaces (Walmart / Tiendamia excluded)
                 $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + $temu2L30
-                           + $tiktokL30 + $bbL30 + $sb2cL30
-                           + $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30 + $tdL30;
+                           + $tiktokL30 + $tiktok2L30 + $bbL30 + $sb2cL30
+                           + $macyL30 + $reverbL30 + $dobaL30 + $sheinL30 + $aeL30 + $ppL30 + $tdL30 + $faireL30;
                 
                 // Calculate Avg CVR using CVR formula: (Total L30 / Total Views) × 100
                 $avgCVR = $totalViews > 0 ? round(($totalL30 / $totalViews) * 100, 2) : 0;
@@ -1559,6 +1675,7 @@ class CvrMasterController extends Controller
                 if ($temu2Price > 0) $prices[] = $temu2Price;
                 // Walmart excluded from this page
                 if ($tiktokPrice > 0) $prices[] = $tiktokPrice;
+                if ($tiktok2Price > 0) $prices[] = $tiktok2Price;
                 if ($bbPrice > 0) $prices[] = $bbPrice;
                 if ($sb2cPrice > 0) $prices[] = $sb2cPrice;
                 if ($macyPrice > 0) $prices[] = $macyPrice;
@@ -1568,6 +1685,7 @@ class CvrMasterController extends Controller
                 if ($aePrice > 0) $prices[] = $aePrice;
                 if ($ppPrice > 0) $prices[] = $ppPrice;
                 if ($tdPrice > 0) $prices[] = $tdPrice;
+                if ($fairePrice > 0) $prices[] = $fairePrice;
                 
                 // Collect all GPFT values (non-zero or negative)
                 $gpftValues = [];
@@ -1579,6 +1697,7 @@ class CvrMasterController extends Controller
                 if ($temu2Price > 0) $gpftValues[] = $temu2GPFT;
                 // Walmart excluded from this page
                 if ($tiktokPrice > 0) $gpftValues[] = $tiktokGPFT;
+                if ($tiktok2Price > 0) $gpftValues[] = $tiktok2GPFT;
                 if ($bbPrice > 0) $gpftValues[] = $bbGPFT;
                 if ($sb2cPrice > 0) $gpftValues[] = $sb2cGPFT;
                 if ($macyPrice > 0) $gpftValues[] = $macyGPFT;
@@ -1588,6 +1707,7 @@ class CvrMasterController extends Controller
                 if ($aePrice > 0) $gpftValues[] = $aeGPFT;
                 if ($ppPrice > 0) $gpftValues[] = $ppGPFT;
                 if ($tdPrice > 0) $gpftValues[] = $tdGPFT;
+                if ($fairePrice > 0) $gpftValues[] = $faireGPFT;
                 
                 // Sales-weighted Ads%: (Σ ad spend $) ÷ (Σ sales $) × 100
                 // for marketplaces with ads (Amazon, Temu, Temu 2, TikTok) that have sales
@@ -1621,6 +1741,7 @@ class CvrMasterController extends Controller
                 if ($temu2Price > 0) $pftValues[] = $temu2PFT;
                 // Walmart excluded from this page
                 if ($tiktokPrice > 0) $pftValues[] = $tiktokPFT;
+                if ($tiktok2Price > 0) $pftValues[] = $tiktok2PFT;
                 if ($bbPrice > 0) $pftValues[] = $bbPFT;
                 if ($sb2cPrice > 0) $pftValues[] = $sb2cPFT;
                 if ($macyPrice > 0) $pftValues[] = $macyPFT;
@@ -1630,6 +1751,7 @@ class CvrMasterController extends Controller
                 if ($aePrice > 0) $pftValues[] = $aePFT;
                 if ($ppPrice > 0) $pftValues[] = $ppPFT;
                 if ($tdPrice > 0) $pftValues[] = $tdPFT;
+                if ($fairePrice > 0) $pftValues[] = $fairePFT;
                 
                 // Collect GROI% / NROI% per listed channel:
                 // GROI = GPFT% × price / LP ; NROI = NPFT% × price / LP (after ads)
@@ -1671,6 +1793,11 @@ class CvrMasterController extends Controller
                         $roiValues[] = $tiktokGroi;
                         $nroiValues[] = ($tiktokPFT * $tiktokPrice) / $lp;
                     }
+                    if ($tiktok2Price > 0) {
+                        $tiktok2Groi = (($tiktok2Price * $tiktok2Percentage - $lp - $tt2Ship) / $lp) * 100;
+                        $roiValues[] = $tiktok2Groi;
+                        $nroiValues[] = $tiktok2Groi; // Ads% = 0
+                    }
                     if ($bbPrice > 0) {
                         $roiValues[] = ($bbGPFT * $bbPrice) / $lp;
                         $nroiValues[] = ($bbPFT * $bbPrice) / $lp;
@@ -1708,6 +1835,12 @@ class CvrMasterController extends Controller
                     if ($tdPrice > 0) {
                         $roiValues[] = ($tdGPFT * $tdPrice) / $lp;
                         $nroiValues[] = ($tdPFT * $tdPrice) / $lp;
+                    }
+                    if ($fairePrice > 0) {
+                        // GROI% = (Price × Margin − LP) / LP × 100 — same as /faire-pricing (no ship)
+                        $faireGroi = (($fairePrice * $fairePercentage - $lp) / $lp) * 100;
+                        $roiValues[] = $faireGroi;
+                        $nroiValues[] = $faireGroi; // Ads% = 0 → NROI = GROI
                     }
                 }
 
@@ -1841,8 +1974,8 @@ class CvrMasterController extends Controller
                 // Walmart excluded – removed from this page
                 $missingChannelPrices = [
                     $amazonPrice, $ebay1Price, $ebay3Price, $temuPrice, $temu2Price,
-                    $tiktokPrice, $bbPrice, $sb2cPrice,
-                    $macyPrice, $reverbPrice, $dobaPrice, $sheinPrice, $aePrice,
+                    $tiktokPrice, $tiktok2Price, $bbPrice, $sb2cPrice,
+                    $macyPrice, $reverbPrice, $dobaPrice, $sheinPrice, $aePrice, $fairePrice,
                 ];
                 if ($actWt <= 0.75) {
                     $missingChannelPrices[] = $ebay2Price;
@@ -1875,6 +2008,8 @@ class CvrMasterController extends Controller
                     "amazon_margin" => 0.80,
                     "amazon_l30" => $amazonL30,
                     "shein_l30" => $sheinL30,
+                    "faire_l30" => $faireL30,
+                    "tiktok2_l30" => $tiktok2L30,
                     "ae_l30"    => $aeL30,
                     "pp_l30"    => $ppL30,
                     "td_l30"    => $tdL30,
@@ -2020,6 +2155,8 @@ class CvrMasterController extends Controller
                     'amazon_margin' => 0.80,
                     'amazon_l30' => null,
                     'shein_l30' => $rows->sum('shein_l30'),
+                    'faire_l30' => $rows->sum('faire_l30'),
+                    'tiktok2_l30' => $rows->sum('tiktok2_l30'),
                     'ae_l30'    => $rows->sum('ae_l30'),
                     'pp_l30'    => $rows->sum('pp_l30'),
                     'td_l30'    => $rows->sum('td_l30'),
@@ -2365,6 +2502,7 @@ class CvrMasterController extends Controller
                     'ebay3' => 'ebay 3',
                     'doba' => 'doba',
                     'tiktok' => 'tiktok',
+                    'tiktok2' => 'tiktok 2',
                     // SB2C ↔ AMM "Shopify" Ads% (live overlay above)
                     'sb2c' => 'shopify',
                     'shopifyb2c' => 'shopify',
@@ -2379,6 +2517,7 @@ class CvrMasterController extends Controller
                     'bestbuy' => 'best buy usa',
                     'tiendamia' => 'tiendamia',
                     'shein' => 'shein',
+                    'faire' => 'faire',
                     'aliexpress' => 'aliexpress',
                     'purchasingpower' => 'purchasing power',
                     'ppower' => 'purchasing power',
@@ -3237,6 +3376,87 @@ class CvrMasterController extends Controller
                 'seller_link' => $ttSellerLink,
             ];
 
+            // TikTok 2 — /tiktok-2-pricing (API → tiktok_products_two + tiktok2_orders; Ads% = 0)
+            $tiktok2MarketplacePerc = MarketplacePercentage::where('marketplace', 'TiktokShop2')
+                ->orWhere('marketplace', 'TikTok 2')
+                ->orWhere('marketplace', 'TiktokShop')
+                ->first();
+            $tiktok2MarginBd = $tiktok2MarketplacePerc ? ((float) $tiktok2MarketplacePerc->percentage / 100) : 0.80;
+            $tt2ProductBd = null;
+            $tiktok2L30Bd = 0;
+            try {
+                if (Schema::hasTable('tiktok_products_two')) {
+                    $tt2ProductBd = TikTokProductTwo::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($fullSku))])->first();
+                }
+                if (Tiktok2Order::tableReady()) {
+                    $tiktok2L30Bd = (int) (Tiktok2Order::soldQtyL30([strtoupper(trim($fullSku))], 30)[strtoupper(trim($fullSku))] ?? 0);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok 2 breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $tt2PriceBd = $tt2ProductBd ? floatval($tt2ProductBd->price ?? 0) : 0;
+            $tt2ShipBd = 0;
+            $tt2GPFTBd = $tt2PriceBd > 0
+                ? round((($tt2PriceBd * $tiktok2MarginBd - $lp - $tt2ShipBd) / $tt2PriceBd) * 100, 2)
+                : 0;
+            $tt2SuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $tt2BuyerLink = null;
+            $tt2SellerLink = null;
+            $tt2ViewsBd = null;
+            try {
+                $tt2ShopBd = TiktokTwoShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($fullSku))])->first();
+                if ($tt2ShopBd) {
+                    $val = is_array($tt2ShopBd->value) ? $tt2ShopBd->value : json_decode($tt2ShopBd->value ?? '{}', true);
+                    if (is_array($val)) {
+                        $tt2Sprice = floatval($val['SPRICE'] ?? $val['sprice'] ?? 0);
+                        $tt2Sgpft = $tt2Sprice > 0
+                            ? round((($tt2Sprice * $tiktok2MarginBd - $lp - $tt2ShipBd) / $tt2Sprice) * 100, 2)
+                            : 0;
+                        $tt2SuggestedBd = [
+                            'sprice' => $tt2Sprice,
+                            'sgpft' => $tt2Sgpft,
+                            'spft' => $tt2Sgpft,
+                            'sroi' => ($lp > 0 && $tt2Sprice > 0)
+                                ? round((($tt2Sprice * $tiktok2MarginBd - $lp - $tt2ShipBd) / $lp) * 100, 2)
+                                : 0,
+                        ];
+                    }
+                }
+                if ($tt2ProductBd) {
+                    $tt2ViewsBd = intval($tt2ProductBd->video_views ?? $tt2ProductBd->views ?? 0)
+                        + intval($tt2ProductBd->ads_views ?? 0)
+                        + intval($tt2ProductBd->affl_views ?? 0);
+                }
+                [$tt2BuyerLink, $tt2SellerLink] = $getListingLinks(TiktokTwoShopListingStatus::class, $fullSku);
+            } catch (\Throwable $e) {
+                Log::warning('TikTok 2 DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $hasTikTok2Data = (bool) $tt2ProductBd || $tt2PriceBd > 0 || $tiktok2L30Bd > 0 || ($tt2SuggestedBd['sprice'] > 0);
+
+            $breakdownData[] = [
+                'marketplace' => 'TikTok 2',
+                'sku' => $hasTikTok2Data ? $fullSku : 'Not Listed',
+                'price' => round($tt2PriceBd, 2),
+                'views' => $hasTikTok2Data ? $tt2ViewsBd : null,
+                'l30' => $tiktok2L30Bd,
+                'gpft' => $tt2GPFTBd,
+                'ad' => 0,
+                'tacos_ch' => 0,
+                'npft' => $tt2GPFTBd,
+                'is_listed' => $hasTikTok2Data,
+                'sprice' => $tt2SuggestedBd['sprice'],
+                'sgpft' => $tt2SuggestedBd['sgpft'],
+                'sroi' => $tt2SuggestedBd['sroi'],
+                'spft' => $tt2SuggestedBd['spft'],
+                'lp' => $lp,
+                'ship' => $tt2ShipBd,
+                'margin' => $tiktok2MarginBd,
+                'pushed_by' => null,
+                'pushed_at' => null,
+                'buyer_link' => $tt2BuyerLink,
+                'seller_link' => $tt2SellerLink,
+            ];
+
             // Fetch Shopify B2C data
             // Price/views from shopify_skus, L30 from shopify_b2c_daily_data (count rows)
             $shopifySku = ShopifySku::where('sku', $fullSku)->first();
@@ -3895,6 +4115,94 @@ class CvrMasterController extends Controller
                 'seller_link' => $sheinSellerLink,
             ];
 
+            // Faire — same sources/formulas as /faire-pricing (API → faire_metric)
+            $faireMarketplacePerc = MarketplacePercentage::where('marketplace', 'Faire')->first();
+            $faireMarginBd = $faireMarketplacePerc ? ((float) $faireMarketplacePerc->percentage / 100) : 0.75;
+            $faireNormBd = $this->normalizeFaireSkuForCvr((string) $fullSku);
+            $faireMetricRowBd = null;
+            $faireL30Bd = 0;
+            try {
+                if (Schema::hasTable('faire_metric') && $faireNormBd !== '') {
+                    $direct = FaireMetric::where('sku', $fullSku)->first()
+                        ?? FaireMetric::whereRaw('UPPER(TRIM(sku)) = ?', [$faireNormBd])->first();
+                    if ($direct && $this->normalizeFaireSkuForCvr((string) $direct->sku) === $faireNormBd) {
+                        $faireMetricRowBd = $direct;
+                    } else {
+                        foreach (FaireMetric::query()->select(['sku', 'price', 'inventory', 'product_id'])->cursor() as $row) {
+                            if ($this->normalizeFaireSkuForCvr((string) ($row->sku ?? '')) === $faireNormBd) {
+                                $faireMetricRowBd = $row;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (Schema::hasTable('faire_daily_data') && $faireNormBd !== '') {
+                    $faireL30Bd = $this->fetchFaireL30QtyForSku($fullSku);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Faire breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $fairePriceBd = $faireMetricRowBd ? floatval($faireMetricRowBd->price ?? 0) : 0;
+            $faireGPFTBd = $fairePriceBd > 0
+                ? round((($fairePriceBd * $faireMarginBd - $lp) / $fairePriceBd) * 100, 2)
+                : 0;
+            $faireNPFTBd = $faireGPFTBd; // Ads% = 0
+            $faireSuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $faireBuyerLink = null;
+            $faireSellerLink = null;
+            try {
+                $faireDataViewBd = FaireDataView::where('sku', $fullSku)->first()
+                    ?? FaireDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $fullSku))])->first();
+                if ($faireDataViewBd) {
+                    $val = is_array($faireDataViewBd->value) ? $faireDataViewBd->value : json_decode($faireDataViewBd->value, true);
+                    if (is_array($val)) {
+                        $faireSprice = floatval($val['SPRICE'] ?? $val['sprice'] ?? 0);
+                        $faireSgpft = $faireSprice > 0
+                            ? round((($faireSprice * $faireMarginBd - $lp) / $faireSprice) * 100, 2)
+                            : 0;
+                        $faireSuggestedBd = [
+                            'sprice' => $faireSprice,
+                            'sgpft' => $faireSgpft,
+                            'spft' => $faireSgpft, // SPFT = SGPFT (no ads)
+                            'sroi' => ($lp > 0 && $faireSprice > 0)
+                                ? round((($faireSprice * $faireMarginBd - $lp) / $lp) * 100, 2)
+                                : 0,
+                        ];
+                    }
+                }
+                [$faireBuyerLink, $faireSellerLink] = $getListingLinks(FaireListingStatus::class, $fullSku);
+            } catch (\Exception $e) {
+                Log::warning('Faire DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
+            }
+            $hasFaireData = $faireMetricRowBd !== null
+                || $fairePriceBd > 0
+                || $faireL30Bd > 0
+                || ($faireSuggestedBd['sprice'] > 0);
+
+            $breakdownData[] = [
+                'marketplace' => 'Faire',
+                'sku'         => $hasFaireData ? $fullSku : 'Not Listed',
+                'price'       => round($fairePriceBd, 2),
+                'views'       => null, // /faire-pricing does not track views
+                'l30'         => $faireL30Bd,
+                'gpft'        => $faireGPFTBd,
+                'ad'          => 0,
+                'tacos_ch'    => 0,
+                'npft'        => $faireNPFTBd,
+                'is_listed'   => $hasFaireData,
+                'sprice'      => $faireSuggestedBd['sprice'],
+                'sgpft'       => $faireSuggestedBd['sgpft'],
+                'sroi'        => $faireSuggestedBd['sroi'],
+                'spft'        => $faireSuggestedBd['spft'],
+                'lp'          => $lp,
+                'ship'        => 0, // /faire-pricing excludes ship
+                'margin'      => $faireMarginBd,
+                'pushed_by'   => null,
+                'pushed_at'   => null,
+                'buyer_link'  => $faireBuyerLink,
+                'seller_link' => $faireSellerLink,
+            ];
+
             // Add AliExpress
             $aeMarketplacePerc = MarketplacePercentage::where('marketplace', 'Aliexpress')
                 ->orWhere('marketplace', 'AliExpress')->first();
@@ -4366,13 +4674,13 @@ class CvrMasterController extends Controller
                     if ($spriceVal > 0 || $sgpftVal != 0) {
                         $row['spft'] = round($sgpftVal - $adsPct, 2);
                     }
-                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein'], true)) {
-                    // Temu2 / Doba / PPower / TopDawg / Shein: no ads (match channel pricing pages)
+                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire', 'tiktok2', 'tiktok 2'], true)) {
+                    // Temu2 / Doba / PPower / TopDawg / Shein / Faire / TikTok 2: no ads (match channel pricing pages)
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
-                    if (in_array($mp, ['ppower', 'purchasingpower', 'purchase', 'topdawg'], true)) {
-                        $row['ship'] = 0; // PP / TopDawg formulas never use ship
+                    if (in_array($mp, ['ppower', 'purchasingpower', 'purchase', 'topdawg', 'faire'], true)) {
+                        $row['ship'] = 0; // PP / TopDawg / Faire formulas never use ship
                     }
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
@@ -4943,6 +5251,17 @@ class CvrMasterController extends Controller
                         $price = (float) (DB::table('shein_metrics')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
                     }
                     break;
+                case 'faire':
+                    if (Schema::hasTable('faire_metric')) {
+                        $norm = $this->normalizeFaireSkuForCvr($sku);
+                        foreach (FaireMetric::query()->select(['sku', 'price'])->cursor() as $row) {
+                            if ($this->normalizeFaireSkuForCvr((string) ($row->sku ?? '')) === $norm) {
+                                $price = (float) ($row->price ?? 0);
+                                break;
+                            }
+                        }
+                    }
+                    break;
                 case 'reverb':
                     if (Schema::hasTable('reverb_products')) {
                         $price = (float) (DB::table('reverb_products')->whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->value('price') ?? 0);
@@ -5344,6 +5663,12 @@ class CvrMasterController extends Controller
                 // Same store as /tiktok-pricing (tiktok_shop_data_views)
                 $existingTtView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
                 $dataView = $existingTtView ?: new TiktokShopDataView(['sku' => $skuToUse]);
+            } elseif ($marketplace === 'tiktok2' || $marketplace === 'tiktok 2' || $marketplace === 'tiktokshop2') {
+                if (!Schema::hasTable('tiktok_two_shop_data_views')) {
+                    return response()->json(['error' => 'TikTok 2 is not set up. Run migrations (tiktok_two_shop_data_views).'], 503);
+                }
+                $existingTt2View = TiktokTwoShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+                $dataView = $existingTt2View ?: new TiktokTwoShopDataView(['sku' => $skuToUse]);
             } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
                 $dataView = BestbuyUSADataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
@@ -5360,6 +5685,12 @@ class CvrMasterController extends Controller
                     return response()->json(['error' => 'Shein is not set up. Run migrations (shein_data_views).'], 503);
                 }
                 $dataView = \App\Models\SheinDataView::firstOrNew(['sku' => $skuToUse]);
+            } elseif ($marketplace === 'faire') {
+                if (!Schema::hasTable('faire_data_views')) {
+                    return response()->json(['error' => 'Faire is not set up. Run migrations (faire_data_views).'], 503);
+                }
+                $existingFaireView = FaireDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+                $dataView = $existingFaireView ?: new FaireDataView(['sku' => $skuToUse]);
             } elseif ($marketplace === 'aliexpress') {
                 // Same store as /aliexpress-pricing (aliexpress_data_views.value.SPRICE)
                 if (!Schema::hasTable('aliexpress_data_views')) {
@@ -5624,6 +5955,12 @@ class CvrMasterController extends Controller
         } elseif ($marketplace === 'tiktok') {
             $existingTtView = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
             $dataView = $existingTtView ?: new TiktokShopDataView(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'tiktok2' || $marketplace === 'tiktok 2' || $marketplace === 'tiktokshop2') {
+            if (!Schema::hasTable('tiktok_two_shop_data_views')) {
+                return false;
+            }
+            $existingTt2View = TiktokTwoShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+            $dataView = $existingTt2View ?: new TiktokTwoShopDataView(['sku' => $skuToUse]);
         } elseif ($marketplace === 'bestbuy' || $marketplace === 'bestbuyusa') {
             $dataView = BestbuyUSADataView::firstOrNew(['sku' => $skuToUse]);
         } elseif ($marketplace === 'macy' || $marketplace === 'macys') {
@@ -5641,6 +5978,12 @@ class CvrMasterController extends Controller
                 return false;
             }
             $dataView = \App\Models\SheinDataView::firstOrNew(['sku' => $skuToUse]);
+        } elseif ($marketplace === 'faire') {
+            if (!Schema::hasTable('faire_data_views')) {
+                return false;
+            }
+            $existingFaireView = FaireDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
+            $dataView = $existingFaireView ?: new FaireDataView(['sku' => $skuToUse]);
         } elseif ($marketplace === 'aliexpress') {
             if (!Schema::hasTable('aliexpress_data_views')) {
                 return false;
@@ -8353,6 +8696,62 @@ class CvrMasterController extends Controller
         $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
 
         return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku) ?? '');
+    }
+
+    /**
+     * Normalize Faire SKU the same way as /faire-pricing (FaireController::normalizeFaireSkuExact).
+     */
+    private function normalizeFaireSkuForCvr(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku) ?? '');
+    }
+
+    /**
+     * Faire AL30 qty per normalized SKU from faire_daily_data (same grain as /faire-pricing).
+     *
+     * @return array<string, int>
+     */
+    private function fetchFaireL30ByNormalizedSku(): array
+    {
+        if (!Schema::hasTable('faire_daily_data')) {
+            return [];
+        }
+
+        try {
+            $out = [];
+            FaireDailyData::query()
+                ->whereNotNull('sku')->where('sku', '!=', '')
+                ->selectRaw('sku, SUM(COALESCE(quantity, 0)) as al30')
+                ->groupBy('sku')
+                ->get()
+                ->each(function ($row) use (&$out) {
+                    $key = $this->normalizeFaireSkuForCvr((string) ($row->sku ?? ''));
+                    if ($key === '') {
+                        return;
+                    }
+                    $out[$key] = ($out[$key] ?? 0) + (int) round((float) ($row->al30 ?? 0));
+                });
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('CVR Master fetchFaireL30ByNormalizedSku: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /** Faire AL30 for one SKU (normalized), same source as /faire-pricing. */
+    private function fetchFaireL30QtyForSku(string $sku): int
+    {
+        $norm = $this->normalizeFaireSkuForCvr($sku);
+        if ($norm === '') {
+            return 0;
+        }
+
+        return (int) (($this->fetchFaireL30ByNormalizedSku())[$norm] ?? 0);
     }
 
     /**

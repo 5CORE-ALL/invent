@@ -19,6 +19,7 @@ class FaireMetric extends Model
         'sku',
         'product_name',
         'price',
+        'inventory',
         'l30',
         'l60',
         'order_dates',
@@ -30,6 +31,7 @@ class FaireMetric extends Model
         'order_dates' => 'array',
         'last_order_date' => 'datetime',
         'price' => 'decimal:2',
+        'inventory' => 'integer',
         'l30' => 'integer',
         'l60' => 'integer'
     ];

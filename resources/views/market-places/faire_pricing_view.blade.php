@@ -124,22 +124,20 @@
     <div class="row">
         <div class="col-12">
             <div class="alert alert-info py-2 mb-3">
-                <strong>Sales data</strong> is aggregated from <a href="{{ route('faire.tabulator.view') }}" class="alert-link">Faire Sales Data</a>
-                (uploaded wholesale × quantity per SKU). <strong>Pricing</strong> column is your uploaded Faire list price (CSV/Excel: sku, price, stock).
+                <strong>Sales data</strong> is aggregated from <a href="{{ route('faire.tabulator.view') }}" class="alert-link">Faire Sales Data</a>.
+                <strong>Pricing / Faire stock / listed</strong> come only from the <strong>Faire products API</strong> (<code>faire_metric</code>) — no sheet or pricing-table fallback.
             </div>
 
-            <div class="card border-warning mb-3">
-                <div class="card-header bg-warning bg-opacity-25 py-2">
-                    <strong><i class="fas fa-upload me-1"></i> List price upload</strong>
-                    <span class="text-muted small ms-2">Table below shows merged product masters, sales, and uploaded list prices.</span>
+            <div class="card border-primary mb-3">
+                <div class="card-header bg-primary bg-opacity-10 py-2">
+                    <strong><i class="fas fa-cloud-download-alt me-1"></i> Faire API sync</strong>
+                    <span class="text-muted small ms-2">Pulls live listings, wholesale price, and stock into <code>faire_metric</code> (API only) for Map / Miss / N Map.</span>
                 </div>
                 <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-                    <a href="{{ route('faire.pricing.price.sample') }}" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-download"></i> Sample CSV
-                    </a>
-                    <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#uploadFairePriceModal">
-                        <i class="fas fa-upload"></i> Upload price
+                    <button type="button" class="btn btn-sm btn-primary" id="frSyncFromApiBtn">
+                        <i class="fas fa-sync"></i> Sync from Faire API
                     </button>
+                    <span id="frSyncFromApiStatus" class="small text-muted"></span>
                 </div>
             </div>
 
@@ -324,26 +322,6 @@
                     </div>
 
                     <div id="faire-pricing-table"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="uploadFairePriceModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Upload Faire list price sheet</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="file" class="form-control" id="frPriceSheetFile" accept=".xlsx,.xls,.csv,.txt">
-                    <small class="text-muted">Simple sheet: <strong>sku</strong>, <strong>price</strong>, optional <strong>stock</strong>.
-                        Faire product export (TSV/Excel) is supported: <strong>SKU</strong>, <strong>USD Unit Wholesale Price</strong> (or other currency wholesale), <strong>On Hand Inventory</strong>.</small>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-warning" id="frUploadPriceSheetBtn">Upload</button>
                 </div>
             </div>
         </div>
@@ -2112,34 +2090,55 @@
                 frSaveColumnVisibilityToServer();
             });
 
-            $('#frUploadPriceSheetBtn').on('click', function() {
-                const file = document.getElementById('frPriceSheetFile').files[0];
-                if (!file) {
-                    alert('Please select a file first.');
+            function frSyncFromApiPage(page, reset) {
+                var $btn = $('#frSyncFromApiBtn');
+                var $status = $('#frSyncFromApiStatus');
+                $status.text(reset ? 'Starting Faire API sync…' : ('Syncing page ' + page + '…'));
+                return $.ajax({
+                    url: '{{ route("faire.pricing.sync.api") }}',
+                    type: 'POST',
+                    timeout: 0,
+                    headers: {
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    data: { page: page, reset: reset ? 1 : 0 },
+                }).then(function (res) {
+                    if (!res || !res.success) {
+                        throw new Error((res && res.message) || 'Sync failed.');
+                    }
+                    $status.text(res.message || ('Page ' + page + ' done'));
+                    if (res.done) {
+                        return res;
+                    }
+                    return frSyncFromApiPage(page + 1, false);
+                });
+            }
+
+            $('#frSyncFromApiBtn').on('click', function () {
+                var $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                if (!confirm('Pull live Faire listings, wholesale prices, and stock from the Faire products API into faire_metric?\n\nUsed by pricing, Map / Miss / N Map, and listings.')) {
                     return;
                 }
-                const formData = new FormData();
-                formData.append('price_file', file);
-                formData.append('_token', '{{ csrf_token() }}');
-                $.ajax({
-                    url: '/faire/pricing-upload-price',
-                    type: 'POST',
-                    data: formData,
-                    processData: false,
-                    contentType: false,
-                    success: function(response) {
-                        if (window.toastr) toastr.success(response.message || 'Upload completed.');
-                        else alert(response.message || 'Upload completed.');
-                        $('#uploadFairePriceModal').modal('hide');
-                        $('#frPriceSheetFile').val('');
-                        table.setData('/faire/pricing-data');
-                    },
-                    error: function(xhr) {
-                        const message = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Upload failed.';
+                $btn.prop('disabled', true);
+                frSyncFromApiPage(1, true)
+                    .then(function (res) {
+                        if (window.toastr) toastr.success((res && res.message) || 'Faire API sync completed.');
+                        else alert((res && res.message) || 'Faire API sync completed.');
+                        if (table) table.setData('/faire/pricing-data');
+                    })
+                    .catch(function (err) {
+                        var message = (err && err.message) ? err.message : 'Faire API sync failed.';
+                        if (err && err.responseJSON && err.responseJSON.message) {
+                            message = err.responseJSON.message;
+                        }
                         if (window.toastr) toastr.error(message);
                         else alert(message);
-                    }
-                });
+                    })
+                    .always(function () {
+                        $btn.prop('disabled', false);
+                    });
             });
         });
     </script>

@@ -109,29 +109,36 @@ class TikTok2ListingVariationVerifyController extends Controller
     }
 
     /**
-     * TikTok 2 listings come from CSV upload on /tiktok-2-pricing (no API pull).
-     * This endpoint refreshes meta from the current tiktok_products_two cache.
+     * Pull TikTok 2 listings from Shop API → tiktok_products_two (falls back to existing cache).
      */
     public function pullListings(Request $request)
     {
         try {
+            $sync = app(\App\Http\Controllers\MarketPlace\TikTokPricingController::class)
+                ->syncTikTok2FromApi(Request::create('/tiktok-2-sync-from-api', 'POST', [
+                    'products' => 1,
+                    'orders' => 0,
+                ]));
+            $payload = method_exists($sync, 'getData') ? $sync->getData(true) : [];
+            if (empty($payload['success'])) {
+                $status = method_exists($sync, 'getStatusCode') ? (int) $sync->getStatusCode() : 500;
+
+                return response()->json([
+                    'status' => $status,
+                    'message' => $payload['message'] ?? 'TikTok 2 API sync failed. Connect OAuth at /tiktok2/connect first.',
+                    'count' => 0,
+                ], $status >= 400 ? $status : 500);
+            }
+
             $count = (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
             $lastPulledAt = TikTokProductTwo::query()->max('updated_at');
 
-            if ($count === 0) {
-                return response()->json([
-                    'status' => 422,
-                    'message' => 'No TikTok 2 listings in tiktok_products_two. Upload CSV on TikTok 2 Shop - Analytics (/tiktok-2-pricing) first.',
-                    'count' => 0,
-                    'last_pulled_at' => $lastPulledAt,
-                ], 422);
-            }
-
             return response()->json([
                 'status' => 200,
-                'message' => "TikTok 2 listings ready. {$count} SKUs in tiktok_products_two. Parent Vs Listed SKU updated.",
+                'message' => "TikTok 2 API pull OK. {$count} SKUs in tiktok_products_two. Parent Vs Listed SKU updated.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
+                'sync' => $payload,
             ]);
         } catch (\Throwable $e) {
             Log::error('TikTok 2 Listing Variation Verify: pull listings failed', [

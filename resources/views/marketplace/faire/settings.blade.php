@@ -129,13 +129,13 @@
             <div class="settings-section">
                 <div class="settings-section-header">Listings</div>
                 <div class="settings-section-body">
-                    <p class="text-muted small mb-2">Sync Faire link map only reads Faire and saves SKU mappings locally — it never creates listings on Faire. When <strong>Auto-link</strong> is on, this also runs hourly on schedule.</p>
+                    <p class="text-muted small mb-2">Sync Faire link map reads the Faire products API into <code>faire_metric</code> (SKU, product_id, wholesale price, inventory). That is the only source for /faire-pricing, map-issues, and listings — no sheet upload. It never creates listings on Faire. When <strong>Auto-link</strong> is on, this also runs hourly.</p>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="listings[auto_link_by_sku]" value="1" {{ ($settings['listings']['auto_link_by_sku'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Auto-link listings by SKU match</span>
                         </label>
-                        <div class="form-text ms-4">When on, refresh Faire SKU ↔ product_id mappings hourly (same as manual Sync Faire link map). Manual sync on Listings always works.</div>
+                        <div class="form-text ms-4">When on, refresh Faire products API → <code>faire_metric</code> hourly (same as manual Sync Faire link map / Sync from Faire API on pricing). Manual sync on Listings always works.</div>
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">

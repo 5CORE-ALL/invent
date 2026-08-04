@@ -3817,8 +3817,10 @@
                 const isPpMp = mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase';
                 const isTdMp = mpLower === 'topdawg';
                 const isSheinMp = mpLower === 'shein';
+                const isFaireMp = mpLower === 'faire';
+                const isTiktok2Mp = mpLower === 'tiktok2' || mpLower === 'tiktok 2';
                 // Doba/PPower/TopDawg/Shein: Ads% = 0; Reverb/eBay use channel Ads% (pricing tabulators)
-                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp;
+                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp || isTiktok2Mp;
                 // Temu: every row uses aggregate Ads% (~2.6%) — same as /temu-decrease badgeAvgAds
                 const isTemuMpRow = mpLower === 'temu';
                 const isTemu2MpRow = mpLower === 'temu2';
@@ -3838,7 +3840,7 @@
                 const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
                 // PPower/TopDawg: ship excluded from all formulas
-                const ship = (isPpMp || isTdMp) ? 0 : parseFloat(item.ship || 0);
+                const ship = (isPpMp || isTdMp || isFaireMp) ? 0 : parseFloat(item.ship || 0);
                 // SB2B: always SPRICE = (Price × 0.75) − Ship
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 let sprice = parseFloat(item.sprice || 0);
@@ -3902,7 +3904,7 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -5379,6 +5381,19 @@
                     minWidth: 60
                 },
                 {
+                    title: "Fr L30",
+                    field: "faire_l30",
+                    visible: false,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        if (value === 0) return '<span style="color:#6c757d;">0</span>';
+                        return `<span style="color:#0d6efd;font-weight:600;">${value.toLocaleString()}</span>`;
+                    },
+                    minWidth: 60
+                },
+                {
                     title: "AE L30",
                     field: "ae_l30",
                     visible: false,
@@ -6349,7 +6364,9 @@
             const isPpEdit = (mpForMargin === 'ppower' || mpForMargin === 'purchasingpower' || mpForMargin === 'purchase');
             const isTdEdit = (mpForMargin === 'topdawg');
             const isSheinEdit = (mpForMargin === 'shein');
-            const isNoAdsEdit = (mpForMargin === 'doba' || isPpEdit || isTdEdit || isSheinEdit);
+            const isFaireEdit = (mpForMargin === 'faire');
+            const isTiktok2Edit = (mpForMargin === 'tiktok2' || mpForMargin === 'tiktok 2');
+            const isNoAdsEdit = (mpForMargin === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit || isTiktok2Edit);
             // PPower/TopDawg: ship excluded
             const ship = (isPpEdit || isTdEdit) ? 0 : (parseFloat(row.attr('data-ship')) || 0);
             const tacosCh = isNoAdsEdit ? 0 : (parseFloat(row.attr('data-tacos-ch')) || 0);
@@ -6372,7 +6389,7 @@
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
                 const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                 const isTemu2Mp = (mpLower === 'temu2');
-                const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit);
+                const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit || isTiktok2Edit);
                 const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
                 // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
                 const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
@@ -6566,9 +6583,9 @@
             const mpLower = String(marketplace || '').toLowerCase();
             const isNoAdsBlur = (mpLower === 'doba' || mpLower === 'ppower' || mpLower === 'purchasingpower'
                 || mpLower === 'purchase' || mpLower === 'topdawg' || mpLower === 'shein'
-                || mpLower === 'aliexpress');
+                || mpLower === 'faire' || mpLower === 'tiktok2' || mpLower === 'tiktok 2' || mpLower === 'aliexpress');
             const ship = (mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase'
-                || mpLower === 'topdawg') ? 0 : (parseFloat(row.attr('data-ship')) || 0);
+                || mpLower === 'topdawg' || mpLower === 'faire') ? 0 : (parseFloat(row.attr('data-ship')) || 0);
             const ad = parseFloat(row.attr('data-ad')) || 0;
             const tacosCh = isNoAdsBlur ? 0 : (parseFloat(row.attr('data-tacos-ch')) || 0);
             const marginAttrBlur = row.attr('data-margin');
@@ -6737,9 +6754,11 @@
             const isPpMp = (mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase');
             const isTdMp = (mpLower === 'topdawg');
             const isSheinMp = (mpLower === 'shein');
-            const isNoAdsMp = (mpLower === 'doba' || isPpMp || isTdMp || isSheinMp);
+            const isFaireMp = (mpLower === 'faire');
+            const isTiktok2Mp = (mpLower === 'tiktok2' || mpLower === 'tiktok 2');
+            const isNoAdsMp = (mpLower === 'doba' || isPpMp || isTdMp || isSheinMp || isFaireMp || isTiktok2Mp);
             // PPower/TopDawg: ship excluded (Shein uses product_master ship)
-            const ship = (isPpMp || isTdMp) ? 0 : (parseFloat($row.attr('data-ship')) || 0);
+            const ship = (isPpMp || isTdMp || isFaireMp) ? 0 : (parseFloat($row.attr('data-ship')) || 0);
             const tacosCh = isNoAdsMp ? 0 : (parseFloat($row.attr('data-tacos-ch')) || 0);
             const marginAttrSave = $row.attr('data-margin');
             const margin = (marginAttrSave !== null && marginAttrSave !== undefined && marginAttrSave !== '')
@@ -7785,9 +7804,9 @@
                 const editableChannels = [
                     'amazon', 'doba',
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
-                    'temu', 'temu2', 'tiktok', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
+                    'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
                     'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
-                    'fba', 'shein', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
+                    'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
                 ];
                 const editable = editableChannels.includes(mp);
 
@@ -11302,7 +11321,7 @@
             'amazon_price', 'amz_pft', 'amz_roi',
             'amazon_sprice', 'amazon_sgpft', 'amazon_spft', 'amazon_sroi',
             'amazon_lmp_price', 'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
-            'shein_l30', 'ae_l30', 'pp_l30'
+            'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30'
         ];
         
         function buildColumnDropdown() {

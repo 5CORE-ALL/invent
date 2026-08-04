@@ -774,6 +774,13 @@
                                 </span>
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end ms-auto" role="group" aria-label="Carrier / platform badges">
+                                <button type="button"
+                                        id="sof-refresh-shipment-btn"
+                                        class="btn btn-sm btn-outline-primary"
+                                        title="Refresh open shipment statuses via USPS / UPS APIs">
+                                    <i class="mdi mdi-truck-fast-outline me-1"></i>
+                                    <span class="sof-refresh-shipment-label">Update Shipment Status</span>
+                                </button>
                                 @foreach(($topBadges ?? []) as $badge)
                                     @php
                                         $badgeKey = $badge['key'] ?? '';
@@ -3454,6 +3461,56 @@
     $('#sof-all-order-filter-clear').on('click', function () {
         $('#sof-all-order-search').val('');
         applyAllOrderFilters();
+    });
+
+    $('#sof-refresh-shipment-btn').on('click', function () {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        const $label = $btn.find('.sof-refresh-shipment-label');
+        const prev = $label.text();
+        $btn.prop('disabled', true);
+        $label.text('Updating…');
+
+        fetch('{{ route("sales.order.fulfillment.refresh.shipment.status") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ limit: 100, stale: 0 }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Updated.' : 'Update failed.');
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: res.ok ? 'success' : 'error',
+                        title: res.ok ? 'Shipment status' : 'Update failed',
+                        text: msg,
+                        timer: res.ok ? 3500 : undefined,
+                        showConfirmButton: !res.ok,
+                    });
+                } else {
+                    alert(msg);
+                }
+                if (res.ok && table) {
+                    table.replaceData();
+                }
+            })
+            .catch(function (err) {
+                const msg = err && err.message ? err.message : 'Network error';
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Update failed', text: msg });
+                } else {
+                    alert(msg);
+                }
+            })
+            .finally(function () {
+                $btn.prop('disabled', false);
+                $label.text(prev);
+            });
     });
 })();
 </script>

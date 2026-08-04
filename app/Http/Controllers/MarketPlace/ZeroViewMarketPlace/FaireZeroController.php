@@ -7,7 +7,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\FaireDataView;
 use App\Models\FaireListingStatus;
-use App\Models\FaireProductSheet;
+use App\Models\FaireMetric;
 use App\Models\MarketplacePercentage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -81,7 +81,8 @@ class FaireZeroController extends Controller
         $faireDataViews = FaireDataView::whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
-        $faireMetrics = FaireProductSheet::whereIn('sku', $skus)->get()
+        // Listed / inventory presence from Faire products API (faire_metric). Views are not on API.
+        $faireMetrics = FaireMetric::query()->whereIn('sku', $skus)->get()
             ->keyBy(fn($s) => strtoupper(trim($s->sku)));
 
         $listedCount = 0;
@@ -102,8 +103,11 @@ class FaireZeroController extends Controller
                 $status = json_decode($status, true);
             }
 
-            // $listed = $status['listed'] ?? (floatval($inv) > 0 ? 'Pending' : 'Listed');
+            // Prefer listing-status; else listed when SKU exists in Faire products API (faire_metric).
             $listed = $status['listed'] ?? null;
+            if ($listed === null && isset($faireMetrics[$sku])) {
+                $listed = 'Listed';
+            }
 
             // --- Amazon Live Status ---
             $dataView = $faireDataViews[$sku]->value ?? null;
@@ -128,21 +132,11 @@ class FaireZeroController extends Controller
             }
 
             // --- Views / Zero-View logic ---
+            // Faire products API (faire_metric) has no views field; use DataView if present.
             $metricRecord = $faireMetrics[$sku] ?? null;
             $views = null;
-
-            if ($metricRecord) {
-                // Direct field
-                if (!empty($metricRecord->views) || $metricRecord->views === "0" || $metricRecord->views === 0) {
-                    $views = (int)$metricRecord->views;
-                }
-                // Or inside JSON column `value`
-                elseif (!empty($metricRecord->value)) {
-                    $metricData = json_decode($metricRecord->value, true);
-                    if (isset($metricData['views'])) {
-                        $views = (int)$metricData['views'];
-                    }
-                }
+            if (is_array($dataView) && array_key_exists('views', $dataView)) {
+                $views = (int) $dataView['views'];
             }
 
             // Normalize $inv to numeric

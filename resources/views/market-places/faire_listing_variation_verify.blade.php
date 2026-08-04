@@ -121,7 +121,7 @@
                         <div class="d-flex align-items-center flex-wrap gap-2 py-1">
                             <span class="faire-stat-badge faire-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="faire-lvv-badge-parents">0</span></span>
                             <span class="faire-stat-badge faire-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="faire-lvv-badge-children">0</span></span>
-                            <span class="faire-stat-badge faire-stat-badge--listed" title="Faire listings (faire_pricing_prices)">LISTED:<span id="faire-lvv-badge-listed">0</span></span>
+                            <span class="faire-stat-badge faire-stat-badge--listed" title="Faire listings from products API (faire_metric)">LISTED:<span id="faire-lvv-badge-listed">0</span></span>
                             <span class="faire-stat-badge faire-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="faire-lvv-badge-mismatch">0</span></span>
                         </div>
                         <span id="faire-lvv-total" class="badge bg-secondary">Total: —</span>
@@ -439,7 +439,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm("Refresh Faire listings from faire_pricing_prices cache?\n\nUpload price sheet on Faire Pricing (/faire-pricing) if the cache is empty.")) {
+                if (!confirm("Pull live Faire listings from the Faire products API into faire_metric?\n\nThis updates Parent Vs Listed SKU (API only).")) {
                     return;
                 }
 

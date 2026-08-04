@@ -3,7 +3,6 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\FaireMetric;
-use App\Models\FairePricingPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -100,34 +99,9 @@ final class FaireLiveListingsService
      */
     protected function fetchFromLocal(): array
     {
-        $stockBySku = [];
-        if (Schema::hasTable('faire_pricing_prices')) {
-            foreach (FairePricingPrice::query()->get(['sku', 'price', 'faire_stock']) as $row) {
-                $sku = trim((string) $row->sku);
-                if ($sku === '') {
-                    continue;
-                }
-                $stockBySku[$sku] = [
-                    'price' => $row->price !== null ? (float) $row->price : null,
-                    'inventory' => $row->faire_stock !== null ? (int) $row->faire_stock : null,
-                ];
-            }
-        }
-
+        // Faire products API cache only (faire_metric) — no sheet / pricing_prices fallback.
         if (! Schema::hasTable('faire_metric')) {
-            $out = [];
-            foreach ($stockBySku as $sku => $data) {
-                $out[] = [
-                    'product_id' => $sku,
-                    'sku' => $sku,
-                    'state' => (($data['inventory'] ?? null) === 0) ? 'inactive' : 'active',
-                    'inventory' => $data['inventory'],
-                    'title' => null,
-                    'price' => $data['price'],
-                ];
-            }
-
-            return $out;
+            return [];
         }
 
         $out = [];
@@ -135,24 +109,20 @@ final class FaireLiveListingsService
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
             ->orderBy('id')
-            ->chunkById(500, function ($chunk) use (&$out, $stockBySku) {
+            ->chunkById(500, function ($chunk) use (&$out) {
                 foreach ($chunk as $row) {
                     $sku = trim((string) $row->sku);
                     if ($sku === '') {
                         continue;
                     }
-                    $stock = $stockBySku[$sku] ?? [];
-                    $inv = array_key_exists('inventory', $stock)
-                        ? $stock['inventory']
-                        : null;
-                    $price = $stock['price'] ?? ($row->price !== null ? (float) $row->price : null);
+                    $inv = $row->inventory !== null ? (int) $row->inventory : null;
                     $out[] = [
                         'product_id' => trim((string) ($row->product_id ?: $sku)),
                         'sku' => $sku,
                         'state' => ($inv === 0) ? 'inactive' : 'active',
                         'inventory' => $inv,
                         'title' => $row->product_name,
-                        'price' => $price,
+                        'price' => $row->price !== null ? (float) $row->price : null,
                     ];
                 }
             });

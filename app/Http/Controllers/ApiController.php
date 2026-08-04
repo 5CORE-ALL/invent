@@ -18,7 +18,7 @@ use App\Models\TemuMetric;
 use App\Models\WalmartMetrics;
 use App\Models\PLSProduct;
 use App\Models\WaifairProductSheet;
-use App\Models\FaireProductSheet;
+use App\Models\FaireMetric;
 use App\Models\SheinDailyData;
 use App\Models\TiktokOrder;
 use App\Services\SheinShopifySalesService;
@@ -1558,8 +1558,9 @@ class ApiController extends Controller
         $waifair_product_query = WaifairProductSheet::where('sku', 'not like', '%Parent%');
         $waifair_product_l30Sales  = (clone $waifair_product_query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
 
-        $faire_product_sheet_query = FaireProductSheet::where('sku', 'not like', '%Parent%');
-        $faire_product_sheet_l30Sales  = (clone $faire_product_sheet_query)->selectRaw('SUM(f_l30 * price) as total')->value('total') ?? 0;
+        // Faire products API (faire_metric) — no FaireProductSheet.
+        $faire_product_sheet_query = FaireMetric::query()->where('sku', 'not like', '%Parent%');
+        $faire_product_sheet_l30Sales  = (clone $faire_product_sheet_query)->selectRaw('SUM(COALESCE(l30, 0) * COALESCE(price, 0)) as total')->value('total') ?? 0;
 
         // Shein L30 from API-synced shein_daily_data (same as /shein-tabulator)
         $shein_l30Sales = (float) (SheinShopifySalesService::computeSalesPageTotals()['total_sales'] ?? 0);

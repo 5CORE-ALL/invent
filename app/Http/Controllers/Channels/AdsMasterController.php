@@ -17,7 +17,7 @@ use App\Models\DobaSheetdata;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
-use App\Models\FaireProductSheet;
+use App\Models\FaireMetric;
 use App\Models\FbMarketplaceSheetdata;
 use App\Models\FbShopSheetdata;
 use App\Models\InstagramShopSheetdata;
@@ -1808,13 +1808,14 @@ class AdsMasterController extends Controller
     {
         $result = [];
 
-        $query = FaireProductSheet::where('sku', 'not like', '%Parent%');
+        // Faire products API cache (faire_metric) — no FaireProductSheet.
+        $query = FaireMetric::query()->where('sku', 'not like', '%Parent%');
 
-        $l30Orders = $query->sum('f_l30');
-        $l60Orders = $query->sum('f_l60');
+        $l30Orders = (clone $query)->sum('l30');
+        $l60Orders = (clone $query)->sum('l60');
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(f_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(f_l60 * price) as total')->value('total') ?? 0;
+        $l30Sales  = (clone $query)->selectRaw('SUM(COALESCE(l30, 0) * COALESCE(price, 0)) as total')->value('total') ?? 0;
+        $l60Sales  = (clone $query)->selectRaw('SUM(COALESCE(l60, 0) * COALESCE(price, 0)) as total')->value('total') ?? 0;
 
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
 
@@ -1828,7 +1829,7 @@ class AdsMasterController extends Controller
         });
 
         // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'f_l30', 'f_l60']);
+        $ebayRows     = $query->get(['sku', 'price', 'l30', 'l60']);
         $totalProfit  = 0;
         $totalProfitL60  = 0;
         $totalCogs       = 0;
@@ -1838,8 +1839,8 @@ class AdsMasterController extends Controller
         foreach ($ebayRows as $row) {
             $sku       = strtoupper($row->sku);
             $price     = (float) $row->price;
-            $unitsL30  = (int) $row->f_l30;
-            $unitsL60  = (int) $row->f_l60;
+            $unitsL30  = (int) ($row->l30 ?? 0);
+            $unitsL60  = (int) ($row->l60 ?? 0);
 
             $soldAmount = $unitsL30 * $price;
             if ($soldAmount <= 0) {

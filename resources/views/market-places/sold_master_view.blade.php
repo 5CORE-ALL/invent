@@ -1435,7 +1435,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'shein', 'aliexpress', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'purchasingpower'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -2420,6 +2420,19 @@ title: "Dil %",
                         const value = parseInt(cell.getValue() || 0);
                         if (value === 0) return '<span style="color:#6c757d;">0</span>';
                         return `<span style="color:#e83e8c;font-weight:600;">${value.toLocaleString()}</span>`;
+                    },
+                    minWidth: 60
+                },
+                {
+                    title: "Fr L30",
+                    field: "faire_l30",
+                    visible: false,
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        if (value === 0) return '<span style="color:#6c757d;">0</span>';
+                        return `<span style="color:#0d6efd;font-weight:600;">${value.toLocaleString()}</span>`;
                     },
                     minWidth: 60
                 },

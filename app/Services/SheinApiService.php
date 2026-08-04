@@ -1137,10 +1137,13 @@ class SheinApiService
     protected function sheinApiPost(string $endpoint, array $payload): array
     {
         $url = $this->baseUrl.$endpoint;
+        // Empty body → JSON object {} (needed by express-channel); else send array as JSON.
+        $body = $payload === [] ? new \stdClass : $payload;
         $response = Http::withoutVerifying()
             ->timeout(60)
             ->withHeaders($this->buildSheinAuthHeaders($endpoint))
-            ->post($url, $payload);
+            ->asJson()
+            ->post($url, $body);
 
         $json = is_array($response->json()) ? $response->json() : null;
         if (! $response->successful()) {
@@ -1150,9 +1153,9 @@ class SheinApiService
             throw new \RuntimeException('Shein API invalid JSON: '.mb_substr($response->body(), 0, 500));
         }
 
-        $code = $json['code'] ?? null;
+        $code = $json['code'] ?? $json['Code'] ?? null;
         if (! ($code === 0 || $code === '0' || $code === 200 || $code === '200')) {
-            throw new \RuntimeException('Shein API error: '.($json['msg'] ?? $json['message'] ?? json_encode($json)));
+            throw new \RuntimeException('Shein API error: '.($json['msg'] ?? $json['Msg'] ?? $json['message'] ?? json_encode($json)));
         }
 
         return $json;
@@ -2359,10 +2362,149 @@ class SheinApiService
     }
 
     /**
-     * Tracking / ship stub — wire real seller-fulfill express API when available.
+     * Available express channels for seller-fulfill shipping.
+     * POST /open-api/order/express-channel
      *
-     * @param  list<array<string, mixed>>  $items
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, message?: string, channels?: list<array{site: string, express_id_code: string, express_channel_code: string}>}
+     */
+    public function getExpressChannels(bool $useCache = true): array
+    {
+        $cacheKey = 'shein:express-channels:v1';
+        if ($useCache) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && isset($cached['channels'])) {
+                return $cached;
+            }
+        }
+
+        try {
+            $json = $this->sheinApiPost('/open-api/order/express-channel', []);
+        } catch (\Throwable $e) {
+            Log::warning('Shein getExpressChannels failed', ['error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage(), 'channels' => []];
+        }
+
+        $info = is_array($json['info'] ?? null) ? $json['info'] : [];
+        $rawChannels = $info['expressChannels'] ?? $info['express_channels'] ?? [];
+        if (! is_array($rawChannels)) {
+            $rawChannels = [];
+        }
+
+        $channels = [];
+        foreach ($rawChannels as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $code = trim((string) ($row['expressIdCode'] ?? $row['express_id_code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $channels[] = [
+                'site' => trim((string) ($row['site'] ?? '')),
+                'express_id_code' => $code,
+                'express_channel_code' => trim((string) ($row['expressChannelCode'] ?? $row['express_channel_code'] ?? '')),
+            ];
+        }
+
+        $result = [
+            'success' => true,
+            'channels' => $channels,
+            'message' => count($channels).' express channel(s).',
+        ];
+        Cache::put($cacheKey, $result, now()->addHours(6));
+
+        return $result;
+    }
+
+    /**
+     * Map a Shopify / common carrier name to a Shein expressIdCode from express-channel.
+     */
+    public function resolveExpressIdCode(string $carrierHint): string
+    {
+        $hint = trim($carrierHint);
+        $channels = $this->getExpressChannels(true);
+        $list = is_array($channels['channels'] ?? null) ? $channels['channels'] : [];
+
+        if ($list === []) {
+            return $hint !== '' ? $hint : 'UPS';
+        }
+
+        $normalize = static function (string $value): string {
+            $value = strtolower(trim($value));
+            $value = preg_replace('/[^a-z0-9]+/', '', $value) ?? $value;
+
+            return $value;
+        };
+
+        $hintNorm = $normalize($hint);
+        $aliases = [
+            'usps' => ['usps', 'unitedstatespostalservice', 'uspostal'],
+            'ups' => ['ups', 'unitedparcelservice'],
+            'fedex' => ['fedex', 'federalexpress'],
+            'dhl' => ['dhl', 'dhlexpress', 'dhlecommerce', 'dhlecommercesolutions'],
+            'ontrac' => ['ontrac'],
+            'lasership' => ['lasership', 'onfleet'],
+            'amazon' => ['amazon', 'amazonlogistic', 'amazonlogistics', 'amzl'],
+            'canadapost' => ['canadapost'],
+            'purolator' => ['purolator'],
+        ];
+
+        // Exact / contains match against Shein expressIdCode.
+        foreach ($list as $ch) {
+            $code = (string) ($ch['express_id_code'] ?? '');
+            $codeNorm = $normalize($code);
+            if ($hintNorm !== '' && ($codeNorm === $hintNorm || str_contains($codeNorm, $hintNorm) || str_contains($hintNorm, $codeNorm))) {
+                return $code;
+            }
+        }
+
+        // Alias family match (e.g. Shopify "UPS®" → Shein "UPS").
+        $family = null;
+        foreach ($aliases as $key => $needles) {
+            foreach ($needles as $needle) {
+                if ($hintNorm !== '' && str_contains($hintNorm, $needle)) {
+                    $family = $key;
+                    break 2;
+                }
+            }
+        }
+        if ($family !== null) {
+            foreach ($list as $ch) {
+                $code = (string) ($ch['express_id_code'] ?? '');
+                $codeNorm = $normalize($code);
+                foreach ($aliases[$family] as $needle) {
+                    if (str_contains($codeNorm, $needle)) {
+                        return $code;
+                    }
+                }
+            }
+        }
+
+        // Prefer a well-known carrier already on the account.
+        foreach (['UPS', 'USPS', 'FedEx', 'DHL', 'Amazon Logistic'] as $preferred) {
+            foreach ($list as $ch) {
+                $code = (string) ($ch['express_id_code'] ?? '');
+                if (strcasecmp($code, $preferred) === 0) {
+                    return $code;
+                }
+            }
+        }
+
+        // Last resort: first channel, or the original hint.
+        if ($hint !== '') {
+            return $hint;
+        }
+
+        return (string) ($list[0]['express_id_code'] ?? 'UPS');
+    }
+
+    /**
+     * Upload tracking / mark shipped on Shein (seller fulfill).
+     * POST /open-api/order/import-batch-multiple-express
+     *
+     * @param  list<array<string, mixed>>  $items  each may include goods_id / shein_item_number / goodsId
+     * @return array{success: bool, message: string, express_id_code?: string, raw?: array<string, mixed>}
      */
     public function shipOrder(
         string $orderNumber,
@@ -2371,15 +2513,116 @@ class SheinApiService
         string $shipService,
         array $items
     ): array {
-        Log::warning('Shein shipOrder: not implemented', [
+        $orderNumber = trim($orderNumber);
+        $trackingNumber = trim($trackingNumber);
+        if ($orderNumber === '' || $trackingNumber === '') {
+            return ['success' => false, 'message' => 'Order number and tracking number are required.'];
+        }
+
+        $goodsIds = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $gid = $item['goods_id'] ?? $item['goodsId'] ?? $item['shein_item_number'] ?? null;
+            if ($gid === null || $gid === '') {
+                continue;
+            }
+            // goodsId must be numeric for Shein; skip skuCodes mistakenly passed as id.
+            if (! is_numeric($gid)) {
+                continue;
+            }
+            $goodsIds[] = (int) $gid;
+        }
+        $goodsIds = array_values(array_unique($goodsIds));
+
+        if ($goodsIds === []) {
+            return [
+                'success' => false,
+                'message' => 'No Shein goodsId found on order lines. Pull the order from Shein, then retry tracking push.',
+            ];
+        }
+
+        $expressIdCode = $this->resolveExpressIdCode($shipCarrier !== '' ? $shipCarrier : $shipService);
+        $infoList = [];
+        foreach ($goodsIds as $goodsId) {
+            $infoList[] = [
+                'expressCode' => $trackingNumber,
+                'expressIdCode' => $expressIdCode,
+                'goodsId' => $goodsId,
+                'status' => 2, // 2 = update waybill
+            ];
+        }
+
+        $endpoint = '/open-api/order/import-batch-multiple-express';
+
+        try {
+            $json = $this->sheinApiPost($endpoint, [
+                'orderNo' => $orderNumber,
+                'infoList' => $infoList,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Shein shipOrder failed', [
+                'order' => $orderNumber,
+                'tracking' => $trackingNumber,
+                'carrier' => $expressIdCode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'express_id_code' => $expressIdCode,
+            ];
+        }
+
+        // Partial success: code=0 but info contains rows with errorMsg.
+        $info = $json['info'] ?? $json['Info'] ?? [];
+        $errors = [];
+        if (is_array($info)) {
+            foreach ($info as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $err = trim((string) ($row['errorMsg'] ?? $row['error_msg'] ?? $row['msg'] ?? ''));
+                if ($err !== '') {
+                    $gid = $row['goodsId'] ?? $row['goods_id'] ?? '?';
+                    $errors[] = "goodsId {$gid}: {$err}";
+                }
+            }
+        }
+
+        if ($errors !== []) {
+            // If every line failed → overall failure; otherwise partial success.
+            $failedCount = count($errors);
+            $total = count($infoList);
+            if ($failedCount >= $total) {
+                return [
+                    'success' => false,
+                    'message' => 'Shein rejected tracking: '.implode('; ', $errors),
+                    'express_id_code' => $expressIdCode,
+                    'raw' => $json,
+                ];
+            }
+
+            Log::warning('Shein shipOrder partial failure', [
+                'order' => $orderNumber,
+                'errors' => $errors,
+            ]);
+        }
+
+        Log::info('Shein shipOrder: tracking uploaded', [
             'order' => $orderNumber,
             'tracking' => $trackingNumber,
-            'carrier' => $shipCarrier,
+            'express_id_code' => $expressIdCode,
+            'goods_ids' => $goodsIds,
         ]);
 
         return [
-            'success' => false,
-            'message' => 'Shein shipOrder/tracking push not wired yet (TODO: seller-fulfill express API).',
+            'success' => true,
+            'message' => "Tracking {$trackingNumber} uploaded to Shein ({$expressIdCode}).",
+            'express_id_code' => $expressIdCode,
+            'raw' => $json,
         ];
     }
 }

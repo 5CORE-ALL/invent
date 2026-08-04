@@ -29,22 +29,49 @@ class TikTokShopService
     protected $lastResponseCode = null;
     protected $outputCallback = null;
 
+    /** config/services.php key — overridden by TikTok2ShopService */
+    protected string $configKey = 'tiktok';
+
+    /** Cache key prefix — overridden by TikTok2ShopService */
+    protected string $cachePrefix = 'tiktok';
+
     public function __construct()
     {
-        $this->clientKey = config('services.tiktok.client_key');
-        $this->clientSecret = config('services.tiktok.client_secret');
-        $this->shopId = config('services.tiktok.shop_id');
-        
-        // Get tokens from cache first, then fallback to env
-        $this->accessToken = Cache::get('tiktok_access_token') ?? config('services.tiktok.access_token');
-        $this->refreshToken = Cache::get('tiktok_refresh_token') ?? config('services.tiktok.refresh_token');
-        
+        $cfg = config('services.'.$this->configKey, []);
+        $this->clientKey = $cfg['client_key'] ?? null;
+        $this->clientSecret = $cfg['client_secret'] ?? null;
+        $this->shopId = $cfg['shop_id'] ?? null;
+
+        // Get tokens from cache first, then fallback to env/config
+        $this->accessToken = Cache::get($this->cachePrefix.'_access_token') ?? ($cfg['access_token'] ?? null);
+        $this->refreshToken = Cache::get($this->cachePrefix.'_refresh_token') ?? ($cfg['refresh_token'] ?? null);
+
         // Initialize the TikTok Shop client library (same as ship_hub)
         $this->client = new Client($this->clientKey, $this->clientSecret);
-        
+
         if ($this->accessToken) {
             $this->client->setAccessToken($this->accessToken);
         }
+    }
+
+    public function configKey(): string
+    {
+        return $this->configKey;
+    }
+
+    public function cachePrefix(): string
+    {
+        return $this->cachePrefix;
+    }
+
+    public function envAccessTokenKey(): string
+    {
+        return strtoupper($this->configKey).'_ACCESS_TOKEN';
+    }
+
+    public function envRefreshTokenKey(): string
+    {
+        return strtoupper($this->configKey).'_REFRESH_TOKEN';
     }
 
     /**
@@ -960,12 +987,12 @@ class TikTokShopService
     {
         $this->accessToken = $accessToken;
         $this->refreshToken = $refreshToken;
-        
-        Cache::put('tiktok_access_token', $accessToken, 86400);
+
+        Cache::put($this->cachePrefix.'_access_token', $accessToken, 86400);
         if ($refreshToken) {
-            Cache::put('tiktok_refresh_token', $refreshToken, 86400 * 30);
+            Cache::put($this->cachePrefix.'_refresh_token', $refreshToken, 86400 * 30);
         }
-        
+
         if ($this->client) {
             $this->client->setAccessToken($accessToken);
         }
@@ -985,7 +1012,7 @@ class TikTokShopService
     {
         $auth = $this->client->auth();
         $state = bin2hex(random_bytes(16));
-        Cache::put('tiktok_oauth_state', $state, 600);
+        Cache::put($this->cachePrefix.'_oauth_state', $state, 600);
         return $auth->createAuthRequest($state, true);
     }
 
@@ -1051,8 +1078,8 @@ class TikTokShopService
             $this->setTokens($accessToken, $refreshToken);
 
             config([
-                'services.tiktok.access_token' => $accessToken,
-                'services.tiktok.refresh_token' => $refreshToken,
+                'services.'.$this->configKey.'.access_token' => $accessToken,
+                'services.'.$this->configKey.'.refresh_token' => $refreshToken,
             ]);
 
             return [
@@ -1063,7 +1090,10 @@ class TikTokShopService
                 'raw' => $token,
             ];
         } catch (\Throwable $e) {
-            Log::error('TikTok exchangeAuthCode failed', ['error' => $e->getMessage()]);
+            Log::error('TikTok exchangeAuthCode failed', [
+                'channel' => $this->configKey,
+                'error' => $e->getMessage(),
+            ]);
 
             return [
                 'success' => false,
@@ -1087,15 +1117,18 @@ class TikTokShopService
                 $this->refreshToken = $newToken['refresh_token'] ?? $this->refreshToken;
                 
                 $expiresIn = $newToken['expire_in'] ?? 86400;
-                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
-                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
+                Cache::put($this->cachePrefix.'_access_token', $this->accessToken, $expiresIn - 300);
+                Cache::put($this->cachePrefix.'_refresh_token', $this->refreshToken, 86400 * 30);
                 
                 $this->client->setAccessToken($this->accessToken);
                 
                 return $newToken;
             }
         } catch (\Exception $e) {
-            Log::error('TikTok refreshAccessToken failed', ['error' => $e->getMessage()]);
+            Log::error('TikTok refreshAccessToken failed', [
+                'channel' => $this->configKey,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return null;

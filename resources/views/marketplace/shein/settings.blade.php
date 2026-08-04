@@ -72,6 +72,13 @@
                     </div>
                     <div class="sync-toggle-row">
                         <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" name="order[auto_accept_on_shein]" value="1" {{ ($settings['order']['auto_accept_on_shein'] ?? false) ? 'checked' : '' }}>
+                            <span class="form-check-label">Automatically accept Pending Shein orders</span>
+                        </label>
+                        <div class="form-text ms-4">When on, Pending orders are accepted on Shein (Pending → To Be Shipped) during the 15‑minute sync. Required before address/shipping steps work on Shein. You can still accept a single order from the order detail page.</div>
+                    </div>
+                    <div class="sync-toggle-row">
+                        <label class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" name="order[auto_import_to_shopify]" value="1" {{ ($settings['order']['auto_import_to_shopify'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically import Shein orders to Shopify</span>
                         </label>
@@ -96,7 +103,7 @@
                             <input class="form-check-input" type="checkbox" name="order[push_tracking_to_shein]" value="1" {{ ($settings['order']['push_tracking_to_shein'] ?? true) ? 'checked' : '' }}>
                             <span class="form-check-label">Automatically push Shopify tracking numbers to Shein</span>
                         </label>
-                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and ships the order on Shein — no manual push needed. You can still push per order from the order detail page.</div>
+                        <div class="form-text ms-4">ON by default. Every 5 minutes the app reads Shopify fulfillments (after you print/download a label) and uploads the tracking number to Shein (<code>import-batch-multiple-express</code>). Pending orders are accepted first when needed. You can still push per order from the order detail page.</div>
                     </div>
                     <div class="mt-2">
                         <label class="form-label small">Shopify import store</label>

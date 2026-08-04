@@ -79,6 +79,18 @@ class SheinOrderSyncService
             $upserted += $this->upsertOrder($order);
         }
 
+        // Accept Pending orders on Shein before Shopify import / address sync.
+        if (MarketplaceSyncSettings::canAutoAcceptOnShein()) {
+            try {
+                $accept = app(SheinOrderDetailService::class)->acceptPendingOrders(40);
+                Log::info('SheinOrderSyncService: auto-accept', $accept);
+            } catch (\Throwable $e) {
+                Log::warning('SheinOrderSyncService: auto-accept failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         if ($import) {
             $this->dispatchImportsForNewOrders();
         }
@@ -231,13 +243,18 @@ class SheinOrderSyncService
                 ? (float) $goods['sellerCurrencyPrice']
                 : (isset($goods['orderCurrencyPrice']) ? (float) $goods['orderCurrencyPrice'] : null);
 
+            // Prefer numeric goodsId for tracking ship API; keep skuCode as fallback.
+            $goodsId = trim((string) ($goods['goodsId'] ?? $goods['goods_id'] ?? ''));
+            $skuCode = trim((string) ($goods['skuCode'] ?? ''));
+            $productId = $goodsId !== '' ? $goodsId : $skuCode;
+
             SheinOrderMetric::updateOrCreate(
                 ['order_id' => $orderId, 'sku' => $sku],
                 [
                     'order_number' => $orderId,
                     'order_date' => $orderDate,
                     'status' => $status,
-                    'product_id' => trim((string) ($goods['skuCode'] ?? $goods['goodsId'] ?? '')),
+                    'product_id' => $productId,
                     'display_title' => trim((string) ($goods['goodsTitle'] ?? '')),
                     'quantity' => $qty,
                     'amount' => $amount,

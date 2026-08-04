@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\Schema;
  * marketplace qty stay consistent across pages.
  *
  * Marketplace lookup order:
- *   1) *_pricing_prices stock cache (written by inventory sync)
- *   2) product_stock_mappings.inventory_*
+ *   1) channel stock cache (*_pricing_prices, or faire_metric.inventory for Faire API)
+ *   2) product_stock_mappings.inventory_* (not used for Faire — API only)
  *   3) reverb_products.remaining_inventory (Reverb only)
  */
 final class MarketplaceListingStockResolver
@@ -903,8 +903,8 @@ final class MarketplaceListingStockResolver
             self::hydrateFromPricing($map, $keys, 'ebay3');
             self::hydrateFromMappings($map, $keys, 'inventory_ebay3');
         } elseif ($channel === self::CHANNEL_FAIRE) {
+            // Faire products API only (faire_metric.inventory) — no product_stock_mappings fallback.
             self::hydrateFromPricing($map, $keys, 'faire');
-            self::hydrateFromMappings($map, $keys, 'inventory_faire');
         }
 
         return $map;
@@ -1111,15 +1111,15 @@ final class MarketplaceListingStockResolver
         }
 
         if ($channel === 'faire') {
-            if (! Schema::hasTable('faire_pricing_prices') || ! Schema::hasColumn('faire_pricing_prices', 'faire_stock')) {
+            if (! Schema::hasTable('faire_metric') || ! Schema::hasColumn('faire_metric', 'inventory')) {
                 return;
             }
-            \App\Models\FairePricingPrice::query()
+            \App\Models\FaireMetric::query()
                 ->whereIn('sku', $keys)
-                ->whereNotNull('faire_stock')
-                ->get(['sku', 'faire_stock'])
+                ->whereNotNull('inventory')
+                ->get(['sku', 'inventory'])
                 ->each(function ($row) use (&$map) {
-                    self::put($map, (string) $row->sku, (int) $row->faire_stock);
+                    self::put($map, (string) $row->sku, (int) $row->inventory);
                 });
 
             return;

@@ -50,6 +50,15 @@
             </div>
             <div class="d-flex gap-2">
                 @if($connected)
+                    @php
+                        $sheinStatus = strtolower(trim((string) ($summary['status'] ?? $line->status ?? '')));
+                        $canAcceptShein = in_array($sheinStatus, ['pending', '1'], true);
+                    @endphp
+                    @if($canAcceptShein)
+                        <button type="button" class="btn btn-sm btn-success" id="btn-accept-shein-order" data-id="{{ $line->id }}" title="Accept this Pending order on Shein (moves to To Be Shipped)">
+                            <i class="ri-checkbox-circle-line"></i> Accept on Shein
+                        </button>
+                    @endif
                     <button type="button" class="btn btn-sm btn-outline-primary" id="btn-pull-ae-order" data-id="{{ $line->id }}">
                         <i class="ri-download-cloud-line"></i> Pull from Shein
                     </button>
@@ -65,6 +74,7 @@
         @include('marketplace.shein._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
+            New Shein orders start as <strong>Pending</strong> — use <strong>Accept on Shein</strong> (or enable auto-accept in Settings) before address/shipping steps work.
             Order details are pulled from Shein and sent to Shopify when you push this order.
             After you buy/download a shipping label in Shopify, use <strong>Push tracking to Shein</strong> so the tracking number is declared on Shein too.
         </div>
@@ -361,6 +371,36 @@
 </div>
 
 <script>
+document.getElementById('btn-accept-shein-order')?.addEventListener('click', function () {
+    var btn = this;
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Accept this Pending order on Shein? This moves it to To Be Shipped and unlocks address/shipping.')) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Accepting…';
+    fetch('{{ url('marketplace/shein/orders') }}/' + id + '/accept', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (res) {
+        alert((res.data && res.data.message) || (res.ok ? 'Done' : 'Failed'));
+        if (res.ok && res.data && res.data.success) location.reload();
+        else {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-checkbox-circle-line"></i> Accept on Shein';
+        }
+    })
+    .catch(function () {
+        alert('Request failed.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ri-checkbox-circle-line"></i> Accept on Shein';
+    });
+});
+
 document.getElementById('btn-pull-ae-order')?.addEventListener('click', function () {
     var btn = this;
     var id = btn.getAttribute('data-id');

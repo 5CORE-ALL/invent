@@ -26,10 +26,12 @@ use App\Models\TemuOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
+use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -881,6 +883,57 @@ class SalesOrderFulfillmentController extends Controller
             'badge_key' => $row->badge_key,
             'link' => $row->link,
         ]);
+    }
+
+    /**
+     * Manually refresh open shipment statuses (USPS / UPS / 17TRACK) + queue marketplace order syncs.
+     */
+    public function refreshShipmentStatus(Request $request, ShipmentTrackingService $tracking): JsonResponse
+    {
+        if (! $tracking->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tracking provider configured. Add USPS / UPS credentials or TRACKING_API_KEY in .env.',
+            ], 422);
+        }
+
+        $limit = max(1, min(500, (int) $request->input('limit', 100)));
+        $stale = max(0, (int) $request->input('stale', 0));
+
+        try {
+            $exit = Artisan::call('tracking:sync-status', [
+                '--only-open' => true,
+                '--stale' => $stale,
+                '--limit' => $limit,
+            ]);
+            $output = trim(Artisan::output());
+
+            // Also queue marketplace order refreshes for Label Created channels.
+            Artisan::call('fulfillment:refresh-shipment-status', [
+                '--skip-tracking' => true,
+                '--days' => 30,
+            ]);
+
+            return response()->json([
+                'success' => $exit === 0,
+                'message' => $exit === 0
+                    ? "Shipment status refresh started (up to {$limit} open tracking numbers)."
+                    : 'Shipment status refresh finished with errors.',
+                'output' => $output,
+                'providers' => [
+                    'usps' => $tracking->hasUsps(),
+                    'ups' => $tracking->hasUps(),
+                    '17track' => $tracking->has17Track(),
+                ],
+            ], $exit === 0 ? 200 : 500);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to refresh shipment status: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

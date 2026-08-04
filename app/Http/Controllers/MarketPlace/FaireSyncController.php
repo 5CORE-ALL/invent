@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Jobs\WarmFaireLiveListingsCache;
 use App\Models\FaireMetric;
 use App\Models\FaireOrderMetric;
-use App\Models\FairePricingPrice;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Services\FaireApiService;

@@ -3,14 +3,14 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\FaireMetric;
-use App\Models\FairePricingPrice;
 use App\Services\FaireApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Build / refresh faire_metric link map from Faire products API (+ pricing cache).
+ * Build / refresh faire_metric from Faire products API (listed + price + inventory).
+ * No sheet / faire_pricing_prices fallback — API only.
  */
 class FaireLinkMapSyncService
 {
@@ -185,25 +185,21 @@ class FaireLinkMapSyncService
                 ?? data_get($variant, 'retail_price_cents');
             $price = is_numeric($priceMinor) ? round(((float) $priceMinor) / 100, 2) : null;
 
+            $payload = [
+                'product_id' => $productId !== '' ? $productId : $sku,
+                'product_name' => $name !== '' ? $name : null,
+            ];
+            if ($price !== null) {
+                $payload['price'] = $price;
+            }
+            if (is_numeric($qty)) {
+                $payload['inventory'] = max(0, (int) $qty);
+            }
+
             FaireMetric::updateOrCreate(
                 ['sku' => $sku],
-                [
-                    'product_id' => $productId !== '' ? $productId : $sku,
-                    'product_name' => $name !== '' ? $name : null,
-                    'price' => $price,
-                ]
+                $payload
             );
-
-            if (Schema::hasTable('faire_pricing_prices')) {
-                FairePricingPrice::updateOrCreate(
-                    ['sku' => $sku],
-                    [
-                        'price' => $price,
-                        // unsignedInteger column — clamp negatives (oversell) to 0
-                        'faire_stock' => is_numeric($qty) ? max(0, (int) $qty) : null,
-                    ]
-                );
-            }
 
             $count++;
         }

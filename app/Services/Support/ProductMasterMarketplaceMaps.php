@@ -69,7 +69,7 @@ class ProductMasterMarketplaceMaps
             'newegg' => \App\Services\NeweggApiService::class,
             'topdawg' => \App\Services\TopDawgApiService::class,
             'tiktok' => \App\Services\TikTokShopService::class,
-            'tiktok2' => \App\Services\TikTokShopService::class,
+            'tiktok2' => \App\Services\TikTok2ShopService::class,
         ];
     }
 
@@ -102,7 +102,7 @@ class ProductMasterMarketplaceMaps
             'newegg' => [\App\Services\NeweggApiService::class, 'updateDescription'],
             'topdawg' => [\App\Services\TopDawgApiService::class, 'updateDescription'],
             'tiktok' => [\App\Services\TikTokShopService::class, 'updateDescription'],
-            'tiktok2' => [\App\Services\TikTokShopService::class, 'updateDescription'],
+            'tiktok2' => [\App\Services\TikTok2ShopService::class, 'updateDescription'],
         ];
     }
 
@@ -145,7 +145,7 @@ class ProductMasterMarketplaceMaps
             'newegg' => [\App\Services\NeweggApiService::class, 'updateImages'],
             'topdawg' => [\App\Services\TopDawgApiService::class, 'updateImages'],
             'tiktok' => [\App\Services\TikTokShopService::class, 'updateImages'],
-            'tiktok2' => [\App\Services\TikTokShopService::class, 'updateImages'],
+            'tiktok2' => [\App\Services\TikTok2ShopService::class, 'updateImages'],
         ];
     }
 
@@ -178,7 +178,7 @@ class ProductMasterMarketplaceMaps
             'newegg' => [\App\Services\NeweggApiService::class, 'updateVideos'],
             'topdawg' => [\App\Services\TopDawgApiService::class, 'updateVideos'],
             'tiktok' => [\App\Services\TikTokShopService::class, 'updateVideos'],
-            'tiktok2' => [\App\Services\TikTokShopService::class, 'updateVideos'],
+            'tiktok2' => [\App\Services\TikTok2ShopService::class, 'updateVideos'],
         ];
     }
 

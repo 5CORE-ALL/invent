@@ -19,10 +19,12 @@ use App\Models\TiktokSkuDailyData;
 use App\Services\LmpSkuGroupService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Services\TikTok2ShopService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonChannelSummary;
@@ -102,6 +104,8 @@ class TikTokPricingController extends Controller
                 'saveSprice' => '/tiktok-2-save-sprice',
                 'saveNrp' => route('tiktok2.save.nrp'),
                 'saveLinks' => '/tiktok-2-save-links',
+                'syncFromApi' => route('tiktok2.sync.from.api'),
+                'connectUrl' => url('/tiktok2/connect'),
                 // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
                 'columnGet' => '/tabulator-column-visibility',
                 'columnSet' => '/tabulator-column-visibility',
@@ -343,10 +347,21 @@ class TikTokPricingController extends Controller
     }
 
     /**
-     * L30 sold quantities from tiktok_sales_two (TikTok 2 upload) — 30 days ending on latest order_date.
+     * L30 sold for TikTok 2: prefer API tiktok2_orders, else uploaded tiktok_sales_two.
      */
     private function getTiktokTwoL30SoldDataBySku(): array
     {
+        if (\App\Models\Tiktok2Order::tableReady()) {
+            $apiSold = \App\Models\Tiktok2Order::soldQtyL30(null, 30);
+            if ($apiSold !== []) {
+                return $apiSold;
+            }
+        }
+
+        if (! Schema::hasTable('tiktok_sales_two')) {
+            return [];
+        }
+
         $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
         if (! $latestRaw) {
             return [];
@@ -2228,6 +2243,85 @@ class TikTokPricingController extends Controller
     public static function countNmapFromTabular(array $rows): int
     {
         return count(self::nmapSkuRowsFromTabular($rows));
+    }
+
+    /**
+     * Sync TikTok 2 products (and optionally orders) from Shop API.
+     * POST /tiktok-2-sync-from-api  body: products=1, orders=1
+     */
+    public function syncTikTok2FromApi(Request $request)
+    {
+        $doProducts = filter_var($request->input('products', true), FILTER_VALIDATE_BOOLEAN);
+        $doOrders = filter_var($request->input('orders', true), FILTER_VALIDATE_BOOLEAN);
+        $days = max(1, (int) $request->input('days', 60));
+
+        $svc = app(TikTok2ShopService::class);
+        if (! $svc->isAuthenticated()) {
+            $access = config('services.tiktok2.access_token');
+            $refresh = config('services.tiktok2.refresh_token');
+            if ($access) {
+                $svc->setTokens((string) $access, $refresh ? (string) $refresh : null);
+            }
+        }
+
+        if (! $svc->isAuthenticated()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'TikTok 2 is not connected. Open /tiktok2/connect and authorize the shop first.',
+                'connect_url' => url('/tiktok2/connect'),
+            ], 401);
+        }
+
+        $results = [];
+        try {
+            if ($doProducts) {
+                $exit = Artisan::call('sync:tiktok-api-data', ['--channel' => 'tiktok2']);
+                $results['products'] = [
+                    'exit' => $exit,
+                    'output' => trim(Artisan::output()),
+                    'count' => (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
+                ];
+                if ($exit !== 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Product sync failed. See output.',
+                        'results' => $results,
+                    ], 500);
+                }
+            }
+
+            if ($doOrders) {
+                $exit = Artisan::call('tiktok:fetch-orders', [
+                    '--channel' => 'tiktok2',
+                    '--days' => $days,
+                ]);
+                $results['orders'] = [
+                    'exit' => $exit,
+                    'output' => trim(Artisan::output()),
+                ];
+                if ($exit !== 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Order sync failed. See output.',
+                        'results' => $results,
+                    ], 500);
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'TikTok 2 API sync completed.',
+                'results' => $results,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('TikTok 2 syncFromApi failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Sync failed: '.$e->getMessage(),
+                'results' => $results,
+            ], 500);
+        }
     }
 }
 

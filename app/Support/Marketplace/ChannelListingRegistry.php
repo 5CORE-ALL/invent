@@ -6,7 +6,7 @@ use App\Models\BestbuyUsaProduct;
 use App\Models\DobaMetric;
 use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
-use App\Models\FairePricingPrice;
+use App\Models\FaireMetric;
 use App\Models\MacyProduct;
 use App\Models\NeweggMetric;
 use App\Models\PLSProduct;
@@ -176,7 +176,8 @@ class ChannelListingRegistry
             'faire' => [
                 'dataView' => \App\Models\FaireDataView::class,
                 'status' => \App\Models\FaireListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => FairePricingPrice::class, 'column' => 'price'],
+                // Listed = present in Faire products API (faire_metric), not sheet prices.
+                'listed' => ['type' => 'column', 'model' => FaireMetric::class, 'column' => 'sku'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,

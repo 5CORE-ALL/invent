@@ -103,6 +103,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\MetaAdsProcessQueue::class,
         \App\Console\Commands\MetaAdsProcessQueuePriority::class,
         \App\Console\Commands\SyncFbaShipmentStatus::class,
+        \App\Console\Commands\SyncShipmentTrackingStatus::class,
+        \App\Console\Commands\RefreshFulfillmentShipmentStatus::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
         \App\Console\Commands\StoreEbayUtilizationCounts::class,
@@ -1296,6 +1298,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(4)
             ->appendOutputTo($log);
 
+        $schedule->job(new \App\Jobs\SyncSheinAcceptJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('shein-accept-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncSheinAddressJob(true, 40))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
@@ -2176,6 +2185,13 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        $ist($schedule->command('tiktok:fetch-orders --channel=tiktok2 --days=60 --prune')
+            ->dailyAt('02:25')
+            ->name('tiktok2-fetch-orders')
+            ->withoutOverlapping(170)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         $ist($schedule->command('app:aliexpress-sheet-sync')
             ->everyMinute()
             ->name('aliexpress-sheet-sync')
@@ -2202,6 +2218,7 @@ class Kernel extends ConsoleKernel
 
       
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
+        $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
 
   
         $ist($schedule->command('stock:update-mapping-daily')
@@ -2255,9 +2272,28 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log));
 
    
-        $schedule->command('tracking:sync-status --stale=150')
+        /*
+        |--------------------------------------------------------------------------
+        | Sales Order Fulfillment — shipment status refresh
+        | Every 30 min, 09:00–19:00 America/Los_Angeles (PST/PDT), until Delivered.
+        | Carrier tracking (--only-open) + marketplace order re-fetch for open labels.
+        |--------------------------------------------------------------------------
+        */
+        $schedule->command('fulfillment:refresh-shipment-status --stale=25 --days=30')
+            ->everyThirtyMinutes()
+            ->timezone('America/Los_Angeles')
+            ->between('09:00', '19:00')
+            ->name('fulfillment-refresh-shipment-status-pst')
+            ->withoutOverlapping(25)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Off-hours / overnight catch-up for carrier tracking only (open shipments).
+        $schedule->command('tracking:sync-status --only-open --stale=150')
             ->everyThreeHours()
-            ->name('shipment-tracking-sync-status')
+            ->timezone('America/Los_Angeles')
+            ->unlessBetween('09:00', '19:00')
+            ->name('shipment-tracking-sync-status-offhours')
             ->withoutOverlapping(170)
             ->runInBackground()
             ->appendOutputTo($log);

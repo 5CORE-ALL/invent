@@ -4,7 +4,6 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\MarketplaceSyncSettings;
 use App\Models\FaireMetric;
-use App\Models\FairePricingPrice;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Services\FaireApiService;
@@ -123,7 +122,8 @@ class FaireInventorySyncService
 
         $invResult = $this->pushInventoryRows($inventoryRows);
         if (! empty($invResult['success'])) {
-            $this->updateLocalStock($inventoryRows);
+            // Do NOT write Shopify push qty into faire_metric.inventory —
+            // that field is Faire API live stock (link-map). N Map would always collapse.
             $this->updateLocalPlatformQuantities($inventoryRows);
 
             return [
@@ -303,7 +303,7 @@ class FaireInventorySyncService
             $updated = (int) ($invResult['pushed'] ?? 0);
             $failed = (int) ($invResult['failed'] ?? 0);
             if ($updated > 0) {
-                $this->updateLocalStock($inventoryRows);
+                // Keep faire_metric.inventory as Faire API stock (link-map only).
                 $this->updateLocalPlatformQuantities($inventoryRows);
             } elseif ($failed > 0) {
                 Log::warning('FaireInventorySyncService: inventory push failed', $invResult);
@@ -317,7 +317,8 @@ class FaireInventorySyncService
             ], $priceRows), 'USA');
             $priceUpdated = (int) ($bulk['pushed'] ?? 0);
             if ($priceUpdated > 0) {
-                $this->updateLocalPrices($priceRows);
+                // Update faire_metric.price only when a Faire price API push exists.
+                $this->updateLocalMetricPrices($priceRows);
             }
         }
 
@@ -415,25 +416,12 @@ class FaireInventorySyncService
     }
 
     /**
+     * @deprecated Live Faire stock is written by FaireLinkMapSyncService into faire_metric.inventory only.
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
      */
     protected function updateLocalStock(array $rows): void
     {
-        foreach ($rows as $row) {
-            $sku = trim((string) $row['sku_code']);
-            if ($sku === '') {
-                continue;
-            }
-            // Column is unsignedInteger — never persist negative (Shopify oversell => 0).
-            $qty = max(0, (int) $row['inventory']);
-
-            if (Schema::hasTable('faire_pricing_prices')) {
-                FairePricingPrice::updateOrCreate(
-                    ['sku' => $sku],
-                    ['faire_stock' => $qty]
-                );
-            }
-        }
+        // Intentionally no-op: do not overwrite API-sourced faire_metric.inventory with Shopify push qty.
     }
 
     /**
@@ -469,19 +457,24 @@ class FaireInventorySyncService
     /**
      * @param  array<int, array{product_id: string, sku_code: string, price: float|string}>  $rows
      */
-    protected function updateLocalPrices(array $rows): void
+    protected function updateLocalMetricPrices(array $rows): void
     {
         foreach ($rows as $row) {
-            $sku = (string) $row['sku_code'];
-            FaireMetric::query()->where('sku', $sku)->update(['price' => (float) $row['price']]);
-
-            if (Schema::hasTable('faire_pricing_prices')) {
-                FairePricingPrice::updateOrCreate(
-                    ['sku' => trim($sku)],
-                    ['price' => (float) $row['price']]
-                );
+            $sku = trim((string) $row['sku_code']);
+            if ($sku === '') {
+                continue;
             }
+            FaireMetric::query()->where('sku', $sku)->update(['price' => (float) $row['price']]);
         }
+    }
+
+    /**
+     * @deprecated Pricing cache is Faire API–only (link-map).
+     * @param  array<int, array{product_id: string, sku_code: string, price: float|string}>  $rows
+     */
+    protected function updateLocalPrices(array $rows): void
+    {
+        $this->updateLocalMetricPrices($rows);
     }
 
     /**

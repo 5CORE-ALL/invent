@@ -9,11 +9,13 @@ use App\Models\ChannelMaster;
 use App\Models\FaireDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\FaireDailyData;
-use App\Models\FairePricingPrice;
+use App\Models\FaireMetric;
 use App\Models\FaireListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Services\MarketplaceManager\FaireLinkMapSyncService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -649,159 +651,22 @@ class FaireController extends Controller
         return view('market-places.faire_pricing_view');
     }
 
-    public function downloadFairePricingPriceSample()
+
+    /**
+     * Sync Faire listings / wholesale price / stock from Faire products API into faire_metric.
+     */
+    public function syncPricingFromApi(Request $request)
     {
-        $fileName = 'faire_pricing_sample.csv';
-        $rows = [
-            ['sku', 'price', 'stock'],
-            ['SKU-001', '19.99', '10'],
-            ['SKU-002', '24.50', '25'],
-        ];
+        @set_time_limit(300);
 
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
+        $page = max(1, (int) $request->input('page', 1));
+        $reset = $request->boolean('reset', $page === 1);
 
-        $handle = fopen('php://output', 'w');
-        foreach ($rows as $row) {
-            fputcsv($handle, $row);
-        }
-        fclose($handle);
-        exit;
+        $result = app(FaireLinkMapSyncService::class)->syncPage($page, 50, $reset);
+
+        return response()->json($result, ! empty($result['success']) ? 200 : 422);
     }
 
-    public function uploadFairePricingPriceSheet(Request $request)
-    {
-        $request->validate([
-            'price_file' => 'required|file',
-        ]);
-
-        try {
-            $file = $request->file('price_file');
-            $path = $file->getPathName();
-            $extension = strtolower($file->getClientOriginalExtension());
-
-            if (in_array($extension, ['xlsx', 'xls'], true) || $this->isExcelFileForPricing($path)) {
-                $spreadsheet = IOFactory::load($path);
-                $sheetRows = $spreadsheet->getActiveSheet()->toArray();
-
-                $headerRow = array_shift($sheetRows);
-                $indexes = $this->resolveFairePricingColumnIndexes($headerRow);
-                $skuIndex = $indexes['sku'];
-                $priceIndex = $indexes['price'];
-                $stockIndex = $indexes['stock'];
-
-                if ($skuIndex === false || $priceIndex === false) {
-                    $preview = implode(', ', array_slice(array_map(
-                        fn ($h) => $this->normalizePricingHeaderCell($h),
-                        $headerRow
-                    ), 0, 25));
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Could not find SKU and price columns. '
-                            . 'Use headers like sku + price, or a Faire export (SKU, USD Unit Wholesale Price, On Hand Inventory). '
-                            . 'First columns seen: [' . $preview . '].',
-                    ], 422);
-                }
-
-                $updated = 0;
-                foreach ($sheetRows as $row) {
-                    // Normalize at upload time so faire_pricing_prices.sku matches product_masters.sku
-                    // even when the Faire export contains NBSP / stray inner whitespace.
-                    $sku = $this->normalizeFaireSkuExact((string) ($row[$skuIndex] ?? ''));
-                    if ($sku === '') {
-                        continue;
-                    }
-                    $price = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
-                    $faireStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
-                    FairePricingPrice::updateOrCreate(
-                        ['sku' => $sku],
-                        ['price' => max(0, $price), 'faire_stock' => max(0, $faireStock)]
-                    );
-                    $updated++;
-                }
-            } else {
-                $handle = fopen($path, 'r');
-                if (!$handle) {
-                    return response()->json(['success' => false, 'message' => 'Cannot open uploaded file.'], 422);
-                }
-
-                $bom = fread($handle, 3);       
-                if ($bom !== "\xEF\xBB\xBF") {
-                    rewind($handle);
-                }
-
-                $firstLine = fgets($handle);
-                rewind($handle);
-                if ($bom === "\xEF\xBB\xBF") {
-                    fread($handle, 3);
-                }
-
-                $delimiter = (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) ? "\t" : ',';
-
-                $headerRow = fgetcsv($handle, 0, $delimiter);
-                if (!$headerRow) {
-                    fclose($handle);
-                    return response()->json(['success' => false, 'message' => 'Price sheet is empty.'], 422);
-                }
-
-                $indexes = $this->resolveFairePricingColumnIndexes($headerRow);
-                $skuIndex = $indexes['sku'];
-                $priceIndex = $indexes['price'];
-                $stockIndex = $indexes['stock'];
-
-                if ($skuIndex === false || $priceIndex === false) {
-                    fclose($handle);
-                    $preview = implode(', ', array_slice(array_map(
-                        fn ($h) => $this->normalizePricingHeaderCell($h),
-                        $headerRow
-                    ), 0, 25));
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Could not find SKU and price columns. '
-                            . 'Use headers like sku + price, or a Faire export (SKU, USD Unit Wholesale Price, On Hand Inventory). '
-                            . 'First columns seen: [' . $preview . '].',
-                    ], 422);
-                }
-
-                $updated = 0;
-                while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
-                    if (!$row || count(array_filter($row, fn ($v) => $v !== '' && $v !== null)) === 0) {
-                        continue;
-                    }
-                    // Normalize at upload time so faire_pricing_prices.sku matches product_masters.sku
-                    // even when the Faire export contains NBSP / stray inner whitespace.
-                    $sku = $this->normalizeFaireSkuExact((string) ($row[$skuIndex] ?? ''));
-                    if ($sku === '') {
-                        continue;
-                    }
-                    $price = (float) preg_replace('/[^0-9.\-]/', '', trim((string) ($row[$priceIndex] ?? '')));
-                    $faireStock = $stockIndex !== false ? (int) trim((string) ($row[$stockIndex] ?? '0')) : 0;
-                    FairePricingPrice::updateOrCreate(
-                        ['sku' => $sku],
-                        ['price' => max(0, $price), 'faire_stock' => max(0, $faireStock)]
-                    );
-                    $updated++;
-                }
-                fclose($handle);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "Price sheet uploaded successfully. {$updated} SKU rows updated.",
-                'updated' => $updated,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Faire pricing upload failed: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Price upload failed: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
 
     public function getFairePricingData(Request $request)
     {
@@ -832,8 +697,14 @@ class FaireController extends Controller
                 ->get()
                 ->keyBy(fn ($row) => $normalizeSku($row->sku));
 
-            $uploadedPriceBySku = FairePricingPrice::all()
-                ->keyBy(fn ($row) => $normalizeSku($row->sku));
+            // Faire products API only (faire_metric via link-map) — no sheet / pricing_prices fallback.
+            $metricBySku = Schema::hasTable('faire_metric')
+                ? FaireMetric::query()
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->get()
+                    ->keyBy(fn ($row) => $normalizeSku($row->sku))
+                : collect();
 
             // Load full tables and key in PHP — SQL UPPER(TRIM(sku)) cannot fold NBSP / inner whitespace,
             // and the previous `pluck()->whereIn(UPPER(TRIM(sku)))` two-step had the same blind spot.
@@ -846,7 +717,7 @@ class FaireController extends Controller
             $allNormalizedSkus = collect(array_merge(
                 $salesBySku->keys()->all(),
                 $productMastersBySku->keys()->all(),
-                $uploadedPriceBySku->keys()->all(),
+                $metricBySku->keys()->all(),
                 $listingStatusBySku->keys()->all(),
                 $viewMetaBySku->keys()->all()
             ))->unique()->values();
@@ -900,23 +771,22 @@ class FaireController extends Controller
                 $sales = (float) ($sale->sales ?? 0);
 
                 $sprice = isset($meta['SPRICE']) ? (float) $meta['SPRICE'] : 0;
-                $priceRow = $uploadedPriceBySku->get($normalizedSku);
-                $uploadedPrice = $priceRow ? (float) $priceRow->price : 0;
-                $faireStock = $priceRow ? (int) ($priceRow->faire_stock ?? 0) : 0;
+                $metric = $metricBySku->get($normalizedSku);
+                $price = $metric ? (float) ($metric->price ?? 0) : 0;
+                $faireStock = $metric ? (int) ($metric->inventory ?? 0) : 0;
 
                 $shopifyRow = $shopifyBySku->get($normalizedSku);
                 $inv = $shopifyRow ? (int) ($shopifyRow->inv ?? 0) : 0;
                 $ovL30 = $shopifyRow ? (int) ($shopifyRow->quantity ?? 0) : 0;
                 $imageSrc = $shopifyRow ? ($shopifyRow->image_src ?? null) : null;
 
-                $price = $uploadedPrice;
                 $profit = ($price * $margin) - $lp;
                 $gpft = $price > 0 ? ($profit / $price) * 100 : 0;
                 $groi = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
                 $displaySku = $productMaster
                     ? trim((string) $productMaster->sku)
-                    : ($sale ? (string) $sale->sku : ($priceRow ? trim((string) $priceRow->sku) : $normalizedSku));
+                    : ($sale ? (string) $sale->sku : ($metric ? trim((string) $metric->sku) : $normalizedSku));
 
                 $faRec = $forecastNrBySku[$normalizedSku] ?? null;
                 $nrOut = '';
@@ -927,16 +797,17 @@ class FaireController extends Controller
                     }
                 }
 
-                // Listed on Faire = row in uploaded price sheet with price > 0 (same idea as Amazon sheet / AliExpress export).
-                $isMissingFaire = $priceRow === null || $price <= 0;
+                // Listed on Faire = row in faire_metric from products API (no sheet fallback).
+                $isMissingFaire = $metric === null;
                 $nrForRules = $this->resolveFaireNrForRules($nrOut, is_array($meta) ? $meta : [], $productMaster !== null);
 
                 $missing = '';
                 $mapValue = '';
                 if ($inv > 0 && $nrForRules === 'REQ') {
-                    if ($isMissingFaire || $price <= 0) {
+                    if ($isMissingFaire) {
                         $missing = 'M';
-                    } elseif ($price > 0) {
+                    // Both sides need stock (same as Shein / Amazon map-issues).
+                    } elseif ($faireStock > 0) {
                         if (self::faireInvWithinMapTolerance((float) $inv, (float) $faireStock)) {
                             $mapValue = 'Map';
                         } else {
@@ -1329,9 +1200,10 @@ class FaireController extends Controller
             $faireStock = (float) ($row['ae_stock'] ?? 0);
 
             if ($inv > 0 && $nrValue === 'REQ') {
-                if ($isMissingFaire || $rowPrice <= 0) {
+                if ($isMissingFaire) {
                     $miss++;
-                } elseif (! $isMissingFaire && $rowPrice > 0) {
+                // Both sides need stock (same as Shein countSheinPricingBadgeTotals).
+                } elseif ($faireStock > 0) {
                     if (self::faireInvWithinMapTolerance($inv, $faireStock)) {
                         $map++;
                     } else {
@@ -1440,36 +1312,15 @@ class FaireController extends Controller
         }
     }
 
-    private function isExcelFileForPricing(string $path): bool
-    {
-        $handle = fopen($path, 'rb');
-        if (!$handle) {
-            return false;
-        }
-        $magic = fread($handle, 4);
-        fclose($handle);
 
-        return str_starts_with($magic, "\x50\x4B\x03\x04")
-            || str_starts_with($magic, "\xD0\xCF\x11\xE0");
-    }
-
-    /**
-     * Normalize a spreadsheet header cell for matching (Faire export, AliExpress-style sheets, etc.).
-     */
-    private function normalizePricingHeaderCell($value): string
-    {
-        $s = strtolower(trim(preg_replace('/[^a-zA-Z0-9_ ]/', ' ', (string) $value)));
-
-        return trim(preg_replace('/\s+/', ' ', $s));
-    }
 
     /**
      * Robust SKU normalization for cross-table joins.
      *
      * Folds non-breaking spaces (NBSP / narrow NBSP / \xA0) to regular spaces,
      * strips invalid UTF-8, collapses internal whitespace runs, then uppercases.
-     * Without this, `faire_pricing_prices.sku` / `forecast_analysis.sku` rarely
-     * match `product_masters.sku` because Faire and Excel exports leak NBSP and
+     * Without this, `faire_metric.sku` / `forecast_analysis.sku` rarely
+     * match `product_masters.sku` because Faire API / Excel exports leak NBSP and
      * double-spaces, and LP silently falls back to 0. Mirrors
      * AliexpressController::normalizeAeSkuExact.
      */
@@ -1481,105 +1332,6 @@ class FaireController extends Controller
         return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
     }
 
-    /**
-     * Map header row to column indexes. Supports Faire product export (SKU, USD Unit Wholesale Price, On Hand Inventory)
-     * and simple uploads (sku, price, stock).
-     *
-     * @return array{sku:int,price:int,stock:int|false}
-     */
-    private function resolveFairePricingColumnIndexes(array $headerRow): array
-    {
-        $headers = [];
-        foreach ($headerRow as $i => $h) {
-            $headers[$i] = $this->normalizePricingHeaderCell($h);
-        }
-
-        $findExact = static function (array $headers, array $names) {
-            foreach ($names as $name) {
-                foreach ($headers as $idx => $h) {
-                    if ($h === $name) {
-                        return $idx;
-                    }
-                }
-            }
-
-            return false;
-        };
-
-        $findContains = static function (array $headers, array $needlesInOrder) {
-            foreach ($needlesInOrder as $needle) {
-                foreach ($headers as $idx => $h) {
-                    if ($h !== '' && str_contains($h, $needle)) {
-                        return $idx;
-                    }
-                }
-            }
-
-            return false;
-        };
-
-        $skuNames = [
-            'sku', 'skus', 'sku code', 'skucode', 'item sku', 'product sku', 'variant sku', 'child sku',
-        ];
-        $skuIndex = $findExact($headers, $skuNames);
-        if ($skuIndex === false) {
-            foreach ($headers as $idx => $h) {
-                if ($h !== '' && preg_match('/\bsku\b/', $h)) {
-                    $skuIndex = $idx;
-                    break;
-                }
-            }
-        }
-
-        $priceNames = [
-            'usd unit wholesale price',
-            'cad unit wholesale price',
-            'gbp unit wholesale price',
-            'gbr unit wholesale price',
-            'eur unit wholesale price',
-            'aud unit wholesale price',
-            'unit wholesale price',
-            'wholesale price',
-            'usd unit retail price',
-            'retail price',
-            'unit retail price',
-            'usd retail price',
-            'list price',
-            'faire price',
-            'price',
-            'supply price',
-            'unit price',
-        ];
-        $priceIndex = $findExact($headers, $priceNames);
-        if ($priceIndex === false) {
-            $priceIndex = $findContains($headers, [
-                'wholesale price',
-                'unit wholesale',
-                'retail price',
-                ' unit price',
-                'list price',
-            ]);
-        }
-
-        $stockNames = [
-            'stock', 'stocks', 'on hand inventory', 'onhand inventory', 'inventory',
-            'available inventory', 'faire stock', 'qty', 'quantity', 'available qty',
-        ];
-        $stockIndex = $findExact($headers, $stockNames);
-        if ($stockIndex === false) {
-            $stockIndex = $findContains($headers, [
-                'on hand inventory',
-                'hand inventory',
-                'inventory',
-            ]);
-        }
-
-        return [
-            'sku' => $skuIndex,
-            'price' => $priceIndex,
-            'stock' => $stockIndex !== false ? $stockIndex : false,
-        ];
-    }
 
     private function sanitizeFairePrice($value)
     {

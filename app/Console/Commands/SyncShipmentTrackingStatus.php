@@ -19,15 +19,16 @@ class SyncShipmentTrackingStatus extends Command
     protected $signature = 'tracking:sync-status
         {--limit= : Max distinct tracking numbers to process this run}
         {--only-open : Skip numbers already Delivered/Expired}
-        {--stale=150 : Skip numbers checked within the last N minutes}';
+        {--stale=150 : Skip numbers checked within the last N minutes}
+        {--carrier= : Optional carrier filter (USPS, UPS, FedEx, GOFO, ...)}';
 
     protected $description = 'Fetch live shipment status from the tracking provider and update shopify_raw_orders';
 
     public function handle(ShipmentTrackingService $tracking): int
     {
         if (!$tracking->isConfigured()) {
-            $this->error('Tracking provider not configured. Set TRACKING_API_KEY in .env.');
-            Log::warning('tracking:sync-status aborted — TRACKING_API_KEY missing');
+            $this->error('Tracking provider not configured. Set USPS / UPS credentials or TRACKING_API_KEY in .env.');
+            Log::warning('tracking:sync-status aborted — no tracking provider configured');
             return self::FAILURE;
         }
 
@@ -36,11 +37,25 @@ class SyncShipmentTrackingStatus extends Command
         $maxPerRun = (int) ($this->option('limit') ?: ($cfg['max_per_run'] ?? 2000));
         $sleepMs   = max(0, (int) ($cfg['sleep_ms'] ?? 400));
         $staleMin  = max(0, (int) $this->option('stale'));
+        $carrierFilter = strtoupper(trim((string) $this->option('carrier')));
 
         // Distinct tracking numbers with a representative carrier.
         $query = DB::table('shopify_raw_orders')
             ->whereNotNull('tracking_number')
             ->where('tracking_number', '!=', '');
+
+        if ($carrierFilter !== '') {
+            if ($carrierFilter === 'UPS') {
+                $query->where(function ($q) {
+                    $q->whereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['UPS%'])
+                        ->orWhere('tracking_number', 'like', '1Z%');
+                });
+            } elseif ($carrierFilter === 'USPS') {
+                $query->whereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['%USPS%']);
+            } else {
+                $query->whereRaw("UPPER(TRIM(COALESCE(tracking_company, ''))) LIKE ?", ['%'.$carrierFilter.'%']);
+            }
+        }
 
         if ($this->option('only-open')) {
             $query->where(function ($q) {

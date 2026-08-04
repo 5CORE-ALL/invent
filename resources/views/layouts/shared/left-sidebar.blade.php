@@ -2029,6 +2029,8 @@
                         </li>
                         <li><a href="{{ route('tiktok2.pricing') }}">TikTok 2 Shop - Analytics</a>
                         </li>
+                        <li><a href="{{ url('/tiktok2/connect') }}" target="_blank" rel="noopener">TikTok 2 Connect (OAuth)</a>
+                        </li>
                     </ul>
                 </div>
             </li>

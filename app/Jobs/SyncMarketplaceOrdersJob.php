@@ -121,8 +121,13 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncReverbAddressJob::dispatch(false, 25);
             } elseif ($slug === 'newegg' && \App\Services\MarketplaceManager\NeweggOrderPushService::canAutoSyncAddress()) {
                 SyncNeweggAddressJob::dispatch(false, 25);
-            } elseif ($slug === 'shein' && \App\Services\MarketplaceManager\SheinOrderPushService::canAutoSyncAddress()) {
-                SyncSheinAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'shein') {
+                if (\App\Services\MarketplaceManager\SheinOrderDetailService::canAutoAccept()) {
+                    SyncSheinAcceptJob::dispatch(false, 25);
+                }
+                if (\App\Services\MarketplaceManager\SheinOrderPushService::canAutoSyncAddress()) {
+                    SyncSheinAddressJob::dispatch(false, 25);
+                }
             } elseif ($slug === 'topdawg' && \App\Services\MarketplaceManager\TopDawgOrderPushService::canAutoSyncAddress()) {
                 SyncTopDawgAddressJob::dispatch(false, 25);
             } elseif ($slug === 'temu' && \App\Services\MarketplaceManager\TemuOrderPushService::canAutoSyncAddress()) {

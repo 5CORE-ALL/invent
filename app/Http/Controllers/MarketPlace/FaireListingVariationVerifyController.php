@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
-use App\Models\FairePricingPrice;
+use App\Models\FaireMetric;
 use App\Models\ProductMaster;
+use App\Services\MarketplaceManager\FaireLinkMapSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class FaireListingVariationVerifyController extends Controller
 {
@@ -17,8 +19,8 @@ class FaireListingVariationVerifyController extends Controller
 
     /**
      * Parent-only rows: Parent, Required, Parent Vs Listed SKU.
-     * Listed source: faire_pricing_prices (same Missing rule as /faire-pricing).
-     * Missing = CP Master child not listed on Faire (no row or price <= 0).
+     * Listed source: Faire products API cache (faire_metric only).
+     * Missing = CP Master child not listed on Faire.
      * Extra   = listed Faire SKU in this parent family that is not a CP Master child.
      */
     public function data(Request $request)
@@ -98,9 +100,14 @@ class FaireListingVariationVerifyController extends Controller
         return response()->json([
             'data' => $formattedData,
             'meta' => [
-                'listings_count' => (int) FairePricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->count(),
-                'last_pulled_at' => FairePricingPrice::query()->max('updated_at'),
-                'has_listings_cache' => FairePricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
+                'listings_count' => Schema::hasTable('faire_metric')
+                    ? (int) FaireMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                    : 0,
+                'last_pulled_at' => Schema::hasTable('faire_metric')
+                    ? FaireMetric::query()->max('updated_at')
+                    : null,
+                'has_listings_cache' => Schema::hasTable('faire_metric')
+                    && FaireMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
                 'required_child_count' => count($childRows),
@@ -110,26 +117,32 @@ class FaireListingVariationVerifyController extends Controller
     }
 
     /**
-     * Faire listings come from price sheet upload on /faire-pricing (faire_pricing_prices).
+     * Refresh Faire listings from products API into faire_metric only.
      */
     public function pullListings(Request $request)
     {
         try {
-            $count = (int) FairePricingPrice::query()->whereNotNull('sku')->where('sku', '!=', '')->count();
-            $lastPulledAt = FairePricingPrice::query()->max('updated_at');
-
-            if ($count === 0) {
+            @set_time_limit(0);
+            $sync = app(FaireLinkMapSyncService::class)->syncAll();
+            if (empty($sync['success'])) {
                 return response()->json([
                     'status' => 422,
-                    'message' => 'No Faire listings in faire_pricing_prices. Upload price sheet on Faire Pricing (/faire-pricing) first.',
+                    'message' => $sync['message'] ?? 'Faire API sync failed.',
                     'count' => 0,
-                    'last_pulled_at' => $lastPulledAt,
+                    'last_pulled_at' => null,
                 ], 422);
             }
 
+            $count = Schema::hasTable('faire_metric')
+                ? (int) FaireMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0;
+            $lastPulledAt = Schema::hasTable('faire_metric')
+                ? FaireMetric::query()->max('updated_at')
+                : null;
+
             return response()->json([
                 'status' => 200,
-                'message' => "Faire listings ready. {$count} SKUs in faire_pricing_prices. Parent Vs Listed SKU updated.",
+                'message' => ($sync['message'] ?? 'Synced from Faire API.')." {$count} SKUs in faire_metric. Parent Vs Listed SKU updated.",
                 'count' => $count,
                 'last_pulled_at' => $lastPulledAt,
             ]);
@@ -240,19 +253,23 @@ class FaireListingVariationVerifyController extends Controller
         $set = [];
         $skuToListed = [];
 
-        $rows = FairePricingPrice::query()
+        // Listed = present in Faire products API cache (faire_metric). No sheet fallback.
+        if (! Schema::hasTable('faire_metric')) {
+            return [
+                'set' => [],
+                'empty' => true,
+                'sku_to_listed' => [],
+            ];
+        }
+
+        $rows = FaireMetric::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->get(['sku', 'price']);
+            ->get(['sku']);
 
         foreach ($rows as $row) {
             $sku = trim((string) ($row->sku ?? ''));
             if ($sku === '') {
-                continue;
-            }
-
-            // Match /faire-pricing Missing: listed when price > 0
-            if ((float) ($row->price ?? 0) <= 0) {
                 continue;
             }
 

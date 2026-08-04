@@ -66,6 +66,9 @@ final class MarketplaceManagerQueueStatusService
         'ImportEbay2OrderToShopify' => 'Import order → Shopify',
         'ImportEbay3OrderToShopify' => 'Import order → Shopify',
         'SyncMarketplaceOrdersJob' => 'Fetch orders from marketplace',
+        'SyncSheinAcceptJob' => 'Accept Pending Shein orders',
+        'SyncSheinAddressJob' => 'Sync Shein address → Shopify',
+        'SyncSheinTrackingJob' => 'Push Shopify tracking → Shein',
     ];
 
     /** @var array<string, class-string> */

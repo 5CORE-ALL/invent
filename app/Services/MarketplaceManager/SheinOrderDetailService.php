@@ -2,6 +2,7 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\MarketplaceSyncSettings;
 use App\Models\SheinOrderMetric;
 use App\Services\SheinApiService;
 use Illuminate\Support\Facades\Log;
@@ -134,6 +135,161 @@ class SheinOrderDetailService
         ]);
 
         return ['success' => true, 'order' => $order, 'message' => 'Order details updated from Shein.'];
+    }
+
+    /**
+     * Accept a Pending Shein order (export-address handleType=2 → status 1→2).
+     *
+     * @return array{success: bool, skipped?: bool, message: string}
+     */
+    public function acceptOrderOnShein(string $orderId): array
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return ['success' => false, 'message' => 'Order ID is required.'];
+        }
+
+        $line = SheinOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->orderBy('id')
+            ->first();
+
+        if (! $line) {
+            return ['success' => false, 'message' => 'Order not found in local database.'];
+        }
+
+        if (! $this->isPendingOrder($line)) {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'message' => 'Order is not Pending on Shein; nothing to accept.',
+            ];
+        }
+
+        try {
+            $addressRes = $this->sheinApi->getOrderAddress($orderId, 2);
+        } catch (\Throwable $e) {
+            Log::warning('SheinOrderDetailService: accept failed', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => 'Accept failed: '.$e->getMessage()];
+        }
+
+        if (empty($addressRes['success'])) {
+            return [
+                'success' => false,
+                'message' => $addressRes['message'] ?? 'Shein export-address (accept) failed.',
+            ];
+        }
+
+        // Refresh detail + address after accept so local status becomes To Be Shipped.
+        $refresh = $this->fetchAndPersistOrderDetail($orderId);
+        if (empty($refresh['success'])) {
+            // Accept succeeded on Shein; update status locally even if refresh failed.
+            SheinOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->update(['status' => 'To Be Shipped']);
+
+            return [
+                'success' => true,
+                'message' => 'Order accepted on Shein (status → To Be Shipped). Detail refresh: '.($refresh['message'] ?? 'failed'),
+            ];
+        }
+
+        // Ensure status reflects accept even if order-detail still lags briefly.
+        $stillPending = SheinOrderMetric::query()
+            ->where('order_id', $orderId)
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['pending'])
+                    ->orWhere('status', '1');
+            })
+            ->exists();
+        if ($stillPending) {
+            SheinOrderMetric::query()
+                ->where('order_id', $orderId)
+                ->update(['status' => 'To Be Shipped']);
+        }
+
+        Log::info('SheinOrderDetailService: accepted order on Shein', ['order_id' => $orderId]);
+
+        return ['success' => true, 'message' => 'Order accepted on Shein (Pending → To Be Shipped).'];
+    }
+
+    /**
+     * Accept Pending Shein orders (used by auto-accept setting / cron).
+     *
+     * @return array{success: bool, checked: int, accepted: int, skipped: int, failed: int, message: string}
+     */
+    public function acceptPendingOrders(int $limit = 40): array
+    {
+        $limit = max(1, min(100, $limit));
+
+        $orderIds = SheinOrderMetric::query()
+            ->where(function ($q) {
+                $q->whereRaw('LOWER(TRIM(COALESCE(status, ""))) = ?', ['pending'])
+                    ->orWhere('status', '1');
+            })
+            ->orderBy('id')
+            ->limit($limit * 5)
+            ->pluck('order_id')
+            ->unique()
+            ->take($limit)
+            ->values();
+
+        $checked = 0;
+        $accepted = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($orderIds as $orderId) {
+            $checked++;
+            $result = $this->acceptOrderOnShein((string) $orderId);
+            if (! empty($result['skipped'])) {
+                $skipped++;
+            } elseif (! empty($result['success'])) {
+                $accepted++;
+            } else {
+                $failed++;
+                Log::warning('SheinOrderDetailService: acceptPendingOrders item failed', [
+                    'order_id' => $orderId,
+                    'message' => $result['message'] ?? null,
+                ]);
+            }
+            usleep(350000);
+        }
+
+        return [
+            'success' => $failed === 0,
+            'checked' => $checked,
+            'accepted' => $accepted,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "Accept sync: checked {$checked}, accepted {$accepted}, skipped {$skipped}, failed {$failed}.",
+        ];
+    }
+
+    public static function canAutoAccept(?array $settings = null): bool
+    {
+        return MarketplaceSyncSettings::canAutoAcceptOnShein($settings);
+    }
+
+    public function isPendingOrder(SheinOrderMetric $line): bool
+    {
+        $status = strtolower(trim((string) ($line->status ?? '')));
+        if ($status === 'pending' || $status === '1') {
+            return true;
+        }
+
+        $raw = is_array($line->raw_payload) ? $line->raw_payload : [];
+        $order = is_array($raw['order'] ?? null) ? $raw['order'] : $raw;
+        $code = $order['orderStatus'] ?? null;
+        if ($code !== null && (int) $code === 1) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

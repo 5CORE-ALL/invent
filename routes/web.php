@@ -425,6 +425,12 @@ Route::get('/tiktok/connect', [\App\Http\Controllers\MarketPlace\TikTokAuthContr
 Route::get('/tiktok/test-connection', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'testConnection'])->name('tiktok.oauth.test');
 Route::match(['get', 'post'], '/tiktok/exchange', [\App\Http\Controllers\MarketPlace\TikTokAuthController::class, 'exchangeForm'])->name('tiktok.oauth.exchange');
 
+// TikTok Shop 2 OAuth — /index must match TIKTOK2_REDIRECT_URI (public; TikTok redirects here)
+Route::get('/index', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'callback'])->name('tiktok2.oauth.callback');
+Route::get('/tiktok2/connect', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'connect'])->name('tiktok2.oauth.connect');
+Route::get('/tiktok2/test-connection', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'testConnection'])->name('tiktok2.oauth.test');
+Route::match(['get', 'post'], '/tiktok2/exchange', [\App\Http\Controllers\MarketPlace\TikTok2AuthController::class, 'exchangeForm'])->name('tiktok2.oauth.exchange');
+
 Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/broadcasting/auth', function (Request $request) {
         $user = $request->user();
@@ -539,6 +545,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-order-fulfillment/all-order-data', [SalesOrderFulfillmentController::class, 'allOrderData'])->name('sales.order.fulfillment.all.order.data');
     Route::post('/sales-order-fulfillment/ch-orders-link', [SalesOrderFulfillmentController::class, 'saveChOrdersLink'])->name('sales.order.fulfillment.ch.orders.link');
     Route::post('/sales-order-fulfillment/badge-link', [SalesOrderFulfillmentController::class, 'saveBadgeLink'])->name('sales.order.fulfillment.badge.link');
+    Route::post('/sales-order-fulfillment/refresh-shipment-status', [SalesOrderFulfillmentController::class, 'refreshShipmentStatus'])->name('sales.order.fulfillment.refresh.shipment.status');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)
@@ -749,6 +756,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/orders', [\App\Http\Controllers\MarketplaceController::class, 'orders'])->name('marketplace.orders');
         Route::get('/orders/{order}', [\App\Http\Controllers\MarketplaceController::class, 'showOrder'])->name('marketplace.orders.show')->whereNumber('order');
         Route::post('/orders/{order}/pull', [\App\Http\Controllers\MarketplaceController::class, 'pullOrder'])->name('marketplace.orders.pull')->whereNumber('order');
+        Route::post('/orders/{order}/accept', [\App\Http\Controllers\MarketplaceController::class, 'acceptOrder'])->name('marketplace.orders.accept')->whereNumber('order');
         Route::post('/orders/{order}/push-tracking', [\App\Http\Controllers\MarketplaceController::class, 'pushTracking'])->name('marketplace.orders.push-tracking')->whereNumber('order');
         Route::get('/settings', [\App\Http\Controllers\MarketplaceController::class, 'settings'])->name('marketplace.settings');
         Route::post('/settings', [\App\Http\Controllers\MarketplaceController::class, 'saveSettings'])->name('marketplace.settings.save');
@@ -3666,6 +3674,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/tiktok-2-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2MetricsHistory'])->name('tiktok2.metrics.history');
     // TikTok 1 products come from API (sync:tiktok-api-data) — no CSV/sheet upload.
     Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
+    Route::post('/tiktok-2-sync-from-api', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'syncTikTok2FromApi'])->name('tiktok2.sync.from.api');
     Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
     Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');
     Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
@@ -5388,15 +5397,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/faire/upload-daily-data', [FaireController::class, 'uploadDailyDataChunk'])->name('faire.upload.daily.data');
     Route::get('/faire/daily-data', [FaireController::class, 'getDailyData'])->name('faire.get.daily.data');
     Route::get('/faire-tabulator', [FaireController::class, 'faireTabulatorView'])->name('faire.tabulator.view');
-    // Faire Listing Variation Verify — listings from faire_pricing_prices (/faire-pricing)
+    // Faire Listing Variation Verify — listings from Faire products API (faire_metric)
     Route::get('/faire-listing-variation-verify', [FaireListingVariationVerifyController::class, 'index'])->name('faire.listing.variation.verify');
     Route::get('/faire-listing-variation-verify/data', [FaireListingVariationVerifyController::class, 'data'])->name('faire.listing.variation.verify.data');
     Route::post('/faire-listing-variation-verify/pull-listings', [FaireListingVariationVerifyController::class, 'pullListings'])->name('faire.listing.variation.verify.pull');
 
     Route::get('/faire-pricing', [FaireController::class, 'fairePricingView'])->name('faire.pricing.view');
     Route::get('/faire/pricing-data', [FaireController::class, 'getFairePricingData'])->name('faire.pricing.data');
-    Route::get('/faire/pricing-price-sample', [FaireController::class, 'downloadFairePricingPriceSample'])->name('faire.pricing.price.sample');
-    Route::post('/faire/pricing-upload-price', [FaireController::class, 'uploadFairePricingPriceSheet'])->name('faire.pricing.upload.price');
+    Route::post('/faire/pricing-sync-from-api', [FaireController::class, 'syncPricingFromApi'])->name('faire.pricing.sync.api');
     Route::post('/faire/pricing-save-sprice', [FaireController::class, 'saveFaireSpriceUpdates'])->name('faire.pricing.save.sprice');
     Route::post('/faire/save-links', [FaireController::class, 'saveLinks'])->name('faire.pricing.save.links');
     Route::get('/faire/badge-chart-data', [FaireController::class, 'faireBadgeChartData'])->name('faire.pricing.badge.chart');

@@ -212,6 +212,16 @@ class MarketplaceController extends Controller
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
 
+    public function acceptOrder(Request $request, string $marketplace, int $order): JsonResponse
+    {
+        $marketplace = strtolower($marketplace);
+        if ($marketplace === 'shein') {
+            return app(SheinSyncController::class)->acceptOrderOnShein($order);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Accept order is not supported for this marketplace.'], 404);
+    }
+
     public function pullOrder(Request $request, string $marketplace, int $order): JsonResponse
     {
         $marketplace = strtolower($marketplace);

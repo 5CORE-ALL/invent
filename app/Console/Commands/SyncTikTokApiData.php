@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\ProcessesUpdatesInChunks;
 use App\Models\TikTokProduct;
+use App\Models\TikTokProductTwo;
+use App\Services\TikTok2ShopService;
 use App\Services\TikTokShopService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -17,24 +19,41 @@ class SyncTikTokApiData extends Command
      *
      * @var string
      */
-    protected $signature = 'sync:tiktok-api-data {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
+    protected $signature = 'sync:tiktok-api-data
+        {--channel=tiktok : tiktok (shop 1 → tiktok_products) or tiktok2 (shop 2 → tiktok_products_two)}
+        {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Sync TikTok product data (price, stock, views) from TikTok API';
+    protected $description = 'Sync TikTok / TikTok 2 product data (price, stock, views) from TikTok Shop API';
 
     protected $tiktokService;
+
+    /** @var class-string<\Illuminate\Database\Eloquent\Model> */
+    protected string $productModel = TikTokProduct::class;
+
+    protected string $channel = 'tiktok';
 
     /**
      * Execute the console command.
      */
     public function handle()
     {
-        $this->tiktokService = new TikTokShopService();
-        
+        $channel = strtolower(trim((string) $this->option('channel')));
+        if (! in_array($channel, ['tiktok', 'tiktok2'], true)) {
+            $this->error('Invalid --channel. Use tiktok or tiktok2.');
+
+            return 1;
+        }
+        $this->channel = $channel;
+        $this->productModel = $channel === 'tiktok2' ? TikTokProductTwo::class : TikTokProduct::class;
+        $this->tiktokService = $channel === 'tiktok2' ? new TikTok2ShopService() : new TikTokShopService();
+        $configKey = $channel === 'tiktok2' ? 'tiktok2' : 'tiktok';
+        $label = $channel === 'tiktok2' ? 'TikTok 2' : 'TikTok';
+
         // Set output callback to print debug info to console
         $this->tiktokService->setOutputCallback(function($type, $message) {
             switch ($type) {
@@ -52,8 +71,8 @@ class SyncTikTokApiData extends Command
         
         // Try to load tokens from env if not in cache
         if (!$this->tiktokService->isAuthenticated()) {
-            $accessToken = config('services.tiktok.access_token');
-            $refreshToken = config('services.tiktok.refresh_token');
+            $accessToken = config("services.{$configKey}.access_token");
+            $refreshToken = config("services.{$configKey}.refresh_token");
             
             if ($accessToken) {
                 $this->info('Loading tokens from environment variables...');
@@ -63,14 +82,20 @@ class SyncTikTokApiData extends Command
 
         // Check if authenticated
         if (!$this->tiktokService->isAuthenticated()) {
-            $this->error('TikTok API: No access token found. Please authenticate first.');
+            $this->error("{$label} API: No access token found. Please authenticate first.");
             $this->info('');
-            $this->info('To set tokens, use:');
-            $this->info('  php artisan tiktok:set-tokens --access-token=YOUR_TOKEN --refresh-token=YOUR_REFRESH_TOKEN');
-            $this->info('');
-            $this->info('Or set in .env file:');
-            $this->info('  TIKTOK_ACCESS_TOKEN=your_token');
-            $this->info('  TIKTOK_REFRESH_TOKEN=your_refresh_token');
+            if ($channel === 'tiktok2') {
+                $this->info('Open /tiktok2/connect (or /tiktok2/exchange) then set:');
+                $this->info('  TIKTOK2_ACCESS_TOKEN=...');
+                $this->info('  TIKTOK2_REFRESH_TOKEN=...');
+            } else {
+                $this->info('To set tokens, use:');
+                $this->info('  php artisan tiktok:set-tokens --access-token=YOUR_TOKEN --refresh-token=YOUR_REFRESH_TOKEN');
+                $this->info('');
+                $this->info('Or set in .env file:');
+                $this->info('  TIKTOK_ACCESS_TOKEN=your_token');
+                $this->info('  TIKTOK_REFRESH_TOKEN=your_refresh_token');
+            }
             $this->info('');
             $this->info('Or get authorization URL:');
             $this->info($this->tiktokService->getAuthorizationUrl());
@@ -78,25 +103,27 @@ class SyncTikTokApiData extends Command
         }
         
         // Verify credentials are loaded
-        $this->info('Verifying credentials...');
-        $clientKey = config('services.tiktok.client_key');
-        $clientSecret = config('services.tiktok.client_secret');
-        $shopId = config('services.tiktok.shop_id');
+        $this->info("Verifying {$label} credentials...");
+        $clientKey = config("services.{$configKey}.client_key");
+        $clientSecret = config("services.{$configKey}.client_secret");
+        $shopId = config("services.{$configKey}.shop_id");
         
         if (empty($clientKey) || empty($clientSecret)) {
-            $this->error('❌ Missing TikTok credentials in config!');
+            $this->error("❌ Missing {$label} credentials in config!");
             $this->info('Please check your .env file has:');
-            $this->info('  TIKTOK_CLIENT_KEY');
-            $this->info('  TIKTOK_CLIENT_SECRET');
+            $prefix = strtoupper($configKey);
+            $this->info("  {$prefix}_CLIENT_KEY");
+            $this->info("  {$prefix}_CLIENT_SECRET");
             return 1;
         }
         
         $this->info('✓ Client Key: ' . substr($clientKey, 0, 10) . '...');
         $this->info('✓ Client Secret: ' . (strlen($clientSecret) > 0 ? substr($clientSecret, 0, 10) . '...' : 'MISSING'));
         $this->info('✓ Shop ID: ' . ($shopId ?? 'NOT SET'));
-        $this->info('✓ Access Token: ' . (strlen(config('services.tiktok.access_token') ?? '') > 0 ? substr(config('services.tiktok.access_token'), 0, 20) . '...' : 'MISSING'));
+        $this->info('✓ Access Token: ' . (strlen(config("services.{$configKey}.access_token") ?? '') > 0 ? substr(config("services.{$configKey}.access_token"), 0, 20) . '...' : 'MISSING'));
+        $this->info('✓ Target table: ' . ($channel === 'tiktok2' ? 'tiktok_products_two' : 'tiktok_products'));
 
-        $this->info('Starting TikTok API data sync...');
+        $this->info("Starting {$label} API data sync...");
 
         try {
             // Fetch all product data
@@ -189,7 +216,7 @@ class SyncTikTokApiData extends Command
             // Process and store reviews/ratings
             $this->processReviews($data['reviews'] ?? []);
 
-            $this->info('✅ TikTok API data sync completed successfully!');
+            $this->info('✅ ' . ($this->channel === 'tiktok2' ? 'TikTok 2' : 'TikTok') . ' API data sync completed successfully!');
             return 0;
 
         } catch (\Exception $e) {
@@ -231,7 +258,7 @@ class SyncTikTokApiData extends Command
                     $price = $this->extractPrice($product);
                     $normalizedSku = strtoupper(trim($sku));
 
-                    $tiktokProduct = TikTokProduct::updateOrCreate(
+                    $tiktokProduct = ($this->productModel)::updateOrCreate(
                         ['sku' => $normalizedSku],
                         [
                             'product_id' => $productId,
@@ -283,7 +310,7 @@ class SyncTikTokApiData extends Command
                         continue;
                     }
 
-                    $tiktokProduct = TikTokProduct::where('product_id', $productId)->first();
+                    $tiktokProduct = ($this->productModel)::where('product_id', $productId)->first();
                     if (!$tiktokProduct) {
                         continue;
                     }
@@ -359,11 +386,11 @@ class SyncTikTokApiData extends Command
                 // Try to find by product_id first, then by SKU
                 $tiktokProduct = null;
                 if ($productId) {
-                    $tiktokProduct = TikTokProduct::where('product_id', $productId)->first();
+                    $tiktokProduct = ($this->productModel)::where('product_id', $productId)->first();
                 }
                 
                 if (!$tiktokProduct && $sku) {
-                    $tiktokProduct = TikTokProduct::where('sku', strtoupper(trim($sku)))->first();
+                    $tiktokProduct = ($this->productModel)::where('sku', strtoupper(trim($sku)))->first();
                 }
 
                 if ($tiktokProduct) {
@@ -413,11 +440,11 @@ class SyncTikTokApiData extends Command
                 // Try to find by product_id first, then by SKU
                 $tiktokProduct = null;
                 if ($productId) {
-                    $tiktokProduct = TikTokProduct::where('product_id', $productId)->first();
+                    $tiktokProduct = ($this->productModel)::where('product_id', $productId)->first();
                 }
                 
                 if (!$tiktokProduct && $sku) {
-                    $tiktokProduct = TikTokProduct::where('sku', strtoupper(trim($sku)))->first();
+                    $tiktokProduct = ($this->productModel)::where('sku', strtoupper(trim($sku)))->first();
                 }
 
                 if ($tiktokProduct) {
