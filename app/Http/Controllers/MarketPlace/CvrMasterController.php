@@ -395,7 +395,7 @@ class CvrMasterController extends Controller
                 'tiktok_percentage' => $tiktokPercentage * 100 . '%'
             ]);
 
-            // TikTok 2 — same formulas as /tiktok-2-pricing (API products + tiktok2_orders; Ads% = 0)
+            // TikTok 2 — OV/CVR uses Amazon profit formula (product-master ship + Ads%)
             $tiktok2Marketplace = MarketplacePercentage::where('marketplace', 'TiktokShop2')
                 ->orWhere('marketplace', 'TikTok 2')
                 ->orWhere('marketplace', 'TiktokShop')
@@ -1278,11 +1278,11 @@ class CvrMasterController extends Controller
                 }
                 $tiktok2Views = $tt2VideoViews + $tt2AdsViews + $tt2AfflViews;
                 $tiktok2L30 = (int) ($tiktok2L30BySku[$skuUpperTt] ?? 0);
-                $tt2Ship = 0;
+                // Same formula as Amazon: GPFT = (Price × Margin − LP − Ship) / Price × 100
                 $tiktok2GPFT = $tiktok2Price > 0
-                    ? round((($tiktok2Price * $tiktok2Percentage - $lp - $tt2Ship) / $tiktok2Price) * 100, 2)
+                    ? round((($tiktok2Price * $tiktok2Percentage - $lp - $ship) / $tiktok2Price) * 100, 2)
                     : 0;
-                $tiktok2PFT = $tiktok2GPFT; // Ads% = 0
+                $tiktok2PFT = $tiktok2GPFT; // Ads applied later like Amazon / channel Ads%
 
                 // BestBuy — same as /bestbuy-pricing BB Price: sheet first, else product
                 $bestbuyProduct = $bestbuyProducts->get($sku);
@@ -1767,9 +1767,10 @@ class CvrMasterController extends Controller
                         $nroiValues[] = ($tiktokPFT * $tiktokPrice) / $lp;
                     }
                     if ($tiktok2Price > 0) {
-                        $tiktok2Groi = (($tiktok2Price * $tiktok2Percentage - $lp - $tt2Ship) / $lp) * 100;
+                        // Same as Amazon: GROI uses product-master ship
+                        $tiktok2Groi = (($tiktok2Price * $tiktok2Percentage - $lp - $ship) / $lp) * 100;
                         $roiValues[] = $tiktok2Groi;
-                        $nroiValues[] = $tiktok2Groi; // Ads% = 0
+                        $nroiValues[] = ($tiktok2PFT * $tiktok2Price) / $lp;
                     }
                     if ($bbPrice > 0) {
                         $roiValues[] = ($bbGPFT * $bbPrice) / $lp;
@@ -3410,7 +3411,7 @@ class CvrMasterController extends Controller
                 'seller_link' => $ttSellerLink,
             ];
 
-            // TikTok 2 — /tiktok-2-pricing (API → tiktok_products_two + tiktok2_orders; Ads% = 0)
+            // TikTok 2 — same profit formula as Amazon: (Price × Margin − LP − Ship) / Price
             $tiktok2MarketplacePerc = MarketplacePercentage::where('marketplace', 'TiktokShop2')
                 ->orWhere('marketplace', 'TikTok 2')
                 ->orWhere('marketplace', 'TiktokShop')
@@ -3429,7 +3430,8 @@ class CvrMasterController extends Controller
                 Log::warning('TikTok 2 breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
             $tt2PriceBd = $tt2ProductBd ? floatval($tt2ProductBd->price ?? 0) : 0;
-            $tt2ShipBd = 0;
+            // Product-master ship (same as Amazon / TikTok 1 in OV L30)
+            $tt2ShipBd = $ship;
             $tt2GPFTBd = $tt2PriceBd > 0
                 ? round((($tt2PriceBd * $tiktok2MarginBd - $lp - $tt2ShipBd) / $tt2PriceBd) * 100, 2)
                 : 0;
@@ -3446,6 +3448,7 @@ class CvrMasterController extends Controller
                         $tt2Sgpft = $tt2Sprice > 0
                             ? round((($tt2Sprice * $tiktok2MarginBd - $lp - $tt2ShipBd) / $tt2Sprice) * 100, 2)
                             : 0;
+                        // SPFT like Amazon: SGPFT − Ads when L30 > 0 (Ads filled in enrich loop)
                         $tt2SuggestedBd = [
                             'sprice' => $tt2Sprice,
                             'sgpft' => $tt2Sgpft,
@@ -3474,7 +3477,7 @@ class CvrMasterController extends Controller
                 'views' => $hasTikTok2Data ? $tt2ViewsBd : null,
                 'l30' => $tiktok2L30Bd,
                 'gpft' => $tt2GPFTBd,
-                'ad' => 0,
+                'ad' => 0, // set to channel Ads% in enrich (Amazon-style NPFT/SPFT)
                 'tacos_ch' => 0,
                 'npft' => $tt2GPFTBd,
                 'is_listed' => $hasTikTok2Data,
@@ -4473,9 +4476,31 @@ class CvrMasterController extends Controller
             );
             $hasTdData = $tdPriceBd > 0 || $tdL30Bd > 0 || $isActiveTdListing || ($tdSuggestedBd['sprice'] > 0);
 
+            // Apply rule: SPRICE = (STD PRC × 0.80) − Ship (fallback channel price)
+            $tdStdBase = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
+                ? (float) $amazonStandardPrice
+                : $tdPriceBd;
+            if ($tdStdBase > 0) {
+                $tdCalcFromStd = max(0.01, round(($tdStdBase * 0.80) - $ship, 2));
+                // Prefer freshly calculated STD rule over stale saved sprice when STD is present
+                if (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0) {
+                    $tdSuggestedBd['sprice'] = $tdCalcFromStd;
+                    if ($tdCalcFromStd > 0 && $tdMarginBd > 0) {
+                        $tdSuggestedBd['sgpft'] = round((($tdCalcFromStd * $tdMarginBd - $lp) / $tdCalcFromStd) * 100, 2);
+                        $tdSuggestedBd['spft'] = $tdSuggestedBd['sgpft'];
+                        $tdSuggestedBd['sroi'] = $lp > 0
+                            ? round((($tdCalcFromStd * $tdMarginBd - $lp) / $lp) * 100, 2)
+                            : 0;
+                    }
+                } elseif (!($tdSuggestedBd['sprice'] > 0)) {
+                    $tdSuggestedBd['sprice'] = $tdCalcFromStd;
+                }
+            }
+
             $breakdownData[] = [
                 'marketplace' => 'TopDawg',
-                'sku'         => $hasTdData ? $fullSku : 'Not Listed',
+                // Keep full SKU so Apply/save works even when listing metrics are missing
+                'sku'         => $fullSku,
                 'price'       => round($tdPriceBd, 2),
                 'views'       => $tdViewsBd,
                 'l30'         => $tdL30Bd,
@@ -4483,20 +4508,20 @@ class CvrMasterController extends Controller
                 'ad'          => 0,
                 'tacos_ch'    => 0,
                 'npft'        => $tdNPFTBd,
-                'is_listed'   => $hasTdData,
+                'is_listed'   => true, // always editable for STD Apply: (STD×0.80)−Ship
                 'sprice'      => $tdSuggestedBd['sprice'],
                 'sgpft'       => $tdSuggestedBd['sgpft'],
                 'sroi'        => $tdSuggestedBd['sroi'],
                 'spft'        => $tdSuggestedBd['spft'],
                 'lp'          => $lp,
-                // Product-master ship for SP Apply: (SP × 0.80) − Ship.
-                // GPFT/ROI formulas still exclude ship on the frontend/pricing page.
+                // Product-master ship for Apply: (STD × 0.80) − Ship
                 'ship'        => $ship,
                 'margin'      => $tdMarginBd,
                 'pushed_by'   => null,
                 'pushed_at'   => null,
                 'buyer_link'  => $tdBuyerLink,
                 'seller_link' => $tdSellerLink,
+                'has_listing' => $hasTdData,
             ];
 
             // FBA row – same structure as other marketplaces (scoped to this SKU only)
@@ -4719,13 +4744,30 @@ class CvrMasterController extends Controller
                     if ($spriceVal > 0 || $sgpftVal != 0) {
                         $row['spft'] = round($sgpftVal - $adsPct, 2);
                     }
-                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire', 'tiktok2', 'tiktok 2'], true)) {
-                    // Temu2 / Doba / PPower / TopDawg / Shein / Faire / TikTok 2: no ads (match channel pricing pages)
+                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire'], true)) {
+                    // Temu2 / Doba / PPower / TopDawg / Shein / Faire: no ads (match channel pricing pages)
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
                     // TopDawg / Faire / PPower keep product-master ship for SP Apply formulas;
                     // frontend GPFT/ROI still exclude ship for those channels.
+                } elseif (in_array($mp, ['tiktok2', 'tiktok 2'], true)) {
+                    // TikTok 2: same as Amazon — product-master ship already on row; Ads% from AMM;
+                    // NPFT/SPFT = GPFT/SGPFT − Ads when L30 > 0
+                    $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? 'TikTok 2');
+                    $row['ad'] = $adsPct;
+                    $row['tacos_ch'] = $adsPct;
+                    $l30Row = (int) ($row['l30'] ?? 0);
+                    $row['npft'] = $l30Row == 0
+                        ? round($gpftPct, 2)
+                        : round($gpftPct - $adsPct, 2);
+                    $sgpftVal = (float) ($row['sgpft'] ?? 0);
+                    $spriceVal = (float) ($row['sprice'] ?? 0);
+                    if ($spriceVal > 0 || $sgpftVal != 0) {
+                        $row['spft'] = $l30Row == 0
+                            ? round($sgpftVal, 2)
+                            : round($sgpftVal - $adsPct, 2);
+                    }
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
                     $row['tacos_ch'] = $adsPct;

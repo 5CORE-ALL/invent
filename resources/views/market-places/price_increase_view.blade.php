@@ -106,10 +106,10 @@
             height: auto !important;
             min-height: 0 !important;
             vertical-align: middle;
-            font-size: 10px !important;
+            font-size: max(14px, var(--ovl30-fs, 14px)) !important;
             font-weight: 700;
             letter-spacing: 0.01em;
-            padding: 6px 4px !important;
+            padding: 6px 5px !important;
             background-color: #5FA6AA !important;
             color: #fff !important;
             border-color: #4f969a !important;
@@ -255,7 +255,9 @@
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-num { width: 52px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-price { width: 68px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-std-prc { width: 64px; }
-        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-promo { width: 64px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-promo,
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-cpn,
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-dsc { width: 64px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-lmp { width: 64px; }
         #ovl30DetailsModal .modal-vertical-header th.ovl30-std-prc-th {
             background: #20c997 !important;
@@ -265,26 +267,67 @@
             background: #fd7e14 !important;
             color: #000 !important;
         }
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-cpn-th {
+            background: #e83e8c !important;
+            color: #000 !important;
+        }
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-dsc-th {
+            background: #6f42c1 !important;
+            color: #fff !important;
+        }
         #ovl30DetailsModal .editable-std-prc,
-        #ovl30DetailsModal .editable-promo {
+        #ovl30DetailsModal .editable-promo,
+        #ovl30DetailsModal .editable-cpn,
+        #ovl30DetailsModal .editable-dsc {
             width: 4em !important;
             min-width: 0 !important;
             max-width: 100% !important;
             display: inline-block;
-            padding: 1px 4px !important;
+            padding: 1px 2px !important;
             font-size: inherit !important;
             height: auto !important;
             line-height: 1.3 !important;
             text-align: right;
+            border: none !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            outline: none !important;
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        #ovl30DetailsModal .editable-std-prc:focus,
+        #ovl30DetailsModal .editable-promo:focus,
+        #ovl30DetailsModal .editable-cpn:focus,
+        #ovl30DetailsModal .editable-dsc:focus {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        #ovl30DetailsModal .editable-std-prc::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-std-prc::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-promo::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-promo::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-cpn::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-cpn::-webkit-inner-spin-button,
+        #ovl30DetailsModal .editable-dsc::-webkit-outer-spin-button,
+        #ovl30DetailsModal .editable-dsc::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
         #ovl30DetailsModal .ovl30-std-prc-wrap,
-        #ovl30DetailsModal .ovl30-promo-wrap {
+        #ovl30DetailsModal .ovl30-promo-wrap,
+        #ovl30DetailsModal .ovl30-cpn-wrap,
+        #ovl30DetailsModal .ovl30-dsc-wrap {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 4px;
         }
-        #ovl30DetailsModal #modal-promo-input {
+        #ovl30DetailsModal #modal-promo-input,
+        #ovl30DetailsModal #modal-cpn-input,
+        #ovl30DetailsModal #modal-dsc-input {
             font-weight: 700;
             width: 72px;
         }
@@ -546,13 +589,13 @@
         #ovl30DetailsModal .modal-totals-row {
             background-color: #eef2ff !important;
             font-weight: 600 !important;
-            font-size: var(--ovl30-fs, 11px) !important;
+            font-size: var(--ovl30-fs, 14px) !important;
             color: #0f172a !important;
             border-top: 1px solid #c7d2fe !important;
         }
         #ovl30DetailsModal .modal-totals-row th {
             font-weight: 600 !important;
-            font-size: var(--ovl30-fs, 11px) !important;
+            font-size: var(--ovl30-fs, 14px) !important;
             line-height: 1.2;
             padding: 4px 3px !important;
             color: #0f172a !important;
@@ -591,8 +634,8 @@
             padding: 0.35rem 0.65rem 0.5rem !important;
         }
         #ovl30DetailsModal .ovl30-table-wrap {
-            --ovl30-fs: 11px;
-            --ovl30-header-h: 34px;
+            --ovl30-fs: 14px;
+            --ovl30-header-h: 36px;
             flex: 1 1 auto;
             min-height: 0;
             max-height: none;
@@ -689,15 +732,9 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(2),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(4),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(4),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(5),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(5),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(6),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(6),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(7),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(7),
+        /* Right: Views→LMP (8–15), SPRICE→SPFT (20–24) — Promo/CPN/DSC center via class; STD PRC col 19 */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(8),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(8),
-        /* Right: GPFT→LMP (9–13), SPRICE→SPFT (18–22) — STD PRC is col 17 (before SPRICE) */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(9),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(9),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(10),
@@ -708,45 +745,55 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22) {
-            text-align: right !important;
-            font-variant-numeric: tabular-nums;
-        }
-        /* Center: Miss, Link, Check, Suggest, STD PRC, Push, By */
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(14),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(15),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24) {
+            text-align: right !important;
+            font-variant-numeric: tabular-nums;
+        }
+        /* Center: Miss, Link, Check, Suggest, STD PRC, Push, By, Hist */
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(19),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(25),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(26),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(26),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(27),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(27) {
             text-align: center !important;
         }
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
-        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-add-btn {
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(15) .lmp-channel-price,
+        #ovl30DetailsModal #ovl30DetailsTable td:nth-child(15) .lmp-add-btn {
             font-size: inherit;
             white-space: nowrap;
         }
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-std-prc-th,
         #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-std-prc-cell,
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-promo-th,
-        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-promo-cell {
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-promo-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-cpn-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-cpn-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-dsc-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-dsc-cell {
             text-align: center !important;
         }
         #ovl30DetailsModal .table .editable-sprice {
@@ -754,21 +801,25 @@
             min-width: 0 !important;
             max-width: 100% !important;
             height: 24px;
-            padding: 0 4px !important;
+            padding: 0 2px !important;
             font-size: var(--ovl30-fs) !important;
             font-weight: 600;
             text-align: center;
             margin: 0 auto;
             display: inline-block;
-            border: 1px solid #cbd5e1;
-            border-radius: 4px;
+            border: none !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            outline: none !important;
             -moz-appearance: textfield;
             appearance: textfield;
         }
         #ovl30DetailsModal .table .editable-sprice:focus {
-            border-color: #93c5fd;
-            outline: 0;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+            border: none !important;
+            background: transparent !important;
+            outline: none !important;
+            box-shadow: none !important;
         }
         #ovl30DetailsModal .table .editable-sprice::-webkit-outer-spin-button,
         #ovl30DetailsModal .table .editable-sprice::-webkit-inner-spin-button {
@@ -1728,14 +1779,17 @@
                         </button>
                     </div>
                     <div class="ovl30-tool-group ovl30-tool-group-sp"
-                        title="STD PRC for all marketplaces on this SKU. Saves to STD PRC column and Sku Link LMP siblings.">
+                        title="STD PRC for all marketplaces. Check applies STD → SPRICE (channel rules) and saves.">
                         <label for="modal-std-sp-input">STD PRC</label>
                         <input type="number" id="modal-std-sp-input" class="form-control form-control-sm text-end fw-bold"
                             placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
                             title="STD PRC for all marketplaces — same value on every channel row.">
-                        <span class="ovl30-sp-hint text-muted">
-                            <strong>STD PRC</strong> for all marketplaces (same as column). Also saves to Sku Link LMP siblings.
-                        </span>
+                        <button type="button" id="modal-apply-std-prc-btn" class="btn btn-sm btn-success"
+                            title="Apply STD PRC → SPRICE (Doba −25%; SB2B/TopDawg/Faire = ×0.80−Ship; Purchase = ×1.15−Ship)"
+                            aria-label="Apply STD PRC">
+                            <i class="fas fa-check"></i>
+                        </button>
+                        
                     </div>
                     <div class="ovl30-tool-group"
                         title="Apply STD PRC as SPRICE. Doba −25%. SB2B/TopDawg/Faire = (STD × 0.80) − Ship. Purchase = (STD × 1.15) − Ship.">
@@ -1758,6 +1812,27 @@
                             <i class="fas fa-check"></i>
                         </button>
                     </div>
+                    <div class="ovl30-tool-group"
+                        title="CPN per marketplace: 10% or $1 off each channel’s own SPRICE (same as Promotion).">
+                        <label for="modal-cpn-input">CPN</label>
+                        <input type="text" id="modal-cpn-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="10% or 1" title="1 = $1 less on each channel SPRICE; 10% = 10% less on each">
+                        <button type="button" id="modal-apply-cpn-btn" class="btn btn-sm btn-danger"
+                            title="Apply CPN to each channel’s SPRICE" aria-label="Apply CPN">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                    <div class="ovl30-tool-group"
+                        title="DSC per marketplace: dollar amount only off each channel’s own SPRICE (no %).">
+                        <label for="modal-dsc-input">DSC</label>
+                        <input type="text" id="modal-dsc-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="1 or 5" title="Dollar only — e.g. 1 = $1 less on each channel SPRICE">
+                        <button type="button" id="modal-apply-dsc-btn" class="btn btn-sm"
+                            style="background:#6f42c1;color:#fff;border-color:#6f42c1;"
+                            title="Apply DSC ($) to each channel’s SPRICE" aria-label="Apply DSC">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
                     <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm"
                         title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
                         <i class="fas fa-eraser"></i> Clear All SPRICE
@@ -1772,6 +1847,8 @@
                                 <col class="ovl30-col-icon">
                                 <col class="ovl30-col-price">
                                 <col class="ovl30-col-promo">
+                                <col class="ovl30-col-cpn">
+                                <col class="ovl30-col-dsc">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
@@ -1800,6 +1877,8 @@
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-promo-th" title="Promotion — 1 = $1 off each channel SPRICE; 10% = 10% off each (different per marketplace)."><span>Promotion</span></th>
+                                    <th class="ovl30-cpn-th" title="CPN — 1 = $1 off each channel SPRICE; 10% = 10% off each (same as Promotion)."><span>CPN</span></th>
+                                    <th class="ovl30-dsc-th" title="DSC — dollar only off each channel SPRICE (e.g. 1 = $1 off). No %."><span>DSC</span></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1851,6 +1930,14 @@
                                         <input type="text" id="modal-promo-header-input" class="form-control form-control-sm text-end editable-promo"
                                             placeholder="1 or 10%" title="Off each channel’s own SPRICE — different per marketplace">
                                     </th>
+                                    <th class="ovl30-cpn-th text-center">
+                                        <input type="text" id="modal-cpn-header-input" class="form-control form-control-sm text-end editable-cpn"
+                                            placeholder="1 or 10%" title="CPN off each channel’s own SPRICE — same as Promotion">
+                                    </th>
+                                    <th class="ovl30-dsc-th text-center">
+                                        <input type="text" id="modal-dsc-header-input" class="form-control form-control-sm text-end editable-dsc"
+                                            placeholder="$1" title="DSC $ off each channel’s own SPRICE — dollar only">
+                                    </th>
                                     <th class="text-end ovl30-metric-col" id="modal-total-views">0</th>
                                     <th class="text-end ovl30-metric-col">
                                         <span id="modal-avg-cvr">0%</span>
@@ -1882,7 +1969,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="25" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="27" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2996,7 +3083,11 @@
             $('#modal-siblings-apply-cb').prop('checked', getSiblingsPrefForSku(sku));
             $('#modal-std-sp-input').val('');
             modalPromotionRaw = '';
+            modalCpnRaw = '';
+            modalDscRaw = '';
             $('#modal-promo-input, #modal-promo-header-input, .editable-promo').val('');
+            $('#modal-cpn-input, #modal-cpn-header-input, .editable-cpn').val('');
+            $('#modal-dsc-input, #modal-dsc-header-input, .editable-dsc').val('');
             refreshModalSiblingSkus(sku);
             
             // Set product image in modal totals row
@@ -3106,7 +3197,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="25" class="text-center text-muted py-4">
+                    <td colspan="27" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3117,7 +3208,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="25" class="text-center text-muted py-4">
+                    <td colspan="27" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3127,7 +3218,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="25" class="text-center text-danger py-4">
+                    <td colspan="27" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -3145,6 +3236,8 @@
         let modalSelectedChannels = new Set();
         let modalSiblingSkus = []; // other SKUs sharing the same parent
         let modalPromotionRaw = ''; // shared Promo value (e.g. "10%" or "10")
+        let modalCpnRaw = ''; // shared CPN value (same format as Promotion)
+        let modalDscRaw = ''; // shared DSC value (dollar only, e.g. "1" or "5")
 
         function getModalPrimarySku() {
             const sku = String($('#modalSkuName').text() || '').trim();
@@ -3776,7 +3869,7 @@
             });
         })();
 
-        /** Largest font size that fits all columns in the modal width, then stretch table to 100%.
+        /** Prefer readable font; scroll horizontally instead of shrinking below MIN.
          *  Skipped when user has manually resized columns (Tabulator-like widths win). */
         function autoFitOvl30TableFont() {
             const wrap = document.querySelector('#ovl30DetailsModal .ovl30-table-wrap');
@@ -3790,33 +3883,43 @@
             if (ovl30ManualColWidths || (saved && Object.keys(saved).length)) {
                 setOvl30ManualWidthMode(true);
                 applyOvl30ColWidths(saved || collectOvl30ColWidths());
+                wrap.style.setProperty('--ovl30-fs', '14px');
                 return;
             }
 
             const avail = wrap.clientWidth;
             if (avail < 80) return;
 
+            const MIN_FS = 14;
+            const MAX_FS = 16;
             const applyFs = (fs) => {
                 wrap.style.setProperty('--ovl30-fs', fs + 'px');
             };
 
-            // Measure natural width at each font size; pick largest that fits screen
+            // Measure natural width; pick largest that fits, but never below MIN_FS
             tableEl.style.width = 'max-content';
             tableEl.style.tableLayout = 'auto';
 
-            let best = 8;
-            for (let fs = 8; fs <= 14; fs += 0.5) {
+            let best = MIN_FS;
+            for (let fs = MIN_FS; fs <= MAX_FS; fs += 0.5) {
                 applyFs(fs);
                 void tableEl.offsetWidth;
                 if (tableEl.scrollWidth <= avail + 1) {
                     best = fs;
-                } else if (fs > 8) {
+                } else {
                     break;
                 }
             }
             applyFs(best);
-            tableEl.style.width = '100%';
-            tableEl.style.tableLayout = 'fixed';
+            // If still wider than viewport at MIN_FS, keep natural width + horizontal scroll
+            void tableEl.offsetWidth;
+            if (tableEl.scrollWidth > avail + 1) {
+                tableEl.style.width = 'max-content';
+                tableEl.style.tableLayout = 'auto';
+            } else {
+                tableEl.style.width = '100%';
+                tableEl.style.tableLayout = 'fixed';
+            }
             // Sticky totals offset = actual horizontal header height
             const headerRow = tableEl.querySelector('thead tr.modal-vertical-header');
             const headerH = headerRow ? Math.ceil(headerRow.getBoundingClientRect().height) : 34;
@@ -3903,8 +4006,8 @@
                 const isSheinMp = mpLower === 'shein';
                 const isFaireMp = mpLower === 'faire';
                 const isTiktok2Mp = mpLower === 'tiktok2' || mpLower === 'tiktok 2';
-                // Doba/PPower/TopDawg/Shein: Ads% = 0; Reverb/eBay use channel Ads% (pricing tabulators)
-                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp || isTiktok2Mp;
+                // Doba/PPower/TopDawg/Shein/Faire: Ads% = 0; TikTok 2 uses Amazon formula (ship + Ads)
+                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp;
                 // Temu: every row uses aggregate Ads% (~2.6%) — same as /temu-decrease badgeAvgAds
                 const isTemuMpRow = mpLower === 'temu';
                 const isTemu2MpRow = mpLower === 'temu2';
@@ -3927,14 +4030,31 @@
                 const rawShip = parseFloat(item.ship || 0) || 0;
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 const ship = (isPpMp || isTdMp || isFaireMp || isSb2bMp) ? 0 : rawShip;
-                // SB2B suggested: (STD PRC × 0.80) − Ship (fallback channel Price)
+                // STD-rule channels: SPRICE = (STD × 0.80) − Ship (TopDawg / Faire / SB2B)
                 let sprice = parseFloat(item.sprice || 0);
-                if (isSb2bMp) {
-                    const stdBase = parseFloat(item.standard_price) || 0;
-                    const sb2bBase = stdBase > 0 ? stdBase : price;
-                    if (sb2bBase > 0) {
-                        sprice = Math.max(0.01, Math.round(((sb2bBase * 0.80) - rawShip) * 100) / 100);
+                const stdForApply = parseFloat(item.standard_price) || 0;
+                // Prefer row ship; fall back to any positive ship in this modal payload (Amazon)
+                let applyShip = rawShip;
+                if (!(applyShip > 0) && Array.isArray(toRender)) {
+                    for (let si = 0; si < toRender.length; si++) {
+                        const sn = parseFloat(toRender[si].ship);
+                        if (isFinite(sn) && sn > 0) { applyShip = sn; break; }
+                    }
+                }
+                if (isSb2bMp || isTdMp || isFaireMp) {
+                    const ruleBase = stdForApply > 0 ? stdForApply : price;
+                    if (ruleBase > 0) {
+                        sprice = Math.max(0.01, Math.round(((ruleBase * 0.80) - applyShip) * 100) / 100);
                         item.sprice = sprice;
+                        if (!(rawShip > 0) && applyShip > 0) item.ship = applyShip;
+                    }
+                } else if (isPpMp) {
+                    // Purchase: (STD × 1.15) − Ship
+                    const ruleBase = stdForApply > 0 ? stdForApply : price;
+                    if (ruleBase > 0) {
+                        sprice = Math.max(0.01, Math.round(((ruleBase * 1.15) - applyShip) * 100) / 100);
+                        item.sprice = sprice;
+                        if (!(rawShip > 0) && applyShip > 0) item.ship = applyShip;
                     }
                 }
                 // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
@@ -3993,7 +4113,10 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'purchase', 'topdawg'].includes(mpLower);
+                // STD-rule channels stay editable even when listing metrics are missing
+                const forceEditableStdRule = isSb2bMp || isTdMp || isFaireMp || isPpMp;
+                const canEditSprice = isEditable && (isListed || forceEditableStdRule);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -4200,8 +4323,8 @@
                 const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
-                        data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? rawShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
-                        data-price="${price}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${isEditable && isListed ? 1 : 0}">
+                        data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp || isSb2bMp) ? applyShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
+                        data-price="${price}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${canEditSprice ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
@@ -4215,6 +4338,30 @@
                                     + '<input type="text" class="form-control form-control-sm editable-promo" '
                                     + 'value="' + promoVal + '" placeholder="10%" '
                                     + 'title="1 = $1 off this channel SPRICE; 10% = % off (per marketplace)">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-cpn-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const cpnVal = String(typeof modalCpnRaw !== 'undefined' ? modalCpnRaw : '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-cpn-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-cpn" '
+                                    + 'value="' + cpnVal + '" placeholder="10%" '
+                                    + 'title="CPN: 1 = $1 off this channel SPRICE; 10% = % off (same as Promotion)">'
+                                    + '</span>';
+                            })()}
+                        </td>
+                        <td class="text-center ovl30-dsc-cell ${textClass}">
+                            ${(() => {
+                                if (!isListed) return '-';
+                                const dscVal = String(typeof modalDscRaw !== 'undefined' ? modalDscRaw : '')
+                                    .replace(/"/g, '&quot;');
+                                return '<span class="ovl30-dsc-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-dsc" '
+                                    + 'value="' + dscVal + '" placeholder="$1" '
+                                    + 'title="DSC: dollar only — e.g. 1 = $1 off this channel SPRICE (no %)">'
                                     + '</span>';
                             })()}
                         </td>
@@ -4261,7 +4408,7 @@
                                 : '-'}
                         </td>
                         <td class="text-center ovl30-select-cell">
-                            ${(isEditable && isListed)
+                            ${canEditSprice
                                 ? '<input type="checkbox" class="ovl30-prc-row-cb" data-marketplace="'
                                     + String(item.marketplace || '').replace(/"/g, '&quot;')
                                     + '"' + (modalSelectedChannels.has(String(item.marketplace || '')) ? ' checked' : '')
@@ -4272,7 +4419,7 @@
                         <td class="text-center ovl30-std-prc-cell ${textClass}">
                             ${(() => {
                                 // STD PRC = shared SKU STANDARD_PRICE on every listed marketplace
-                                if (!isListed) return '-';
+                                if (!isListed && !forceEditableStdRule) return '-';
                                 const std = parseFloat(item.standard_price) || 0;
                                 const skuEsc = String(getModalPrimarySku() || item.sku || '')
                                     .replace(/"/g, '&quot;');
@@ -4296,7 +4443,7 @@
                                     ? '<i class="fas fa-exclamation-triangle ovl30-sprice-lmp-alert" title="SPRICE $'
                                         + sprice.toFixed(2) + ' &gt; LMP $' + lmpVal.toFixed(2) + '"></i>'
                                     : '';
-                                if (isEditable && isListed) {
+                                if (canEditSprice) {
                                     return '<span class="ovl30-sprice-wrap">'
                                         + '<input type="number" class="form-control form-control-sm editable-sprice" value="'
                                         + sprice.toFixed(2) + '" step="0.01">'
@@ -6556,7 +6703,8 @@
             const isFaireEdit = (mpForMargin === 'faire');
             const isSb2bEdit = (mpForMargin === 'sb2b' || mpForMargin === 'shopifyb2b' || mpForMargin === 'shopify_b2b');
             const isTiktok2Edit = (mpForMargin === 'tiktok2' || mpForMargin === 'tiktok 2');
-            const isNoAdsEdit = (mpForMargin === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit || isTiktok2Edit);
+            // TikTok 2: Amazon-style (ship + Ads) — not in no-ads list
+            const isNoAdsEdit = (mpForMargin === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit);
             // PPower/TopDawg/Faire/SB2B: ship excluded
             const ship = (isPpEdit || isTdEdit || isFaireEdit || isSb2bEdit) ? 0 : (parseFloat(row.attr('data-ship')) || 0);
             const tacosCh = isNoAdsEdit ? 0 : (parseFloat(row.attr('data-tacos-ch')) || 0);
@@ -6579,7 +6727,7 @@
                 const mpLower = String(row.attr('data-marketplace') || '').toLowerCase();
                 const isTemuMp = (mpLower === 'temu' || mpLower === 'temu2');
                 const isTemu2Mp = (mpLower === 'temu2');
-                const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit || isTiktok2Edit);
+                const isNoAdsMp = (mpLower === 'doba' || isPpEdit || isTdEdit || isSheinEdit || isFaireEdit);
                 const calcSp = isTemuMp ? (sprice <= 26.99 ? sprice + 2.99 : sprice) : sprice;
                 // Temu/Temu2: Profit = (Sprice × 0.80) − ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
                 const temuProfit = isTemuMp ? ((sprice * 0.80) - ship - lp) : 0;
@@ -6661,15 +6809,20 @@
                     }
                     refreshModalStdPrcCells(saved);
                     syncModalToolbarSpInput(saved);
+                    // Fill SPRICE inputs from STD (channel rules) — not STD-only
+                    if (typeof applyStdPriceToModalSpriceInputs === 'function') {
+                        applyStdPriceToModalSpriceInputs(saved, { silent: true });
+                    } else {
+                        const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                        showToast(n > 1
+                            ? ('STD PRC saved for all marketplaces (' + n + ' linked SKUs)')
+                            : 'STD PRC saved for all marketplaces', 'success');
+                    }
                     const $wrap = row.find('.ovl30-std-prc-wrap');
                     $wrap.find('.editable-std-prc').css('border-color', '#28a745');
                     setTimeout(function() {
                         $wrap.find('.editable-std-prc').css('border-color', '');
                     }, 800);
-                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
-                    showToast(n > 1
-                        ? ('STD PRC saved for all marketplaces (' + n + ' linked SKUs)')
-                        : 'STD PRC saved for all marketplaces', 'success');
                 },
                 error: function() {
                     input.css('border-color', '#dc3545');
@@ -6684,21 +6837,42 @@
             }
         });
 
-        // Toolbar SP — same store/API as STD PRC on all marketplace rows
-        $(document).on('blur', '#modal-std-sp-input', function() {
-            const input = $(this);
+        // Toolbar STD PRC — save STANDARD_PRICE + apply into SPRICE inputs
+        function saveAndApplyModalToolbarStdPrc(opts) {
+            opts = opts || {};
+            const fromButton = !!opts.fromButton;
+            const $input = $('#modal-std-sp-input');
+            const $btn = $('#modal-apply-std-prc-btn');
             const sku = getModalPrimarySku();
-            if (!sku || String(sku).indexOf('PARENT') !== -1) return;
-
-            const raw = String(input.val() || '').trim();
-            if (raw === '') return; // leave blank — do not clear on empty blur
-            const std = parseFloat(raw);
-            if (!isFinite(std) || std <= 0) {
-                input.val('');
+            if (!sku || String(sku).indexOf('PARENT') !== -1) {
+                if (fromButton) showToast('Open a SKU first', 'error');
                 return;
             }
 
-            input.css('border-color', '#20c997');
+            const raw = String($input.val() || '').trim();
+            if (raw === '') {
+                if (fromButton) {
+                    showToast('Enter STD PRC greater than 0', 'error');
+                    $input.focus();
+                }
+                return;
+            }
+            const std = parseFloat(raw);
+            if (!isFinite(std) || std <= 0) {
+                $input.val('');
+                if (fromButton) {
+                    showToast('Enter STD PRC greater than 0', 'error');
+                    $input.focus();
+                }
+                return;
+            }
+
+            const origBtnHtml = $btn.length ? $btn.html() : '';
+            if (fromButton && $btn.length) {
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+            }
+            $input.css('border-color', '#20c997');
+
             $.ajax({
                 url: '/save-amazon-sprice',
                 method: 'POST',
@@ -6719,23 +6893,42 @@
                     }
                     refreshModalStdPrcCells(saved);
                     syncModalToolbarSpInput(saved);
-                    input.css('border-color', '#28a745');
-                    setTimeout(function() { input.css('border-color', ''); }, 800);
-                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
-                    showToast(n > 1
-                        ? ('STD PRC saved for ' + n + ' linked SKUs')
-                        : 'STD PRC saved', 'success');
+                    if (typeof applyStdPriceToModalSpriceInputs === 'function') {
+                        applyStdPriceToModalSpriceInputs(saved, { silent: true });
+                    } else {
+                        showToast('STD PRC saved', 'success');
+                    }
+                    $input.css('border-color', '#28a745');
+                    setTimeout(function() { $input.css('border-color', ''); }, 800);
                 },
                 error: function() {
-                    input.css('border-color', '#dc3545');
+                    $input.css('border-color', '#dc3545');
                     showToast('Failed to save STD PRC', 'error');
+                },
+                complete: function() {
+                    if (fromButton && $btn.length) {
+                        $btn.prop('disabled', false).html(origBtnHtml);
+                    }
                 }
             });
+        }
+
+        $(document).on('click', '#modal-apply-std-prc-btn', function(e) {
+            e.preventDefault();
+            saveAndApplyModalToolbarStdPrc({ fromButton: true });
+        });
+        $(document).on('blur', '#modal-std-sp-input', function(e) {
+            // Skip if focus moved to the Apply check (click will apply once)
+            const related = e && e.relatedTarget;
+            if (related && (related.id === 'modal-apply-std-prc-btn' || $(related).closest('#modal-apply-std-prc-btn').length)) {
+                return;
+            }
+            saveAndApplyModalToolbarStdPrc({ fromButton: false });
         });
         $(document).on('keydown', '#modal-std-sp-input', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                $(this).blur();
+                saveAndApplyModalToolbarStdPrc({ fromButton: true });
             }
         });
 
@@ -6897,6 +7090,242 @@
             }
         });
 
+        // ==================== CPN (same as Promotion — per-channel SPRICE) ====================
+        function syncModalCpnInputs(raw, exceptEl) {
+            modalCpnRaw = String(raw == null ? '' : raw);
+            const $except = exceptEl ? $(exceptEl) : $();
+            $('#modal-cpn-input, #modal-cpn-header-input, .editable-cpn').each(function() {
+                if ($except.length && this === $except[0]) return;
+                if ($(this).is(':focus') && !$except.length) return;
+                $(this).val(modalCpnRaw);
+            });
+        }
+
+        function applyModalCpnToAll() {
+            const raw = String($('#modal-cpn-input').val() || modalCpnRaw || '').trim();
+            const promo = parseModalPromotion(raw);
+            if (!promo) {
+                showToast('Enter a CPN (e.g. 1 or 10%)', 'error');
+                $('#modal-cpn-input').focus();
+                return;
+            }
+            syncModalCpnInputs(raw);
+            const $rows = collectModalPromoTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows — check channels or enter SPRICE first', 'error');
+                return;
+            }
+            const modeLabel = promo.type === 'percent'
+                ? (promo.value + '% less on each channel SPRICE')
+                : ('$' + Math.abs(promo.value).toFixed(2) + ' less on each channel SPRICE');
+            if (!confirm(
+                'Apply CPN (' + modeLabel + ') to ' + $rows.length
+                + ' channel(s)?\n\nEach marketplace keeps its own SPRICE, then the discount is applied'
+                + ' (so results differ by channel).'
+                + siblingsApplyLabel()
+            )) return;
+
+            const $btn = $('#modal-apply-cpn-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            let doneCount = 0;
+            let okCount = 0;
+            let skipped = 0;
+            let siblingsOk = 0;
+
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                let base = parseFloat($tr.find('.editable-sprice').val());
+                if (!(base > 0)) base = parseFloat($tr.attr('data-price')) || 0;
+                const newPrice = applyPromotionToSpriceBase(base, promo);
+                if (!(newPrice > 0) || !(base > 0)) {
+                    skipped++;
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('CPN applied to ' + okCount + ' channel(s)'
+                                    + (skipped ? ('; skipped ' + skipped) : '')
+                                    + '. Use Push to go live.')
+                                : 'No channel SPRICE to discount — set SPRICE first',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                    return;
+                }
+                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
+                    if (ok) {
+                        okCount++;
+                        if (res && res.siblings_count) {
+                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
+                        }
+                        if (Array.isArray(ovl30ModalData)) {
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) {
+                                    item.sprice = newPrice;
+                                }
+                            });
+                        }
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('CPN: ' + modeLabel + ' on ' + okCount + ' channel(s)'
+                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
+                                    + (skipped ? ('; skipped ' + skipped) : '')
+                                    + '. Use Push to go live.')
+                                : 'Failed to apply CPN',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('input', '#modal-cpn-input, #modal-cpn-header-input, .editable-cpn', function() {
+            syncModalCpnInputs($(this).val(), this);
+        });
+        $(document).on('click', '#modal-apply-cpn-btn', function(e) {
+            e.preventDefault();
+            applyModalCpnToAll();
+        });
+        $(document).on('keydown', '#modal-cpn-input, #modal-cpn-header-input, .editable-cpn', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                syncModalCpnInputs($(this).val(), this);
+                applyModalCpnToAll();
+            }
+        });
+
+        // ==================== DSC (like Promotion, dollar only — no %) ====================
+        function parseModalDsc(raw) {
+            const s = String(raw == null ? '' : raw).trim();
+            if (!s) return null;
+            if (/%/.test(s)) return null; // percent not allowed
+            const num = parseFloat(s.replace(/[$,\s]/g, '').replace(',', '.'));
+            if (!isFinite(num) || num === 0) return null;
+            return { type: 'dollar', value: Math.abs(num), label: '$' + Math.abs(num).toFixed(2) };
+        }
+
+        function syncModalDscInputs(raw, exceptEl) {
+            modalDscRaw = String(raw == null ? '' : raw);
+            const $except = exceptEl ? $(exceptEl) : $();
+            $('#modal-dsc-input, #modal-dsc-header-input, .editable-dsc').each(function() {
+                if ($except.length && this === $except[0]) return;
+                if ($(this).is(':focus') && !$except.length) return;
+                $(this).val(modalDscRaw);
+            });
+        }
+
+        function applyModalDscToAll() {
+            const raw = String($('#modal-dsc-input').val() || modalDscRaw || '').trim();
+            if (/%/.test(raw)) {
+                showToast('DSC is dollar only — enter an amount like 1 or 5 (no %)', 'error');
+                $('#modal-dsc-input').focus();
+                return;
+            }
+            const promo = parseModalDsc(raw);
+            if (!promo) {
+                showToast('Enter a DSC dollar amount (e.g. 1 or 5)', 'error');
+                $('#modal-dsc-input').focus();
+                return;
+            }
+            syncModalDscInputs(raw);
+            const $rows = collectModalPromoTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows — check channels or enter SPRICE first', 'error');
+                return;
+            }
+            const modeLabel = '$' + Math.abs(promo.value).toFixed(2) + ' less on each channel SPRICE';
+            if (!confirm(
+                'Apply DSC (' + modeLabel + ') to ' + $rows.length
+                + ' channel(s)?\n\nEach marketplace keeps its own SPRICE, then the $ discount is applied'
+                + ' (so results differ by channel).'
+                + siblingsApplyLabel()
+            )) return;
+
+            const $btn = $('#modal-apply-dsc-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            let doneCount = 0;
+            let okCount = 0;
+            let skipped = 0;
+            let siblingsOk = 0;
+
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                let base = parseFloat($tr.find('.editable-sprice').val());
+                if (!(base > 0)) base = parseFloat($tr.attr('data-price')) || 0;
+                const newPrice = applyPromotionToSpriceBase(base, promo);
+                if (!(newPrice > 0) || !(base > 0)) {
+                    skipped++;
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('DSC applied to ' + okCount + ' channel(s)'
+                                    + (skipped ? ('; skipped ' + skipped) : '')
+                                    + '. Use Push to go live.')
+                                : 'No channel SPRICE to discount — set SPRICE first',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                    return;
+                }
+                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
+                    if (ok) {
+                        okCount++;
+                        if (res && res.siblings_count) {
+                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
+                        }
+                        if (Array.isArray(ovl30ModalData)) {
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) {
+                                    item.sprice = newPrice;
+                                }
+                            });
+                        }
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('DSC: ' + modeLabel + ' on ' + okCount + ' channel(s)'
+                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
+                                    + (skipped ? ('; skipped ' + skipped) : '')
+                                    + '. Use Push to go live.')
+                                : 'Failed to apply DSC',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('input', '#modal-dsc-input, #modal-dsc-header-input, .editable-dsc', function() {
+            syncModalDscInputs($(this).val(), this);
+        });
+        $(document).on('click', '#modal-apply-dsc-btn', function(e) {
+            e.preventDefault();
+            applyModalDscToAll();
+        });
+        $(document).on('keydown', '#modal-dsc-input, #modal-dsc-header-input, .editable-dsc', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                syncModalDscInputs($(this).val(), this);
+                applyModalDscToAll();
+            }
+        });
+
         // Auto-save on blur
         $(document).on('blur', '.editable-sprice', function() {
             const input = $(this);
@@ -6919,9 +7348,10 @@
             
             const lp = parseFloat(row.attr('data-lp')) || 0;
             const mpLower = String(marketplace || '').toLowerCase();
+            // TikTok 2 uses Amazon formula (ship + Ads) — not no-ads
             const isNoAdsBlur = (mpLower === 'doba' || mpLower === 'ppower' || mpLower === 'purchasingpower'
                 || mpLower === 'purchase' || mpLower === 'topdawg' || mpLower === 'shein'
-                || mpLower === 'faire' || mpLower === 'tiktok2' || mpLower === 'tiktok 2' || mpLower === 'aliexpress');
+                || mpLower === 'faire' || mpLower === 'aliexpress');
             const ship = (mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase'
                 || mpLower === 'topdawg' || mpLower === 'faire'
                 || mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b')
@@ -7102,7 +7532,8 @@
             const isFaireMp = (mpLower === 'faire');
             const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
             const isTiktok2Mp = (mpLower === 'tiktok2' || mpLower === 'tiktok 2');
-            const isNoAdsMp = (mpLower === 'doba' || isPpMp || isTdMp || isSheinMp || isFaireMp || isTiktok2Mp);
+            // TikTok 2 matches Amazon: include ship + Ads (L30==0 → skip Ads on SPFT)
+            const isNoAdsMp = (mpLower === 'doba' || isPpMp || isTdMp || isSheinMp || isFaireMp);
             // PPower/TopDawg/Faire/SB2B: ship excluded (Shein uses product_master ship)
             const ship = (isPpMp || isTdMp || isFaireMp || isSb2bMp) ? 0 : (parseFloat($row.attr('data-ship')) || 0);
             const tacosCh = isNoAdsMp ? 0 : (parseFloat($row.attr('data-tacos-ch')) || 0);
@@ -7242,21 +7673,23 @@
                 return;
             }
 
-            const $rows = [];
-            const seenMp = {};
-            $('#ovl30DetailsTableBody tr').each(function() {
-                const $tr = $(this);
-                const mp = String($tr.attr('data-marketplace') || '');
-                if (!modalSelectedChannels.has(mp)) return;
-                if (!$tr.find('.editable-sprice').length) return;
-                $rows.push($tr);
-                seenMp[mp.toLowerCase()] = true;
-            });
-            // Same Price: always include Doba / SB2B / TopDawg / Faire / Purchase STD rules even if unchecked
-            if (modalSamePriceModeActive && !seenMp.doba) {
-                const $doba = findModalDobaEditableRow();
-                if ($doba.length) $rows.push($doba);
-            }
+            // Same Price: always include Doba + STD-rule channels (SB2B/TopDawg/Faire/Purchase)
+            const $rows = modalSamePriceModeActive
+                ? collectModalTargetRows({
+                    alwaysIncludeDoba: true,
+                    alwaysIncludeStdRuleChannels: true
+                })
+                : (function() {
+                    const list = [];
+                    $('#ovl30DetailsTableBody tr').each(function() {
+                        const $tr = $(this);
+                        const mp = String($tr.attr('data-marketplace') || '');
+                        if (!modalSelectedChannels.has(mp)) return;
+                        if (!$tr.find('.editable-sprice').length) return;
+                        list.push($tr);
+                    });
+                    return list;
+                })();
             if (!$rows.length) {
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
@@ -7503,8 +7936,8 @@
             $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
                 const $tr = $(this);
                 if (!matcherFn($tr.attr('data-marketplace'))) return;
+                // STD-rule / Doba rows may stay editable even when muted; only need SPRICE input
                 if (!$tr.find('.editable-sprice').length) return;
-                if (String($tr.attr('data-editable') || '') === '0') return;
                 $found = $tr;
                 return false;
             });
@@ -7756,16 +8189,13 @@
                 $('#modal-std-sp-input').focus();
                 return;
             }
-            if (modalSelectedChannels.size === 0) {
-                showToast('Please select at least one channel (checkbox)', 'error');
-                return;
-            }
             const $rows = collectModalTargetRows({
                 alwaysIncludeDoba: true,
-                alwaysIncludeStdRuleChannels: true
+                alwaysIncludeStdRuleChannels: true,
+                includeAllEditableWhenNoneSelected: true
             });
             if (!$rows.length) {
-                showToast('No editable SPRICE rows selected', 'error');
+                showToast('No editable SPRICE rows', 'error');
                 return;
             }
 
@@ -7873,16 +8303,21 @@
         function collectModalTargetRows(opts) {
             const alwaysIncludeDoba = !!(opts && opts.alwaysIncludeDoba);
             const alwaysIncludeStdRuleChannels = !!(opts && (opts.alwaysIncludeStdRuleChannels || opts.alwaysIncludeSb2bTopDawg));
+            const includeAllEditableWhenNoneSelected = !!(opts && opts.includeAllEditableWhenNoneSelected);
             const $rows = [];
             const seen = {};
-            if (modalSelectedChannels.size === 0 && !alwaysIncludeDoba && !alwaysIncludeStdRuleChannels) return $rows;
-            // Include selected editable rows even if Group filter hid them
+            const noneSelected = modalSelectedChannels.size === 0;
+            if (noneSelected && !alwaysIncludeDoba && !alwaysIncludeStdRuleChannels && !includeAllEditableWhenNoneSelected) {
+                return $rows;
+            }
+            // Include selected editable rows (or all editable when none selected + flag)
             $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
                 const $tr = $(this);
                 if (!$tr.find('.editable-sprice').length) return;
                 if (String($tr.attr('data-editable') || '') === '0') return;
                 const mp = String($tr.attr('data-marketplace') || '');
-                if (!modalSelectedChannels.has(mp)) return;
+                if (!noneSelected && !modalSelectedChannels.has(mp)) return;
+                if (noneSelected && !includeAllEditableWhenNoneSelected) return;
                 $rows.push($tr);
                 seen[mp.toLowerCase().replace(/\s+/g, '')] = true;
             });
@@ -7911,6 +8346,66 @@
                 }
             }
             return $rows;
+        }
+
+        /**
+         * Push STD PRC into every editable SPRICE input (channel rules) and save.
+         * Called after STD PRC is entered/saved so SPRICE fills without a separate Apply click.
+         */
+        function applyStdPriceToModalSpriceInputs(stdPrice, opts) {
+            opts = opts || {};
+            const basePrice = parseFloat(stdPrice);
+            if (!isFinite(basePrice) || !(basePrice > 0)) return;
+            const silent = opts.silent !== false; // default: no confirm dialog
+            const $same = $('#modal-sprice-same-input');
+            if ($same.length && !$same.is(':focus')) {
+                $same.val(basePrice.toFixed(2));
+            }
+            const $rows = collectModalTargetRows({
+                alwaysIncludeDoba: true,
+                alwaysIncludeStdRuleChannels: true,
+                includeAllEditableWhenNoneSelected: true
+            });
+            if (!$rows.length) return;
+
+            if (!silent && !confirm(
+                'Apply STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel SPRICE?'
+                + '\nDoba −25%; SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship'
+            )) return;
+
+            let doneCount = 0;
+            let okCount = 0;
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                const newPrice = adjustAppliedSpriceForChannel(basePrice, $tr);
+                const $input = $tr.find('.editable-sprice');
+                if (!$input.length) {
+                    doneCount++;
+                    return;
+                }
+                $input.val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok) {
+                    if (ok) {
+                        okCount++;
+                        if (Array.isArray(ovl30ModalData)) {
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) item.sprice = newPrice;
+                            });
+                        }
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length && !silent) {
+                        showToast(
+                            okCount
+                                ? ('STD → SPRICE applied on ' + okCount + ' channel(s)')
+                                : 'Failed to apply STD to SPRICE',
+                            okCount ? 'success' : 'error'
+                        );
+                    } else if (doneCount === $rows.length && silent && okCount) {
+                        showToast('STD PRC saved — SPRICE updated on ' + okCount + ' channel(s)', 'success');
+                    }
+                }, { applySiblings: false });
+            });
         }
 
         function applyModalTargetBackSolve(computeFn, labelPrefix) {
