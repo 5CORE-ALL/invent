@@ -52,7 +52,7 @@ class MarketplaceOrderPaidFilter
             'newegg' => self::isNeweggPaid($order),
             'shein' => self::isSheinPaid($order),
             'topdawg' => self::isTopDawgPaid($order),
-            'temu' => self::isTemuPaid($order),
+            'temu', 'temu2' => self::isTemuPaid($order),
             'purchasingpower' => self::isPurchasingPowerPaid($order),
             'wayfair' => self::isWayfairPaid($order),
             'bestbuy' => self::isBestBuyPaid($order),

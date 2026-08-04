@@ -19,6 +19,7 @@ use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\TopDawgProduct;
 use App\Models\TemuMetric;
+use App\Models\Temu2Metric;
 use App\Models\ReverbProduct;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\MarketplaceManager\ShopifyLiveVerifiedCatalogService;
@@ -353,6 +354,9 @@ class MarketplaceManagerController extends Controller
                 : 0,
             'temu' => Schema::hasTable('temu_metrics')
                 ? (int) TemuMetric::query()->whereNotNull('goods_id')->whereNotNull('sku')->where('sku', '!=', '')->whereColumn('sku', '!=', 'goods_id')->count()
+                : 0,
+            'temu2' => Schema::hasTable('temu2_metrics')
+                ? (int) Temu2Metric::query()->whereNotNull('goods_id')->whereNotNull('sku')->where('sku', '!=', '')->whereColumn('sku', '!=', 'goods_id')->count()
                 : 0,
             'ebay1' => Schema::hasTable('ebay_metrics')
                 ? (int) EbayMetric::query()->whereNotNull('sku')->whereNotNull('item_id')->whereColumn('item_id', '!=', 'sku')->count()

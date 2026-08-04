@@ -3418,7 +3418,8 @@
             /**
              * Round ACT weight UP to the billable Declared slab ceiling.
              * < 1 lb → next oz slab cap (2 / 4 / 8 / 12 / 15.99 oz).
-             * ≥ 1 lb → containing upward LB band max (1.1 → 2, 14.5 → 20).
+             * = 1 lb → stays 1 (oz_1599 billable ceiling; do not bump into 1.01–2).
+             * > 1 lb → containing upward LB band max (1.1 → 2, 14.5 → 20).
              */
             function roundWeightLbUpToSlab(lb) {
                 if (lb === null || !Number.isFinite(lb) || lb <= 0) return null;
@@ -3435,6 +3436,12 @@
                             return cap >= 15.99 ? 1 : Math.round(exact * 10000) / 10000;
                         }
                     }
+                    return 1;
+                }
+
+                // Exactly 1 lb is the 12.01–15.99 oz ceiling. Re-rounding a saved
+                // wt_decl of 1 must not land in lb_101_2 and become 2.
+                if (lb <= 1 + 1e-9) {
                     return 1;
                 }
 

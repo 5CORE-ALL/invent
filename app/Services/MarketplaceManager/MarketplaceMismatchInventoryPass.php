@@ -37,7 +37,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
             return $empty;
         }
 
@@ -74,6 +74,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'topdawg' => app(TopDawgInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'temu' => app(TemuInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'temu2' => app(Temu2InventorySyncService::class)->syncSkusFromShopify($mismatch),
             'purchasingpower' => app(PurchasingPowerInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'wayfair' => app(WayfairInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'bestbuy' => app(BestBuyInventorySyncService::class)->syncSkusFromShopify($mismatch),
@@ -115,6 +116,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => 'shein_metric',
             'topdawg' => 'topdawg_products',
             'temu' => 'temu_metrics',
+            'temu2' => 'temu2_metrics',
             'purchasingpower' => 'purchasing_power_products',
             'wayfair' => 'wayfair_pricing_prices',
             'bestbuy' => 'bestbuy_usa_products',
@@ -151,6 +153,21 @@ final class MarketplaceMismatchInventoryPass
 
         if ($channel === 'temu') {
             return \App\Models\TemuMetric::query()
+                ->whereNotNull('sku')
+                ->whereNotNull('goods_id')
+                ->where('sku', '!=', '')
+                ->where('goods_id', '!=', '')
+                ->whereColumn('sku', '!=', 'goods_id')
+                ->pluck('sku')
+                ->map(static fn ($sku) => trim((string) $sku))
+                ->filter(static fn (string $sku) => $sku !== '')
+                ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
+                ->values()
+                ->all();
+        }
+
+        if ($channel === 'temu2') {
+            return \App\Models\Temu2Metric::query()
                 ->whereNotNull('sku')
                 ->whereNotNull('goods_id')
                 ->where('sku', '!=', '')
@@ -293,6 +310,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => MarketplaceListingStockResolver::CHANNEL_SHEIN,
             'topdawg' => MarketplaceListingStockResolver::CHANNEL_TOPDAWG,
             'temu' => MarketplaceListingStockResolver::CHANNEL_TEMU,
+            'temu2' => MarketplaceListingStockResolver::CHANNEL_TEMU2,
             'purchasingpower' => MarketplaceListingStockResolver::CHANNEL_PURCHASINGPOWER,
             'wayfair' => MarketplaceListingStockResolver::CHANNEL_WAYFAIR,
             'bestbuy' => MarketplaceListingStockResolver::CHANNEL_BESTBUY,
@@ -315,6 +333,7 @@ final class MarketplaceMismatchInventoryPass
             'shein' => app(SheinLiveListingsService::class)->peekCached(),
             'topdawg' => app(TopDawgLiveListingsService::class)->peekCached(),
             'temu' => app(TemuLiveListingsService::class)->peekCached(),
+            'temu2' => app(Temu2LiveListingsService::class)->peekCached(),
             'purchasingpower' => app(PurchasingPowerLiveListingsService::class)->peekCached(),
             'wayfair' => app(WayfairLiveListingsService::class)->peekCached(),
             'bestbuy' => app(BestBuyLiveListingsService::class)->peekCached(),

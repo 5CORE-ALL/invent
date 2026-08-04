@@ -57,6 +57,7 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
             'amazon' => 'amazon:sync-orders',
             'topdawg' => 'topdawg:sync-orders',
             'temu' => 'temu:sync-orders',
+            'temu2' => 'temu2:sync-orders',
             'purchasingpower' => 'purchasingpower:sync-orders',
             'wayfair' => 'wayfair:sync-orders',
             'bestbuy' => 'bestbuy:sync-orders',
@@ -126,6 +127,8 @@ class SyncMarketplaceOrdersJob implements ShouldQueue, ShouldBeUnique
                 SyncTopDawgAddressJob::dispatch(false, 25);
             } elseif ($slug === 'temu' && \App\Services\MarketplaceManager\TemuOrderPushService::canAutoSyncAddress()) {
                 SyncTemuAddressJob::dispatch(false, 25);
+            } elseif ($slug === 'temu2' && \App\Services\MarketplaceManager\Temu2OrderPushService::canAutoSyncAddress()) {
+                SyncTemu2AddressJob::dispatch(false, 25);
             } elseif ($slug === 'purchasingpower' && \App\Services\MarketplaceManager\PurchasingPowerOrderPushService::canAutoSyncAddress()) {
                 SyncPurchasingPowerAddressJob::dispatch(false, 25);
             } elseif ($slug === 'wayfair' && \App\Services\MarketplaceManager\WayfairOrderPushService::canAutoSyncAddress()) {

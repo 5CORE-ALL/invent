@@ -296,7 +296,7 @@ class ShippingSlabRateService
 
     /**
      * Round ACT weight UP to the billable Declared slab ceiling.
-     * < 1 lb → next oz slab cap; ≥ 1 lb → containing upward LB band max.
+     * < 1 lb → next oz slab cap; = 1 lb → stays 1 (oz_1599); > 1 lb → LB band max.
      */
     public function roundWeightLbUpToSlab(?float $lb): ?float
     {
@@ -318,6 +318,12 @@ class ShippingSlabRateService
                 }
             }
 
+            return 1.0;
+        }
+
+        // Exactly 1 lb is the 12.01–15.99 oz ceiling. Re-rounding a saved
+        // wt_decl of 1 must not land in lb_101_2 and become 2.
+        if ($lb <= 1.0 + 1e-9) {
             return 1.0;
         }
 

@@ -1443,6 +1443,50 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Temu 2 Marketplace Manager: inventory/price from Shopify, orders to Shopify
+        $schedule->job(new \App\Jobs\SyncInventoryToTemu2)
+            ->everyFourHours()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-inventory')
+            ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('temu2'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-mismatch-inventory')
+            ->withoutOverlapping(12)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('temu2', '2026-07-07', true))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-orders')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTemu2TrackingJob(true, 40))
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-tracking')
+            ->withoutOverlapping(4)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncTemu2AddressJob(true, 40))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-address')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
+        $schedule->command('temu2:sync-link-map')
+            ->hourly()
+            ->timezone('Asia/Kolkata')
+            ->name('temu2-sync-link-map')
+            ->withoutOverlapping(55)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Purchasing Power Marketplace Manager
         $schedule->job(new \App\Jobs\SyncInventoryToPurchasingPower)
             ->everyFourHours()
