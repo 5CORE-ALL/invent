@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use App\Models\StockBalance;
 use App\Models\StockBalanceTransferPreference;
 use App\Http\Controllers\ApiController;
+use App\Http\Controllers\ShopifyApiInventoryController;
 use App\Models\ShopifySku;
 use App\Models\SkuRelationship;
 use Illuminate\Support\Facades\DB;
@@ -1014,6 +1015,162 @@ class StockBalanceController extends Controller
             'message' => 'Data fetched successfully',
             'data' => $data->values(),
             'status' => 200
+        ]);
+    }
+
+    /**
+     * Normalize SKU for matching (same rules as getInventoryData).
+     */
+    private function normalizeSkuKey(?string $sku): string
+    {
+        $sku = strtoupper(trim((string) $sku));
+        $sku = preg_replace('/\s+/u', ' ', $sku);
+        $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+
+        return $sku;
+    }
+
+    /**
+     * Build INV / SOLD / DIL payload from a shopify_skus row (stock-balance view fields).
+     *
+     * @return array{INV: int, SOLD: float|int, DIL: float}
+     */
+    private function stockBalanceInventoryPayloadFromShopifyRow(ShopifySku $row): array
+    {
+        $inv = (int) ($row->inv ?? $row->available_to_sell ?? 0);
+        $sold = (float) ($row->quantity ?? 0);
+
+        if ($inv > 0 && $sold === 0.0) {
+            $dil = 0.0;
+        } elseif ($inv > 0) {
+            $dil = $sold / $inv;
+            if ($dil > 100) {
+                $dil = 100.0;
+            } elseif ($dil < -100) {
+                $dil = -100.0;
+            }
+        } else {
+            $dil = 0.0;
+        }
+
+        return [
+            'INV' => $inv,
+            'SOLD' => $sold,
+            'DIL' => round($dil, 4),
+        ];
+    }
+
+    /**
+     * Pull latest inventory from Shopify for a single SKU (row-wise refresh).
+     */
+    public function refreshShopifyInventoryForSku(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string|max:255',
+        ]);
+
+        $sku = trim($validated['sku']);
+        $normalized = $this->normalizeSkuKey($sku);
+
+        if (str_starts_with($normalized, 'PARENT')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot refresh inventory for a parent row.',
+            ], 422);
+        }
+
+        $shopifyController = app(ShopifyApiInventoryController::class);
+        if (! $shopifyController->syncLiveInventoryForSku($sku, 0)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not refresh from Shopify. Ensure this SKU exists in shopify_skus with a variant_id.',
+            ], 422);
+        }
+
+        $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+        if (! $row) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SKU not found after Shopify sync.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory refreshed from Shopify.',
+            'data' => $this->stockBalanceInventoryPayloadFromShopifyRow($row),
+        ]);
+    }
+
+    /**
+     * Pull latest inventory from Shopify for multiple selected SKUs.
+     */
+    public function refreshShopifyInventoryBulk(Request $request)
+    {
+        $validated = $request->validate([
+            'skus' => 'required|array|min:1|max:150',
+            'skus.*' => 'required|string|max:255',
+        ]);
+
+        $skus = [];
+        foreach ($validated['skus'] as $rawSku) {
+            $sku = trim((string) $rawSku);
+            if ($sku === '') {
+                continue;
+            }
+            $normalized = $this->normalizeSkuKey($sku);
+            if (str_starts_with($normalized, 'PARENT')) {
+                continue;
+            }
+            $skus[$normalized] = $sku;
+        }
+
+        $skus = array_values($skus);
+        if ($skus === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid SKUs to refresh.',
+            ], 422);
+        }
+
+        $shopifyController = app(ShopifyApiInventoryController::class);
+        $synced = $shopifyController->syncLiveInventoryForSkuList($skus, 0);
+
+        $items = [];
+        $failed = [];
+        $updatedCount = 0;
+        foreach ($skus as $sku) {
+            $normalized = $this->normalizeSkuKey($sku);
+            $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalized])->first();
+            if (! $row) {
+                $failed[] = $sku;
+                continue;
+            }
+            $payload = $this->stockBalanceInventoryPayloadFromShopifyRow($row);
+            $items[$sku] = $payload;
+            if ($row->sku && $row->sku !== $sku) {
+                $items[$row->sku] = $payload;
+            }
+            $updatedCount++;
+        }
+
+        if (! $synced && $updatedCount === 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not refresh selected SKUs from Shopify.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $synced
+                ? ('Inventory refreshed from Shopify for '.$updatedCount.' SKU(s).')
+                : ('Partial refresh: returned data for '.$updatedCount.' SKU(s); some SKUs could not sync.'),
+            'data' => [
+                'items' => $items,
+                'failed' => $failed,
+                'synced' => (bool) $synced,
+            ],
         ]);
     }
 

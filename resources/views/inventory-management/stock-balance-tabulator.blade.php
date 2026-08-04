@@ -33,6 +33,19 @@
             padding-right: 0px !important;
         }
         
+        /* Row-wise Shopify pull (refresh column) */
+        .sb-shopify-refresh-btn {
+            color: #0d6efd;
+            line-height: 1;
+        }
+        .sb-shopify-refresh-btn:hover:not(:disabled) {
+            color: #0a58ca;
+        }
+        .sb-shopify-refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
         /* DIL% colors */
         .dil-red { color: #a00211; font-weight: 600; }
         .dil-yellow { color: #ffc107; font-weight: 600; }
@@ -252,8 +265,11 @@
             <div class="card-body" style="padding: 0;">
                 <!-- Bulk Actions Panel (shown when SKUs are selected) -->
                 <div id="bulk-actions-panel" class="p-2 bg-warning border-bottom" style="display: none;">
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span id="selected-count" class="fw-bold">0 SKUs selected</span>
+                        <button id="bulk-pull-inventory" class="btn btn-sm btn-primary" title="Pull latest inventory from Shopify for selected SKUs">
+                            <i class="fas fa-sync-alt"></i> Pull Inventory
+                        </button>
                         <button id="bulk-action-blank" class="btn btn-sm btn-secondary">
                             Set to --
                         </button>
@@ -293,6 +309,8 @@
     let selectedSkus = new Set();
     let allTableData = [];
     let serverSavedPreferences = {}; // FROM SKU & ratio per to_sku (synced across devices)
+    let restoringFromSku = false; // batch restore; skip side effects
+    let isApplyingFilters = false; // prevent filter↔render infinite loop
     
     // Toast notification (optional delay in ms; default 5000)
     function showToast(message, type = 'info', delayMs = 5000) {
@@ -373,6 +391,133 @@
             $('#select-all-checkbox').prop('checked', false);
             table.redraw(true);
             updateBulkActionsPanel();
+        });
+
+        // Apply Shopify pull data to one SKU in Tabulator + allTableData
+        function applyStockBalanceRefreshData(sku, data) {
+            if (!sku || !data) return;
+            const patch = {
+                INV: data.INV != null ? data.INV : 0,
+                SOLD: data.SOLD != null ? data.SOLD : 0,
+                DIL: data.DIL != null ? data.DIL : 0
+            };
+            const rows = table.searchRows('SKU', '=', sku);
+            if (rows.length > 0) {
+                rows[0].update(patch);
+            }
+            const item = allTableData.find(function(i) { return i.SKU === sku; });
+            if (item) {
+                Object.assign(item, patch);
+            }
+            // Also match case-insensitive if needed
+            const normalized = String(sku).trim().toUpperCase();
+            allTableData.forEach(function(i) {
+                if (String(i.SKU || '').trim().toUpperCase() === normalized) {
+                    Object.assign(i, patch);
+                }
+            });
+        }
+
+        // Row-wise pull inventory (same idea as verification-adjustment refresh column)
+        $(document).on('click', '.sb-shopify-refresh-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const $btn = $(this);
+            const sku = String($btn.data('sku') || '').trim();
+            if (!sku || $btn.prop('disabled')) {
+                return;
+            }
+
+            const $icon = $btn.find('i');
+            const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+            $btn.prop('disabled', true);
+            $icon.removeClass('fa-sync-alt').addClass('fa-spinner fa-spin');
+
+            $.ajax({
+                url: '/stock-balance-refresh-shopify',
+                type: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                data: {
+                    sku: sku,
+                    _token: csrfToken
+                },
+                success: function(response) {
+                    if (!response.success || !response.data) {
+                        showToast(response.message || 'Failed to refresh inventory from Shopify.', 'error');
+                        return;
+                    }
+                    applyStockBalanceRefreshData(sku, response.data);
+                    showToast(response.message || 'Inventory refreshed from Shopify.', 'success', 3000);
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Failed to refresh inventory from Shopify.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    showToast(errorMsg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                    $icon.removeClass('fa-spinner fa-spin').addClass('fa-sync-alt');
+                }
+            });
+        });
+
+        // Bulk pull inventory for selected SKUs
+        $('#bulk-pull-inventory').on('click', function() {
+            if (selectedSkus.size === 0) {
+                showToast('No SKUs selected', 'error');
+                return;
+            }
+
+            const skuArray = Array.from(selectedSkus);
+            if (!confirm('Pull latest inventory from Shopify for ' + skuArray.length + ' selected SKU(s)?')) {
+                return;
+            }
+
+            const $btn = $(this);
+            const csrfToken = $('meta[name="csrf-token"]').attr('content');
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pulling...');
+
+            $.ajax({
+                url: '/stock-balance-refresh-shopify-bulk',
+                type: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    skus: skuArray,
+                    _token: csrfToken
+                }),
+                success: function(response) {
+                    if (!response.success || !response.data || !response.data.items) {
+                        showToast(response.message || 'Failed to pull inventory.', 'error');
+                        return;
+                    }
+                    const items = response.data.items;
+                    Object.keys(items).forEach(function(sku) {
+                        applyStockBalanceRefreshData(sku, items[sku]);
+                    });
+                    // Redraw so INV/SOLD/DIL formatters refresh on visible rows
+                    table.redraw(true);
+                    showToast(response.message || 'Inventory pulled for selected SKUs.', 'success', 4000);
+                },
+                error: function(xhr) {
+                    let errorMsg = 'Failed to pull inventory for selected SKUs.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    showToast(errorMsg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html('<i class="fas fa-sync-alt"></i> Pull Inventory');
+                }
+            });
         });
         
         // Bulk action buttons
@@ -714,61 +859,106 @@
             }
         });
         
-        // FROM SKU dropdown change handler (inline in table)
-        $(document).on('change', '.to-sku-select', function() {
-            const $select = $(this);
-            const $row = $select.closest('.tabulator-row');
-            const row = table.getRow($row[0]);
-            const rowData = row.getData();
-            const toSku = rowData.SKU; // Current row's SKU (TO SKU)
-            const fromSku = $select.val();
-            
+        function normalizeSkuKey(sku) {
+            return String(sku || '').trim().toUpperCase().replace(/\s+/g, ' ');
+        }
+
+        // DIL is stored as ratio (e.g. 14.6 => 1460%). Always convert like the column formatter.
+        function dilToPercent(dil) {
+            const n = parseFloat(dil);
+            if (isNaN(n)) return 0;
+            return n * 100;
+        }
+
+        // Same pink rule as DIL% / FROM DIL% column styling (>= 50%)
+        function isDilPink(dil) {
+            return dilToPercent(dil) >= 50;
+        }
+
+        function getFromSkuMeta(fromSku) {
+            const key = normalizeSkuKey(fromSku);
+            const fromItem = allTableData.find(function(i) {
+                return normalizeSkuKey(i.SKU) === key;
+            });
+            return {
+                inv: fromItem ? (parseInt(fromItem.INV, 10) || 0) : 0,
+                sold: fromItem ? (fromItem.SOLD || 0) : 0,
+                dil: fromItem ? (parseFloat(fromItem.DIL) || 0) : 0,
+                parent: fromItem ? (fromItem.Parent || '') : '',
+                found: !!fromItem
+            };
+        }
+
+        function setFromDilDisplay($row, fromDil) {
+            const fromDilPercent = Math.round((parseFloat(fromDil) || 0) * 100);
+            const $dilSpan = $row.find('.from-dil-percent');
+            let dilClass = '';
+            if (fromDilPercent < 16.66) dilClass = 'dil-red';
+            else if (fromDilPercent >= 16.66 && fromDilPercent < 25) dilClass = 'dil-yellow';
+            else if (fromDilPercent >= 25 && fromDilPercent < 50) dilClass = 'dil-green';
+            else dilClass = 'dil-pink';
+            $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
+        }
+
+        function applyFromSkuToRow($row, row, fromSku, options) {
+            options = options || {};
+            const silent = !!options.silent;
+            const toSku = row.getData().SKU;
+
             if (fromSku) {
-                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-                savedData.fromSku = fromSku;
-                localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
-                serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
-                serverSavedPreferences[toSku].fromSku = fromSku;
-                $.post('/stock-balance-transfer-preferences', {
-                    _token: $('meta[name="csrf-token"]').attr('content'),
-                    to_sku: toSku,
-                    from_sku: fromSku,
-                    ratio: $row.find('.ratio-select').val() || '1:1'
-                });
-                const selectedOption = $select.find('option:selected');
-                const fromParent = selectedOption.attr('data-parent') || '';
-                const fromInv = selectedOption.attr('data-inv') || 0;
-                
-                // Get FROM SKU data for SOLD, DIL%, and set FROM Qty
-                const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
-                const fromSold = fromItem ? (fromItem.SOLD || 0) : 0;
-                const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
-                const fromDilPercent = Math.round(fromDil * 100);
-                
-                // Auto-fill FROM fields
+                if (!silent) {
+                    const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+                    savedData.fromSku = fromSku;
+                    localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+                    serverSavedPreferences[toSku] = serverSavedPreferences[toSku] || {};
+                    serverSavedPreferences[toSku].fromSku = fromSku;
+                    $.post('/stock-balance-transfer-preferences', {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        to_sku: toSku,
+                        from_sku: fromSku,
+                        ratio: $row.find('.ratio-select').val() || '1:1'
+                    });
+                }
+
+                const selectedOption = $row.find('.to-sku-select option:selected');
+                const meta = getFromSkuMeta(fromSku);
+                const fromParent = selectedOption.attr('data-parent') || meta.parent || '';
+                const fromInv = meta.inv || parseInt(selectedOption.attr('data-inv'), 10) || 0;
+
                 $row.find('.to-parent-display').val(fromParent);
                 $row.find('.from-inv-display').val(fromInv);
-                $row.find('.from-sold-display').val(fromSold);
-                $row.find('.from-qty-input').val(fromInv); // Set FROM Qty to FROM SKU's INV
-                
-                // Set FROM DIL% with color coding
-                const $dilSpan = $row.find('.from-dil-percent');
-                let dilClass = '';
-                if (fromDilPercent < 16.66) dilClass = 'dil-red';
-                else if (fromDilPercent >= 16.66 && fromDilPercent < 25) dilClass = 'dil-yellow';
-                else if (fromDilPercent >= 25 && fromDilPercent < 50) dilClass = 'dil-green';
-                else dilClass = 'dil-pink';
-                
-                $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
+                $row.find('.from-sold-display').val(meta.sold);
+                $row.find('.from-qty-input').val(fromInv);
+                setFromDilDisplay($row, meta.dil);
+
+                // Update row data in place (avoids extra Tabulator re-renders during restore)
+                const data = row.getData();
+                data._from_qty = fromInv;
+                data._from_dil = meta.dil;
+                data._from_sku = fromSku;
             } else {
-                // Clear fields if no FROM SKU selected
                 $row.find('.to-parent-display').val('');
                 $row.find('.from-inv-display').val('');
                 $row.find('.from-sold-display').val('');
                 $row.find('.from-qty-input').val('');
                 $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
+                const data = row.getData();
+                data._from_qty = null;
+                data._from_dil = null;
+                data._from_sku = null;
             }
             syncDisplayFromSkuSingle($row);
+        }
+
+        // FROM SKU dropdown change handler (inline in table)
+        $(document).on('change', '.to-sku-select', function() {
+            if (restoringFromSku) return;
+            const $select = $(this);
+            const $row = $select.closest('.tabulator-row');
+            const row = table.getRow($row[0]);
+            if (!row) return;
+            applyFromSkuToRow($row, row, $select.val(), { silent: false });
+            applyAllFilters();
         });
         
         // Ratio change handler (inline in table)
@@ -797,7 +987,15 @@
         
         // FROM Qty input change handler
         $(document).on('input', '.from-qty-input', function() {
+            if (restoringFromSku) return;
             const $row = $(this).closest('.tabulator-row');
+            const row = table.getRow($row[0]);
+            const raw = String($(this).val() ?? '').trim();
+            const qty = raw === '' ? null : (parseInt(raw, 10) || 0);
+            if (row) {
+                row.getData()._from_qty = qty;
+                applyAllFilters();
+            }
             calculateToQty($row);
         });
         
@@ -933,8 +1131,10 @@
                 $.get('/stock-balance-transfer-preferences').done(function(res) {
                     if (res.preferences && typeof res.preferences === 'object') {
                         serverSavedPreferences = res.preferences;
-                        restoreSavedFromSku();
                     }
+                    enrichTransferMetaFromPreferences();
+                    applyAllFilters();
+                    restoreSavedFromSku();
                 });
             },
             layout: "fitDataStretch",
@@ -1001,6 +1201,22 @@
                     hozAlign: "center",
                     sorter: "number",
                     width: 60
+                },
+                {
+                    title: "<i class='fas fa-sync-alt' title='Pull latest inventory from Shopify'></i>",
+                    field: "_refresh",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 48,
+                    formatter: function(cell) {
+                        const sku = cell.getRow().getData().SKU || '';
+                        if (!sku) {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        return '<button type="button" class="btn btn-sm btn-link sb-shopify-refresh-btn p-0 border-0" data-sku="' +
+                            String(sku).replace(/"/g, '&quot;') +
+                            '" title="Pull latest inventory from Shopify"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>';
+                    }
                 },
                 {
                     title: "SOLD",
@@ -1237,41 +1453,100 @@
             applyAllFilters();
         });
         
-        // Apply all filters together
-        function applyAllFilters() {
-            table.clearFilter();
-            
-            // Parent filter
-            const parentVal = $('#parent-filter').val();
-            if (parentVal) {
-                table.addFilter("Parent", "=", parentVal);
+        function resolveFromSkuForRow(rowData) {
+            if (rowData._from_sku) return rowData._from_sku;
+            const toSku = rowData.SKU;
+            const toKey = normalizeSkuKey(toSku);
+            let serverPref = serverSavedPreferences[toSku] || null;
+            if (!serverPref) {
+                const prefKey = Object.keys(serverSavedPreferences || {}).find(function(k) {
+                    return normalizeSkuKey(k) === toKey;
+                });
+                if (prefKey) serverPref = serverSavedPreferences[prefKey];
             }
-            
-            // DIL filter
-            const dilVal = $('#dil-filter').val();
-            if (dilVal) {
-                table.addFilter(function(data) {
-                    const dil = (parseFloat(data.DIL) || 0) * 100;
-                    if (dilVal === 'red') return dil < 16.66;
-                    if (dilVal === 'yellow') return dil >= 16.66 && dil < 25;
-                    if (dilVal === 'green') return dil >= 25 && dil < 50;
-                    if (dilVal === 'pink') return dil >= 50;
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            const savedFromSku = savedData.fromSku || null;
+            const lastUpdate = rowData.LAST_UPDATE || null;
+            const lastUpdateFromSku = (lastUpdate && lastUpdate.direction === 'IN' && lastUpdate.other_sku)
+                ? lastUpdate.other_sku
+                : null;
+            return (serverPref && serverPref.fromSku) || savedFromSku || lastUpdateFromSku || null;
+        }
+
+        // Hide when FROM Qty is 0, or both DIL + FROM DIL are pink (>= 50%)
+        function shouldHideTransferRow(data) {
+            const fromSku = resolveFromSkuForRow(data);
+            if (!fromSku) return false;
+
+            const meta = getFromSkuMeta(fromSku);
+            const fromQty = (data._from_qty != null && data._from_qty !== '')
+                ? (parseInt(data._from_qty, 10) || 0)
+                : meta.inv;
+            if (fromQty === 0) return true;
+
+            const fromDil = (data._from_dil != null && data._from_dil !== '')
+                ? data._from_dil
+                : meta.dil;
+            // e.g. DIL 14.6 (1460%) and FROM DIL 7.83 (783%) are both pink
+            if (isDilPink(data.DIL) && isDilPink(fromDil)) return true;
+
+            return false;
+        }
+
+        // Apply all filters together (guarded to avoid renderComplete recursion)
+        function applyAllFilters() {
+            if (!table || isApplyingFilters || restoringFromSku) return;
+            isApplyingFilters = true;
+            try {
+                const parentVal = $('#parent-filter').val();
+                const dilVal = $('#dil-filter').val();
+                const actionVal = $('#action-filter').val();
+
+                // Single function filter — live-resolves FROM SKU DIL/INV (no stale _from_dil)
+                table.setFilter(function(data) {
+                    if (parentVal && data.Parent !== parentVal) return false;
+
+                    if (dilVal) {
+                        const dil = dilToPercent(data.DIL);
+                        if (dilVal === 'red' && !(dil < 16.66)) return false;
+                        if (dilVal === 'yellow' && !(dil >= 16.66 && dil < 25)) return false;
+                        if (dilVal === 'green' && !(dil >= 25 && dil < 50)) return false;
+                        if (dilVal === 'pink' && !(dil >= 50)) return false;
+                    }
+
+                    if (actionVal) {
+                        if (actionVal === '--') {
+                            if (data.ACTION && data.ACTION !== '') return false;
+                        } else if (data.ACTION !== actionVal) {
+                            return false;
+                        }
+                    }
+
+                    if (shouldHideTransferRow(data)) return false;
                     return true;
                 });
+            } finally {
+                setTimeout(function() {
+                    isApplyingFilters = false;
+                }, 0);
             }
-            
-            // ACTION filter
-            const actionVal = $('#action-filter').val();
-            if (actionVal) {
-                if (actionVal === '--') {
-                    // Filter for blank/null/empty ACTION values
-                    table.addFilter(function(data) {
-                        return !data.ACTION || data.ACTION === '' || data.ACTION === null;
-                    });
+        }
+
+        // Precompute hide-filter fields on data objects (same refs Tabulator uses)
+        function enrichTransferMetaFromPreferences() {
+            allTableData.forEach(function(data) {
+                const fromSku = resolveFromSkuForRow(data);
+                if (fromSku) {
+                    const meta = getFromSkuMeta(fromSku);
+                    data._from_sku = fromSku;
+                    data._from_qty = meta.inv;
+                    data._from_dil = meta.dil;
                 } else {
-                    table.addFilter("ACTION", "=", actionVal);
+                    data._from_sku = null;
+                    data._from_qty = null;
+                    data._from_dil = null;
                 }
-            }
+            });
         }
         
         // Export CSV
@@ -1304,37 +1579,43 @@
             applyAllFilters();
         });
         
-        // Restore saved FROM SKU and ratio: server (cross-device) first, then localStorage, then LAST_UPDATE
+        // Restore saved FROM SKU/ratio into visible DOM only (no filter apply — avoids stack overflow)
         function restoreSavedFromSku() {
-            $('.to-sku-select').each(function() {
-                const $select = $(this);
-                const $row = $select.closest('.tabulator-row');
-                const row = table.getRow($row[0]);
-                if (!row) return;
-                const rowData = row.getData();
-                const toSku = rowData.SKU;
-                const serverPref = serverSavedPreferences[toSku] || null;
-                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
-                const savedFromSku = savedData.fromSku || null;
-                const savedRatio = savedData.ratio || '1:1';
-                const lastUpdate = rowData.LAST_UPDATE || null;
-                const lastUpdateFromSku = (lastUpdate && lastUpdate.direction === 'IN' && lastUpdate.other_sku) ? lastUpdate.other_sku : null;
-                const fromSkuToRestore = (serverPref && serverPref.fromSku) || savedFromSku || lastUpdateFromSku;
-                const ratioToRestore = (serverPref && serverPref.ratio) || savedRatio || '1:1';
-                $row.find('.ratio-select').val(ratioToRestore);
-                if (fromSkuToRestore) {
-                    $select.val(fromSkuToRestore).trigger('change');
-                    if (!savedFromSku && lastUpdateFromSku && !(serverPref && serverPref.fromSku)) {
-                        savedData.fromSku = lastUpdateFromSku;
-                        localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            if (!table || restoringFromSku || isApplyingFilters) return;
+            restoringFromSku = true;
+            try {
+                $('.to-sku-select').each(function() {
+                    const $select = $(this);
+                    const $row = $select.closest('.tabulator-row');
+                    const row = table.getRow($row[0]);
+                    if (!row) return;
+                    const rowData = row.getData();
+                    const toSku = rowData.SKU;
+                    const serverPref = serverSavedPreferences[toSku] || null;
+                    const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+                    const savedFromSku = savedData.fromSku || null;
+                    const savedRatio = savedData.ratio || '1:1';
+                    const fromSkuToRestore = rowData._from_sku || resolveFromSkuForRow(rowData);
+                    const ratioToRestore = (serverPref && serverPref.ratio) || savedRatio || '1:1';
+                    $row.find('.ratio-select').val(ratioToRestore);
+                    if (fromSkuToRestore) {
+                        $select.val(fromSkuToRestore);
+                        applyFromSkuToRow($row, row, fromSkuToRestore, { silent: true });
+                        if (!savedFromSku && fromSkuToRestore && !(serverPref && serverPref.fromSku)) {
+                            savedData.fromSku = fromSkuToRestore;
+                            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+                        }
                     }
-                }
-                syncDisplayFromSkuSingle($row);
-            });
+                    calculateToQty($row);
+                });
+            } finally {
+                restoringFromSku = false;
+            }
         }
         
-        // Update table on render complete
+        // Re-fill transfer inputs after Tabulator redraws cells (DOM only)
         table.on('renderComplete', function() {
+            if (restoringFromSku || isApplyingFilters) return;
             restoreSavedFromSku();
         });
         

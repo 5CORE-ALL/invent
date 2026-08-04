@@ -3202,6 +3202,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-store', [StockBalanceController::class, 'store'])->name('stock.balance.store');
     Route::get('/stock-balance-data-list', [StockBalanceController::class, 'list']);
     Route::get('/stock-balance-inventory-data', [StockBalanceController::class, 'getInventoryData']);
+    Route::post('/stock-balance-refresh-shopify', [StockBalanceController::class, 'refreshShopifyInventoryForSku']);
+    Route::post('/stock-balance-refresh-shopify-bulk', [StockBalanceController::class, 'refreshShopifyInventoryBulk']);
     Route::post('/stock-balance-update-action', [StockBalanceController::class, 'updateAction']);
     Route::get('/stock-balance-get-relationships', [StockBalanceController::class, 'getRelationships']);
     Route::post('/stock-balance-add-relationships', [StockBalanceController::class, 'addRelationships']);
