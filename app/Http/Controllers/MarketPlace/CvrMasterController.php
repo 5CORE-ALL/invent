@@ -1141,14 +1141,12 @@ class CvrMasterController extends Controller
 
                 // Get LP and Ship from ProductMaster Values
                 $lp = 0;
-                $ship = 0;
-                $ttShip = 0; // TikTok 1 ship (tt_ship only — same as /tiktok-pricing)
+                $ship = 0; // normal ship — TikTok uses same as Amazon
                 $actWt = 0;
                 if ($values) {
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === "lp") $lp = floatval($v);
                         if (strtolower($k) === "ship") $ship = floatval($v);
-                        if (strtolower($k) === "tt_ship") $ttShip = floatval($v);
                         if (strtolower($k) === "wt_act") $actWt = floatval($v);
                     }
                 }
@@ -1241,9 +1239,9 @@ class CvrMasterController extends Controller
                 // L30 from tiktok_orders
                 $tiktokL30 = (int) ($tiktokL30BySku[$skuUpperTt] ?? 0);
 
-                // GPFT% uses tt_ship only (no fallback to ship)
+                // GPFT% uses normal product_master ship (same as Amazon)
                 $tiktokGPFT = $tiktokPrice > 0
-                    ? ((($tiktokPrice * $tiktokPercentage - $lp - $ttShip) / $tiktokPrice) * 100)
+                    ? ((($tiktokPrice * $tiktokPercentage - $lp - $ship) / $tiktokPrice) * 100)
                     : 0;
 
                 // TACOS% = spend(L30+L7) / (L30 × Price) × 100; spend>0 & L30=0 → 100
@@ -1763,8 +1761,8 @@ class CvrMasterController extends Controller
                     }
                     // Walmart excluded from this page
                     if ($tiktokPrice > 0) {
-                        // GROI uses tt_ship; NROI = dollar-ads style via NPFT (GPFT − TACOS)
-                        $tiktokGroi = (($tiktokPrice * $tiktokPercentage - $lp - $ttShip) / $lp) * 100;
+                        // GROI uses normal ship (same as Amazon); NROI via NPFT (GPFT − TACOS)
+                        $tiktokGroi = (($tiktokPrice * $tiktokPercentage - $lp - $ship) / $lp) * 100;
                         $roiValues[] = $tiktokGroi;
                         $nroiValues[] = ($tiktokPFT * $tiktokPrice) / $lp;
                     }
@@ -2831,9 +2829,8 @@ class CvrMasterController extends Controller
             // Get LP and Ship from ProductMaster for profit calculations
             $values = $productMaster ? ($productMaster->Values ?: []) : [];
             $lp = 0;
-            $ship = 0;
+            $ship = 0; // normal ship — TikTok uses same as Amazon
             $temuShip = 0;
-            $ttShip = 0;
             $actWt = 0;
             
             if ($values) {
@@ -2841,7 +2838,6 @@ class CvrMasterController extends Controller
                     if (strtolower($k) === "lp") $lp = floatval($v);
                     if (strtolower($k) === "ship") $ship = floatval($v);
                     if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
-                    if (strtolower($k) === "tt_ship") $ttShip = floatval($v);
                     if (strtolower($k) === "wt_act") $actWt = floatval($v);
                 }
             }
@@ -3337,9 +3333,9 @@ class CvrMasterController extends Controller
 
             $ttViews = $ttVideoViews + $ttAdsViews + $ttAfflViews;
 
-            // GPFT% uses tt_ship only (no fallback to ship) — same as TikTok 1 pricing
+            // GPFT% uses normal product_master ship (same as Amazon)
             $ttGPFT = $ttPrice > 0
-                ? round((($ttPrice * $tiktokPercentage - $lp - $ttShip) / $ttPrice) * 100, 2)
+                ? round((($ttPrice * $tiktokPercentage - $lp - $ship) / $ttPrice) * 100, 2)
                 : 0;
 
             // SKU TACOS% from tiktok_campaign_reports (campaign_name = SKU), L30+L7 Product card — same as /tiktok-pricing
@@ -3406,7 +3402,7 @@ class CvrMasterController extends Controller
                 'sroi' => $tiktokSuggested['sroi'],
                 'spft' => $tiktokSuggested['spft'],
                 'lp' => $lp,
-                'ship' => $ttShip,
+                'ship' => $ship, // normal product_master ship — same as Amazon
                 'margin' => $tiktokPercentage,
                 'pushed_by' => null,
                 'pushed_at' => null,
@@ -3577,13 +3573,13 @@ class CvrMasterController extends Controller
             $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first();
             $sb2bMargin = $sb2bMarketplace ? ($sb2bMarketplace->percentage / 100) : 0.95;
             
-            // GPFT% / GROI% — include Ship (aligned with SPRICE = Price×0.75 − Ship)
+            // GPFT% / GROI% — include Ship (aligned with SPRICE = Price×0.80 − Ship)
             $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp - $ship) / $sb2bPrice) * 100 : 0;
             $sb2bNPFT = $sb2bGPFT;
 
-            // Always calculate SPRICE = (Price × 0.75) − Ship
+            // Always calculate SPRICE = (Price × 0.80) − Ship
             $sb2bCalcSprice = $sb2bPrice > 0
-                ? max(0.01, round(($sb2bPrice * 0.75) - $ship, 2))
+                ? max(0.01, round(($sb2bPrice * 0.80) - $ship, 2))
                 : 0;
             
             $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
@@ -4233,7 +4229,9 @@ class CvrMasterController extends Controller
                 'sroi'        => $faireSuggestedBd['sroi'],
                 'spft'        => $faireSuggestedBd['spft'],
                 'lp'          => $lp,
-                'ship'        => 0, // /faire-pricing excludes ship
+                // Product-master ship for SP Apply: (SP × 0.80) − Ship.
+                // GPFT/ROI formulas still exclude ship on the frontend/pricing page.
+                'ship'        => $ship,
                 'margin'      => $faireMarginBd,
                 'pushed_by'   => null,
                 'pushed_at'   => null,
@@ -4486,7 +4484,9 @@ class CvrMasterController extends Controller
                 'sroi'        => $tdSuggestedBd['sroi'],
                 'spft'        => $tdSuggestedBd['spft'],
                 'lp'          => $lp,
-                'ship'        => 0, // not used in TopDawg formulas
+                // Product-master ship for SP Apply: (SP × 0.80) − Ship.
+                // GPFT/ROI formulas still exclude ship on the frontend/pricing page.
+                'ship'        => $ship,
                 'margin'      => $tdMarginBd,
                 'pushed_by'   => null,
                 'pushed_at'   => null,
@@ -4719,11 +4719,8 @@ class CvrMasterController extends Controller
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
-                    // TopDawg / Faire formulas never use ship. PPower keeps product-master
-                    // ship for SP Apply ((SP × 1.15) − Ship); frontend formulas still exclude it.
-                    if (in_array($mp, ['topdawg', 'faire'], true)) {
-                        $row['ship'] = 0;
-                    }
+                    // TopDawg / Faire / PPower keep product-master ship for SP Apply formulas;
+                    // frontend GPFT/ROI still exclude ship for those channels.
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
                     $row['tacos_ch'] = $adsPct;
@@ -4818,6 +4815,8 @@ class CvrMasterController extends Controller
 
                 $row['lmp_channel'] = $lmpChannel;
                 $row['lmp_price'] = $lmpPrice;
+                // Same SKU-level STANDARD_PRICE (SP / STD PRC) on every marketplace row
+                $row['standard_price'] = $amazonStandardPrice;
             }
             unset($row);
 
@@ -7891,7 +7890,7 @@ class CvrMasterController extends Controller
     /**
      * Bulk change price for selected SKUs across all marketplaces.
      * - Doba: 25% discount (price * 0.75)
-     * - Shopify B2B: always SPRICE/price = (base × 0.75) − Ship
+     * - Shopify B2B: always SPRICE/price = (base × 0.80) − Ship
      * - Others (Amazon, Walmart, Shopify B2C): Full price
      */
     public function bulkChangePrice(Request $request)
@@ -7945,7 +7944,7 @@ class CvrMasterController extends Controller
 
         foreach ($skuPrices as $sku => $basePrice) {
             $dobaPrice = round($basePrice * 0.75, 2);
-            // SB2B: always (Price × 0.75) − Ship
+            // SB2B: always (Price × 0.80) − Ship
             $sb2bShip = 0.0;
             $pmForShip = ProductMaster::where('sku', $sku)->first();
             if ($pmForShip) {
@@ -7964,7 +7963,7 @@ class CvrMasterController extends Controller
                     $sb2bShip = floatval($pmForShip->ship);
                 }
             }
-            $sb2bPrice = max(0.01, round(($basePrice * 0.75) - $sb2bShip, 2));
+            $sb2bPrice = max(0.01, round(($basePrice * 0.80) - $sb2bShip, 2));
 
             foreach ($pushableMarketplaces as $mp) {
                 $price = match ($mp) {

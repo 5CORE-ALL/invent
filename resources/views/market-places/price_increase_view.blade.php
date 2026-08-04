@@ -255,12 +255,18 @@
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-num { width: 52px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-price { width: 68px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-std-prc { width: 64px; }
+        #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-promo { width: 64px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-lmp { width: 64px; }
         #ovl30DetailsModal .modal-vertical-header th.ovl30-std-prc-th {
             background: #20c997 !important;
             color: #000 !important;
         }
-        #ovl30DetailsModal .editable-std-prc {
+        #ovl30DetailsModal .modal-vertical-header th.ovl30-promo-th {
+            background: #fd7e14 !important;
+            color: #000 !important;
+        }
+        #ovl30DetailsModal .editable-std-prc,
+        #ovl30DetailsModal .editable-promo {
             width: 4em !important;
             min-width: 0 !important;
             max-width: 100% !important;
@@ -271,11 +277,16 @@
             line-height: 1.3 !important;
             text-align: right;
         }
-        #ovl30DetailsModal .ovl30-std-prc-wrap {
+        #ovl30DetailsModal .ovl30-std-prc-wrap,
+        #ovl30DetailsModal .ovl30-promo-wrap {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 4px;
+        }
+        #ovl30DetailsModal #modal-promo-input {
+            font-weight: 700;
+            width: 72px;
         }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-link { width: 40px; }
         #ovl30DetailsModal #ovl30DetailsTable col.ovl30-col-check { width: 34px; }
@@ -686,6 +697,7 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(7),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(8),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(8),
+        /* Right: GPFT→LMP (9–13), SPRICE→SPFT (18–22) — STD PRC is col 17 (before SPRICE) */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(9),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(9),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(10),
@@ -696,8 +708,6 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(12),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(13),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(13),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(18),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(18),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(19),
@@ -705,10 +715,13 @@
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(20),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(21),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(21),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22) {
             text-align: right !important;
             font-variant-numeric: tabular-nums;
         }
+        /* Center: Miss, Link, Check, Suggest, STD PRC, Push, By */
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(3),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(14),
@@ -717,10 +730,12 @@
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(15),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(16),
         #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(16),
-        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(22),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(22),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(17),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(17),
         #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(23),
-        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23) {
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(23),
+        #ovl30DetailsModal .ovl30-table-wrap .table th:nth-child(24),
+        #ovl30DetailsModal .ovl30-table-wrap .table td:nth-child(24) {
             text-align: center !important;
         }
         #ovl30DetailsModal #ovl30DetailsTable td:nth-child(13) .lmp-channel-price,
@@ -729,7 +744,9 @@
             white-space: nowrap;
         }
         #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-std-prc-th,
-        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-std-prc-cell {
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-std-prc-cell,
+        #ovl30DetailsModal .ovl30-table-wrap .table th.ovl30-promo-th,
+        #ovl30DetailsModal .ovl30-table-wrap .table td.ovl30-promo-cell {
             text-align: center !important;
         }
         #ovl30DetailsModal .table .editable-sprice {
@@ -1659,13 +1676,13 @@
                 {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
                 <div id="modal-target-controls" class="ovl30-toolbar">
                     <div class="ovl30-tool-group"
-                        title="Apply this SPRICE to checked channels. Doba always −25% (×0.75, included even if unchecked). TopDawg −25%. PPower = (SPRICE × 1.15) − Ship.">
+                        title="Apply this SPRICE to checked channels. Doba always −25%. SB2B / TopDawg / Faire = (SP × 0.80) − Ship. PPower = (SP × 1.15) − Ship.">
                         <label for="modal-bulk-sprice-input">SPRICE</label>
                         <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
                             placeholder="0.00" step="0.01" min="0" style="width: 78px;"
-                            title="SPRICE applied to selected channels (Doba always −25%; PPower ×1.15 − Ship)">
+                            title="Doba −25%; SB2B/TopDawg/Faire = ×0.80 − Ship; PPower ×1.15 − Ship">
                         <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
-                            title="Apply SPRICE (Doba always −25%)" aria-label="Apply SPRICE">
+                            title="Apply SPRICE" aria-label="Apply SPRICE">
                             Apply
                         </button>
                     </div>
@@ -1701,7 +1718,7 @@
                     </div>
                     <div class="ovl30-tool-group"
                         title="Add this $ amount to current SPRICE on selected channels (uses Price if SPRICE is empty). With Siblings checked, also applies to sibling SKUs including INV 0.">
-                        <label for="modal-sprice-bump-input">+$</label>
+                        <label for="modal-sprice-bump-input">+$ SPRICE</label>
                         <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
                             placeholder="1" step="0.01" style="width: 58px;"
                             title="Increase SPRICE by this dollar amount on selected channels (+ siblings when checked, including INV 0)">
@@ -1710,27 +1727,36 @@
                             Apply
                         </button>
                     </div>
+                    <div class="ovl30-tool-group ovl30-tool-group-sp"
+                        title="STD PRC for all marketplaces on this SKU. Saves to STD PRC column and Sku Link LMP siblings.">
+                        <label for="modal-std-sp-input">STD PRC</label>
+                        <input type="number" id="modal-std-sp-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
+                            title="STD PRC for all marketplaces — same value on every channel row.">
+                        <span class="ovl30-sp-hint text-muted">
+                            <strong>STD PRC</strong> for all marketplaces (same as column). Also saves to Sku Link LMP siblings.
+                        </span>
+                    </div>
                     <div class="ovl30-tool-group"
-                        title="Set this SPRICE on selected channels (often prefilled from SP). Doba always −25% (×0.75, included even if unchecked). TopDawg −25%. PPower = (SP × 1.15) − Ship.">
-                        <label for="modal-sprice-same-input">$</label>
+                        title="Set this SPRICE on selected channels (often prefilled from STD PRC). Doba always −25%. SB2B / TopDawg / Faire = (STD × 0.80) − Ship. PPower = (STD × 1.15) − Ship.">
+                        <label for="modal-sprice-same-input">SPRICE $</label>
                         <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
-                            title="SPRICE from SP / this box (Doba always −25%; PPower ×1.15 − Ship)">
+                            title="Apply as SPRICE. Doba −25%; SB2B/TopDawg/Faire = ×0.80 − Ship; PPower ×1.15 − Ship">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
-                            title="Apply SPRICE (Doba always −25%)" aria-label="Apply same SPRICE">
+                            title="Apply SPRICE $" aria-label="Apply same SPRICE">
                             Apply
                         </button>
                     </div>
-                    <div class="ovl30-tool-group ovl30-tool-group-sp"
-                        title="Standard Price (manual). Saves to SP for this SKU and Sku Link LMP siblings. Use when LMP cannot be determined.">
-                        <label for="modal-std-sp-input">SP</label>
-                        <input type="number" id="modal-std-sp-input" class="form-control form-control-sm text-end fw-bold"
-                            placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
-                            title="Manual Standard Price — use when LMP cannot be determined. Saves to SP / STD PRC.">
-                        <span class="ovl30-sp-hint text-muted">
-                            Standard Price (manual). Saves to <strong>SP</strong> for this SKU and
-                            <strong>Sku Link LMP</strong> siblings.
-                        </span>
+                    <div class="ovl30-tool-group"
+                        title="Promotion for all marketplaces. 10% = SPRICE −10%. 10 = SPRICE − $10.">
+                        <label for="modal-promo-input">Promotion</label>
+                        <input type="text" id="modal-promo-input" class="form-control form-control-sm text-end fw-bold"
+                            placeholder="10% or 10" title="10% = less 10% of SPRICE; 10 = less $10">
+                        <button type="button" id="modal-apply-promo-btn" class="btn btn-sm btn-warning"
+                            title="Apply Promotion to SPRICE on all listed channels" aria-label="Apply Promotion">
+                            Apply
+                        </button>
                     </div>
                     <button type="button" id="modal-clear-all-sprice-btn" class="btn btn-sm"
                         title="Clear SPRICE on every marketplace for this SKU (this SKU only — siblings never get 0)">
@@ -1745,7 +1771,7 @@
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-icon">
                                 <col class="ovl30-col-price">
-                                <col class="ovl30-col-std-prc">
+                                <col class="ovl30-col-promo">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
@@ -1757,6 +1783,7 @@
                                 <col class="ovl30-col-link">
                                 <col class="ovl30-col-check">
                                 <col class="ovl30-col-icon">
+                                <col class="ovl30-col-std-prc">
                                 <col class="ovl30-col-sprice">
                                 <col class="ovl30-col-num">
                                 <col class="ovl30-col-num">
@@ -1772,7 +1799,7 @@
                                     <th class="ovl30-sortable" data-sort="l30" data-dir="desc" title="L30 Sold"><span>L30</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th title="Missing Listings – click dot to view channels with no price"><span>Miss</span></th>
                                     <th class="ovl30-sortable" data-sort="price" data-dir="desc" title="Price"><span>Price</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
-                                    <th class="ovl30-std-prc-th" title="Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Manual only; blank unless filled."><span>STD PRC</span></th>
+                                    <th class="ovl30-promo-th" title="Promotion — same value on all channels. 10% = SPRICE −10%. 10 = SPRICE − $10. Apply from toolbar."><span>Promotion</span></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="views" data-dir="desc" title="Views"><span>Views</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="cvr" data-dir="desc" title="CVR%"><span>CVR</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable ovl30-metric-col" data-sort="groi" data-dir="desc" title="GROI% = (Price × Margin − LP − Ship) ÷ LP × 100"><span>GROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1790,6 +1817,7 @@
                                             <i class="fas fa-magic"></i>
                                         </button>
                                     </th>
+                                    <th class="ovl30-std-prc-th" title="Standard Price (SP) — one value for all marketplaces on this SKU (amazon_data_view.STANDARD_PRICE). Editable on any channel row."><span>STD PRC</span></th>
                                     <th class="ovl30-sortable" data-sort="sprice" data-dir="desc" title="Suggested Price"><span>SPRICE</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="sroi" data-dir="desc" title="SROI%"><span>SROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
                                     <th class="ovl30-sortable" data-sort="snroi" data-dir="desc" title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100"><span>SNROI</span><i class="ovl30-sort-icon fas fa-sort ms-1"></i></th>
@@ -1819,7 +1847,10 @@
                                             style="cursor:pointer;color:#e83e8c;font-size:8px;vertical-align:middle;"
                                             title="View Price history (Rolling L30)"></i>
                                     </th>
-                                    <th class="ovl30-std-prc-th"></th>
+                                    <th class="ovl30-promo-th text-center">
+                                        <input type="text" id="modal-promo-header-input" class="form-control form-control-sm text-end editable-promo"
+                                            placeholder="10%" title="Promotion for all channels — same as Promo column / toolbar">
+                                    </th>
                                     <th class="text-end ovl30-metric-col" id="modal-total-views">0</th>
                                     <th class="text-end ovl30-metric-col">
                                         <span id="modal-avg-cvr">0%</span>
@@ -1837,6 +1868,7 @@
                                     <th></th>
                                     <th></th>
                                     <th></th>
+                                    <th class="ovl30-std-prc-th"></th>
                                     <th class="text-end" id="modal-avg-sprice">$0.00</th>
                                     <th class="text-end" id="modal-avg-sroi">0%</th>
                                     <th class="text-end" id="modal-avg-snroi">0%</th>
@@ -1850,7 +1882,7 @@
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="24" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="25" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2963,6 +2995,8 @@
             // Restore per-SKU siblings preference (saved when user ticks Siblings for this SKU)
             $('#modal-siblings-apply-cb').prop('checked', getSiblingsPrefForSku(sku));
             $('#modal-std-sp-input').val('');
+            modalPromotionRaw = '';
+            $('#modal-promo-input, #modal-promo-header-input, .editable-promo').val('');
             refreshModalSiblingSkus(sku);
             
             // Set product image in modal totals row
@@ -3072,7 +3106,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="24" class="text-center text-muted py-4">
+                    <td colspan="25" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -3083,7 +3117,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="24" class="text-center text-muted py-4">
+                    <td colspan="25" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -3093,7 +3127,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="24" class="text-center text-danger py-4">
+                    <td colspan="25" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -3110,6 +3144,7 @@
         let modalClearSpriceModeActive = false;
         let modalSelectedChannels = new Set();
         let modalSiblingSkus = []; // other SKUs sharing the same parent
+        let modalPromotionRaw = ''; // shared Promo value (e.g. "10%" or "10")
 
         function getModalPrimarySku() {
             const sku = String($('#modalSkuName').text() || '').trim();
@@ -3888,13 +3923,14 @@
                 // SPRICE and calculated values
                 const price = parseFloat(item.price || 0);
                 const lp = parseFloat(item.lp || 0);
-                // PPower/TopDawg: ship excluded from all formulas
-                const ship = (isPpMp || isTdMp || isFaireMp) ? 0 : parseFloat(item.ship || 0);
-                // SB2B: always SPRICE = (Price × 0.75) − Ship
+                // Product-master ship for data-ship / SP Apply; formulas below zero ship for PP/TD/Faire
+                const rawShip = parseFloat(item.ship || 0) || 0;
+                const ship = (isPpMp || isTdMp || isFaireMp) ? 0 : rawShip;
+                // SB2B: always SPRICE = (Price × 0.80) − Ship
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 let sprice = parseFloat(item.sprice || 0);
                 if (isSb2bMp && price > 0) {
-                    sprice = Math.max(0.01, Math.round(((price * 0.75) - ship) * 100) / 100);
+                    sprice = Math.max(0.01, Math.round(((price * 0.80) - rawShip) * 100) / 100);
                     item.sprice = sprice;
                 }
                 // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
@@ -4160,28 +4196,21 @@
                 const lmpPriceAttr = parseFloat(item.lmp_price) || 0;
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
-                        data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
+                        data-lp="${lp}" data-ship="${(isPpMp || isTdMp || isFaireMp) ? rawShip : ship}" data-ad="${ad}" data-tacos-ch="${tacosCh}" data-margin="${margin}" data-l30="${l30}"
                         data-price="${price}" data-lmp="${lmpPriceAttr}" data-cvr="${cvr}" data-views="${views}" data-editable="${isEditable && isListed ? 1 : 0}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30.toLocaleString() : '-'}</td>
                         <td class="text-center">-</td>
                         <td class="text-end ${textClass}">${priceCellHtml}</td>
-                        <td class="text-center ovl30-std-prc-cell ${textClass}">
+                        <td class="text-center ovl30-promo-cell ${textClass}">
                             ${(() => {
-                                // STD PRC = Amazon STANDARD_PRICE only (same as /amazon-tabulator-view SP)
-                                if (mpLower !== 'amazon' || !isListed) return '-';
-                                const std = parseFloat(item.standard_price) || 0;
-                                const skuEsc = String(getModalPrimarySku() || item.sku || '')
+                                if (!isListed) return '-';
+                                const promoVal = String(typeof modalPromotionRaw !== 'undefined' ? modalPromotionRaw : '')
                                     .replace(/"/g, '&quot;');
-                                const dot = std > 0
-                                    ? priceIncreaseSpChangeDotHtml(std, price, skuEsc)
-                                    : '';
-                                const valAttr = std > 0 ? std.toFixed(2) : '';
-                                return '<span class="ovl30-std-prc-wrap">'
-                                    + dot
-                                    + '<input type="number" class="form-control form-control-sm editable-std-prc" '
-                                    + 'value="' + valAttr + '" step="0.01" min="0" '
-                                    + 'placeholder="" title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                                return '<span class="ovl30-promo-wrap">'
+                                    + '<input type="text" class="form-control form-control-sm editable-promo" '
+                                    + 'value="' + promoVal + '" placeholder="10%" '
+                                    + 'title="Promotion — same on all channels. 10% = −10% SPRICE; 10 = −$10">'
                                     + '</span>';
                             })()}
                         </td>
@@ -4236,6 +4265,25 @@
                                 : ''}
                         </td>
                         <td class="text-center ovl30-suggest-cell ${textClass}">-</td>
+                        <td class="text-center ovl30-std-prc-cell ${textClass}">
+                            ${(() => {
+                                // STD PRC = shared SKU STANDARD_PRICE on every listed marketplace
+                                if (!isListed) return '-';
+                                const std = parseFloat(item.standard_price) || 0;
+                                const skuEsc = String(getModalPrimarySku() || item.sku || '')
+                                    .replace(/"/g, '&quot;');
+                                const dot = std > 0
+                                    ? priceIncreaseSpChangeDotHtml(std, price, skuEsc)
+                                    : '';
+                                const valAttr = std > 0 ? std.toFixed(2) : '';
+                                return '<span class="ovl30-std-prc-wrap">'
+                                    + dot
+                                    + '<input type="number" class="form-control form-control-sm editable-std-prc" '
+                                    + 'value="' + valAttr + '" step="0.01" min="0" '
+                                    + 'placeholder="" title="Standard Price (STD PRC) — same SP for all marketplaces">'
+                                    + '</span>';
+                            })()}
+                        </td>
                         <td class="text-end ovl30-sprice-cell ${textClass}">
                             ${(() => {
                                 const lmpVal = parseFloat(item.lmp_price) || 0;
@@ -4394,22 +4442,40 @@
             applyModalGroupFilter({ selectChannels: false });
         }
 
-        /** Toolbar SP — same STANDARD_PRICE as STD PRC / amazon-tabulator SP. */
+        /** Shared SKU STANDARD_PRICE from any marketplace row in the OV L30 modal. */
+        function getModalSharedStandardPrice() {
+            let std = 0;
+            if (!Array.isArray(ovl30ModalData)) return std;
+            // Prefer Amazon row, then any channel with a positive SP
+            for (let pass = 0; pass < 2; pass++) {
+                for (let i = 0; i < ovl30ModalData.length; i++) {
+                    const item = ovl30ModalData[i];
+                    const mp = String(item.marketplace || '').toLowerCase();
+                    if (pass === 0 && mp !== 'amazon') continue;
+                    if (pass === 1 && mp === 'amazon') continue;
+                    const n = parseFloat(item.standard_price);
+                    if (isFinite(n) && n > 0) return n;
+                }
+            }
+            return std;
+        }
+
+        function setModalSharedStandardPrice(saved) {
+            const std = parseFloat(saved);
+            if (!isFinite(std) || std <= 0 || !Array.isArray(ovl30ModalData)) return;
+            ovl30ModalData.forEach(function(item) {
+                item.standard_price = std;
+            });
+        }
+
+        /** Toolbar SP — same STANDARD_PRICE as STD PRC on every marketplace row. */
         function syncModalToolbarSpInput(forcedValue) {
             const $input = $('#modal-std-sp-input');
             if (!$input.length) return;
             if ($input.is(':focus')) return;
             let std = parseFloat(forcedValue);
             if (!isFinite(std) || std <= 0) {
-                std = 0;
-                if (Array.isArray(ovl30ModalData)) {
-                    for (let i = 0; i < ovl30ModalData.length; i++) {
-                        const item = ovl30ModalData[i];
-                        if (String(item.marketplace || '').toLowerCase() !== 'amazon') continue;
-                        const n = parseFloat(item.standard_price);
-                        if (isFinite(n) && n > 0) { std = n; break; }
-                    }
-                }
+                std = getModalSharedStandardPrice();
             }
             $input.val(std > 0 ? std.toFixed(2) : '');
         }
@@ -4425,15 +4491,9 @@
                 .done(function(res) {
                     const std = parseFloat(res && res.standard_price);
                     if (!isFinite(std) || std <= 0) return;
-                    if (Array.isArray(ovl30ModalData)) {
-                        ovl30ModalData.forEach(function(item) {
-                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
-                                item.standard_price = std;
-                            }
-                        });
-                    }
+                    setModalSharedStandardPrice(std);
                     syncModalToolbarSpInput(std);
-                    refreshModalAmazonStdPrcCells(std);
+                    refreshModalStdPrcCells(std);
                     // Prefill Same-$ SPRICE box from shared sibling SP (user can still edit)
                     const $same = $('#modal-sprice-same-input');
                     if ($same.length && !$same.is(':focus') && String($same.val() || '').trim() === '') {
@@ -4442,24 +4502,32 @@
                 });
         }
 
-        function refreshModalAmazonStdPrcCells(saved) {
+        /** Refresh STD PRC inputs on all listed marketplace rows (shared SP). */
+        function refreshModalStdPrcCells(saved) {
             const std = parseFloat(saved);
             if (!isFinite(std) || std <= 0) return;
             const sku = getModalPrimarySku();
-            $('#ovl30DetailsTable tbody tr').each(function() {
+            $('#ovl30DetailsTableBody tr[data-marketplace], #ovl30DetailsTable tbody tr[data-marketplace]').each(function() {
                 const $row = $(this);
-                if (String($row.attr('data-marketplace') || '').toLowerCase() !== 'amazon') return;
-                const amazonPrice = parseFloat($row.attr('data-price')) || 0;
-                const $wrap = $row.find('.ovl30-std-prc-wrap');
-                if (!$wrap.length) return;
-                const dotHtml = priceIncreaseSpChangeDotHtml(std, amazonPrice, sku);
-                $wrap.html(
-                    (dotHtml || '')
+                const rowSku = String($row.attr('data-sku') || '');
+                if (!rowSku || rowSku === 'Not Listed') return;
+                const $cell = $row.find('.ovl30-std-prc-cell');
+                if (!$cell.length) return;
+                const channelPrice = parseFloat($row.attr('data-price')) || 0;
+                const dotHtml = priceIncreaseSpChangeDotHtml(std, channelPrice, sku);
+                $cell.html(
+                    '<span class="ovl30-std-prc-wrap">'
+                    + (dotHtml || '')
                     + '<input type="number" class="form-control form-control-sm editable-std-prc" '
                     + 'value="' + std.toFixed(2) + '" step="0.01" min="0" '
-                    + 'title="Standard Price (STD PRC) — saves to amazon_data_view.STANDARD_PRICE">'
+                    + 'title="Standard Price (STD PRC) — same SP for all marketplaces">'
+                    + '</span>'
                 );
             });
+        }
+        // Back-compat alias
+        function refreshModalAmazonStdPrcCells(saved) {
+            refreshModalStdPrcCells(saved);
         }
 
         // ==================== TABULATOR INITIALIZATION ====================
@@ -6146,14 +6214,8 @@
             applyStandardPriceToPriceIncreaseRows(d.sku, d.standard_price, d.applied_skus);
             const saved = parseFloat(d.standard_price);
             if (isFinite(saved) && saved > 0) {
-                if (Array.isArray(ovl30ModalData)) {
-                    ovl30ModalData.forEach(function(item) {
-                        if (String(item.marketplace || '').toLowerCase() === 'amazon') {
-                            item.standard_price = saved;
-                        }
-                    });
-                }
-                refreshModalAmazonStdPrcCells(saved);
+                setModalSharedStandardPrice(saved);
+                refreshModalStdPrcCells(saved);
                 syncModalToolbarSpInput(saved);
             }
         });
@@ -6198,14 +6260,12 @@
                     success: function(response) {
                         const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
                         applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
-                        if (Array.isArray(ovl30ModalData)) {
-                            ovl30ModalData.forEach(function(item) {
-                                if (String(item.marketplace || '').toLowerCase() === 'amazon') {
-                                    item.standard_price = saved;
-                                }
-                            });
+                        if (typeof setModalSharedStandardPrice === 'function') {
+                            setModalSharedStandardPrice(saved);
                         }
-                        if (typeof refreshModalAmazonStdPrcCells === 'function') {
+                        if (typeof refreshModalStdPrcCells === 'function') {
+                            refreshModalStdPrcCells(saved);
+                        } else if (typeof refreshModalAmazonStdPrcCells === 'function') {
                             refreshModalAmazonStdPrcCells(saved);
                         }
                         if (typeof syncModalToolbarSpInput === 'function') {
@@ -6560,13 +6620,12 @@
             }
         });
         
-        // STD PRC (Standard Price) — same store/API as /amazon-tabulator-view SP
+        // STD PRC (Standard Price) — shared SP for all marketplaces; same store as /amazon-tabulator SP
         $(document).on('blur', '.editable-std-prc', function() {
             const input = $(this);
             const row = input.closest('tr');
             const sku = getModalPrimarySku() || row.attr('data-sku');
-            const mp = String(row.attr('data-marketplace') || '').toLowerCase();
-            if (mp !== 'amazon' || !sku || String(sku).indexOf('PARENT') !== -1) return;
+            if (!sku || String(sku).indexOf('PARENT') !== -1 || String(sku) === 'Not Listed') return;
 
             const raw = String(input.val() || '').trim();
             if (raw === '') return; // leave blank — do not clear on empty blur
@@ -6591,18 +6650,11 @@
                 },
                 success: function(response) {
                     const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
-                    // Keep modal in-memory data + main grid SP column in sync
-                    if (Array.isArray(ovl30ModalData)) {
-                        ovl30ModalData.forEach(function(item) {
-                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
-                                item.standard_price = saved;
-                            }
-                        });
-                    }
+                    setModalSharedStandardPrice(saved);
                     if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
                         applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
                     }
-                    refreshModalAmazonStdPrcCells(saved);
+                    refreshModalStdPrcCells(saved);
                     syncModalToolbarSpInput(saved);
                     const $wrap = row.find('.ovl30-std-prc-wrap');
                     $wrap.find('.editable-std-prc').css('border-color', '#28a745');
@@ -6611,8 +6663,8 @@
                     }, 800);
                     const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                     showToast(n > 1
-                        ? ('STD PRC saved for ' + n + ' linked SKUs')
-                        : 'STD PRC saved', 'success');
+                        ? ('STD PRC saved for all marketplaces (' + n + ' linked SKUs)')
+                        : 'STD PRC saved for all marketplaces', 'success');
                 },
                 error: function() {
                     input.css('border-color', '#dc3545');
@@ -6627,7 +6679,7 @@
             }
         });
 
-        // Toolbar SP — same store/API as STD PRC / amazon-tabulator SP
+        // Toolbar SP — same store/API as STD PRC on all marketplace rows
         $(document).on('blur', '#modal-std-sp-input', function() {
             const input = $(this);
             const sku = getModalPrimarySku();
@@ -6656,28 +6708,22 @@
                 },
                 success: function(response) {
                     const saved = parseFloat(response.data || response.STANDARD_PRICE || std) || std;
-                    if (Array.isArray(ovl30ModalData)) {
-                        ovl30ModalData.forEach(function(item) {
-                            if (String(item.marketplace || '').toLowerCase() === 'amazon') {
-                                item.standard_price = saved;
-                            }
-                        });
-                    }
+                    setModalSharedStandardPrice(saved);
                     if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
                         applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
                     }
-                    refreshModalAmazonStdPrcCells(saved);
+                    refreshModalStdPrcCells(saved);
                     syncModalToolbarSpInput(saved);
                     input.css('border-color', '#28a745');
                     setTimeout(function() { input.css('border-color', ''); }, 800);
                     const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
                     showToast(n > 1
-                        ? ('SP saved for ' + n + ' linked SKUs')
-                        : 'SP saved', 'success');
+                        ? ('STD PRC saved for ' + n + ' linked SKUs')
+                        : 'STD PRC saved', 'success');
                 },
                 error: function() {
                     input.css('border-color', '#dc3545');
-                    showToast('Failed to save SP', 'error');
+                    showToast('Failed to save STD PRC', 'error');
                 }
             });
         });
@@ -6685,6 +6731,153 @@
             if (e.key === 'Enter') {
                 e.preventDefault();
                 $(this).blur();
+            }
+        });
+
+        // ==================== PROMOTION (shared like STD PRC) ====================
+        // 10% → SPRICE × 0.90; 10 → SPRICE − $10. Applies to all listed editable channels.
+        function parseModalPromotion(raw) {
+            const s = String(raw == null ? '' : raw).trim();
+            if (!s) return null;
+            const pct = s.match(/^(-?\d+(?:\.\d+)?)\s*%$/);
+            if (pct) {
+                const value = parseFloat(pct[1]);
+                if (!isFinite(value) || value === 0) return null;
+                return { type: 'percent', value: value, label: value + '%' };
+            }
+            const num = parseFloat(s.replace(/[$,\s]/g, '').replace(',', '.'));
+            if (!isFinite(num) || num === 0) return null;
+            // Bare number = dollar off (not percent)
+            return { type: 'dollar', value: num, label: '$' + Math.abs(num).toFixed(2) };
+        }
+
+        function applyPromotionToSpriceBase(base, promo) {
+            if (!(base > 0) || !promo) return null;
+            let next = promo.type === 'percent'
+                ? base * (1 - (promo.value / 100))
+                : base - promo.value;
+            return Math.max(0.01, +Number(next).toFixed(2));
+        }
+
+        function syncModalPromotionInputs(raw, exceptEl) {
+            modalPromotionRaw = String(raw == null ? '' : raw);
+            const $except = exceptEl ? $(exceptEl) : $();
+            $('#modal-promo-input, #modal-promo-header-input, .editable-promo').each(function() {
+                if ($except.length && this === $except[0]) return;
+                if ($(this).is(':focus') && !$except.length) return;
+                $(this).val(modalPromotionRaw);
+            });
+        }
+
+        function collectModalPromoTargetRows() {
+            const $rows = [];
+            $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
+                const $tr = $(this);
+                if (!$tr.find('.editable-sprice').length) return;
+                if (String($tr.attr('data-editable') || '') === '0') return;
+                const rowSku = String($tr.attr('data-sku') || '');
+                if (!rowSku || rowSku === 'Not Listed') return;
+                $rows.push($tr);
+            });
+            return $rows;
+        }
+
+        function applyModalPromotionToAll() {
+            const raw = String($('#modal-promo-input').val() || modalPromotionRaw || '').trim();
+            const promo = parseModalPromotion(raw);
+            if (!promo) {
+                showToast('Enter a promotion (e.g. 10% or 10)', 'error');
+                $('#modal-promo-input').focus();
+                return;
+            }
+            syncModalPromotionInputs(raw);
+            const $rows = collectModalPromoTargetRows();
+            if (!$rows.length) {
+                showToast('No editable SPRICE rows to apply promotion', 'error');
+                return;
+            }
+            const modeLabel = promo.type === 'percent'
+                ? (promo.value + '% less')
+                : ('$' + Math.abs(promo.value).toFixed(2) + ' less');
+            if (!confirm(
+                'Apply promotion (' + modeLabel + ') to SPRICE on ' + $rows.length
+                + ' channel(s)' + siblingsApplyLabel() + '?'
+            )) return;
+
+            const $btn = $('#modal-apply-promo-btn');
+            const origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+            let doneCount = 0;
+            let okCount = 0;
+            let skipped = 0;
+            let siblingsOk = 0;
+
+            $rows.forEach(function($tr) {
+                const mp = String($tr.attr('data-marketplace') || '');
+                let base = parseFloat($tr.find('.editable-sprice').val());
+                if (!(base > 0)) base = parseFloat($tr.attr('data-price')) || 0;
+                const newPrice = applyPromotionToSpriceBase(base, promo);
+                if (!(newPrice > 0)) {
+                    skipped++;
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('Promotion applied to ' + okCount + ' channel(s)'
+                                    + (skipped ? ('; skipped ' + skipped) : '')
+                                    + '. Use Push to go live.')
+                                : 'No valid SPRICE to discount',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                    return;
+                }
+                $tr.find('.editable-sprice').val(newPrice.toFixed(2)).trigger('input');
+                saveModalSpriceForRow($tr, newPrice, function(ok, res) {
+                    if (ok) {
+                        okCount++;
+                        if (res && res.siblings_count) {
+                            siblingsOk = Math.max(siblingsOk, parseInt(res.siblings_count, 10) || 0);
+                        }
+                        if (Array.isArray(ovl30ModalData)) {
+                            ovl30ModalData.forEach(function(item) {
+                                if (String(item.marketplace || '') === mp) {
+                                    item.sprice = newPrice;
+                                }
+                            });
+                        }
+                    }
+                    doneCount++;
+                    if (doneCount === $rows.length) {
+                        $btn.prop('disabled', false).html(origHtml);
+                        showToast(
+                            okCount
+                                ? ('Promotion (' + modeLabel + ') applied to ' + okCount + ' channel(s)'
+                                    + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : '')
+                                    + (skipped ? ('; skipped ' + skipped) : '')
+                                    + '. Use Push to go live.')
+                                : 'Failed to apply promotion',
+                            okCount ? 'success' : 'error'
+                        );
+                    }
+                });
+            });
+        }
+
+        $(document).on('input', '#modal-promo-input, #modal-promo-header-input, .editable-promo', function() {
+            syncModalPromotionInputs($(this).val(), this);
+        });
+        $(document).on('click', '#modal-apply-promo-btn', function(e) {
+            e.preventDefault();
+            applyModalPromotionToAll();
+        });
+        $(document).on('keydown', '#modal-promo-input, #modal-promo-header-input, .editable-promo', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                syncModalPromotionInputs($(this).val(), this);
+                applyModalPromotionToAll();
             }
         });
 
@@ -7040,7 +7233,7 @@
                 $rows.push($tr);
                 seenMp[mp.toLowerCase()] = true;
             });
-            // Same Price: always include Doba at −25% even if unchecked
+            // Same Price: always include Doba (−25%) and SB2B/TopDawg ((SP×0.80)−Ship) even if unchecked
             if (modalSamePriceModeActive && !seenMp.doba) {
                 const $doba = findModalDobaEditableRow();
                 if ($doba.length) $rows.push($doba);
@@ -7151,7 +7344,7 @@
                         return;
                     }
                     let newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
-                    // Same-price apply: Doba always −25%; TopDawg −25%; PPower = ×1.15 − Ship
+                    // Same-price apply: Doba −25%; SB2B/TopDawg/Faire = ×0.80 − Ship; PPower = ×1.15 − Ship
                     if (mode === 'same') {
                         newPrice = adjustAppliedSpriceForChannel(inputValue, $tr);
                     }
@@ -7206,23 +7399,42 @@
         });
 
         // ==================== BULK SPRICE ====================
-        // Doba ALWAYS −25% (×0.75); TopDawg −25%; PPower = (SPRICE × 1.15) − Ship; SB2B = Price×0.75 − Ship
+        // Doba ALWAYS −25% (×0.75); SB2B/TopDawg always & Faire = (SP × 0.80) − Ship; PPower = (SP × 1.15) − Ship
         function isDobaChannel(mpLower) {
             return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'doba';
         }
         function isBulkSprice25OffChannel(mpLower) {
-            const m = String(mpLower || '').toLowerCase().replace(/\s+/g, '');
-            return m === 'doba' || m === 'topdawg' || m === 'topdog';
+            return isDobaChannel(mpLower);
         }
         function isBulkSpricePpowerChannel(mpLower) {
-            return mpLower === 'ppower' || mpLower === 'purchasingpower' || mpLower === 'purchase';
+            const m = String(mpLower || '').toLowerCase().replace(/\s+/g, '');
+            return m === 'ppower' || m === 'purchasingpower' || m === 'purchase';
         }
         function isBulkSpriceSb2bChannel(mpLower) {
-            return mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b';
+            const m = String(mpLower || '').toLowerCase().replace(/\s+/g, '');
+            return m === 'sb2b' || m === 'shopifyb2b' || m === 'shopify_b2b';
         }
-        /** Doba / TopDawg: always 25% less than the applied base. */
+        function isBulkSpriceTopDawgChannel(mpLower) {
+            const m = String(mpLower || '').toLowerCase().replace(/\s+/g, '');
+            return m === 'topdawg' || m === 'topdog';
+        }
+        function isBulkSpriceFaireChannel(mpLower) {
+            return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'faire';
+        }
+        /** Channels that use (SP × 0.80) − Ship on Apply */
+        function isBulkSprice20OffMinusShipChannel(mpLower) {
+            return isBulkSpriceSb2bChannel(mpLower)
+                || isBulkSpriceTopDawgChannel(mpLower)
+                || isBulkSpriceFaireChannel(mpLower);
+        }
+        /** Doba: always 25% less than the applied base. */
         function sprice25OffFromBase(basePrice) {
             return Math.max(0.01, +(Number(basePrice) * 0.75).toFixed(2));
+        }
+        /** SB2B / TopDawg / Faire: (base × 0.80) − Ship */
+        function sprice20OffMinusShipFromBase(basePrice, rowShip) {
+            const ship = (isFinite(rowShip) && rowShip > 0) ? rowShip : 0;
+            return Math.max(0.01, +((Number(basePrice) * 0.80) - ship).toFixed(2));
         }
         /** PPower SP Apply: (base × 1.15) − Ship */
         function ppowerSpriceFromBase(basePrice, rowShip) {
@@ -7243,26 +7455,34 @@
                 const rowShip = parseFloat($tr.attr('data-ship')) || 0;
                 return ppowerSpriceFromBase(base, rowShip);
             }
-            if (isBulkSpriceSb2bChannel(mpLower)) {
-                const channelPrice = parseFloat($tr.attr('data-price')) || 0;
+            if (isBulkSprice20OffMinusShipChannel(mpLower)) {
                 const rowShip = parseFloat($tr.attr('data-ship')) || 0;
-                const p = channelPrice > 0 ? channelPrice : base;
-                return Math.max(0.01, +((p * 0.75) - rowShip).toFixed(2));
+                return sprice20OffMinusShipFromBase(base, rowShip);
             }
             return base;
         }
-        /** Find editable Doba row even if hidden / not checked (Doba always gets −25% on SP apply). */
-        function findModalDobaEditableRow() {
+        /** Find editable row for marketplace even if hidden / not checked. */
+        function findModalEditableRowByMatcher(matcherFn) {
             let $found = $();
             $('#ovl30DetailsTableBody tr[data-marketplace]').each(function() {
                 const $tr = $(this);
-                if (!isDobaChannel($tr.attr('data-marketplace'))) return;
+                if (!matcherFn($tr.attr('data-marketplace'))) return;
                 if (!$tr.find('.editable-sprice').length) return;
                 if (String($tr.attr('data-editable') || '') === '0') return;
                 $found = $tr;
                 return false;
             });
             return $found;
+        }
+        /** Find editable Doba row even if hidden / not checked (Doba always gets −25% on SP apply). */
+        function findModalDobaEditableRow() {
+            return findModalEditableRowByMatcher(isDobaChannel);
+        }
+        function findModalSb2bEditableRow() {
+            return findModalEditableRowByMatcher(isBulkSpriceSb2bChannel);
+        }
+        function findModalTopDawgEditableRow() {
+            return findModalEditableRowByMatcher(isBulkSpriceTopDawgChannel);
         }
 
         function applyModalBulkSprice() {
@@ -7277,7 +7497,7 @@
                 showToast('Please select at least one channel (checkbox)', 'error');
                 return;
             }
-            const $rows = collectModalTargetRows({ alwaysIncludeDoba: true });
+            const $rows = collectModalTargetRows({ alwaysIncludeDoba: true, alwaysIncludeSb2bTopDawg: true });
             if (!$rows.length) {
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
@@ -7287,9 +7507,8 @@
             if (!confirm(
                 'Apply SPRICE $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
                 + '?\n\nDoba always −25%: $' + reducedPrice.toFixed(2)
-                + '\nTopDawg −25%: $' + reducedPrice.toFixed(2)
-                + '\nPPower = (SPRICE × 1.15) − Ship'
-                + '\nSB2B = (Price × 0.75) − Ship'
+                + '\nSB2B / TopDawg / Faire = (SP × 0.80) − Ship'
+                + '\nPPower = (SP × 1.15) − Ship'
                 + siblingsApplyLabel()
             )) return;
 
@@ -7472,7 +7691,7 @@
         });
 
         // ==================== SAME $ SPRICE (SP / box → channels + siblings) ====================
-        // Doba & TopDawg −25%; PPower = (SP × 1.15) − Ship
+        // Doba −25%; SB2B/TopDawg/Faire = (SP × 0.80) − Ship; PPower = (SP × 1.15) − Ship
         function applyModalSameSpriceFromBox() {
             const rawInput = $('#modal-sprice-same-input').val();
             const samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -7485,7 +7704,7 @@
                 showToast('Please select at least one channel (checkbox)', 'error');
                 return;
             }
-            const $rows = collectModalTargetRows({ alwaysIncludeDoba: true });
+            const $rows = collectModalTargetRows({ alwaysIncludeDoba: true, alwaysIncludeSb2bTopDawg: true });
             if (!$rows.length) {
                 showToast('No editable SPRICE rows selected', 'error');
                 return;
@@ -7499,7 +7718,7 @@
                 if (!confirm(
                     'Set SPRICE to $' + basePrice.toFixed(2) + ' on ' + $rows.length + ' channel(s)'
                     + '?\n\nDoba always −25%: $' + reducedPrice.toFixed(2)
-                    + '\nTopDawg −25%: $' + reducedPrice.toFixed(2)
+                    + '\nSB2B / TopDawg / Faire = (SP × 0.80) − Ship'
                     + '\nPPower = (SP × 1.15) − Ship'
                     + siblingsApplyLabel()
                     + (withSiblings ? '\n\nSibling SKUs (including INV 0) will get the same per-channel SPRICE.' : '')
@@ -7592,21 +7811,33 @@
 
         function collectModalTargetRows(opts) {
             const alwaysIncludeDoba = !!(opts && opts.alwaysIncludeDoba);
+            const alwaysIncludeSb2bTopDawg = !!(opts && opts.alwaysIncludeSb2bTopDawg);
             const $rows = [];
             const seen = {};
-            if (modalSelectedChannels.size === 0 && !alwaysIncludeDoba) return $rows;
+            if (modalSelectedChannels.size === 0 && !alwaysIncludeDoba && !alwaysIncludeSb2bTopDawg) return $rows;
             $('#ovl30DetailsTableBody tr:visible').each(function() {
                 const $tr = $(this);
                 if (!$tr.find('.editable-sprice').length) return;
                 const mp = String($tr.attr('data-marketplace') || '');
                 if (!modalSelectedChannels.has(mp)) return;
                 $rows.push($tr);
-                seen[mp.toLowerCase()] = true;
+                seen[mp.toLowerCase().replace(/\s+/g, '')] = true;
             });
             // Doba always gets SP Apply at −25%, even if unchecked / in another group
             if (alwaysIncludeDoba && !seen.doba) {
                 const $doba = findModalDobaEditableRow();
                 if ($doba.length) $rows.push($doba);
+            }
+            // SB2B / TopDawg always get (SP × 0.80) − Ship, even if unchecked
+            if (alwaysIncludeSb2bTopDawg) {
+                if (!seen.sb2b && !seen.shopifyb2b && !seen.shopify_b2b) {
+                    const $sb2b = findModalSb2bEditableRow();
+                    if ($sb2b.length) $rows.push($sb2b);
+                }
+                if (!seen.topdawg && !seen.topdog) {
+                    const $td = findModalTopDawgEditableRow();
+                    if ($td.length) $rows.push($td);
+                }
             }
             return $rows;
         }
