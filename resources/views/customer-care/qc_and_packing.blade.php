@@ -5522,10 +5522,20 @@
 
             modalEl.addEventListener('hidden.bs.modal', resetForm);
             buildDepartmentDropdown();
+            if (departmentOtherNoteInput) {
+                departmentOtherNoteInput.addEventListener('input', function () {
+                    if (departmentOtherNoteCharCount) {
+                        departmentOtherNoteCharCount.textContent = String(
+                            departmentOtherNoteInput.value.length
+                        );
+                    }
+                });
+            }
             initializeDynamicRootCauseOptions();
             toggleRootCauseRemarkField();
             toggleAction1RemarkField();
             toggleCAction1RemarkField();
+            toggleDepartmentOtherNoteField();
             renderRows();
             renderHistoryRows();
             loadHoldIssueRows();
