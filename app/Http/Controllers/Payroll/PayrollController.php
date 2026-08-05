@@ -45,6 +45,34 @@ class PayrollController extends Controller
         abort_unless($allowed, 403, 'You do not have permission to use this function.');
     }
 
+    /** Directors are omitted from the bank payout sheet download. */
+    protected function isDirectorForPayoutSheet(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (strtolower((string) ($user->org_level ?? '')) === 'director') {
+            return true;
+        }
+
+        $email = strtolower(trim((string) ($user->email ?? '')));
+        $excludeEmails = array_map('strtolower', config('payroll.payout_sheet_exclude_emails', []));
+        if ($email !== '' && in_array($email, $excludeEmails, true)) {
+            return true;
+        }
+
+        $name = strtolower(trim((string) ($user->name ?? '')));
+        $excludeNames = array_map('strtolower', config('payroll.payout_sheet_exclude_names', []));
+        if ($name !== '' && in_array($name, $excludeNames, true)) {
+            return true;
+        }
+
+        $first = explode(' ', $name)[0] ?? '';
+
+        return $first !== '' && in_array($first, $excludeNames, true);
+    }
+
     protected function ensureUnlocked(?PayrollMonth $month): void
     {
         if ($month && $month->is_locked) {
@@ -99,6 +127,7 @@ class PayrollController extends Controller
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
             $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
+            $this->payroll->removeEmployeesWithoutHours($payrollMonth);
         }
 
         $payrollMonth->loadCount([
@@ -187,6 +216,9 @@ class PayrollController extends Controller
         ]);
 
         $synced = $this->payroll->syncEmployeesFromUsers($month);
+        // Back-fill inactive staff who still have recorded hours for this month.
+        $synced += $this->payroll->ensureSheetPopulated($month);
+        $this->payroll->removeEmployeesWithoutHours($month);
         $this->payroll->recalculateMonth($month);
 
         return response()->json([
@@ -204,6 +236,7 @@ class PayrollController extends Controller
         // Only refresh login hours from TeamLogger — leave salary and other fields as-is.
         $this->payroll->ensureSheetPopulated($payrollMonth);
         $stats = $this->payroll->refreshLiveHours($payrollMonth, freshFromApi: true);
+        $this->payroll->removeEmployeesWithoutHours($payrollMonth);
 
         return response()->json([
             'success' => true,
@@ -951,11 +984,13 @@ class PayrollController extends Controller
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
             $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
+            $this->payroll->removeEmployeesWithoutHours($payrollMonth);
         }
 
         $rows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
             ->get()
+            ->reject(fn ($r) => $this->isDirectorForPayoutSheet($r->user))
             ->sortBy(fn ($r) => $r->user?->name)
             ->values();
 
@@ -975,7 +1010,7 @@ class PayrollController extends Controller
             $sheet->setCellValueExplicit('E'.$r, (string) ($row->upi_id ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             $r++;
         }
-        $lastRow = $r - 1;
+        $lastRow = max(1, $r - 1);
 
         // Header row: bold black text on yellow, centered.
         $sheet->getStyle('A1:E1')->applyFromArray([

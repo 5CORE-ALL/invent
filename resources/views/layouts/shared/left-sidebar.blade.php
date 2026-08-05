@@ -2314,6 +2314,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('pricing.errors.fix') }}" class="side-nav-link">
+                    <i class="ri-error-warning-line"></i>
+                    <span>Pricing Errors Fix</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ url('/wmpnm-dil') }}" class="side-nav-link">
                     <i class="ri-bar-chart-grouped-line"></i>
                     <span>WMPNM Dil</span>

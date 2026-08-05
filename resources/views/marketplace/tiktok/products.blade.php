@@ -274,7 +274,13 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             totals.skipped += data.skipped || 0;
             offset = data.offset || offset;
             if (data.done) {
-                alert((data.message || 'Done.') + '\nUpdated: ' + totals.updated + ', Failed: ' + totals.failed + ', Skipped: ' + totals.skipped);
+                alert(
+                    'Mismatch inventory sync complete.\n'
+                    + 'Updated: ' + totals.updated
+                    + '\nFailed: ' + totals.failed
+                    + '\nSkipped: ' + totals.skipped
+                    + (data.message ? ('\n\nLast batch: ' + data.message) : '')
+                );
                 location.reload();
                 return;
             }

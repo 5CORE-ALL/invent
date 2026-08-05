@@ -67,6 +67,7 @@ abstract class IssueBoardControllerBase extends Controller
             'issue_date' => 'nullable|string|max:100',
             'department' => 'required|array|min:1',
             'department.*' => 'required|string|max:100',
+            'department_other_note' => 'nullable|string|max:255',
         ]);
 
         // Merge page-specific extra field validation
@@ -89,7 +90,15 @@ abstract class IssueBoardControllerBase extends Controller
                 'errors' => ['department' => ['Select at least one department.']],
             ], 422));
         }
+        $otherNote = trim((string) ($validated['department_other_note'] ?? ''));
+        if (in_array('Other', $depts, true) && $otherNote === '') {
+            abort(response()->json([
+                'message' => 'Please enter a note when Responsible Dept is Other.',
+                'errors' => ['department_other_note' => ['Notes are required when Other is selected.']],
+            ], 422));
+        }
         $validated['department'] = $depts;
+        $validated['department_other_note'] = $otherNote !== '' ? $otherNote : null;
 
         $this->validateIssueAttachments($request);
 

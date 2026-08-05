@@ -163,6 +163,8 @@ class DispatchIssuesController extends IssueBoardControllerBase
             // Built-in options + custom user-added options stored in
             // customer_care_issue_dropdown_options under field_type='wrong_sent_reason'.
             'wrong_sent_reason'                => 'nullable|string|max:64',
+            // Required when Responsible Dept includes "Other".
+            'department_other_note'            => 'nullable|string|max:255',
         ];
     }
 
@@ -257,6 +259,21 @@ class DispatchIssuesController extends IssueBoardControllerBase
             $payload['issue_carrier'] = $carrierValue;
         }
 
+        // Responsible Dept → Other note. Cleared unless "Other" is among the
+        // selected departments so a prior note doesn't linger after a switch.
+        if (Schema::hasColumn($this->issuesTable(), 'department_other_note')) {
+            $deptList = CustomerCareDepartments::normalizeStringList(
+                is_array($validated['department'] ?? null)
+                    ? $validated['department']
+                    : []
+            );
+            $hasOther = in_array('Other', $deptList, true);
+            $otherNote = isset($validated['department_other_note'])
+                ? trim((string) $validated['department_other_note'])
+                : '';
+            $payload['department_other_note'] = ($hasOther && $otherNote !== '') ? $otherNote : null;
+        }
+
         return $payload;
     }
 
@@ -322,6 +339,7 @@ class DispatchIssuesController extends IssueBoardControllerBase
                 'wrong_sent_outgoing_inventory_id' => isset($row->wrong_sent_outgoing_inventory_id) && $row->wrong_sent_outgoing_inventory_id !== null ? (int) $row->wrong_sent_outgoing_inventory_id : null,
                 // "Why it happened" reason for the Wrong Item Sent panel.
                 'wrong_sent_reason'                => $row->wrong_sent_reason ?? null,
+                'department_other_note'            => $row->department_other_note ?? null,
             ],
             $this->dispatchClaimCarrierRowSlice($row, $this->issuesTable())
         );
@@ -1609,8 +1627,9 @@ class DispatchIssuesController extends IssueBoardControllerBase
             'c_action_1'         => 'nullable|string|max:255',
             'c_action_1_remark'  => 'nullable|string|max:255',
             'issue_date'         => 'nullable|string|max:100',
-            'department'         => 'required|array|min:1',
-            'department.*'       => 'required|string|max:100',
+            'department'             => 'required|array|min:1',
+            'department.*'           => 'required|string|max:100',
+            'department_other_note'  => 'nullable|string|max:255',
         ]);
 
         $this->validateIssueAttachments($request);
@@ -1620,6 +1639,13 @@ class DispatchIssuesController extends IssueBoardControllerBase
             return response()->json([
                 'message' => 'Department is required.',
                 'errors'  => ['department' => ['Select at least one department.']],
+            ], 422);
+        }
+        $departmentOtherNote = trim((string) $request->input('department_other_note', ''));
+        if (in_array('Other', $depts, true) && $departmentOtherNote === '') {
+            return response()->json([
+                'message' => 'Please enter a note when Responsible Dept is Other.',
+                'errors'  => ['department_other_note' => ['Notes are required when Other is selected.']],
             ], 422);
         }
 
@@ -1632,7 +1658,12 @@ class DispatchIssuesController extends IssueBoardControllerBase
         $imagePaths = $this->persistDispatchImagesToDir($request, 'groups/'.$groupId, null);
 
         
-        $sharedPayload = array_merge($this->buildExtraPayload($request->all()), [
+        // Include department list so buildExtraPayload can decide whether to
+        // keep department_other_note (only when "Other" is selected).
+        $sharedPayload = array_merge($this->buildExtraPayload(array_merge($request->all(), [
+            'department' => $depts,
+            'department_other_note' => $departmentOtherNote,
+        ])), [
             'group_id'             => $groupId,
             'order_number'         => $request->input('order_number') ? trim($request->input('order_number')) : null,
             'refund_amount'        => $request->input('refund_amount') !== null && $request->input('refund_amount') !== '' ? (float) $request->input('refund_amount') : null,

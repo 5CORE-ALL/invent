@@ -50,9 +50,22 @@ class TikTokInventorySyncService
             ->whereIn('sku', $skus)
             ->get();
 
+        $found = [];
+        foreach ($metrics as $metric) {
+            $found[strtoupper(trim((string) $metric->sku))] = true;
+        }
+
         $updated = 0;
         $failed = 0;
         $skipped = 0;
+        $errorSamples = [];
+
+        foreach ($skus as $requestedSku) {
+            if (! isset($found[strtoupper(trim($requestedSku))])) {
+                $failed++;
+                $errorSamples['No linked TikTok product/sku_id'] = ($errorSamples['No linked TikTok product/sku_id'] ?? 0) + 1;
+            }
+        }
 
         foreach ($metrics as $metric) {
             $sku = (string) $metric->sku;
@@ -77,6 +90,10 @@ class TikTokInventorySyncService
                 $this->updateLocalStock($sku, $pushQty, $shopifyStock ?? 0);
             } else {
                 $failed++;
+                $msg = trim((string) ($result['message'] ?? 'TikTok inventory update failed.'));
+                if ($msg !== '') {
+                    $errorSamples[$msg] = ($errorSamples[$msg] ?? 0) + 1;
+                }
                 Log::warning('TikTokInventorySyncService: push failed', [
                     'sku' => $sku,
                     'product_id' => $productId,
@@ -87,11 +104,22 @@ class TikTokInventorySyncService
             usleep(200000);
         }
 
+        arsort($errorSamples);
+        $topErrors = [];
+        foreach (array_slice($errorSamples, 0, 3, true) as $msg => $count) {
+            $topErrors[] = "{$msg} ({$count})";
+        }
+
+        $message = "Synced {$updated} SKU(s) to TikTok Shop from live Shopify.";
+        if ($failed > 0 && $topErrors !== []) {
+            $message .= ' Failures: '.implode('; ', $topErrors).'.';
+        }
+
         return [
             'updated' => $updated,
             'failed' => $failed,
             'skipped' => $skipped,
-            'message' => "Synced {$updated} SKU(s) to TikTok Shop from live Shopify.",
+            'message' => $message,
         ];
     }
 

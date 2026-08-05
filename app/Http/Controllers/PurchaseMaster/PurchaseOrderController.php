@@ -8,6 +8,8 @@ use App\Models\Supplier;
 use App\Models\ProductMaster;
 use App\Models\PurchaseOrder;
 use App\Models\ShortTitle;
+use App\Models\InstructionsItemPkg;
+use App\Models\QcImprovementReqBeforeItemPkg;
 use App\Services\ComparisonSpecTechService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -133,7 +135,7 @@ class PurchaseOrderController extends Controller
     public function updateItemSupplierSku(Request $request, $id)
     {
         $normalized = $request->all();
-        foreach (['supplier_sku', 'short_name', 'tech', 'nw', 'gw', 'cbm', 'qty', 'price_usd', 'price_rmb', 'currency'] as $key) {
+        foreach (['supplier_sku', 'short_name', 'tech', 'item_pkg', 'ctn_pkg', 'nw', 'gw', 'cbm', 'qty', 'price_usd', 'price_rmb', 'currency'] as $key) {
             if (array_key_exists($key, $normalized) && $normalized[$key] === '') {
                 $normalized[$key] = null;
             }
@@ -145,6 +147,8 @@ class PurchaseOrderController extends Controller
             'supplier_sku' => 'nullable|string|max:255',
             'short_name' => 'nullable|string|max:40',
             'tech' => 'nullable|string|max:5000',
+            'item_pkg' => 'nullable|string',
+            'ctn_pkg' => 'nullable|string|max:100',
             'nw' => 'nullable|numeric',
             'gw' => 'nullable|numeric',
             'cbm' => 'nullable|numeric',
@@ -210,10 +214,41 @@ class PurchaseOrderController extends Controller
             ? trim((string) ($validated['short_name'] ?? ''))
             : null;
         if ($sku !== '' && $shortName !== null) {
-            ShortTitle::updateOrCreate(
-                ['sku' => $sku],
-                ['short_title' => $shortName]
+            try {
+                ShortTitle::updateOrCreate(
+                    ['sku' => $sku],
+                    ['short_title' => $shortName]
+                );
+                // Also keep a copy on the PO line for display fallback.
+                $item['short_name'] = $shortName;
+                $items[$index] = $item;
+            } catch (\Throwable $e) {
+                Log::error('PO short name save failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to save Short Name: '.$e->getMessage(),
+                ], 500);
+            }
+        }
+
+        // Persist Item Pkg / Ctn Pkg to Dim Wt Master sources.
+        $savedItemPkg = null;
+        $savedCtnPkg = null;
+        if (array_key_exists('item_pkg', $validated) || array_key_exists('ctn_pkg', $validated)) {
+            $pkgResult = $this->saveDimWtPkgForSku(
+                $sku,
+                array_key_exists('item_pkg', $validated) ? (string) ($validated['item_pkg'] ?? '') : null,
+                array_key_exists('ctn_pkg', $validated) ? (string) ($validated['ctn_pkg'] ?? '') : null
             );
+            if (!$pkgResult['success']) {
+                return response()->json($pkgResult, 422);
+            }
+            $savedItemPkg = $pkgResult['item_pkg'] ?? null;
+            $savedCtnPkg = $pkgResult['ctn_pkg'] ?? null;
         }
 
         $totalAmount = 0.0;
@@ -236,6 +271,8 @@ class PurchaseOrderController extends Controller
                 'supplier_sku' => $item['supplier_sku'] ?? '',
                 'short_name' => $shortName ?? '',
                 'tech' => $item['tech'] ?? '',
+                'item_pkg' => $savedItemPkg,
+                'ctn_pkg' => $savedCtnPkg,
                 'nw' => $item['nw'] ?? '',
                 'gw' => $item['gw'] ?? '',
                 'cbm' => $item['cbm'] ?? '',
@@ -244,6 +281,345 @@ class PurchaseOrderController extends Controller
                 'currency' => $item['currency'] ?? 'USD',
             ],
         ]);
+    }
+
+    /**
+     * Save / replace Itm pkg Cover on product_master.Values.item_pkg_cover.
+     * Accepts image URL/path text, or optional file upload.
+     */
+    public function saveItemPkgCover(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+            'sku' => 'nullable|string|max:255',
+            'path' => 'nullable|string|max:2048',
+            'url' => 'nullable|string|max:2048',
+            'image' => 'nullable|file|image|max:10240',
+        ]);
+
+        $product = ProductMaster::find($validated['product_id']);
+        if (!$product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        $hasFile = $request->hasFile('image');
+        $pathInput = trim((string) ($validated['path'] ?? $validated['url'] ?? ''));
+        if (!$hasFile && !$request->exists('path') && !$request->exists('url')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cover path/URL is required.',
+            ], 422);
+        }
+
+        try {
+            $publicPath = '';
+            $displayName = null;
+
+            if ($hasFile) {
+                $safeSku = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim((string) $product->sku)) ?: ('id_'.$product->id);
+                $stored = $request->file('image')->storeAs(
+                    'packing_instruction_images/covers',
+                    $product->id.'_'.$safeSku.'_cover.'.$request->file('image')->getClientOriginalExtension(),
+                    'public'
+                );
+                $publicPath = 'storage/'.$stored;
+                $displayName = $request->file('image')->getClientOriginalName();
+            } else {
+                // Store relative paths without leading slash; keep absolute http(s)/data URLs as-is.
+                if ($pathInput === '') {
+                    $publicPath = '';
+                } elseif (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
+                    $publicPath = $pathInput;
+                } else {
+                    $publicPath = ltrim($pathInput, '/');
+                }
+                $displayName = basename(parse_url($publicPath, PHP_URL_PATH) ?: $publicPath) ?: 'cover';
+            }
+
+            $values = $this->productValuesArray($product);
+            if ($publicPath === '') {
+                unset($values['item_pkg_cover']);
+            } else {
+                $values['item_pkg_cover'] = $publicPath;
+
+                // Keep Packing Instructions photos in sync: put cover first in packing_images.
+                $list = [];
+                $raw = $values['packing_images'] ?? [];
+                if (is_array($raw)) {
+                    foreach ($raw as $item) {
+                        if (is_string($item) && trim($item) !== '') {
+                            $list[] = ['path' => trim($item)];
+                        } elseif (is_array($item) && !empty($item['path'])) {
+                            $list[] = $item;
+                        }
+                    }
+                }
+                array_unshift($list, [
+                    'id' => 'cover-'.$product->id,
+                    'path' => $publicPath,
+                    'name' => $displayName,
+                    'uploaded_at' => now()->toIso8601String(),
+                ]);
+                // Dedupe by path
+                $seen = [];
+                $deduped = [];
+                foreach ($list as $img) {
+                    $p = (string) ($img['path'] ?? '');
+                    if ($p === '' || isset($seen[$p])) {
+                        continue;
+                    }
+                    $seen[$p] = true;
+                    $deduped[] = $img;
+                }
+                $values['packing_images'] = $deduped;
+            }
+
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Itm pkg Cover saved.',
+                'url' => $publicPath === '' ? '' : $this->normalizeImageUrl($publicPath),
+                'path' => $publicPath,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PO item pkg cover save failed', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save cover: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Save Design File path on product_master.Values.packing_cdr_path
+     * (same field as Packing Instructions → CDR / design file).
+     */
+    public function saveDesignFile(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+            'sku' => 'nullable|string|max:255',
+            'path' => 'nullable|string|max:2048',
+            'url' => 'nullable|string|max:2048',
+        ]);
+
+        $product = ProductMaster::find($validated['product_id']);
+        if (!$product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        try {
+            $pathInput = trim((string) ($validated['path'] ?? $validated['url'] ?? ''));
+            if ($pathInput === '') {
+                $publicPath = '';
+            } elseif (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
+                $publicPath = $pathInput;
+            } else {
+                $publicPath = ltrim($pathInput, '/');
+            }
+
+            $values = $this->productValuesArray($product);
+            if ($publicPath === '') {
+                unset($values['packing_cdr_path']);
+            } else {
+                $values['packing_cdr_path'] = $publicPath;
+            }
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Design File saved.',
+                'url' => $publicPath === '' ? '' : $this->normalizeImageUrl($publicPath),
+                'path' => $publicPath,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PO design file save failed', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save Design File: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Save Ctn Print File on product_master.Values.ctn_print_file (path or upload).
+     */
+    public function saveCtnPrintFile(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+            'sku' => 'nullable|string|max:255',
+            'path' => 'nullable|string|max:2048',
+            'url' => 'nullable|string|max:2048',
+            'file' => 'nullable|file|max:51200',
+        ]);
+
+        $product = ProductMaster::find($validated['product_id']);
+        if (!$product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        try {
+            $publicPath = '';
+            if ($request->hasFile('file')) {
+                $safeSku = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim((string) $product->sku)) ?: ('id_'.$product->id);
+                $ext = $request->file('file')->getClientOriginalExtension() ?: 'bin';
+                $stored = $request->file('file')->storeAs(
+                    'packing_instruction_ctn_print',
+                    $product->id.'_'.$safeSku.'_ctn_print.'.$ext,
+                    'public'
+                );
+                $publicPath = 'storage/'.$stored;
+            } else {
+                $pathInput = trim((string) ($validated['path'] ?? $validated['url'] ?? ''));
+                if ($pathInput === '') {
+                    $publicPath = '';
+                } elseif (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
+                    $publicPath = $pathInput;
+                } else {
+                    $publicPath = ltrim($pathInput, '/');
+                }
+            }
+
+            $values = $this->productValuesArray($product);
+            if ($publicPath === '') {
+                unset($values['ctn_print_file']);
+            } else {
+                $values['ctn_print_file'] = $publicPath;
+            }
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Ctn Print File saved.',
+                'url' => $publicPath === '' ? '' : $this->normalizeImageUrl($publicPath),
+                'path' => $publicPath,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PO ctn print file save failed', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save Ctn Print File: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Cover image for Itm pkg: Values.item_pkg_cover, else first packing_images entry.
+     */
+    private function resolveItemPkgCoverUrl(array $values): ?string
+    {
+        $direct = trim((string) ($values['item_pkg_cover'] ?? ''));
+        if ($direct !== '') {
+            return $this->normalizeImageUrl($direct);
+        }
+
+        $raw = $values['packing_images'] ?? [];
+        if (!is_array($raw) || $raw === []) {
+            return null;
+        }
+
+        $first = $raw[0] ?? null;
+        if (is_string($first) && trim($first) !== '') {
+            return $this->normalizeImageUrl($first);
+        }
+        if (is_array($first) && !empty($first['path'])) {
+            return $this->normalizeImageUrl((string) $first['path']);
+        }
+
+        return null;
+    }
+
+    /**
+     * Save Item Pkg / Ctn Pkg using the same Dim Wt Master data sources.
+     *
+     * @return array{success: bool, message?: string, item_pkg?: string, ctn_pkg?: string}
+     */
+    private function saveDimWtPkgForSku(string $sku, ?string $itemPkg, ?string $ctnPkg): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required to save Item/Ctn Pkg.'];
+        }
+
+        $resolved = $this->dimWtPkgBySku([$sku]);
+        $productId = $resolved[$sku]['product_id'] ?? null;
+        $matchedSku = $resolved[$sku]['matched_sku'] ?? $sku;
+
+        if (!$productId) {
+            $product = ProductMaster::query()
+                ->where('sku', $sku)
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->first(['id', 'sku']);
+            if (!$product) {
+                return [
+                    'success' => false,
+                    'message' => 'Product not found in Dim Wt Master for SKU: '.$sku,
+                ];
+            }
+            $productId = $product->id;
+            $matchedSku = trim((string) $product->sku);
+        }
+
+        $product = ProductMaster::find($productId);
+        if (!$product) {
+            return ['success' => false, 'message' => 'Product not found in Dim Wt Master.'];
+        }
+
+        $outItem = null;
+        $outCtn = null;
+
+        if ($itemPkg !== null) {
+            $text = trim($itemPkg);
+            if ($text === '') {
+                InstructionsItemPkg::where('product_master_id', $product->id)->delete();
+                $outItem = '';
+            } else {
+                $row = InstructionsItemPkg::updateOrCreate(
+                    ['product_master_id' => $product->id],
+                    ['instructions' => $text]
+                );
+                $outItem = (string) $row->instructions;
+            }
+        }
+
+        if ($ctnPkg !== null) {
+            $values = $this->productValuesArray($product);
+            $raw = trim($ctnPkg);
+            if ($raw === '') {
+                unset($values['ctn_instructions']);
+                $outCtn = '';
+            } else {
+                $values['ctn_instructions'] = mb_substr($raw, 0, 100);
+                $outCtn = $values['ctn_instructions'];
+            }
+            $product->Values = $values;
+            $product->save();
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Dim Wt pkg saved.',
+            'item_pkg' => $outItem,
+            'ctn_pkg' => $outCtn,
+            'matched_sku' => $matchedSku,
+        ];
     }
 
     public function updatePurchaseOrder(Request $request, $id)
@@ -426,6 +802,7 @@ class PurchaseOrderController extends Controller
         $weightsBySku = $specTech->weightsKgBySkus($skus);
         $cbmBySku = $specTech->cbmBySkus($skus);
         $shortNameBySku = $this->shortNamesBySku($skus);
+        $pkgBySku = $this->dimWtPkgBySku($skus);
 
         foreach ($items as $item) {
             if (!is_object($item)) {
@@ -439,7 +816,17 @@ class PurchaseOrderController extends Controller
             if (empty($item->barcode_url) && !empty($item->barcode_code)) {
                 $item->barcode_url = $this->barcodeDataUri((string) $item->barcode_code);
             }
-            $item->short_name = $shortNameBySku[$sku] ?? '';
+            $item->short_name = $shortNameBySku[$sku]
+                ?? trim((string) ($item->short_name ?? ''));
+            $item->item_pkg = $pkgBySku[$sku]['item_pkg'] ?? '';
+            $item->ctn_pkg = $pkgBySku[$sku]['ctn_pkg'] ?? '';
+            $item->item_pkg_cover = $pkgBySku[$sku]['item_pkg_cover'] ?? null;
+            $item->design_file = $pkgBySku[$sku]['design_file'] ?? null;
+            $item->ctn_qty = $pkgBySku[$sku]['ctn_qty'] ?? null;
+            $item->ctn_print_file = $pkgBySku[$sku]['ctn_print_file'] ?? null;
+            $item->special_instruction_qc = $pkgBySku[$sku]['special_instruction_qc'] ?? '';
+            $item->product_master_id = $pkgBySku[$sku]['product_id'] ?? null;
+            $item->product_master_sku = $pkgBySku[$sku]['matched_sku'] ?? $sku;
             $item->tech = $this->normalizeTechText($item->tech ?? '');
             if ($item->tech === '' && !empty($techBySku[$sku])) {
                 $item->tech = $this->normalizeTechText($techBySku[$sku]);
@@ -779,6 +1166,139 @@ class PurchaseOrderController extends Controller
                 if ($poSku === $cpSku || str_starts_with($poSku, $cpSku . ' ')) {
                     $resolved = $this->resolveCpMasterBarcode($product);
                     if (($resolved['image'] || $resolved['code']) && strlen($cpSku) > $bestLen) {
+                        $bestLen = strlen($cpSku);
+                        $best = $resolved;
+                    }
+                }
+            }
+            if ($best) {
+                $map[$poSku] = $best;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Item Pkg + Ctn Pkg from Dim Wt Master sources:
+     * - item_pkg → instructions_item_pkg.instructions
+     * - ctn_pkg  → product_master.Values.ctn_instructions
+     * Always resolves product_id (even when texts are empty) so edits can be saved.
+     * Same exact + prefix SKU matching as product photos / barcodes.
+     *
+     * @return array<string, array{item_pkg: string, ctn_pkg: string, item_pkg_cover: ?string, design_file: ?string, ctn_qty: mixed, ctn_print_file: ?string, product_id: ?int, matched_sku: string}>
+     */
+    private function dimWtPkgBySku(array $skus): array
+    {
+        $skuList = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $skuList[$sku] = true;
+            }
+        }
+        $skuList = array_keys($skuList);
+        if ($skuList === []) {
+            return [];
+        }
+
+        $resolve = function (ProductMaster $product, $pkgByProductId, $qcByProductId): array {
+            $values = $this->productValuesArray($product);
+            $ctn = trim((string) ($values['ctn_instructions'] ?? ''));
+            $pkg = $pkgByProductId->get($product->id);
+            $item = $pkg && $pkg->instructions !== null ? trim((string) $pkg->instructions) : '';
+            $designRaw = trim((string) ($values['packing_cdr_path'] ?? ''));
+            $printRaw = trim((string) ($values['ctn_print_file'] ?? ''));
+            $ctnQty = $values['ctn_qty'] ?? null;
+            if ($ctnQty !== null && $ctnQty !== '') {
+                $ctnQty = is_scalar($ctnQty) ? trim((string) $ctnQty) : null;
+                if ($ctnQty === '') {
+                    $ctnQty = null;
+                }
+            } else {
+                $ctnQty = null;
+            }
+            $qc = $qcByProductId->get($product->id);
+            $specialQc = $qc && $qc->qc_improvement_req !== null
+                ? trim((string) $qc->qc_improvement_req)
+                : '';
+
+            return [
+                'item_pkg' => $item,
+                'ctn_pkg' => $ctn,
+                'item_pkg_cover' => $this->resolveItemPkgCoverUrl($values),
+                'design_file' => $designRaw !== '' ? $this->normalizeImageUrl($designRaw) : null,
+                'ctn_qty' => $ctnQty,
+                'ctn_print_file' => $printRaw !== '' ? $this->normalizeImageUrl($printRaw) : null,
+                'special_instruction_qc' => $specialQc,
+                'product_id' => (int) $product->id,
+                'matched_sku' => trim((string) $product->sku),
+            ];
+        };
+
+        $products = ProductMaster::query()
+            ->whereIn('sku', $skuList)
+            ->where('sku', 'NOT LIKE', 'PARENT %')
+            ->get(['id', 'sku', 'Values']);
+        $pkgByProductId = InstructionsItemPkg::query()
+            ->whereIn('product_master_id', $products->pluck('id'))
+            ->get()
+            ->keyBy('product_master_id');
+        $qcByProductId = QcImprovementReqBeforeItemPkg::query()
+            ->whereIn('product_master_id', $products->pluck('id'))
+            ->get()
+            ->keyBy('product_master_id');
+
+        $map = [];
+        foreach ($products as $product) {
+            $map[trim((string) $product->sku)] = $resolve($product, $pkgByProductId, $qcByProductId);
+        }
+
+        $missing = array_values(array_filter($skuList, fn ($sku) => empty($map[$sku])));
+        if ($missing === []) {
+            return $map;
+        }
+
+        $candidates = ProductMaster::query()
+            ->where('sku', 'NOT LIKE', 'PARENT %')
+            ->where(function ($q) use ($missing) {
+                foreach ($missing as $sku) {
+                    $parts = preg_split('/\s+/', $sku);
+                    if (!$parts || count($parts) < 2) {
+                        continue;
+                    }
+                    $prefix = implode(' ', array_slice($parts, 0, min(3, count($parts) - 1)));
+                    if ($prefix !== '') {
+                        $q->orWhere('sku', 'like', $prefix . '%');
+                    }
+                }
+            })
+            ->get(['id', 'sku', 'Values']);
+
+        if ($candidates->isNotEmpty()) {
+            $extraPkg = InstructionsItemPkg::query()
+                ->whereIn('product_master_id', $candidates->pluck('id'))
+                ->get()
+                ->keyBy('product_master_id');
+            $pkgByProductId = $pkgByProductId->union($extraPkg);
+            $extraQc = QcImprovementReqBeforeItemPkg::query()
+                ->whereIn('product_master_id', $candidates->pluck('id'))
+                ->get()
+                ->keyBy('product_master_id');
+            $qcByProductId = $qcByProductId->union($extraQc);
+        }
+
+        foreach ($missing as $poSku) {
+            $bestLen = -1;
+            $best = null;
+            foreach ($candidates as $product) {
+                $cpSku = trim((string) $product->sku);
+                if ($cpSku === '' || strlen($cpSku) > strlen($poSku)) {
+                    continue;
+                }
+                if ($poSku === $cpSku || str_starts_with($poSku, $cpSku . ' ')) {
+                    $resolved = $resolve($product, $pkgByProductId, $qcByProductId);
+                    if (strlen($cpSku) > $bestLen) {
                         $bestLen = strlen($cpSku);
                         $best = $resolved;
                     }

@@ -3267,6 +3267,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/purchase-order/by-po/{poNumber}/generate-pdf', 'generatePdfByPoNumber')->name('generate-pdf-by-po');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
         Route::post('/purchase-order/{id}/update-item-supplier-sku', 'updateItemSupplierSku')->name('purchase-order.update-item-supplier-sku');
+        Route::post('/purchase-order/item-pkg-cover', 'saveItemPkgCover')->name('purchase-order.item-pkg-cover');
+        Route::post('/purchase-order/design-file', 'saveDesignFile')->name('purchase-order.design-file');
+        Route::post('/purchase-order/ctn-print-file', 'saveCtnPrintFile')->name('purchase-order.ctn-print-file');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
         Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');

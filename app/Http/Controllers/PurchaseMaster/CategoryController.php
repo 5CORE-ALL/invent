@@ -713,6 +713,7 @@ class CategoryController extends Controller
 
             $pkg = $instructionsPkgByProductId->get($product->id);
             $row['instructions_item_pkg'] = $pkg && $pkg->instructions !== null ? (string) $pkg->instructions : '';
+            $row['item_pkg_cover'] = $this->resolveItemPkgCoverUrl($row);
 
             $qcBefore = $qcImprovementBeforeItemPkgByProductId->get($product->id);
             $row['qc_improvement_req_before_item_pkg'] = $qcBefore && $qcBefore->qc_improvement_req !== null
@@ -986,7 +987,7 @@ class CategoryController extends Controller
                 'ctn_w' => 'nullable|numeric',
                 'ctn_h' => 'nullable|numeric',
                 'ctn_cbm' => 'nullable|numeric',
-                'ctn_qty' => 'nullable|numeric',
+                'ctn_qty' => 'nullable|string|max:100',
                 'ctn_cbm_each' => 'nullable|numeric',
                 'cbm_e' => 'nullable|numeric',
                 'ctn_gwt' => 'nullable|numeric',
@@ -1063,8 +1064,14 @@ class CategoryController extends Controller
             if (isset($validated['ctn_cbm'])) {
                 $values['ctn_cbm'] = $validated['ctn_cbm'];
             }
-            if (isset($validated['ctn_qty'])) {
-                $values['ctn_qty'] = $validated['ctn_qty'];
+            if (array_key_exists('ctn_qty', $validated)) {
+                $v = $validated['ctn_qty'];
+                if ($v === null || $v === '') {
+                    $values['ctn_qty'] = null;
+                } else {
+                    $trimmed = trim((string) $v);
+                    $values['ctn_qty'] = $trimmed === '' ? null : (is_numeric($trimmed) ? (0 + $trimmed) : $trimmed);
+                }
             }
             if (isset($validated['ctn_cbm_each'])) {
                 $values['ctn_cbm_each'] = $validated['ctn_cbm_each'];
@@ -2859,6 +2866,40 @@ class CategoryController extends Controller
         }
 
         return '/'.ltrim($s, '/');
+    }
+
+    /**
+     * Itm pkg Cover: Values.item_pkg_cover, else first packing_images entry.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function resolveItemPkgCoverUrl(array $values): ?string
+    {
+        $direct = trim((string) ($values['item_pkg_cover'] ?? ''));
+        if ($direct !== '') {
+            $url = $this->packingImagePublicUrl($direct);
+
+            return $url !== '' ? $url : null;
+        }
+
+        $raw = $values['packing_images'] ?? [];
+        if (! is_array($raw) || $raw === []) {
+            return null;
+        }
+
+        $first = $raw[0] ?? null;
+        if (is_string($first) && trim($first) !== '') {
+            $url = $this->packingImagePublicUrl($first);
+
+            return $url !== '' ? $url : null;
+        }
+        if (is_array($first) && ! empty($first['path'])) {
+            $url = $this->packingImagePublicUrl((string) $first['path']);
+
+            return $url !== '' ? $url : null;
+        }
+
+        return null;
     }
 
     public function listPackingInstructionImages(Request $request)

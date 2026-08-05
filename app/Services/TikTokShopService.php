@@ -1362,14 +1362,18 @@ class TikTokShopService
             $this->client->setAccessToken($this->accessToken);
             $this->ensureShopCipher();
 
+            $warehouseId = $this->resolveDefaultWarehouseId();
+            $inventoryRow = ['quantity' => max(0, $quantity)];
+            if ($warehouseId !== null && $warehouseId !== '') {
+                $inventoryRow['warehouse_id'] = $warehouseId;
+            }
+
             // SDK: Product::updateInventory($product_id, $params)
             $params = [
                 'skus' => [
                     [
                         'id' => $skuId,
-                        'inventory' => [
-                            ['quantity' => max(0, $quantity)],
-                        ],
+                        'inventory' => [$inventoryRow],
                     ],
                 ],
             ];
@@ -1379,7 +1383,22 @@ class TikTokShopService
 
             // Library may return data payload or wrapped {code, message, data}
             if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
-                return ['success' => false, 'message' => (string) ($response['message'] ?? 'TikTok inventory update failed.')];
+                $message = (string) ($response['message'] ?? 'TikTok inventory update failed.');
+                // Retry once with the warehouse from the product SKU if default warehouse was rejected.
+                if ($warehouseId && (stripos($message, 'warehouse') !== false)) {
+                    $skuWarehouse = $this->warehouseIdFromProductSku($productId, $skuId);
+                    if ($skuWarehouse && $skuWarehouse !== $warehouseId) {
+                        $params['skus'][0]['inventory'][0]['warehouse_id'] = $skuWarehouse;
+                        $response = $this->client->Product->updateInventory($productId, $params);
+                        $this->lastResponse = $response;
+                        if (! (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0)) {
+                            return ['success' => true, 'message' => 'Inventory updated.'];
+                        }
+                        $message = (string) ($response['message'] ?? $message);
+                    }
+                }
+
+                return ['success' => false, 'message' => $message];
             }
 
             return ['success' => true, 'message' => 'Inventory updated.'];
@@ -1398,6 +1417,107 @@ class TikTokShopService
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    protected function warehouseIdFromProductSku(string $productId, string $skuId): ?string
+    {
+        try {
+            $response = $this->client->Product->getProduct($productId);
+            $data = is_array($response) ? ($response['data'] ?? $response) : [];
+            $skus = is_array($data['skus'] ?? null) ? $data['skus'] : [];
+
+            foreach ($skus as $sku) {
+                if (! is_array($sku) || (string) ($sku['id'] ?? '') !== $skuId) {
+                    continue;
+                }
+                $inventory = $sku['inventory'] ?? [];
+                if (! is_array($inventory)) {
+                    break;
+                }
+                $rows = array_is_list($inventory) ? $inventory : [$inventory];
+                foreach ($rows as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $wid = trim((string) ($row['warehouse_id'] ?? ''));
+                    if ($wid !== '') {
+                        return $wid;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::info('TikTok warehouseIdFromProductSku failed', [
+                'product_id' => $productId,
+                'sku_id' => $skuId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    protected function resolveDefaultWarehouseId(): ?string
+    {
+        $cacheKey = $this->cachePrefix.'_default_warehouse_id';
+
+        try {
+            $cached = Cache::get($cacheKey);
+            if (is_string($cached) && $cached !== '') {
+                return $cached === '__none__' ? null : $cached;
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        try {
+            $response = $this->client->Logistic->getWarehouseList();
+            $warehouses = [];
+            if (is_array($response)) {
+                $warehouses = $response['warehouses']
+                    ?? (is_array($response['data'] ?? null) ? ($response['data']['warehouses'] ?? $response['data']) : null)
+                    ?? (array_is_list($response) ? $response : []);
+            }
+            if (! is_array($warehouses)) {
+                $warehouses = [];
+            }
+
+            $fallback = null;
+            foreach ($warehouses as $wh) {
+                if (! is_array($wh)) {
+                    continue;
+                }
+                $id = trim((string) ($wh['id'] ?? $wh['warehouse_id'] ?? ''));
+                if ($id === '') {
+                    continue;
+                }
+                $fallback ??= $id;
+                $type = strtoupper((string) ($wh['type'] ?? $wh['warehouse_type'] ?? ''));
+                $isDefault = ! empty($wh['is_default'])
+                    || str_contains($type, 'SALES')
+                    || str_contains($type, 'DEFAULT');
+                if ($isDefault) {
+                    try {
+                        Cache::put($cacheKey, $id, 3600);
+                    } catch (\Throwable $e) {
+                        // ignore
+                    }
+
+                    return $id;
+                }
+            }
+
+            try {
+                Cache::put($cacheKey, $fallback ?? '__none__', $fallback ? 3600 : 600);
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            return $fallback;
+        } catch (\Throwable $e) {
+            Log::warning('TikTok resolveDefaultWarehouseId failed', ['error' => $e->getMessage()]);
+        }
+
+        return null;
     }
 
     /**

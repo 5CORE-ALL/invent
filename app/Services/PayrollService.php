@@ -78,13 +78,14 @@ class PayrollService
     }
 
     /**
-     * Base query for employees eligible to be *added* to a payroll month: active
-     * users marked show_in_salary who had joined on or before the month ends.
+     * Base query for employees eligible to be *added* to a payroll month: users
+     * marked show_in_salary who had joined on or before the month ends. Includes
+     * inactive users — callers still require recorded working hours before
+     * creating a row, so leavers with login hours that month still appear.
      */
     protected function eligibleUsersQuery(?PayrollMonth $month = null)
     {
         $query = User::query()
-            ->where('is_active', true)
             ->where('show_in_salary', true)
             ->with('userSalary');
 
@@ -101,8 +102,9 @@ class PayrollService
     }
 
     /**
-     * Users who may receive a row when back-filling a month. Includes deactivated
-     * staff so a missing prior-month row can be restored after an account is turned off.
+     * Users who may receive a row when back-filling a month. Includes inactive
+     * staff (so leavers who still logged hours that month can appear). Rows are
+     * only created when recorded hours for the month are greater than zero.
      */
     protected function sheetPopulationQuery(PayrollMonth $month)
     {
@@ -123,9 +125,77 @@ class PayrollService
     }
 
     /**
-     * Existing payroll rows to drop from an unlocked month. Deactivated staff are
-     * kept so prior months stay visible after an account is turned off. Only remove
-     * rows for users excluded from salary, late joiners, or deleted accounts.
+     * Productive TeamLogger hours for a user in the given month map (0 when absent).
+     *
+     * @param  array<string, array<string, mixed>>  $teamLogger
+     */
+    protected function liveHoursForUser(User $user, array $teamLogger): float
+    {
+        $email = $this->resolveTeamLoggerEmail($user->email);
+        if (! array_key_exists($email, $teamLogger)) {
+            return 0.0;
+        }
+
+        $entry = $teamLogger[$email];
+        $total = (float) ($entry['total_hours'] ?? 0);
+        $idle = (float) ($entry['idle_hours'] ?? 0);
+
+        if ($total > 0) {
+            return (float) (int) round(max(0, $total - max(0, $idle)));
+        }
+
+        return (float) ($entry['hours'] ?? $entry['active_hours'] ?? 0);
+    }
+
+    /**
+     * Whether a user has recorded working hours for this month's TeamLogger data.
+     * Active/inactive does not matter — hours alone decide visibility.
+     *
+     * @param  array<string, array<string, mixed>>  $teamLogger
+     */
+    protected function userHasRecordedHours(User $user, array $teamLogger): bool
+    {
+        return $this->liveHoursForUser($user, $teamLogger) > 0;
+    }
+
+    /**
+     * Whether a payroll row should stay on the sheet: any positive login/working
+     * hours (live TeamLogger, manual override, or already stored). Inactive users
+     * with hours are kept; anyone with zero hours is dropped.
+     *
+     * @param  array<string, array<string, mixed>>  $teamLogger
+     */
+    protected function rowHasPayableHours(PayrollEmployeeSalary $row, array $teamLogger): bool
+    {
+        if ($row->hours_overridden) {
+            return (float) $row->hours_worked > 0;
+        }
+
+        $user = $row->user;
+        if (! $user) {
+            return false;
+        }
+
+        $live = $this->liveHoursForUser($user, $teamLogger);
+        if ($live > 0) {
+            return true;
+        }
+
+        $email = $this->resolveTeamLoggerEmail($user->email);
+        if (array_key_exists($email, $teamLogger)) {
+            // Live record exists and is zero — no work this month.
+            return false;
+        }
+
+        // No live TeamLogger row: keep if the sheet already has stored hours
+        // (inactive leavers whose hours were synced earlier still show).
+        return (float) $row->hours_worked > 0;
+    }
+
+    /**
+     * Existing payroll rows to drop from an unlocked month: users excluded from
+     * salary, late joiners, or deleted accounts. Hours-based pruning is handled
+     * separately by removeEmployeesWithoutHours().
      *
      * @return list<int>
      */
@@ -159,8 +229,7 @@ class PayrollService
 
     /**
      * Drop rows on an unlocked month's sheet for users who should never appear on
-     * that month (removed from salary, joined after the period, etc.). Deactivated
-     * users are kept — their past-month payroll remains visible.
+     * that month (removed from salary, joined after the period, etc.).
      */
     public function removeIneligibleEmployees(PayrollMonth $month): int
     {
@@ -177,6 +246,35 @@ class PayrollService
         return PayrollEmployeeSalary::where('payroll_month_id', $month->id)
             ->whereIn('user_id', $removeIds)
             ->delete();
+    }
+
+    /**
+     * Drop sheet rows with no working hours for the month. Inactive users are
+     * still shown when they have login hours; they are only removed when hours
+     * are zero (e.g. after they leave and stop logging time).
+     *
+     * @return int Number of rows removed
+     */
+    public function removeEmployeesWithoutHours(PayrollMonth $month): int
+    {
+        if ($month->is_locked) {
+            return 0;
+        }
+
+        $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
+        $removeIds = [];
+
+        foreach (PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get() as $row) {
+            if (! $this->rowHasPayableHours($row, $teamLogger)) {
+                $removeIds[] = $row->id;
+            }
+        }
+
+        if ($removeIds === []) {
+            return 0;
+        }
+
+        return PayrollEmployeeSalary::whereIn('id', $removeIds)->delete();
     }
 
     /**
@@ -274,6 +372,10 @@ class PayrollService
 
         $count = 0;
         foreach ($query->get() as $user) {
+            if (! $this->userHasRecordedHours($user, $teamLogger)) {
+                continue;
+            }
+
             $exists = PayrollEmployeeSalary::where('payroll_month_id', $month->id)
                 ->where('user_id', $user->id)
                 ->exists();
@@ -324,10 +426,10 @@ class PayrollService
     }
 
     /**
-     * Make sure every (non-deleted) user has a row on this month's sheet without
-     * touching rows that already exist. This lets the payroll screen show all
-     * users automatically on open, so a manual "Sync from Team" is never required.
-     * Existing rows (and any manual salary edits on them) are left untouched.
+     * Ensure every show_in_salary user with recorded hours for this month has a
+     * sheet row, without touching rows that already exist. Users with no hours
+     * (including inactive leavers) are not added — removeEmployeesWithoutHours()
+     * drops zero-hour rows after hours refresh.
      */
     public function ensureSheetPopulated(PayrollMonth $month): int
     {
@@ -351,6 +453,10 @@ class PayrollService
         $count = 0;
 
         foreach ($missing as $user) {
+            if (! $this->userHasRecordedHours($user, $teamLogger)) {
+                continue;
+            }
+
             PayrollEmployeeSalary::create(array_merge(
                 $this->newRowAttributes($month, $user, $teamLogger),
                 [
@@ -554,14 +660,7 @@ class PayrollService
                 continue;
             }
             // Payroll Hours LM = productive only (TeamLogger total − idle). Never include idle.
-            $entry = $teamLogger[$email];
-            $total = (float) ($entry['total_hours'] ?? 0);
-            $idle = (float) ($entry['idle_hours'] ?? 0);
-            if ($total > 0) {
-                $hours = (float) (int) round(max(0, $total - max(0, $idle)));
-            } else {
-                $hours = (float) ($entry['hours'] ?? $entry['active_hours'] ?? 0);
-            }
+            $hours = $this->liveHoursForUser($row->user, $teamLogger);
             $hoursChanged = (float) $row->hours_worked !== $hours;
             $clearOverride = $freshFromApi && $row->hours_overridden;
 

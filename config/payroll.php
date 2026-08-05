@@ -22,6 +22,27 @@ return [
     ],
 
     /*
+    | Directors omitted from the bank payout / salary sheet download.
+    | Matched by email or by full/first name (case-insensitive), in addition to
+    | users whose org_level is "director".
+    */
+    'payout_sheet_exclude_emails' => [
+        'president@5core.com',       // Amarjit
+        'ritu.kaur013@gmail.com',    // RITU
+        'inventory@5core.com',       // Ritu
+        'ineetkalra@5core.com',      // Ineet
+        'sr.manager@5core.com',      // Jasmine
+    ],
+
+    'payout_sheet_exclude_names' => [
+        'amarjit',
+        'ritu',
+        'ineet',
+        'priyanka',
+        'jasmine',
+    ],
+
+    /*
     | Map user email → TeamLogger email when they differ.
     */
     'email_mapping' => [

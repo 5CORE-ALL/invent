@@ -17,7 +17,7 @@ class InstructionsItemPkgController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|integer',
             'sku' => 'nullable|string|max:255',
-            'instructions' => 'nullable|string|max:2000',
+            'instructions' => 'nullable|string',
         ]);
 
         $product = ProductMaster::find($validated['product_id']);
@@ -48,11 +48,9 @@ class InstructionsItemPkgController extends Controller
             ]);
         }
 
-        $stored = mb_substr($text, 0, 2000);
-
         $row = InstructionsItemPkg::updateOrCreate(
             ['product_master_id' => $product->id],
-            ['instructions' => $stored]
+            ['instructions' => $text]
         );
 
         return response()->json([

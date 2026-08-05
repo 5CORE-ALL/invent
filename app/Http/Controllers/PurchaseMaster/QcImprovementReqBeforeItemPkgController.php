@@ -17,7 +17,7 @@ class QcImprovementReqBeforeItemPkgController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|integer',
             'sku' => 'nullable|string|max:255',
-            'qc_improvement_req' => 'nullable|string|max:2000',
+            'qc_improvement_req' => 'nullable|string',
         ]);
 
         $product = ProductMaster::find($validated['product_id']);
@@ -48,11 +48,9 @@ class QcImprovementReqBeforeItemPkgController extends Controller
             ]);
         }
 
-        $stored = mb_substr($text, 0, 2000);
-
         $row = QcImprovementReqBeforeItemPkg::updateOrCreate(
             ['product_master_id' => $product->id],
-            ['qc_improvement_req' => $stored]
+            ['qc_improvement_req' => $text]
         );
 
         return response()->json([

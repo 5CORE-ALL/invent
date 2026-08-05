@@ -350,6 +350,25 @@
             table-layout: auto;
         }
 
+        /* Itm pkg Cover thumbnail */
+        #dim-wt-master-datatable th.col-itm-pkg-cover,
+        #dim-wt-master-datatable td.col-itm-pkg-cover {
+            width: 56px;
+            min-width: 56px;
+            max-width: 64px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        #dim-wt-master-datatable td.col-itm-pkg-cover img.itm-pkg-cover-thumb {
+            width: 36px;
+            height: 36px;
+            object-fit: contain;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+
         /* Instructions item PKG: ~100 characters per line, then wrap (100ch ≈ “0” width in this font) */
         #dim-wt-master-datatable th.col-instructions-item-pkg,
         #dim-wt-master-datatable td.col-instructions-item-pkg {
@@ -720,6 +739,7 @@
                                     <th><span class="th-vertical-label">Carton CBM<br>each</span></th>
                                     <th class="col-ctn-pkg text-center"><span class="th-vertical-label" style="font-size: 9px;">Ctn pkg</span></th>
                                     <th class="col-instructions-item-pkg"><span class="th-vertical-label" style="font-size: 9px;">item PKG</span></th>
+                                    <th class="col-itm-pkg-cover text-center"><span class="th-vertical-label" style="font-size: 9px;">Itm pkg Cover</span></th>
                                     <th class="text-center"><span class="th-vertical-label">Verified</span></th>
                                     <th><span class="th-vertical-label">Action</span></th>
                                 </tr>
@@ -871,8 +891,29 @@
                         <div class="row mb-3">
                             <div class="col-12">
                                 <label for="editInstructionsItemPkg" class="form-label">Instructions</label>
-                                <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="3" maxlength="2000" placeholder="Packaging instructions (saved separately from dimensions)"></textarea>
-                                <small class="text-muted">Max 2000 characters. Leave blank to clear. Not saved for PARENT rows.</small>
+                                <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="3" placeholder="Packaging instructions (saved separately from dimensions)"></textarea>
+                                <small class="text-muted">Leave blank to clear. Not saved for PARENT rows.</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-1">
+                            <div class="col-12">
+                                <small class="text-secondary fw-semibold">Itm pkg Cover</small>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-4 text-center">
+                                <div id="editItemPkgCoverPreview"
+                                     style="width:120px;height:120px;margin:0 auto;border:1px solid #d1d5db;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;">
+                                    <span class="text-muted small">No cover</span>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <label for="editItemPkgCoverInput" class="form-label">Cover image URL / path</label>
+                                <input type="text" class="form-control" id="editItemPkgCoverInput"
+                                       placeholder="Image URL or path (e.g. storage/... or https://...)"
+                                       autocomplete="off">
+                                <small class="text-muted">Saved to product master Values.item_pkg_cover (same as PO proforma). Leave blank to clear. Not saved for PARENT rows.</small>
                             </div>
                         </div>
 
@@ -1564,6 +1605,28 @@
                     }
                     row.appendChild(pkgCell);
 
+                    // Itm pkg Cover (Values.item_pkg_cover / first packing_images)
+                    const coverCell = document.createElement('td');
+                    coverCell.className = 'col-itm-pkg-cover text-center';
+                    if (isParentRow) {
+                        coverCell.textContent = '--';
+                    } else {
+                        const coverUrl = (item.item_pkg_cover != null ? String(item.item_pkg_cover).trim() : '');
+                        if (coverUrl) {
+                            coverCell.innerHTML = `<img src="${escapeHtml(coverUrl)}" alt="Itm pkg Cover" class="itm-pkg-cover-thumb" title="Itm pkg Cover">`;
+                            const coverImg = coverCell.querySelector('img');
+                            if (coverImg) {
+                                coverImg.addEventListener('click', function(e) {
+                                    e.stopPropagation();
+                                    window.open(coverUrl, '_blank', 'noopener');
+                                });
+                            }
+                        } else {
+                            coverCell.innerHTML = '<span class="text-muted">—</span>';
+                        }
+                    }
+                    row.appendChild(coverCell);
+
                     // Verified column – red/green dot toggle
                     const isVerified = item.verified_data === 1 || item.verified_data === true ||
                         (item.Values && (item.Values.verified_data === 1 || item.Values.verified_data === true));
@@ -1900,7 +1963,8 @@
                     27: { key: 'ctn_cbm_each', type: 'num' },
                     28: { key: 'ctn_instructions', type: 'text' },
                     29: { key: 'instructions_item_pkg', type: 'text' },
-                    30: { key: 'verified_data', type: 'num' },
+                    30: { key: 'item_pkg_cover', type: 'text' },
+                    31: { key: 'verified_data', type: 'num' },
                 };
 
                 const getVal = (item, key) => {
@@ -2740,6 +2804,40 @@
                 return data;
             }
 
+            function setEditItemPkgCoverPreview(url) {
+                const box = document.getElementById('editItemPkgCoverPreview');
+                if (!box) return;
+                const u = (url || '').trim();
+                box.innerHTML = u
+                    ? `<img src="${escapeHtml(u)}" alt="Cover" style="max-width:100%;max-height:100%;object-fit:contain;">`
+                    : '<span class="text-muted small">No cover</span>';
+            }
+
+            async function saveItemPkgCover(productId, sku, path) {
+                const response = await fetch(@json(route('purchase-order.item-pkg-cover')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({
+                        product_id: parseInt(productId, 10),
+                        sku: sku || '',
+                        path: path != null ? String(path) : '',
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || data.success === false) {
+                    throw new Error(data.message || 'Failed to save Itm pkg Cover');
+                }
+                return data;
+            }
+
+            document.getElementById('editItemPkgCoverInput')?.addEventListener('input', function () {
+                setEditItemPkgCoverPreview(this.value || '');
+            });
+
             const BULK_EDIT_TRACKED_FIELDS = [
                 { id: 'editWtActKg', key: 'wt_act_kg', type: 'num' },
                 { id: 'editWtAct', key: 'wt_act', type: 'num' },
@@ -2768,6 +2866,8 @@
                 });
                 const pkgEl = document.getElementById('editInstructionsItemPkg');
                 snap.editInstructionsItemPkg = pkgEl ? String(pkgEl.value ?? '') : '';
+                const coverEl = document.getElementById('editItemPkgCoverInput');
+                snap.editItemPkgCoverInput = coverEl ? String(coverEl.value ?? '') : '';
                 const verifiedEl = document.getElementById('editVerified');
                 snap.editVerified = verifiedEl ? String(verifiedEl.value ?? '0') : '0';
                 return snap;
@@ -2855,7 +2955,9 @@
 
                 const ctnPkgEl = document.getElementById('editCtnInstructions');
                 const pkgEl = document.getElementById('editInstructionsItemPkg');
+                const coverInputEl = document.getElementById('editItemPkgCoverInput');
                 const skuStr = product.SKU || '';
+                const coverVal = product.item_pkg_cover != null ? String(product.item_pkg_cover) : '';
                 if (isParentSkuString(skuStr)) {
                     if (ctnPkgEl) {
                         ctnPkgEl.value = '';
@@ -2863,6 +2965,12 @@
                     }
                     pkgEl.value = '';
                     pkgEl.disabled = true;
+                    if (coverInputEl) {
+                        coverInputEl.value = '';
+                        coverInputEl.disabled = true;
+                        coverInputEl.dataset.initial = '';
+                    }
+                    setEditItemPkgCoverPreview('');
                 } else {
                     if (ctnPkgEl) {
                         ctnPkgEl.disabled = false;
@@ -2870,6 +2978,12 @@
                     }
                     pkgEl.disabled = false;
                     pkgEl.value = product.instructions_item_pkg != null ? String(product.instructions_item_pkg) : '';
+                    if (coverInputEl) {
+                        coverInputEl.disabled = false;
+                        coverInputEl.value = coverVal;
+                        coverInputEl.dataset.initial = coverVal;
+                    }
+                    setEditItemPkgCoverPreview(coverVal);
                 }
 
                 // Verified status
@@ -2943,6 +3057,11 @@
                     };
 
                     const instructionsRaw = document.getElementById('editInstructionsItemPkg').value;
+                    const coverPath = (document.getElementById('editItemPkgCoverInput')?.value || '').trim();
+                    const initialCoverPath = bulkEditInitialValues
+                        ? String(bulkEditInitialValues.editItemPkgCoverInput ?? '').trim()
+                        : String(document.getElementById('editItemPkgCoverInput')?.dataset?.initial || '').trim();
+                    const coverChanged = coverPath !== initialCoverPath;
                     const verifiedEl = document.getElementById('editVerified');
                     const verifiedValue = verifiedEl && verifiedEl.value === '1' ? 1 : 0;
 
@@ -2993,7 +3112,8 @@
                         if (isBulkSelection
                             && Object.keys(payloadFields).length === 0
                             && !instructionsChanged
-                            && !verifiedChanged) {
+                            && !verifiedChanged
+                            && !coverChanged) {
                             showToast('warning', 'No fields changed — nothing to update on selected SKUs.');
                             return;
                         }
@@ -3028,6 +3148,16 @@
                                         await saveInstructionsItemPkg(product.id, product.SKU, instructionsRaw);
                                     } catch (pkgErr) {
                                         console.error('Bulk instructions save error:', pkgErr);
+                                    }
+                                }
+                                if (coverChanged) {
+                                    try {
+                                        const coverData = await saveItemPkgCover(product.id, product.SKU, coverPath);
+                                        if (coverData) {
+                                            product.item_pkg_cover = coverData.url != null ? String(coverData.url) : coverPath;
+                                        }
+                                    } catch (coverErr) {
+                                        console.error('Bulk cover save error:', coverErr);
                                     }
                                 }
                                 if (verifiedChanged) {
@@ -3100,6 +3230,20 @@
                             modal.hide();
                             loadData();
                             return;
+                        }
+                        if (coverChanged) {
+                            try {
+                                const coverData = await saveItemPkgCover(product.id, singleSku, coverPath);
+                                if (coverData) {
+                                    product.item_pkg_cover = coverData.url != null ? String(coverData.url) : coverPath;
+                                }
+                            } catch (coverErr) {
+                                showToast('warning', 'Dimensions saved, but Itm pkg Cover could not be saved: ' + (coverErr.message || ''));
+                                const modal = bootstrap.Modal.getInstance(document.getElementById('editDimWtModal'));
+                                modal.hide();
+                                loadData();
+                                return;
+                            }
                         }
 
                         // Save verified status (non-parent SKUs only)

@@ -670,8 +670,8 @@
                         <div class="row mb-2">
                             <div class="col-12">
                                 <label for="editInstructionsItemPkg" class="form-label">Instructions</label>
-                                <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="3" maxlength="2000" placeholder="Item packaging instructions (saved separately)"></textarea>
-                                <small class="text-muted">Max 2000 characters. Leave blank to clear. Not saved for PARENT rows.</small>
+                                <textarea class="form-control" id="editInstructionsItemPkg" name="instructions_item_pkg" rows="3" placeholder="Item packaging instructions (saved separately)"></textarea>
+                                <small class="text-muted">Leave blank to clear. Not saved for PARENT rows.</small>
                             </div>
                         </div>
                     </form>

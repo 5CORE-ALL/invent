@@ -1683,7 +1683,7 @@
 
             const TOA_DATA_FIELD_META = {
                 barcode: { title: "Barcode", editable: true, multiline: false, maxLength: 255, productMaster: true },
-                instructions_item_pkg: { title: "Item Pkg.", editable: true, multiline: true, maxLength: 2000 },
+                instructions_item_pkg: { title: "Item Pkg.", editable: true, multiline: true },
                 ctn_instructions: { title: "Instr Carton", editable: true, multiline: false, maxLength: 100 },
                 packing_instructions: { title: "Design Instr.", editable: false, multiline: true, maxLength: 0 },
                 instructions_carton_design: { title: "Design Instr Carton", editable: true, multiline: true, maxLength: 2000 },
