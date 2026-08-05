@@ -2051,10 +2051,23 @@
                                         <option value="Packaging">Packaging</option>
                                         <option value="Chargeback">Chargeback</option>
                                         <option value="Orders on Hold">Orders on Hold</option>
+                                        <option value="Other">Other</option>
                                     </select>
                                     @if (empty($lockedDepartment ?? null))
                                         <div class="form-text">Click to select one or more departments.</div>
                                     @endif
+                                </div>
+
+                                <div class="col-12 d-none" id="departmentOtherNoteWrap">
+                                    <label for="hold_issue_department_other_note" class="form-label">
+                                        Other — Responsible Dept Notes <span class="text-danger">*</span>
+                                    </label>
+                                    <textarea class="form-control" id="hold_issue_department_other_note"
+                                        name="department_other_note" rows="2" maxlength="255"
+                                        placeholder="Describe the special case / responsible dept..."></textarea>
+                                    <div class="form-text text-end small">
+                                        <span id="departmentOtherNoteCharCount">0</span> / 255
+                                    </div>
                                 </div>
                             @endif
 
@@ -2234,6 +2247,9 @@
             const cAction1Input = document.getElementById('hold_issue_c_action_1');
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
             const departmentInput = document.getElementById('hold_issue_department');
+            const departmentOtherNoteWrap = document.getElementById('departmentOtherNoteWrap');
+            const departmentOtherNoteInput = document.getElementById('hold_issue_department_other_note');
+            const departmentOtherNoteCharCount = document.getElementById('departmentOtherNoteCharCount');
             const cAction1RemarkWrap = document.getElementById('cAction1RemarkWrap');
             const addRootCauseFixedOptionBtn = document.getElementById('add-root-cause-fixed-option');
             const deleteRootCauseFixedOptionBtn = document.getElementById('delete-root-cause-fixed-option');
@@ -2361,6 +2377,24 @@
                 return Array.from(departmentInput.selectedOptions || []).map(o => o.value.trim()).filter(Boolean);
             }
 
+            function departmentSelectionIncludesOther() {
+                return getDepartmentPayload().some(d => String(d).trim() === 'Other');
+            }
+
+            function toggleDepartmentOtherNoteField() {
+                const isOther = departmentSelectionIncludesOther();
+                if (departmentOtherNoteWrap) {
+                    departmentOtherNoteWrap.classList.toggle('d-none', !isOther);
+                }
+                if (departmentOtherNoteInput) {
+                    departmentOtherNoteInput.required = isOther;
+                    if (!isOther) {
+                        departmentOtherNoteInput.value = '';
+                        if (departmentOtherNoteCharCount) departmentOtherNoteCharCount.textContent = '0';
+                    }
+                }
+            }
+
             function setDepartmentMultiSelect(record) {
                 if (!departmentInput) return;
                 const depts = rowDepartmentValues(record);
@@ -2368,6 +2402,7 @@
                     o.selected = depts.includes(o.value);
                 });
                 syncDepartmentDropdown();
+                toggleDepartmentOtherNoteField();
             }
 
             function clearDepartmentMultiSelect() {
@@ -2376,6 +2411,7 @@
                     o.selected = false;
                 });
                 syncDepartmentDropdown();
+                toggleDepartmentOtherNoteField();
             }
 
             function updateDepartmentLabel() {
@@ -2421,9 +2457,11 @@
                         const opt = Array.from(departmentInput.options).find(o => o.value === cb.value);
                         if (opt) opt.selected = cb.checked;
                         updateDepartmentLabel();
+                        toggleDepartmentOtherNoteField();
                     });
                 });
                 syncDepartmentDropdown();
+                toggleDepartmentOtherNoteField();
             }
 
             function rowMatchesActiveDeptFilter(r) {
@@ -4341,6 +4379,7 @@
                     department: row?.department ?? '',
                     departments: Array.isArray(row?.departments) ? row.departments : parseDepartmentList(row
                         ?.department),
+                    department_other_note: row?.department_other_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at: row?.created_at_display ?? row?.created_at ?? '',
                     order_number: row?.order_number ?? '',
@@ -4661,6 +4700,22 @@
                 setDepartmentMultiSelect({
                     departments: editDepts
                 });
+                let deptOtherNote = String(record.department_other_note || '').trim();
+                if (!deptOtherNote && record.group_id) {
+                    holdIssueRows.forEach(function(r) {
+                        if (r.group_id === record.group_id && r.sku === record.sku) {
+                            const n = String(r.department_other_note || '').trim();
+                            if (n) deptOtherNote = n;
+                        }
+                    });
+                }
+                if (departmentOtherNoteInput) {
+                    departmentOtherNoteInput.value = deptOtherNote;
+                    if (departmentOtherNoteCharCount) {
+                        departmentOtherNoteCharCount.textContent = String(deptOtherNote.length);
+                    }
+                }
+                toggleDepartmentOtherNoteField();
                 toggleCAction1RemarkField();
                 hideAlert();
 
@@ -4893,6 +4948,12 @@
                     if (departmentInput) departmentInput.focus();
                     return;
                 }
+                const deptOtherNoteVal = (departmentOtherNoteInput?.value || '').trim();
+                if (deptPayload.includes('Other') && deptOtherNoteVal === '') {
+                    showAlert('Please enter Responsible Dept notes when Other is selected.');
+                    departmentOtherNoteInput?.focus();
+                    return;
+                }
 
                 const originalSubmitLabel = submitBtn ? submitBtn.textContent : '';
                 if (submitBtn) {
@@ -4929,6 +4990,7 @@
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                         department: deptPayload,
+                        department_other_note: deptPayload.includes('Other') ? deptOtherNoteVal : '',
                         @if ($showCarrierColumn ?? false)
                             issue_carrier: (function() {
                                 const el = document.getElementById('hold_issue_issue_carrier');

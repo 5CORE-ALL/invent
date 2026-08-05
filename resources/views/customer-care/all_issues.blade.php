@@ -1273,7 +1273,7 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label for="hold_issue_department" class="form-label">Department <span
+                                <label for="hold_issue_department" class="form-label">Responsible Dept <span
                                         class="text-danger">*</span></label>
                                 <div class="dropdown qc-dept-multiselect" id="hold_issue_department_ui">
                                     <button
@@ -1301,8 +1301,21 @@
                                     <option value="Packaging">Packaging</option>
                                     <option value="Chargeback">Chargeback</option>
                                     <option value="Orders on Hold">Orders on Hold</option>
+                                    <option value="Other">Other</option>
                                 </select>
                                 <div class="form-text">Click to select one or more departments.</div>
+                            </div>
+
+                            <div class="col-12 d-none" id="departmentOtherNoteWrap">
+                                <label for="hold_issue_department_other_note" class="form-label">
+                                    Other — Responsible Dept Notes <span class="text-danger">*</span>
+                                </label>
+                                <textarea class="form-control" id="hold_issue_department_other_note"
+                                    name="department_other_note" rows="2" maxlength="255"
+                                    placeholder="Describe the special case / responsible dept..."></textarea>
+                                <div class="form-text text-end small">
+                                    <span id="departmentOtherNoteCharCount">0</span> / 255
+                                </div>
                             </div>
 
                             <div class="col-12 d-none" id="cAction1RemarkWrap">
@@ -2054,8 +2067,9 @@
                 // Audit
                 sections.push(
                     '<div class="ai-detail-section">' +
-                    '<div class="ai-detail-section-title">Department &amp; audit</div>' +
-                    detailsTextRow('Department', departments) +
+                    '<div class="ai-detail-section-title">Responsible Dept &amp; audit</div>' +
+                    detailsTextRow('Responsible Dept', departments) +
+                    detailsTextRow('Other note', d.department_other_note) +
                     detailsTextRow('Created by', d.created_by) +
                     detailsTextRow('Created at', createdAtDisplay) +
                     detailsTextRow('Close note', d.close_note) +
@@ -2245,15 +2259,22 @@
             };
 
             // Dept cell: one pill per department, stacked vertically.
+            // When Other is selected, show the free-text note under the pill.
             const fmtDept = function (cell) {
                 const d = cell.getData();
                 const list = (Array.isArray(d.departments) && d.departments.length)
                     ? d.departments
                     : parseDepartmentList(d.department);
                 if (!list || !list.length) return '—';
+                const otherNote = String(d.department_other_note || '').trim();
                 return '<div class="dept-stack">' +
                     list.map(function (x) {
-                        return '<span class="dept-pill">' + escapeHtml(x) + '</span>';
+                        let html = '<span class="dept-pill">' + escapeHtml(x) + '</span>';
+                        if (String(x).trim() === 'Other' && otherNote) {
+                            html += '<div class="small text-muted mt-1" style="max-width:160px;white-space:normal;line-height:1.25;">' +
+                                escapeHtml(otherNote) + '</div>';
+                        }
+                        return html;
                     }).join('') +
                     '</div>';
             };
@@ -2874,6 +2895,7 @@
                     department: row?.department ?? '',
                     departments: Array.isArray(row?.departments) ? row.departments : parseDepartmentList(row
                         ?.department),
+                    department_other_note: row?.department_other_note ?? '',
                     created_by: row?.created_by ?? 'System',
                     created_at_raw: row?.created_at ?? '',
                     created_at_display: row?.created_at_display ?? row?.created_at ?? '',
@@ -3144,6 +3166,9 @@
             const cAction1RemarkInput = document.getElementById('hold_issue_c_action_1_remark');
             const cAction1RemarkWrap = document.getElementById('cAction1RemarkWrap');
             const departmentInput = document.getElementById('hold_issue_department');
+            const departmentOtherNoteWrap = document.getElementById('departmentOtherNoteWrap');
+            const departmentOtherNoteInput = document.getElementById('hold_issue_department_other_note');
+            const departmentOtherNoteCharCount = document.getElementById('departmentOtherNoteCharCount');
 
             function showAlert(message, type) {
                 alertBox.textContent = message;
@@ -3190,6 +3215,24 @@
                 updateDepartmentLabel();
             }
 
+            function departmentSelectionIncludesOther() {
+                return getDepartmentPayload().some(d => String(d).trim() === 'Other');
+            }
+
+            function toggleDepartmentOtherNoteField() {
+                const isOther = departmentSelectionIncludesOther();
+                if (departmentOtherNoteWrap) {
+                    departmentOtherNoteWrap.classList.toggle('d-none', !isOther);
+                }
+                if (departmentOtherNoteInput) {
+                    departmentOtherNoteInput.required = isOther;
+                    if (!isOther) {
+                        departmentOtherNoteInput.value = '';
+                        if (departmentOtherNoteCharCount) departmentOtherNoteCharCount.textContent = '0';
+                    }
+                }
+            }
+
             function buildDepartmentDropdown() {
                 if (!departmentInput) return;
                 const menu = document.getElementById('hold_issue_department_menu');
@@ -3205,9 +3248,11 @@
                         const opt = Array.from(departmentInput.options).find(o => o.value === cb.value);
                         if (opt) opt.selected = cb.checked;
                         updateDepartmentLabel();
+                        toggleDepartmentOtherNoteField();
                     });
                 });
                 syncDepartmentDropdown();
+                toggleDepartmentOtherNoteField();
             }
 
             function setDepartmentMultiSelect(record) {
@@ -3217,6 +3262,7 @@
                     o.selected = depts.includes(o.value);
                 });
                 syncDepartmentDropdown();
+                toggleDepartmentOtherNoteField();
             }
 
             function clearDepartmentMultiSelect() {
@@ -3225,6 +3271,7 @@
                     o.selected = false;
                 });
                 syncDepartmentDropdown();
+                toggleDepartmentOtherNoteField();
             }
 
             // ── Conditional "Other" remark fields ──────────────────────────────
@@ -4027,6 +4074,9 @@
                     }
                 });
                 clearDepartmentMultiSelect();
+                if (departmentOtherNoteInput) departmentOtherNoteInput.value = '';
+                if (departmentOtherNoteCharCount) departmentOtherNoteCharCount.textContent = '0';
+                toggleDepartmentOtherNoteField();
                 clearRefundSubsection();
                 clearReplacementSubsection();
                 clearOtherSubsection();
@@ -4243,6 +4293,25 @@
                     if (set.size) editDepts = Array.from(set);
                 }
                 setDepartmentMultiSelect({ departments: editDepts });
+                // Prefer the note on this row; fall back to any sibling in the
+                // dept-split group (note is stored on every sibling when Other
+                // is selected, but older rows / partial updates may differ).
+                let deptOtherNote = String(record.department_other_note || '').trim();
+                if (!deptOtherNote && record.group_id) {
+                    holdIssueRows.forEach(function (r) {
+                        if (r.group_id === record.group_id && r.sku === record.sku) {
+                            const n = String(r.department_other_note || '').trim();
+                            if (n) deptOtherNote = n;
+                        }
+                    });
+                }
+                if (departmentOtherNoteInput) {
+                    departmentOtherNoteInput.value = deptOtherNote;
+                    if (departmentOtherNoteCharCount) {
+                        departmentOtherNoteCharCount.textContent = String(deptOtherNote.length);
+                    }
+                }
+                toggleDepartmentOtherNoteField();
                 toggleCAction1RemarkField();
                 hideAlert();
                 const submitBtn = form.querySelector('button[type="submit"]');
@@ -4363,8 +4432,19 @@
                 }
                 const deptPayload = getDepartmentPayload();
                 if (!deptPayload.length) {
-                    showAlert('Select at least one department.');
+                    showAlert('Select at least one responsible department.');
                     if (departmentInput) departmentInput.focus();
+                    return;
+                }
+                const deptOtherNoteVal = (departmentOtherNoteInput?.value || '').trim();
+                if (deptPayload.includes('Other') && deptOtherNoteVal === '') {
+                    showAlert('Please enter Responsible Dept notes when Other is selected.');
+                    departmentOtherNoteInput?.focus();
+                    return;
+                }
+                if (deptOtherNoteVal.length > 255) {
+                    showAlert('Responsible Dept notes must be at most 255 characters.');
+                    departmentOtherNoteInput?.focus();
                     return;
                 }
 
@@ -4561,6 +4641,7 @@
                         c_action_1: cAction1Input.value.trim(),
                         c_action_1_remark: cAction1RemarkInput.value.trim(),
                         department: deptPayload,
+                        department_other_note: deptPayload.includes('Other') ? deptOtherNoteVal : '',
                         // Action sub-section fields:
                         refund_type: refundType,
                         refund_amount: refundAmount,
@@ -5287,6 +5368,17 @@
                     const cnt = document.getElementById('customIssueNotesCharCount');
                     customIssueNotesEl.addEventListener('input', function () {
                         if (cnt) cnt.textContent = String(customIssueNotesEl.value.length);
+                    });
+                }
+
+                // Responsible Dept → Other notes: live char counter (max 255).
+                if (departmentOtherNoteInput) {
+                    departmentOtherNoteInput.addEventListener('input', function () {
+                        if (departmentOtherNoteCharCount) {
+                            departmentOtherNoteCharCount.textContent = String(
+                                departmentOtherNoteInput.value.length
+                            );
+                        }
                     });
                 }
 
