@@ -199,6 +199,9 @@ class CvrMasterController extends Controller
     public function getCvrDataJson(Request $request)
     {
         try {
+            // When true: attach per-SKU pef_channels[] for Pricing Errors Fix cache (bulk, not channel tabulators)
+            $forPef = filter_var($request->query('for_pricing_errors_fix', false), FILTER_VALIDATE_BOOLEAN);
+
             // Fetch product master (only columns needed for CVR table — avoid hydrating unused wide columns)
             $productMasterRows = ProductMaster::query()
                 ->select(['id', 'sku', 'parent', 'Values'])
@@ -734,6 +737,147 @@ class CvrMasterController extends Controller
                 'ebay2_metrics' => $ebay2Metrics->count(),
                 'ebay3_metrics' => $ebay3Metrics->count()
             ]);
+
+            // PEF: bulk-load SPRICE data views + channel Ads% (same as /price-increase modal)
+            $pefDvBySku = [];
+            $sb2bPercentagePef = 0.95;
+            $pefAdsByKey = [];
+            if ($forPef) {
+                $keyDv = static function ($rows) {
+                    $map = [];
+                    foreach ($rows as $r) {
+                        $k = strtoupper(trim((string) ($r->sku ?? '')));
+                        if ($k !== '') {
+                            $map[$k] = $r;
+                        }
+                    }
+
+                    return $map;
+                };
+                try {
+                    $loadPefDv = static function (string $modelClass, array $skusList) use ($keyDv): array {
+                        try {
+                            if (! Schema::hasTable((new $modelClass)->getTable())) {
+                                return [];
+                            }
+
+                            return $keyDv($modelClass::whereIn('sku', $skusList)->get());
+                        } catch (\Throwable $e) {
+                            return [];
+                        }
+                    };
+                    $pefDvBySku['ebay1'] = $loadPefDv(EbayDataView::class, $skus);
+                    $pefDvBySku['ebay2'] = $loadPefDv(EbayTwoDataView::class, $skus);
+                    $pefDvBySku['ebay3'] = $loadPefDv(EbayThreeDataView::class, $skus);
+                    $pefDvBySku['doba'] = $loadPefDv(DobaDataView::class, $skus);
+                    $pefDvBySku['bestbuy'] = $loadPefDv(BestbuyUSADataView::class, $skus);
+                    $pefDvBySku['macy'] = $loadPefDv(MacyDataView::class, $skus);
+                    $pefDvBySku['sb2c'] = $loadPefDv(Shopifyb2cDataView::class, $skus);
+                    $pefDvBySku['sb2b'] = $loadPefDv(ShopifyB2BDataView::class, $skus);
+                    $pefDvBySku['temu2'] = $loadPefDv(Temu2DataView::class, $skus);
+                    $pefDvBySku['aliexpress'] = $loadPefDv(AliexpressDataView::class, $skus);
+                    $pefDvBySku['ppower'] = $loadPefDv(PurchasingPowerDataView::class, $skus);
+                    $pefDvBySku['faire'] = $loadPefDv(FaireDataView::class, $skus);
+                    $pefDvBySku['topdawg'] = $loadPefDv(TopDawgDataView::class, $skus);
+                    $pefDvBySku['tiktok'] = $tiktokShopByNormSku;
+                    $pefDvBySku['tiktok2'] = $tiktok2ShopByNormSku ?? [];
+
+                    $sb2bMp = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first()
+                        ?: MarketplacePercentage::where('marketplace', 'Shopify B2B')->first();
+                    if ($sb2bMp) {
+                        $sb2bPercentagePef = ((float) $sb2bMp->percentage) / 100;
+                    }
+
+                    // Channel Ads% map — same resolve as getBreakdownData enrich
+                    $resolvePefAds = static function ($channelLabel, $ads, $tacos) {
+                        $norm = strtolower(preg_replace('/\s+/', '', (string) $channelLabel) ?? '');
+                        if (in_array($norm, ['walmart', 'topdawg'], true)) {
+                            if ($tacos !== null && $tacos !== '') {
+                                return round((float) $tacos, 2);
+                            }
+                            if ($ads !== null && $ads !== '') {
+                                return round((float) $ads, 2);
+                            }
+
+                            return 0.0;
+                        }
+                        if ($ads !== null && $ads !== '') {
+                            return round((float) $ads, 2);
+                        }
+                        if ($tacos !== null && $tacos !== '') {
+                            return round((float) $tacos, 2);
+                        }
+
+                        return 0.0;
+                    };
+                    foreach (ChannelMasterCalculatedData::select('channel', 'ads_percentage', 'tacos_percentage')->get() as $ch) {
+                        $pefAdsByKey[strtolower(trim((string) $ch->channel))] = $resolvePefAds(
+                            $ch->channel,
+                            $ch->ads_percentage,
+                            $ch->tacos_percentage
+                        );
+                    }
+                    try {
+                        $shopifySnap = $channelMasterCtrl->getShopifyDirectL30Snapshot();
+                        $shopifyAdsPct = round((float) ($shopifySnap['tcos_pct'] ?? 0), 2);
+                        if ($shopifyAdsPct > 0) {
+                            $pefAdsByKey['shopify'] = $shopifyAdsPct;
+                            $pefAdsByKey['shopify b2c'] = $shopifyAdsPct;
+                            $pefAdsByKey['shopifyb2c'] = $shopifyAdsPct;
+                        }
+                    } catch (\Throwable $e) {
+                        // keep AMM shopify if present
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR Master PEF data-view preload failed: '.$e->getMessage());
+                }
+            }
+
+            $pefChannelAds = function (string $name) use (&$pefAdsByKey): float {
+                $map = [
+                    'amazon' => 'amazon',
+                    'bestbuy' => 'best buy usa',
+                    'macy' => 'macys',
+                    'macys' => 'macys',
+                    'shopify' => 'shopify',
+                    'sb2c' => 'shopify',
+                    'sb2b' => 'shopify b2b',
+                    'tiktok2' => 'tiktok 2',
+                    'aliexpress' => 'aliexpress',
+                    'reverb' => 'reverb',
+                ];
+                $key = $map[strtolower(trim($name))] ?? strtolower(trim($name));
+                if ($key === 'shopify') {
+                    return (float) ($pefAdsByKey['shopify']
+                        ?? $pefAdsByKey['shopify b2c']
+                        ?? $pefAdsByKey['shopifyb2c']
+                        ?? 0);
+                }
+
+                return (float) ($pefAdsByKey[$key] ?? 0);
+            };
+
+            $pefExtractSprice = static function (?array $dvMap, string $sku): array {
+                if ($dvMap === null || $dvMap === []) {
+                    return [0.0, null];
+                }
+                $k = strtoupper(trim($sku));
+                $row = $dvMap[$k] ?? $dvMap[$sku] ?? null;
+                if (! $row) {
+                    return [0.0, null];
+                }
+                $val = is_array($row->value ?? null)
+                    ? $row->value
+                    : (json_decode($row->value ?? '{}', true) ?: []);
+                if (! is_array($val)) {
+                    return [0.0, null];
+                }
+                $sp = $val['SPRICE'] ?? $val['sprice'] ?? null;
+                $sprice = ($sp !== null && $sp !== '' && floatval($sp) > 0) ? round(floatval($sp), 2) : 0.0;
+                $status = $val['SPRICE_STATUS'] ?? $val['PUSH_STATUS'] ?? $val['push_status'] ?? null;
+
+                return [$sprice, is_scalar($status) ? (string) $status : null];
+            };
 
             // Shein — same sources/formulas as /shein-pricing (API, not sheet)
             // Price = special_offer_price only; LP/Ship from product_master; L30 from shein_daily_data
@@ -1962,6 +2106,92 @@ class CvrMasterController extends Controller
                     $labelType = 'STD';
                 }
 
+                // Pricing Errors Fix — unpivot CVR channel facts (price-increase source, one bulk pass)
+                $pefChannels = null;
+                if ($forPef) {
+                    $sb2bPricePef = isset($shopifyData[$sku]) ? floatval($shopifyData[$sku]->b2b_price ?? 0) : 0.0;
+                    [$ebay1Sp, $ebay1St] = $pefExtractSprice($pefDvBySku['ebay1'] ?? null, $sku);
+                    [$ebay2Sp, $ebay2St] = $pefExtractSprice($pefDvBySku['ebay2'] ?? null, $sku);
+                    [$ebay3Sp, $ebay3St] = $pefExtractSprice($pefDvBySku['ebay3'] ?? null, $sku);
+                    [$dobaSp, $dobaSt] = $pefExtractSprice($pefDvBySku['doba'] ?? null, $sku);
+                    [$bbSp, $bbSt] = $pefExtractSprice($pefDvBySku['bestbuy'] ?? null, $sku);
+                    [$macySp, $macySt] = $pefExtractSprice($pefDvBySku['macy'] ?? null, $sku);
+                    [$sb2cSp, $sb2cSt] = $pefExtractSprice($pefDvBySku['sb2c'] ?? null, $sku);
+                    [$sb2bSp, $sb2bSt] = $pefExtractSprice($pefDvBySku['sb2b'] ?? null, $sku);
+                    [$temu2Sp, $temu2St] = $pefExtractSprice($pefDvBySku['temu2'] ?? null, $sku);
+                    [$aeSp, $aeSt] = $pefExtractSprice($pefDvBySku['aliexpress'] ?? null, $sku);
+                    [$ppSp, $ppSt] = $pefExtractSprice($pefDvBySku['ppower'] ?? null, $sku);
+                    [$faireSp, $faireSt] = $pefExtractSprice($pefDvBySku['faire'] ?? null, $sku);
+                    [$tdSp, $tdSt] = $pefExtractSprice($pefDvBySku['topdawg'] ?? null, $sku);
+                    [$ttSp, $ttSt] = $pefExtractSprice($pefDvBySku['tiktok'] ?? null, $sku);
+                    [$tt2Sp, $tt2St] = $pefExtractSprice($pefDvBySku['tiktok2'] ?? null, $sku);
+                    $amazonSpPef = ($amazonSprice !== null && $amazonSprice > 0) ? (float) $amazonSprice : 0.0;
+                    $temuSpPef = ($temuSprice !== null && $temuSprice > 0) ? (float) $temuSprice : 0.0;
+
+                    // STD-rule channels (same as /price-increase modal + getBreakdownData):
+                    // TopDawg/Faire/SB2B: SPRICE = (STD × 0.80) − Ship
+                    // PPower: SPRICE = (STD × 1.15) − Ship
+                    // Metric formulas still use ship=0 for these channels (GPFT/SGPFT).
+                    $stdPef = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
+                        ? (float) $amazonStandardPrice
+                        : 0.0;
+                    $applyShipPef = ($ship > 0) ? (float) $ship : 0.0;
+                    if ($stdPef > 0) {
+                        $tdSp = max(0.01, round(($stdPef * 0.80) - $applyShipPef, 2));
+                        $faireSp = max(0.01, round(($stdPef * 0.80) - $applyShipPef, 2));
+                        $sb2bSp = max(0.01, round(($stdPef * 0.80) - $applyShipPef, 2));
+                        $ppSp = max(0.01, round(($stdPef * 1.15) - $applyShipPef, 2));
+                    } else {
+                        // No STD: fallback (STD×0.80)−Ship from channel price when saved sprice empty
+                        if (! ($tdSp > 0) && $tdPrice > 0) {
+                            $tdSp = max(0.01, round(($tdPrice * 0.80) - $applyShipPef, 2));
+                        }
+                        if (! ($faireSp > 0) && $fairePrice > 0) {
+                            $faireSp = max(0.01, round(($fairePrice * 0.80) - $applyShipPef, 2));
+                        }
+                        if (! ($sb2bSp > 0) && $sb2bPricePef > 0) {
+                            $sb2bSp = max(0.01, round(($sb2bPricePef * 0.80) - $applyShipPef, 2));
+                        }
+                        if (! ($ppSp > 0) && $ppPrice > 0) {
+                            $ppSp = max(0.01, round(($ppPrice * 1.15) - $applyShipPef, 2));
+                        }
+                    }
+
+                    // Ads%: Amazon/BestBuy/Macy/Shopify/TikTok2/AE = AMM channel Ads% (modal);
+                    // TikTok = SKU TACOS; Temu = aggregate/row Ads%; eBay/Reverb = channel masters;
+                    // Doba/Temu2/Shein/Faire/PPower/TopDawg = 0
+                    $amzAdsPef = $pefChannelAds('amazon');
+                    $bbAdsPef = $pefChannelAds('bestbuy');
+                    $macyAdsPef = $pefChannelAds('macy');
+                    $sb2cAdsPef = $pefChannelAds('shopify');
+                    $sb2bAdsPef = $pefChannelAds('sb2b');
+                    $tt2AdsPef = $pefChannelAds('tiktok2');
+                    $aeAdsPef = $pefChannelAds('aliexpress');
+
+                    $pefChannels = [
+                        // Amazon: tacos_ch = channel Ads% (NPFT); ad = SKU AD% (SPFT when L30>0) — same as modal
+                        ['marketplace' => 'Amazon', 'price' => $amazonPrice, 'sprice' => $amazonSpPef, 'lp' => $lp, 'ship' => $ship, 'margin' => $amazonPercentage, 'ad' => round($amazonAD, 2), 'tacos_ch' => $amzAdsPef, 'l30' => $amazonL30, 'push_status' => null],
+                        ['marketplace' => 'Ebay1', 'price' => $ebay1Price, 'sprice' => $ebay1Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay1Percentage, 'ad' => $ebay1ChannelAdsPct, 'tacos_ch' => $ebay1ChannelAdsPct, 'l30' => $ebay1L30, 'push_status' => $ebay1St],
+                        ['marketplace' => 'Ebay2', 'price' => $ebay2Price, 'sprice' => $ebay2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay2Percentage, 'ad' => $ebay2ChannelAdsPct, 'tacos_ch' => $ebay2ChannelAdsPct, 'l30' => $ebay2L30, 'push_status' => $ebay2St],
+                        ['marketplace' => 'Ebay3', 'price' => $ebay3Price, 'sprice' => $ebay3Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay3Percentage, 'ad' => $ebay3ChannelAdsPct, 'tacos_ch' => $ebay3ChannelAdsPct, 'l30' => $ebay3L30, 'push_status' => $ebay3St],
+                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'push_status' => null],
+                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'push_status' => $temu2St],
+                        ['marketplace' => 'Doba', 'price' => $dobaPrice, 'sprice' => $dobaSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $dobaL30, 'push_status' => $dobaSt],
+                        ['marketplace' => 'TikTok', 'price' => $tiktokPrice, 'sprice' => $ttSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktokPercentage, 'ad' => round($tiktokAD, 2), 'tacos_ch' => round($tiktokAD, 2), 'l30' => $tiktokL30, 'push_status' => $ttSt],
+                        ['marketplace' => 'TikTok 2', 'price' => $tiktok2Price, 'sprice' => $tt2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktok2Percentage, 'ad' => $tt2AdsPef, 'tacos_ch' => $tt2AdsPef, 'l30' => $tiktok2L30, 'push_status' => $tt2St],
+                        ['marketplace' => 'BestBuy', 'price' => $bbPrice, 'sprice' => $bbSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $bestbuyPercentage, 'ad' => $bbAdsPef, 'tacos_ch' => $bbAdsPef, 'l30' => $bbL30, 'push_status' => $bbSt],
+                        ['marketplace' => 'MACY', 'price' => $macyPrice, 'sprice' => $macySp, 'lp' => $lp, 'ship' => $ship, 'margin' => $macyPercentage, 'ad' => $macyAdsPef, 'tacos_ch' => $macyAdsPef, 'l30' => $macyL30, 'push_status' => $macySt],
+                        ['marketplace' => 'Reverb', 'price' => $reverbPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $reverbPercentage, 'ad' => $reverbChannelAdsPct, 'tacos_ch' => $reverbChannelAdsPct, 'l30' => $reverbL30, 'push_status' => null],
+                        ['marketplace' => 'Shopify', 'price' => $sb2cPrice, 'sprice' => $sb2cSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $shopifyB2CPercentage, 'ad' => $sb2cAdsPef, 'tacos_ch' => $sb2cAdsPef, 'l30' => 0, 'push_status' => $sb2cSt],
+                        ['marketplace' => 'SB2B', 'price' => $sb2bPricePef, 'sprice' => $sb2bSp, 'lp' => $lp, 'ship' => 0, 'margin' => $sb2bPercentagePef, 'ad' => $sb2bAdsPef, 'tacos_ch' => $sb2bAdsPef, 'l30' => 0, 'push_status' => $sb2bSt],
+                        ['marketplace' => 'Shein', 'price' => $sheinPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $sheinPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $sheinL30, 'push_status' => null],
+                        ['marketplace' => 'Faire', 'price' => $fairePrice, 'sprice' => $faireSp, 'lp' => $lp, 'ship' => 0, 'margin' => $fairePercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $faireL30, 'push_status' => $faireSt],
+                        ['marketplace' => 'AliExpress', 'price' => $aePrice, 'sprice' => $aeSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $aePercentage, 'ad' => $aeAdsPef, 'tacos_ch' => $aeAdsPef, 'l30' => $aeL30, 'push_status' => $aeSt],
+                        ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => 0, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'push_status' => $ppSt],
+                        ['marketplace' => 'TopDawg', 'price' => $tdPrice, 'sprice' => $tdSp, 'lp' => $lp, 'ship' => 0, 'margin' => $tdPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $tdL30, 'push_status' => $tdSt],
+                    ];
+                }
+
                 $result[] = (object) [
                     "sku" => $sku,
                     "parent" => $parent,
@@ -2062,6 +2292,9 @@ class CvrMasterController extends Controller
                     "lp" => $lp > 0 ? round($lp, 2) : $scalarShip($values, 'lp'),
                     "sku_image" => $imagePath,
                 ];
+                if ($forPef) {
+                    $result[array_key_last($result)]->pef_channels = $pefChannels;
+                }
             }
 
             // Audit history — same table/source as /amz-cvr-issues (amz_cvr_audit_histories)
@@ -5730,6 +5963,8 @@ class CvrMasterController extends Controller
             $sgpft = floatval($request->input('sgpft', 0));
             $sroi = floatval($request->input('sroi', 0));
             $spft = floatval($request->input('spft', 0));
+            // Gross suggested ROI (SGROI) — amazon-tabulator-view; optional from Pricing Errors Fix
+            $sgroi = $request->has('sgroi') ? floatval($request->input('sgroi')) : null;
             $amazonMargin = $request->has('amazon_margin') ? floatval($request->input('amazon_margin')) : null;
             $avgPft = $request->has('avg_pft') ? floatval($request->input('avg_pft')) : null;
 
@@ -5866,6 +6101,13 @@ class CvrMasterController extends Controller
                 $value['SGPFT'] = $sgpft;
                 $value['SROI'] = $sroi;
                 $value['SPFT'] = $spft;
+                if ($sgroi !== null) {
+                    $value['SGROI'] = $sgroi;
+                    // Amazon UI also reads Spft%
+                    if ($marketplace === 'amazon') {
+                        $value['Spft%'] = $spft;
+                    }
+                }
                 // Track SPRICE edit time (used by Push History same-day hide)
                 $value['SPRICE_EDITED_AT'] = now()->toDateTimeString();
 
@@ -5968,6 +6210,17 @@ class CvrMasterController extends Controller
                         'error' => $e->getMessage(),
                     ]);
                 }
+            }
+
+            // Keep Pricing Errors Fix cache in sync (SKU × marketplace patch)
+            try {
+                PricingErrorsFixController::queueSkuRefresh(
+                    $skuToUse,
+                    $marketplace,
+                    $sprice > 0 ? $sprice : 0.0
+                );
+            } catch (\Throwable $e) {
+                Log::debug('Pricing Errors Fix cache refresh skipped: '.$e->getMessage());
             }
 
             return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, $payload);

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Jobs\RunMarketplaceInventorySyncJob;
 use App\Jobs\SyncTikTokTrackingJob;
+use App\Jobs\WarmTikTokLiveListingsCache;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\TikTokProduct;
 use App\Models\TiktokOrder;
+use App\Services\MarketplaceManager\TikTokListingsPageBuilder;
 use App\Services\MarketplaceManager\TikTokOrderSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTokShopService;
@@ -112,7 +114,10 @@ class TikTokSyncController extends Controller
         @set_time_limit(0);
 
         try {
-            $exit = Artisan::call('sync:tiktok-api-data', ['--channel' => 'tiktok']);
+            $exit = Artisan::call('sync:tiktok-api-data', [
+                '--channel' => 'tiktok',
+                '--products-only' => true,
+            ]);
             $output = trim(Artisan::output());
             $count = Schema::hasTable('tiktok_products')
                 ? (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
@@ -127,10 +132,16 @@ class TikTokSyncController extends Controller
                 ], 500);
             }
 
+            WarmTikTokLiveListingsCache::dispatch();
+
             return response()->json([
                 'success' => true,
+                'done' => true,
                 'message' => "TikTok Shop products synced ({$count} SKUs).",
                 'count' => $count,
+                'total_upserted' => $count,
+                'page' => 1,
+                'total_page' => 1,
                 'output' => $output,
             ]);
         } catch (\Throwable $e) {
@@ -138,6 +149,7 @@ class TikTokSyncController extends Controller
 
             return response()->json([
                 'success' => false,
+                'done' => true,
                 'message' => 'Product sync error: '.$e->getMessage(),
             ], 500);
         }
@@ -202,35 +214,20 @@ class TikTokSyncController extends Controller
 
     public function syncProducts(Request $request): View
     {
-        $searchSku = trim((string) $request->input('search_sku', ''));
-        $searchName = trim((string) $request->input('search_name', ''));
-        $apiError = null;
+        return TikTokListingsPageBuilder::for('tiktok')->syncProducts($request);
+    }
 
-        if (! Schema::hasTable('tiktok_products')) {
-            $products = new LengthAwarePaginator([], 0, 50, 1);
-            $apiError = 'Table tiktok_products missing. Run migrations, then Sync products.';
-        } else {
-            $q = TikTokProduct::query()->orderByDesc('updated_at')->orderByDesc('id');
-            if ($searchSku !== '') {
-                $q->where('sku', 'like', '%'.$searchSku.'%');
-            }
-            if ($searchName !== '') {
-                $q->where(function ($inner) use ($searchName) {
-                    $inner->where('sku', 'like', '%'.$searchName.'%')
-                        ->orWhere('product_id', 'like', '%'.$searchName.'%');
-                });
-            }
-            $products = $q->paginate(50)->withQueryString();
-        }
+    public function showProduct(int $shopifySkuId): View
+    {
+        return TikTokListingsPageBuilder::for('tiktok')->showProduct($shopifySkuId);
+    }
 
-        return view('marketplace.tiktok.products', [
-            'products' => $products,
-            'title' => 'TikTok Shop — Listings',
-            'searchSku' => $searchSku,
-            'searchName' => $searchName,
-            'apiError' => $apiError,
-            'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
-        ]);
+    public function pushProductInventory(int $shopifySkuId): JsonResponse
+    {
+        $result = TikTokListingsPageBuilder::for('tiktok')->pushProductInventory($shopifySkuId);
+        $ok = ! empty($result['success']);
+
+        return response()->json($result, $ok ? 200 : 422);
     }
 
     public function syncOrders(Request $request): View
@@ -360,9 +357,12 @@ class TikTokSyncController extends Controller
         ]);
     }
 
-    public function syncMismatchInventoryNow(): JsonResponse
+    public function syncMismatchInventoryNow(Request $request): JsonResponse
     {
-        return $this->syncInventoryNow();
+        $result = TikTokListingsPageBuilder::for('tiktok')->syncMismatchInventoryNow($request);
+        $status = (! empty($result['success'])) ? 200 : 422;
+
+        return response()->json($result, $status);
     }
 
     public function syncTrackingNow(): JsonResponse

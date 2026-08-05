@@ -11,6 +11,17 @@ use Illuminate\Support\Facades\Log;
 
 class TikTokTrackingSyncService
 {
+    /**
+     * Only push Shopify tracking for open TikTok orders still awaiting seller ship
+     * (same intent as Reverb/AliExpress: skip delivered / completed history).
+     *
+     * @var list<string>
+     */
+    public const TRACKING_ELIGIBLE_STATUSES = [
+        'AWAITING_SHIPMENT',
+        'PARTIALLY_SHIPPING',
+    ];
+
     public function __construct(
         protected TikTokShopService $tiktokApi
     ) {}
@@ -27,6 +38,15 @@ class TikTokTrackingSyncService
         $orderId = trim((string) $line->order_id);
         if ($orderId === '') {
             return ['success' => false, 'message' => 'TikTok order_id missing.'];
+        }
+
+        $status = strtoupper(trim((string) ($line->order_status ?? '')));
+        if ($status !== '' && ! in_array($status, self::TRACKING_ELIGIBLE_STATUSES, true)) {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'message' => "Skip tracking push for status {$status} (only AWAITING_SHIPMENT / PARTIALLY_SHIPPING).",
+            ];
         }
 
         $shopifyOrderId = trim((string) (
@@ -111,6 +131,7 @@ class TikTokTrackingSyncService
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
             ->whereNull('tracking_pushed_at')
+            ->whereIn('order_status', self::TRACKING_ELIGIBLE_STATUSES)
             ->orderByDesc('id')
             ->limit($limit * 5)
             ->get(['id', 'order_id', 'shopify_order_id', 'order_status', 'tracking_pushed_at']);

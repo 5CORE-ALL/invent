@@ -21,6 +21,7 @@ class SyncTikTokApiData extends Command
      */
     protected $signature = 'sync:tiktok-api-data
         {--channel=tiktok : tiktok (shop 1 → tiktok_products) or tiktok2 (shop 2 → tiktok_products_two)}
+        {--products-only : Sync products + inventory only (skip analytics/reviews — faster sku_id backfill)}
         {--chunk= : Override DB write chunk size (default from cron-monitor config)}';
 
     /**
@@ -171,8 +172,22 @@ class SyncTikTokApiData extends Command
             
             // Proceed with syncing product data even if shop info fails
             $this->info('');
-            $this->info('Fetching products from TikTok API...');
-            $data = $this->tiktokService->syncAllProductData();
+            $productsOnly = (bool) $this->option('products-only');
+            if ($productsOnly) {
+                $this->info('Fetching products + inventory only (--products-only)...');
+                $products = $this->tiktokService->getAllProducts(1);
+                $inventory = $this->tiktokService->getAllProductInventory($products);
+                $data = [
+                    'products' => $products,
+                    'inventory' => $inventory,
+                    'analytics' => [],
+                    'reviews' => [],
+                    'errors' => [],
+                ];
+            } else {
+                $this->info('Fetching products from TikTok API...');
+                $data = $this->tiktokService->syncAllProductData();
+            }
 
             if (!empty($data['errors'])) {
                 foreach ($data['errors'] as $error) {
@@ -209,12 +224,32 @@ class SyncTikTokApiData extends Command
             
             // Process and store inventory
             $this->processInventory($data['inventory'] ?? []);
-            
-            // Process and store analytics/views (API only → tiktok_products)
-            $this->processAnalytics($data['analytics'] ?? []);
-            
-            // Process and store reviews/ratings
-            $this->processReviews($data['reviews'] ?? []);
+
+            if (! $productsOnly) {
+                // Process and store analytics/views (API only → tiktok_products)
+                $this->processAnalytics($data['analytics'] ?? []);
+
+                // Process and store reviews/ratings
+                $this->processReviews($data['reviews'] ?? []);
+            } else {
+                $this->info('Skipping analytics/reviews (--products-only).');
+            }
+
+            // Refresh listings UI cache used by Marketplace Manager tabs.
+            try {
+                if ($this->channel === 'tiktok2') {
+                    app(\App\Services\MarketplaceManager\TikTok2LiveListingsService::class)->clearCache();
+                    app(\App\Services\MarketplaceManager\TikTok2LiveListingsService::class)->all(true);
+                } else {
+                    app(\App\Services\MarketplaceManager\TikTokLiveListingsService::class)->clearCache();
+                    app(\App\Services\MarketplaceManager\TikTokLiveListingsService::class)->all(true);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok live listings cache warm failed after sync', [
+                    'channel' => $this->channel,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             $this->info('✅ ' . ($this->channel === 'tiktok2' ? 'TikTok 2' : 'TikTok') . ' API data sync completed successfully!');
             return 0;
@@ -230,7 +265,8 @@ class SyncTikTokApiData extends Command
     }
 
     /**
-     * Process and store products data
+     * Process and store products data.
+     * One DB row per seller SKU (with TikTok sku.id) so inventory sync can push qty.
      */
     protected function processProducts(array $products)
     {
@@ -243,43 +279,51 @@ class SyncTikTokApiData extends Command
         $updated = 0;
         $created = 0;
         $chunkSize = $this->monitoredChunkSize();
+        $hasSkuIdCol = \Illuminate\Support\Facades\Schema::hasColumn(
+            (new $this->productModel)->getTable(),
+            'sku_id'
+        );
 
-        $this->writeItemsInChunks($products, function (array $chunk) use (&$created, &$updated) {
+        $this->writeItemsInChunks($products, function (array $chunk) use (&$created, &$updated, $hasSkuIdCol) {
             $chunkUpdated = 0;
             foreach ($chunk as $product) {
                 try {
                     $productId = $product['id'] ?? null;
-                    $sku = $this->extractSku($product);
-
-                    if (!$sku) {
+                    if (! $productId) {
                         continue;
                     }
 
-                    $price = $this->extractPrice($product);
-                    $normalizedSku = strtoupper(trim($sku));
-
-                    $skuId = $this->extractSkuId($product);
-                    $updateData = [
-                        'product_id' => $productId,
-                        'price' => $price,
-                    ];
-                    if ($skuId !== null && \Illuminate\Support\Facades\Schema::hasColumn(
-                        (new $this->productModel)->getTable(), 'sku_id'
-                    )) {
-                        $updateData['sku_id'] = $skuId;
+                    $rows = $this->expandProductSkuRows($product);
+                    if ($rows === []) {
+                        continue;
                     }
 
-                    $tiktokProduct = ($this->productModel)::updateOrCreate(
-                        ['sku' => $normalizedSku],
-                        $updateData
-                    );
+                    foreach ($rows as $row) {
+                        $normalizedSku = strtoupper(trim((string) $row['sku']));
+                        if ($normalizedSku === '') {
+                            continue;
+                        }
 
-                    if ($tiktokProduct->wasRecentlyCreated) {
-                        $created++;
-                    } else {
-                        $updated++;
+                        $updateData = [
+                            'product_id' => (string) $productId,
+                            'price' => $row['price'],
+                        ];
+                        if ($hasSkuIdCol && $row['sku_id'] !== null && $row['sku_id'] !== '') {
+                            $updateData['sku_id'] = (string) $row['sku_id'];
+                        }
+
+                        $tiktokProduct = ($this->productModel)::updateOrCreate(
+                            ['sku' => $normalizedSku],
+                            $updateData
+                        );
+
+                        if ($tiktokProduct->wasRecentlyCreated) {
+                            $created++;
+                        } else {
+                            $updated++;
+                        }
+                        $chunkUpdated++;
                     }
-                    $chunkUpdated++;
                 } catch (\Exception $e) {
                     $this->error('Error processing product: '.($product['id'] ?? 'unknown').' - '.$e->getMessage());
                     Log::error('TikTok product processing error', [
@@ -293,6 +337,79 @@ class SyncTikTokApiData extends Command
         }, $chunkSize);
 
         $this->info("Products: {$created} created, {$updated} updated");
+    }
+
+    /**
+     * Expand a TikTok product into one row per seller SKU.
+     *
+     * @return list<array{sku: string, sku_id: ?string, price: float}>
+     */
+    protected function expandProductSkuRows(array $product): array
+    {
+        $rows = [];
+        $skus = $product['skus'] ?? null;
+
+        if (is_array($skus) && $skus !== []) {
+            foreach ($skus as $skuNode) {
+                if (! is_array($skuNode)) {
+                    continue;
+                }
+                $sellerSku = trim((string) ($skuNode['seller_sku'] ?? $skuNode['sku'] ?? ''));
+                if ($sellerSku === '') {
+                    continue;
+                }
+                $skuId = trim((string) ($skuNode['id'] ?? $skuNode['sku_id'] ?? ''));
+                $rows[] = [
+                    'sku' => $sellerSku,
+                    'sku_id' => $skuId !== '' ? $skuId : null,
+                    'price' => $this->extractPriceFromSkuNode($skuNode, $product),
+                ];
+            }
+        }
+
+        if ($rows !== []) {
+            return $rows;
+        }
+
+        // Fallback: single-SKU product without a skus[] array
+        $sku = $this->extractSku($product);
+        if (! $sku) {
+            return [];
+        }
+
+        return [[
+            'sku' => $sku,
+            'sku_id' => $this->extractSkuId($product),
+            'price' => $this->extractPrice($product),
+        ]];
+    }
+
+    protected function extractPriceFromSkuNode(array $skuNode, array $product): float
+    {
+        $priceNode = $skuNode['price'] ?? null;
+        $candidates = [];
+        if (is_array($priceNode)) {
+            $candidates[] = $priceNode['sale_price']
+                ?? $priceNode['tax_exclusive_price']
+                ?? $priceNode['amount']
+                ?? $priceNode['price']
+                ?? null;
+        } elseif (is_numeric($priceNode)) {
+            $candidates[] = $priceNode;
+        }
+        $candidates[] = $skuNode['sale_price'] ?? $skuNode['price_amount'] ?? null;
+
+        foreach ($candidates as $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $price = (float) $value;
+            if ($price > 0) {
+                return $price;
+            }
+        }
+
+        return $this->extractPrice($product);
     }
 
     /**

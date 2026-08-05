@@ -3675,6 +3675,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Price Increase Route (same logic / datatable as pricing-master-cvr)
     Route::get('/price-increase', [CvrMasterController::class, 'priceIncreaseView'])->name('price.increase');
 
+    // Pricing Errors Fix — all channels in one Tabulator (per-channel datatable logic)
+    Route::get('/pricing-errors-fix', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'index'])->name('pricing.errors.fix');
+    Route::get('/pricing-errors-fix-data-json', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'dataJson'])->name('pricing.errors.fix.data');
+    Route::get('/pricing-errors-fix-channels', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'channelsJson'])->name('pricing.errors.fix.channels');
+
     // WMPNM Dil (copy of price-increase; same datatable /cvr-master-data-json)
     Route::get('/wmpnm-dil', [CvrMasterController::class, 'wmpnmDilView'])->name('wmpnm.dil');
 

@@ -83,8 +83,17 @@ class TikTokOrderSyncService
 
         $paidOnly = MarketplaceSyncSettings::importPaidOrdersOnly('tiktok', $settings);
 
+        // Only import open/new orders (like Reverb), not delivered/completed history.
+        $importableStatuses = [
+            'AWAITING_SHIPMENT',
+            'PARTIALLY_SHIPPING',
+            'AWAITING_COLLECTION',
+            'ON_HOLD',
+        ];
+
         $orders = TiktokOrder::query()
             ->whereNull('shopify_order_id')
+            ->whereIn('order_status', $importableStatuses)
             ->where(function ($q) {
                 $q->whereNull('import_status')
                     ->orWhereIn('import_status', ['ready', 'import_failed', 'failed']);

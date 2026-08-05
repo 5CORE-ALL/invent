@@ -56,6 +56,10 @@ final class MarketplaceListingStockResolver
 
     public const CHANNEL_FAIRE = 'faire';
 
+    public const CHANNEL_TIKTOK = 'tiktok';
+
+    public const CHANNEL_TIKTOK2 = 'tiktok2';
+
     public static function shopifyQtyFromRow(?ShopifySku $row): ?int
     {
         if (! $row) {
@@ -902,6 +906,10 @@ final class MarketplaceListingStockResolver
         } elseif ($channel === self::CHANNEL_EBAY3) {
             self::hydrateFromPricing($map, $keys, 'ebay3');
             self::hydrateFromMappings($map, $keys, 'inventory_ebay3');
+        } elseif ($channel === self::CHANNEL_TIKTOK) {
+            self::hydrateFromTikTokProducts($map, $keys, 'tiktok_products');
+        } elseif ($channel === self::CHANNEL_TIKTOK2) {
+            self::hydrateFromTikTokProducts($map, $keys, 'tiktok_products_two');
         } elseif ($channel === self::CHANNEL_FAIRE) {
             // Faire products API only (faire_metric.inventory) — no product_stock_mappings fallback.
             self::hydrateFromPricing($map, $keys, 'faire');
@@ -1308,6 +1316,29 @@ final class MarketplaceListingStockResolver
         }
 
         \App\Models\MacyProduct::query()
+            ->whereIn('sku', $keys)
+            ->whereNotNull('stock')
+            ->get(['sku', 'stock'])
+            ->each(function ($row) use (&$map) {
+                self::put($map, (string) $row->sku, (int) $row->stock);
+            });
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @param  array<int, string>  $keys
+     */
+    protected static function hydrateFromTikTokProducts(array &$map, array $keys, string $table): void
+    {
+        if ($keys === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'stock')) {
+            return;
+        }
+
+        $model = $table === 'tiktok_products_two'
+            ? \App\Models\TikTokProductTwo::class
+            : \App\Models\TikTokProduct::class;
+
+        $model::query()
             ->whereIn('sku', $keys)
             ->whereNotNull('stock')
             ->get(['sku', 'stock'])

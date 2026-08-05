@@ -295,9 +295,10 @@
         document.addEventListener('DOMContentLoaded', function () {
             let samSSales = 0;   // latest /shopify Net Sales (for TCOS + S Sales badge)
 
-            // Metrics where a HIGHER value is worse (cost side): an up move
-            // reads red, a down move green — the opposite of clicks/sold/etc.
-            const SAM_INVERTED_METRICS = { spend: true, acos: true, tcos: true };
+            // Metrics where a HIGHER value is worse: an up move reads red, a
+            // down move green — the opposite of clicks/sold/spend/etc.
+            // Spend matches the trend chart (up = green); only ACOS/TCOS invert.
+            const SAM_INVERTED_METRICS = { acos: true, tcos: true };
 
             // Day-over-day trend dot for a metric cell. Green = improvement,
             // red = decline, grey = no change; nothing when there's no prior

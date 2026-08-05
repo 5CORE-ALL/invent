@@ -320,8 +320,8 @@ class ShopifyAdsMasterController extends Controller
         // Trend dots: compare each metric against the previous Pacific-day
         // snapshot (per channel) so the table can show a green (improved) /
         // red (declined) dot. Read *before* today's snapshot write below so
-        // "previous" never means today. Spend + ACOS are inverted downstream
-        // (a higher value is worse → red).
+        // "previous" never means today. ACOS / TCOS are inverted downstream
+        // (a higher value is worse → red); spend increasing is green.
         $pacificToday  = Carbon::now(self::SNAPSHOT_TIMEZONE)->toDateString();
         $prevByChannel = $this->previousSnapshotByChannel($pacificToday);
         $this->attachTrends($rows, $prevByChannel);
@@ -443,7 +443,7 @@ class ShopifyAdsMasterController extends Controller
      * Direction of each displayed metric vs the previous day. CVR / ACOS are
      * re-derived from the previous day's raw measures exactly like the current
      * row so the comparison is apples-to-apples. The colour meaning (which way
-     * is "good") is applied on the frontend, where Spend + ACOS are inverted.
+     * is "good") is applied on the frontend, where ACOS / TCOS are inverted.
      *
      * @param  array<string, mixed>  $row
      * @param  array<string, float>|null  $prev

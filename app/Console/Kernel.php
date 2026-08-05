@@ -1900,6 +1900,13 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(200)
             ->appendOutputTo($log);
 
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('tiktok'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok-sync-mismatch-inventory')
+            ->withoutOverlapping(20)
+            ->appendOutputTo($log);
+
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok', '2026-07-07', true))
             ->everyFifteenMinutes()
             ->timezone('Asia/Kolkata')
@@ -1935,6 +1942,13 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-inventory')
             ->withoutOverlapping(200)
+            ->appendOutputTo($log);
+
+        $schedule->job(new \App\Jobs\SyncMarketplaceMismatchInventoryJob('tiktok2'))
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('tiktok2-sync-mismatch-inventory')
+            ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
         $schedule->job(new \App\Jobs\SyncMarketplaceOrdersJob('tiktok2', '2026-07-07', true))
@@ -2291,7 +2305,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-      
+        // Pricing Errors Fix — SKU×marketplace cache for instant /pricing-errors-fix loads
+        $ist($schedule->command('pricing-errors:calculate-data --force')
+            ->everyFifteenMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('pricing-errors-calculate-data')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
+
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
 

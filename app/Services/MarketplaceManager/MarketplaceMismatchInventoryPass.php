@@ -37,7 +37,7 @@ final class MarketplaceMismatchInventoryPass
             'message' => 'Mismatch pass skipped.',
         ];
 
-        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon'], true)) {
+        if (! in_array($channel, ['newegg', 'shein', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'reverb', 'aliexpress', 'alibaba', 'faire', 'amazon', 'tiktok', 'tiktok2'], true)) {
             return $empty;
         }
 
@@ -88,6 +88,8 @@ final class MarketplaceMismatchInventoryPass
             'alibaba' => app(AlibabaInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'faire' => app(FaireInventorySyncService::class)->syncSkusFromShopify($mismatch),
             'amazon' => app(AmazonInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'tiktok' => app(TikTokInventorySyncService::class)->syncSkusFromShopify($mismatch),
+            'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($mismatch),
             default => $empty,
         };
 
@@ -130,6 +132,8 @@ final class MarketplaceMismatchInventoryPass
             'alibaba' => 'alibaba_metric',
             'faire' => 'faire_metric',
             'amazon' => 'amazon_listing_statuses',
+            'tiktok' => 'tiktok_products',
+            'tiktok2' => 'tiktok_products_two',
             default => null,
         };
         if ($table === null || ! Schema::hasTable($table)) {
@@ -149,6 +153,10 @@ final class MarketplaceMismatchInventoryPass
                 ->unique(static fn (string $sku) => ShopifySku::normalizeSkuForShopifyLookup($sku))
                 ->values()
                 ->all();
+        }
+
+        if ($channel === 'tiktok' || $channel === 'tiktok2') {
+            return TikTokListingsPageBuilder::for($channel)->linkedSkus();
         }
 
         if ($channel === 'temu') {
@@ -323,6 +331,8 @@ final class MarketplaceMismatchInventoryPass
             'aliexpress' => MarketplaceListingStockResolver::CHANNEL_ALIEXPRESS,
             'faire' => MarketplaceListingStockResolver::CHANNEL_FAIRE,
             'amazon' => MarketplaceListingStockResolver::CHANNEL_AMAZON,
+            'tiktok' => MarketplaceListingStockResolver::CHANNEL_TIKTOK,
+            'tiktok2' => MarketplaceListingStockResolver::CHANNEL_TIKTOK2,
             default => $channel,
         };
 
@@ -346,6 +356,8 @@ final class MarketplaceMismatchInventoryPass
             'aliexpress' => app(AliexpressLiveListingsService::class)->peekCached(),
             'faire' => app(FaireLiveListingsService::class)->peekCached(),
             'amazon' => app(AmazonLiveListingsService::class)->peekCached(),
+            'tiktok' => app(TikTokLiveListingsService::class)->peekCached(),
+            'tiktok2' => app(TikTok2LiveListingsService::class)->peekCached(),
             default => null,
         };
 

@@ -214,6 +214,12 @@ class MarketplaceController extends Controller
         if ($marketplace === 'faire') {
             return app(FaireSyncController::class)->pushProductInventory($shopifySku);
         }
+        if ($marketplace === 'tiktok') {
+            return app(TikTokSyncController::class)->pushProductInventory($shopifySku);
+        }
+        if ($marketplace === 'tiktok2') {
+            return app(TikTok2SyncController::class)->pushProductInventory($shopifySku);
+        }
 
         return response()->json(['success' => false, 'message' => 'Not supported for this marketplace.'], 404);
     }
@@ -629,7 +635,7 @@ class MarketplaceController extends Controller
     public function queueStatus(string $marketplace): JsonResponse
     {
         $marketplace = strtolower($marketplace);
-        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'faire'], true)) {
+        if (! in_array($marketplace, ['reverb', 'aliexpress', 'alibaba', 'newegg', 'shein', 'amazon', 'topdawg', 'temu', 'temu2', 'purchasingpower', 'wayfair', 'bestbuy', 'macy', 'doba', 'ebay1', 'ebay2', 'ebay3', 'faire', 'tiktok', 'tiktok2'], true)) {
             return response()->json(['success' => false, 'message' => 'Queue status not available for this marketplace.'], 404);
         }
 
