@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Doba - Analytics', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Doba Analytics Paid', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -271,7 +271,7 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Doba - Analytics',
+        'page_title' => 'Doba Analytics Paid',
         'sub_title' => '',
     ])
     <div class="toast-container"></div>

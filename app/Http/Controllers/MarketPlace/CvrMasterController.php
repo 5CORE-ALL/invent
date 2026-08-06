@@ -8289,6 +8289,21 @@ class CvrMasterController extends Controller
                 'status' => $status,
                 'pushed_by' => auth()->check() ? auth()->user()->name : 'Unknown'
             ]);
+
+            // Keep Pricing Errors Fix cache in sync after push (same as saveSuggestedData)
+            if ($status === 'pushed') {
+                try {
+                    PricingErrorsFixController::queueSkuRefresh(
+                        $sku,
+                        $marketplace,
+                        $pushedPrice !== null && floatval($pushedPrice) > 0
+                            ? floatval($pushedPrice)
+                            : null
+                    );
+                } catch (\Throwable $e) {
+                    Log::debug('Pricing Errors Fix cache refresh after push skipped: '.$e->getMessage());
+                }
+            }
         } catch (\Exception $e) {
             Log::error('CVR Master - Failed to save price push status', [
                 'sku' => $sku,

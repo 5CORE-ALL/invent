@@ -666,6 +666,22 @@
         return `<span class="pef-success-dot ${cls}" title="${String(tip).replace(/"/g, '&quot;')}"></span>`;
     }
 
+    /** Channels with API price push via /cvr-master-push-price (same as /price-increase). */
+    const PEF_PUSHABLE_CHANNELS = [
+        'amazon', 'doba',
+        'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
+        'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
+        'bestbuy', 'bestbuyusa', 'macy', 'macys',
+        'ppower', 'purchasingpower', 'purchase',
+        'reverb', 'fba', 'topdawg', 'temu', 'temu2',
+        'tiktok', 'tiktok1', 'tiktok2', 'walmart',
+    ];
+
+    function isPushableChannel(d) {
+        const mp = pushMarketplaceKey(d);
+        return PEF_PUSHABLE_CHANNELS.indexOf(mp) !== -1;
+    }
+
     function updatePushBtn() {
         let n = 0;
         let selected = 0;
@@ -674,7 +690,7 @@
                 const d = row.getData();
                 if (selectedIds.has(d.id)) {
                     selected++;
-                    if (d.sprice > 0) n++;
+                    if (d.sprice > 0 && isPushableChannel(d)) n++;
                 }
             });
         }
@@ -851,7 +867,8 @@
         if (m > 1) m = m / 100;
         if (m > 0 && m <= 1) return m;
         if (mp.indexOf('temu') !== -1) return 0.87;
-        if (mp.indexOf('doba') !== -1) return 0.90;
+        // Doba 0.95 — same as /price-increase & /doba-tabulator
+        if (mp.indexOf('doba') !== -1) return 0.95;
         if (mp.indexOf('ebay') !== -1) return 0.85;
         return 0.80;
     }
@@ -1636,15 +1653,21 @@
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const hasSprice = Number(d.sprice) > 0;
+                        const canPush = hasSprice && isPushableChannel(d);
                         const st = String(d.success || '').toLowerCase();
                         const alreadyPushed = ['pushed', 'success', 'ok', 'applied'].indexOf(st) !== -1;
                         const cls = alreadyPushed ? 'btn-success pef-push-done' : 'btn-primary';
-                        const tip = !hasSprice
-                            ? 'Set SPrice before push'
-                            : (alreadyPushed
-                                ? ('Already pushed — click to push again to ' + d.channel)
-                                : ('Push SPRICE to ' + d.channel));
-                        return `<button type="button" class="btn btn-sm ${cls} pef-push-one" ${hasSprice ? '' : 'disabled'}
+                        let tip;
+                        if (!isPushableChannel(d)) {
+                            tip = 'Price push not available for ' + d.channel;
+                        } else if (!hasSprice) {
+                            tip = 'Set SPrice before push';
+                        } else if (alreadyPushed) {
+                            tip = 'Already pushed — click to push again to ' + d.channel;
+                        } else {
+                            tip = 'Push SPRICE to ' + d.channel;
+                        }
+                        return `<button type="button" class="btn btn-sm ${cls} pef-push-one" ${canPush ? '' : 'disabled'}
                             data-id="${String(d.id).replace(/"/g, '&quot;')}" title="${String(tip).replace(/"/g, '&quot;')}">
                             <i class="fas fa-upload"></i></button>`;
                     },
@@ -1833,7 +1856,23 @@
             .toLowerCase().replace(/\s+/g, '');
         if (['tiktok1', 'tiktokshop', 'tiktokshop1'].indexOf(mp) !== -1) mp = 'tiktok';
         if (mp === 'tiktokshop2') mp = 'tiktok2';
+        if (mp === 'ebaytwo') mp = 'ebay2';
+        if (mp === 'ebaythree') mp = 'ebay3';
+        if (mp === 'shopifyb2c' || mp === 'shopify') mp = 'sb2c';
+        if (mp === 'shopifyb2b') mp = 'sb2b';
+        if (mp === 'purchasingpower' || mp === 'purchase') mp = 'ppower';
+        if (mp === 'bestbuyusa') mp = 'bestbuy';
+        if (mp === 'macys') mp = 'macy';
         return mp;
+    }
+
+    /** Temu / Temu2 push base — same as /price-increase. */
+    function temuPushBaseFromSprice(sprice) {
+        const s = parseFloat(sprice);
+        if (!isFinite(s) || s <= 0) return null;
+        const push = s < 35 ? ((s * 0.85) - 2.99) : (s * 0.85);
+        if (!(push > 0)) return null;
+        return +push.toFixed(2);
     }
 
     function ajaxErrorMessage(xhr, fallback) {
@@ -1849,16 +1888,51 @@
         return fallback || (xhr.statusText || 'error');
     }
 
+    /**
+     * Push SPRICE via /cvr-master-push-price — same payload rules as /price-increase:
+     * - Doba: Self Pick = SPRICE − Ship
+     * - Temu/Temu2: convert SPRICE → push base
+     */
     function pushOne(d) {
+        const mp = pushMarketplaceKey(d);
+        const sprice = parseFloat(d.sprice);
+        if (!d.sku || !(sprice > 0)) {
+            return $.Deferred().reject({
+                responseJSON: { message: 'SKU and SPRICE required' },
+            }).promise();
+        }
+
+        let pushPrice = +sprice.toFixed(2);
+        if (mp === 'temu' || mp === 'temu2') {
+            const converted = temuPushBaseFromSprice(sprice);
+            if (converted == null) {
+                return $.Deferred().reject({
+                    responseJSON: {
+                        message: 'Skipped — ' + (mp === 'temu2' ? 'Temu2' : 'Temu')
+                            + ' SPRICE converts to invalid base',
+                    },
+                }).promise();
+            }
+            pushPrice = converted;
+        }
+
+        const payload = {
+            sku: d.sku,
+            price: pushPrice,
+            marketplace: mp,
+        };
+
+        // Doba: Self Pick = SPRICE − Ship (same as /price-increase & /doba-tabulator)
+        if (mp === 'doba') {
+            const ship = parseFloat(d.ship) || 0;
+            payload.self_pick_price = Math.max(0, +(sprice - ship).toFixed(2));
+        }
+
         return $.ajax({
             url: '/cvr-master-push-price',
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': csrf },
-            data: {
-                sku: d.sku,
-                price: d.sprice,
-                marketplace: pushMarketplaceKey(d),
-            },
+            data: payload,
             timeout: 90000,
         });
     }
@@ -1868,7 +1942,9 @@
         const items = [];
         table.getRows('active').forEach(row => {
             const d = row.getData();
-            if (selectedIds.has(d.id) && d.sprice > 0) items.push({ row, d });
+            if (selectedIds.has(d.id) && d.sprice > 0 && isPushableChannel(d)) {
+                items.push({ row, d });
+            }
         });
         if (!items.length) return;
         if (!confirm('Push SPRICE for ' + items.length + ' row(s) using each channel\'s push logic?')) return;
@@ -1889,6 +1965,15 @@
                 } else {
                     ok++;
                     item.row.update({ success: 'pushed' });
+                    // Doba: live Price becomes pushed SPRICE (anticipated_income)
+                    if (pushMarketplaceKey(item.d) === 'doba' && Number(item.d.sprice) > 0) {
+                        const live = recalcLiveForRow(Object.assign({}, item.d, {
+                            price: +Number(item.d.sprice).toFixed(2),
+                        }));
+                        item.row.update(Object.assign({
+                            price: +Number(item.d.sprice).toFixed(2),
+                        }, live));
+                    }
                     // Row-wise only — never re-pull the whole channel
                     await refreshRowFromBreakdown(item.row);
                     item.row.update({ success: 'pushed' });
@@ -1938,7 +2023,7 @@
         const row = table.getRows().find(r => r.getData().id === id);
         if (!row) return;
         const d = row.getData();
-        if (!(Number(d.sprice) > 0)) return;
+        if (!(Number(d.sprice) > 0) || !isPushableChannel(d)) return;
         const $btn = $(this);
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
         try {
@@ -1948,6 +2033,13 @@
                 toast(resp.message || 'Push failed', 'error');
             } else {
                 row.update({ success: 'pushed' });
+                // Doba: live Price becomes pushed SPRICE (anticipated_income) — patch immediately
+                if (pushMarketplaceKey(d) === 'doba' && Number(d.sprice) > 0) {
+                    const live = recalcLiveForRow(Object.assign({}, d, {
+                        price: +Number(d.sprice).toFixed(2),
+                    }));
+                    row.update(Object.assign({ price: +Number(d.sprice).toFixed(2) }, live));
+                }
                 await refreshRowFromBreakdown(row);
                 row.update({ success: 'pushed' });
                 toast('Pushed ' + d.sku + ' → ' + d.channel, 'success');

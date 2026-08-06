@@ -1749,10 +1749,10 @@
                                 <ul class="side-nav-third-level">
 
                                     <li>
-                                        <a href="{{ url('doba-tabulator') }}">Doba - Analytics</a>
+                                        <a href="{{ url('doba-tabulator') }}">Doba Analytics Paid</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('doba.withoutship') }}">Doba without ship</a>
+                                        <a href="{{ route('doba.withoutship') }}">Doba Analytics Pre-Paid</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.doba') }}">Listing Doba</a>

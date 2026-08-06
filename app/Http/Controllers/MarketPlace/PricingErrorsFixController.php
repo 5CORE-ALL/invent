@@ -705,7 +705,7 @@ class PricingErrorsFixController extends Controller
         $defaults = [
             'ebay' => 0.85, 'ebay1' => 0.85, 'ebay2' => 0.85, 'ebay3' => 0.85,
             'temu' => 0.87, 'temu2' => 0.87,
-            'doba' => 0.90,
+            'doba' => 0.95, // same as /price-increase & /doba-tabulator
             'tiktok' => 0.85, 'tiktok2' => 0.85,
             'walmart' => 0.85,
             'bestbuy' => 0.85, 'macy' => 0.85, 'reverb' => 0.85,

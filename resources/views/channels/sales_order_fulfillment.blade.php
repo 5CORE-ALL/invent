@@ -46,6 +46,19 @@
             text-decoration: underline;
         }
 
+        /* Hide default sorter caret (vertical headers); header click still sorts */
+        #sales-order-fulfillment-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-pending-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-fulfilled-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-scan-done-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-in-transit-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-in-received-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-invoiced-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-delivered-table.tabulator .tabulator-col .tabulator-col-sorter,
+        #sof-all-order-table.tabulator .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
         #sales-order-fulfillment-table.tabulator .tabulator-header .tabulator-col {
             background-color: #e6e6e6;
         }
@@ -65,11 +78,16 @@
             color: black !important;
             overflow: visible;
             text-overflow: clip;
+            pointer-events: none; /* clicks pass through to sortable column */
         }
 
         #sales-order-fulfillment-table.tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
             overflow: visible;
+        }
+
+        #sales-order-fulfillment-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
         }
 
         #sales-order-fulfillment-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
@@ -433,6 +451,7 @@
             color: black !important;
             overflow: visible;
             text-overflow: clip;
+            pointer-events: none; /* clicks pass through to sortable column */
         }
         #sof-pending-table.tabulator .tabulator-header .tabulator-col,
         #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col,
@@ -444,6 +463,16 @@
         #sof-all-order-table.tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
             overflow: visible;
+        }
+        #sof-pending-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-fulfilled-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-scan-done-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-in-transit-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-in-received-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-invoiced-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-delivered-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable,
+        #sof-all-order-table.tabulator .tabulator-header .tabulator-col.tabulator-sortable {
+            cursor: pointer;
         }
         #sof-pending-table .tabulator-row .tabulator-cell,
         #sof-fulfilled-table .tabulator-row .tabulator-cell,
@@ -1307,6 +1336,112 @@
             .replace(/"/g, '&quot;');
     }
 
+    /** Ajax returns full arrays — keep sort/filter/page client-side (server ignores sort params). */
+    const sofLocalTableOpts = {
+        pagination: true,
+        paginationMode: 'local',
+        sortMode: 'local',
+        filterMode: 'local',
+        paginationSize: 50,
+        paginationSizeSelector: [25, 50, 100, true],
+        movableColumns: false,
+        headerSortClickElement: 'header',
+    };
+
+    function sofIsEmptySortValue(v) {
+        return v === null || v === undefined || String(v).trim() === '';
+    }
+
+    function sofStringSorter(a, b) {
+        const aEmpty = sofIsEmptySortValue(a);
+        const bEmpty = sofIsEmptySortValue(b);
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return -1;
+        if (bEmpty) return 1;
+        return String(a).toLowerCase().localeCompare(String(b).toLowerCase(), undefined, {
+            numeric: true,
+            sensitivity: 'base',
+        });
+    }
+
+    function sofDateSorter(a, b) {
+        const aEmpty = sofIsEmptySortValue(a);
+        const bEmpty = sofIsEmptySortValue(b);
+        if (aEmpty && bEmpty) return 0;
+        if (aEmpty) return -1;
+        if (bEmpty) return 1;
+        const at = Date.parse(String(a).replace(' ', 'T'));
+        const bt = Date.parse(String(b).replace(' ', 'T'));
+        const aOk = !isNaN(at);
+        const bOk = !isNaN(bt);
+        if (!aOk && !bOk) return sofStringSorter(a, b);
+        if (!aOk) return -1;
+        if (!bOk) return 1;
+        return at - bt;
+    }
+
+    function sofNormalizeOrderRows(rows) {
+        if (!Array.isArray(rows)) return [];
+        rows.forEach(function (row) {
+            if (!row || typeof row !== 'object') return;
+            if (row.tracking_number == null) row.tracking_number = '';
+            else row.tracking_number = String(row.tracking_number).trim();
+            if (row.tracking_company == null) row.tracking_company = '';
+            else row.tracking_company = String(row.tracking_company).trim();
+        });
+        return rows;
+    }
+
+    function sofFormatDateCell(cell) {
+        const v = cell.getValue();
+        if (!v) return '—';
+        try {
+            const d = new Date(String(v).replace(' ', 'T'));
+            if (!isNaN(d.getTime())) {
+                return d.toLocaleString(undefined, {
+                    month: 'short', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                });
+            }
+        } catch (e) {}
+        return escapeHtml(v);
+    }
+
+    /** Updated + Tracking + Carrier columns inserted after Date on order tabs. */
+    function sofTrackingColumns() {
+        return [
+            {
+                title: 'Updated',
+                field: 'updated_at',
+                minWidth: 140,
+                headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofDateSorter,
+                formatter: sofFormatDateCell,
+            },
+            {
+                title: 'Tracking',
+                field: 'tracking_number',
+                minWidth: 170,
+                headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofStringSorter,
+                headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
+                formatter: formatTrackingCell,
+            },
+            {
+                title: 'Carrier',
+                field: 'tracking_company',
+                minWidth: 110,
+                headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofStringSorter,
+                headerTooltip: 'Carrier / tracking company for this tracking number',
+                formatter: formatCarrierCell,
+            },
+        ];
+    }
+
     function formatTrackingCell(cell) {
         const row = cell.getRow().getData() || {};
         const tracking = (cell.getValue() || row.tracking_number || '').toString().trim();
@@ -1767,6 +1902,8 @@
                 field: 'channel_label',
                 minWidth: 100,
                 headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofStringSorter,
                 formatter: function (cell) {
                     const row = cell.getRow().getData();
                     const label = escapeHtml(cell.getValue() || '');
@@ -1793,6 +1930,8 @@
                 minWidth: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofStringSorter,
                 headerTooltip: 'Hover green dot to see full Order ID and copy',
                 formatter: function (cell) {
                     const row = cell.getRow().getData();
@@ -1864,20 +2003,9 @@
                 field: 'order_date',
                 minWidth: 110,
                 headerHozAlign: 'center',
-                formatter: function (cell) {
-                    const v = cell.getValue();
-                    if (!v) return '—';
-                    try {
-                        const d = new Date(String(v).replace(' ', 'T'));
-                        if (!isNaN(d.getTime())) {
-                            return d.toLocaleString(undefined, {
-                                month: 'short', day: '2-digit',
-                                hour: '2-digit', minute: '2-digit',
-                            });
-                        }
-                    } catch (e) {}
-                    return escapeHtml(v);
-                },
+                headerSort: true,
+                sorter: sofDateSorter,
+                formatter: sofFormatDateCell,
             },
             {
                 title: 'Status',
@@ -1885,6 +2013,8 @@
                 minWidth: 90,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofStringSorter,
                 formatter: function (cell) {
                     const label = escapeHtml(cell.getValue() || cell.getRow().getData().status || '—');
                     return `<span class="${statusBadgeClass}">${label}</span>`;
@@ -1896,6 +2026,8 @@
                 minWidth: 280,
                 width: 280,
                 headerHozAlign: 'center',
+                headerSort: true,
+                sorter: sofStringSorter,
                 formatter: function (cell) {
                     const sku = (cell.getValue() || '').toString().trim();
                     if (!sku) {
@@ -2100,13 +2232,9 @@
         updateSummaryStats();
     }
 
-    table = new Tabulator('#sales-order-fulfillment-table', {
+    table = new Tabulator('#sales-order-fulfillment-table', Object.assign({}, sofLocalTableOpts, {
         layout: 'fitColumns',
         placeholder: 'Loading channels…',
-        pagination: true,
-        paginationSize: 50,
-        paginationSizeSelector: [25, 50, 100, true],
-        movableColumns: false,
         initialSort: [
             { column: 'pending_count', dir: 'desc' },
         ],
@@ -2342,7 +2470,7 @@
                 formatter: formatChOrdersDot,
             },
         ],
-    });
+    }));
 
     const chOrdersModal = document.getElementById('sofChOrdersLinkModal');
     const chOrdersInput = document.getElementById('sof-ch-orders-modal-input');
@@ -2614,13 +2742,9 @@
         }
         pendingTableLoading = true;
 
-        pendingTable = new Tabulator('#sof-pending-table', {
+        pendingTable = new Tabulator('#sof-pending-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading pending orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'order_date', dir: 'desc' },
             ],
@@ -2639,9 +2763,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                pendingRows = (response && response.success && Array.isArray(response.data))
+                pendingRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 pendingTableLoaded = true;
                 pendingTableLoading = false;
                 const count = (response && response.count != null)
@@ -2657,7 +2781,7 @@
                 applyPendingFilters();
             },
             columns: orderListColumns('sof-pending-badge'),
-        });
+        }));
     }
 
     function applyFulfilledFilters() {
@@ -2687,13 +2811,9 @@
         }
         fulfilledTableLoading = true;
 
-        fulfilledTable = new Tabulator('#sof-fulfilled-table', {
+        fulfilledTable = new Tabulator('#sof-fulfilled-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Label Created / No Scan orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -2712,9 +2832,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                fulfilledRows = (response && response.success && Array.isArray(response.data))
+                fulfilledRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 fulfilledTableLoaded = true;
                 fulfilledTableLoading = false;
                 const count = (response && response.count != null)
@@ -2740,47 +2860,10 @@
                 // After Date (index 3 after Channel, Ch Orders, Order ID, Date) insert Updated + Tracking
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     function applyScanDoneFilters() {
@@ -2808,13 +2891,9 @@
         }
         scanDoneTableLoading = true;
 
-        scanDoneTable = new Tabulator('#sof-scan-done-table', {
+        scanDoneTable = new Tabulator('#sof-scan-done-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Shipped/Received orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -2833,9 +2912,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                scanDoneRows = (response && response.success && Array.isArray(response.data))
+                scanDoneRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 scanDoneTableLoaded = true;
                 scanDoneTableLoading = false;
                 const count = (response && response.count != null)
@@ -2860,47 +2939,10 @@
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     function applyInTransitFilters() {
@@ -2928,13 +2970,9 @@
         }
         inTransitTableLoading = true;
 
-        inTransitTable = new Tabulator('#sof-in-transit-table', {
+        inTransitTable = new Tabulator('#sof-in-transit-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading In Transit orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -2953,9 +2991,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                inTransitRows = (response && response.success && Array.isArray(response.data))
+                inTransitRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 inTransitTableLoaded = true;
                 inTransitTableLoading = false;
                 const count = (response && response.count != null)
@@ -2980,47 +3018,10 @@
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     function applyInReceivedFilters() {
@@ -3048,13 +3049,9 @@
         }
         inReceivedTableLoading = true;
 
-        inReceivedTable = new Tabulator('#sof-in-received-table', {
+        inReceivedTable = new Tabulator('#sof-in-received-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading In Received orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -3073,9 +3070,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                inReceivedRows = (response && response.success && Array.isArray(response.data))
+                inReceivedRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 inReceivedTableLoaded = true;
                 inReceivedTableLoading = false;
                 const count = (response && response.count != null)
@@ -3100,47 +3097,10 @@
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     function applyInvoicedFilters() {
@@ -3168,13 +3128,9 @@
         }
         invoicedTableLoading = true;
 
-        invoicedTable = new Tabulator('#sof-invoiced-table', {
+        invoicedTable = new Tabulator('#sof-invoiced-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Invoiced orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -3193,9 +3149,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                invoicedRows = (response && response.success && Array.isArray(response.data))
+                invoicedRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 invoicedTableLoaded = true;
                 invoicedTableLoading = false;
                 const count = (response && response.count != null)
@@ -3220,47 +3176,10 @@
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     function applyDeliveredFilters() {
@@ -3294,13 +3213,9 @@
         }
         deliveredTableLoading = true;
 
-        deliveredTable = new Tabulator('#sof-delivered-table', {
+        deliveredTable = new Tabulator('#sof-delivered-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading Delivered orders (last 30 days)…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -3325,7 +3240,7 @@
                     deliveredRows = [];
                     return [];
                 }
-                deliveredRows = Array.isArray(response.data) ? response.data : [];
+                deliveredRows = sofNormalizeOrderRows(Array.isArray(response.data) ? response.data : []);
                 deliveredTableLoaded = true;
                 deliveredTableLoading = false;
                 const count = (response.count != null)
@@ -3358,47 +3273,10 @@
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     function applyAllOrderFilters() {
@@ -3426,13 +3304,9 @@
         }
         allOrderTableLoading = true;
 
-        allOrderTable = new Tabulator('#sof-all-order-table', {
+        allOrderTable = new Tabulator('#sof-all-order-table', Object.assign({}, sofLocalTableOpts, {
             layout: 'fitColumns',
             placeholder: 'Loading all orders…',
-            pagination: true,
-            paginationSize: 50,
-            paginationSizeSelector: [25, 50, 100, true],
-            movableColumns: false,
             initialSort: [
                 { column: 'updated_at', dir: 'desc' },
             ],
@@ -3451,9 +3325,9 @@
                 });
             },
             ajaxResponse: function (url, params, response) {
-                allOrderRows = (response && response.success && Array.isArray(response.data))
+                allOrderRows = sofNormalizeOrderRows((response && response.success && Array.isArray(response.data))
                     ? response.data
-                    : [];
+                    : []);
                 allOrderTableLoaded = true;
                 allOrderTableLoading = false;
                 const count = (response && response.count != null)
@@ -3478,47 +3352,10 @@
                 });
                 const dateIdx = cols.findIndex(function (c) { return c.field === 'order_date'; });
                 const insertAt = dateIdx >= 0 ? dateIdx + 1 : 3;
-                cols.splice(insertAt, 0,
-                    {
-                        title: 'Updated',
-                        field: 'updated_at',
-                        minWidth: 140,
-                        headerHozAlign: 'center',
-                        formatter: function (cell) {
-                            const v = cell.getValue();
-                            if (!v) return '—';
-                            try {
-                                const d = new Date(String(v).replace(' ', 'T'));
-                                if (!isNaN(d.getTime())) {
-                                    return d.toLocaleString(undefined, {
-                                        month: 'short', day: '2-digit',
-                                        hour: '2-digit', minute: '2-digit',
-                                    });
-                                }
-                            } catch (e) {}
-                            return escapeHtml(v);
-                        },
-                    },
-                    {
-                        title: 'Tracking',
-                        field: 'tracking_number',
-                        minWidth: 170,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
-                        formatter: formatTrackingCell,
-                    },
-                    {
-                        title: 'Carrier',
-                        field: 'tracking_company',
-                        minWidth: 110,
-                        headerHozAlign: 'center',
-                        headerTooltip: 'Carrier / tracking company for this tracking number',
-                        formatter: formatCarrierCell,
-                    }
-                );
+                cols.splice(insertAt, 0, ...sofTrackingColumns());
                 return cols;
             })(),
-        });
+        }));
     }
 
     document.getElementById('sof-all-order-tab')?.addEventListener('shown.bs.tab', function () {
