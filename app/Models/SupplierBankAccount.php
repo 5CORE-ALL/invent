@@ -19,6 +19,7 @@ class SupplierBankAccount extends Model
         'province',
         'country',
         'account_number',
+        'acc_type',
     ];
 
     public function supplier(): BelongsTo

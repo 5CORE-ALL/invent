@@ -101,6 +101,7 @@ class SupplierController extends Controller
             ->appends($request->query());
         $categories = $this->categoriesWithSupplierCounts();
         $canEditSupplierBank = $this->canEditSupplierBank();
+        $bankSupplierNames = Supplier::distinctNamesForListPage()->values()->all();
 
         // If AJAX request, return JSON
         if ($request->ajax()) {
@@ -122,7 +123,8 @@ class SupplierController extends Controller
             'totalCount',
             'sortKey',
             'direction',
-            'canEditSupplierBank'
+            'canEditSupplierBank',
+            'bankSupplierNames'
         ));
     }
 
@@ -152,6 +154,64 @@ class SupplierController extends Controller
             'province',
             'country',
             'account_number',
+            'acc_type',
+        ];
+    }
+
+    /**
+     * Beneficiary + Address: letters, numbers, spaces only (no special characters).
+     *
+     * @return list<string>
+     */
+    protected function bankAccountNoSpecialCharFields(): array
+    {
+        return ['company_name', 'address'];
+    }
+
+    protected function bankAccountFieldRules(): array
+    {
+        $rules = [];
+        foreach ($this->bankAccountFields() as $field) {
+            if ($field === 'acc_type') {
+                $rules[$field] = ['required', 'string', 'in:RMB,USD'];
+                continue;
+            }
+            if ($field === 'country') {
+                $rules[$field] = ['required', 'string', 'in:China,India,Hong Kong'];
+                continue;
+            }
+            if ($field === 'province') {
+                $rules[$field] = ['required', 'string', 'in:'.implode(',', config('supplier_bank.provinces', []))];
+                continue;
+            }
+            $rules[$field] = ['required', 'string', 'min:1', 'max:50'];
+            if (in_array($field, $this->bankAccountNoSpecialCharFields(), true)) {
+                // Letters (any language), numbers, spaces only.
+                $rules[$field][] = 'regex:/^[\p{L}\p{N}\s]*$/u';
+            }
+        }
+
+        return $rules;
+    }
+
+    protected function bankAccountValidationMessages(): array
+    {
+        return [
+            'supplier_name.required' => 'Supplier name is required.',
+            'nick_name.required' => 'Nick name is required.',
+            'company_name.required' => 'Beneficiary is required.',
+            'company_name.regex' => 'Beneficiary cannot contain special characters.',
+            'swift.required' => 'Swift is required.',
+            'address.required' => 'Address is required.',
+            'address.regex' => 'Address cannot contain special characters.',
+            'city.required' => 'City is required.',
+            'province.required' => 'Province is required.',
+            'province.in' => 'Please select a valid province.',
+            'country.required' => 'Country is required.',
+            'country.in' => 'Country must be China, India, or Hong Kong.',
+            'account_number.required' => 'Account number is required.',
+            'acc_type.required' => 'Acc Type is required.',
+            'acc_type.in' => 'Acc Type must be RMB or US $.',
         ];
     }
 
@@ -191,15 +251,13 @@ class SupplierController extends Controller
         }
 
         $supplier = Supplier::findOrFail($id);
-        $rules = [];
-        foreach ($this->bankAccountFields() as $field) {
-            $rules[$field] = 'nullable|string|max:30';
-        }
-        $data = $request->validate($rules);
+        $data = $request->validate(
+            $this->bankAccountFieldRules(),
+            $this->bankAccountValidationMessages()
+        );
 
         foreach ($this->bankAccountFields() as $field) {
-            $val = isset($data[$field]) ? trim((string) $data[$field]) : '';
-            $data[$field] = $val === '' ? null : $val;
+            $data[$field] = trim((string) ($data[$field] ?? ''));
         }
 
         $account = SupplierBankAccount::create(array_merge($data, [
@@ -233,18 +291,16 @@ class SupplierController extends Controller
             ->where('id', $accountId)
             ->firstOrFail();
 
-        $rules = [];
-        foreach ($this->bankAccountFields() as $field) {
-            $rules[$field] = 'nullable|string|max:30';
-        }
-        $data = $request->validate($rules);
+        $data = $request->validate(
+            $this->bankAccountFieldRules(),
+            $this->bankAccountValidationMessages()
+        );
 
         $old = $account->only($this->bankAccountFields());
         $changes = [];
         foreach ($this->bankAccountFields() as $field) {
-            $val = isset($data[$field]) ? trim((string) $data[$field]) : '';
-            $val = $val === '' ? null : $val;
-            if ((string) ($old[$field] ?? '') !== (string) ($val ?? '')) {
+            $val = trim((string) ($data[$field] ?? ''));
+            if ((string) ($old[$field] ?? '') !== $val) {
                 $changes[$field] = ['old' => $old[$field], 'new' => $val];
             }
             $account->{$field} = $val;

@@ -1747,8 +1747,13 @@ class PurchaseOrderController extends Controller
                 ->get();
         }
 
+        // Same bank-edit access as /supplier.list (Sruti / Candy / President).
         $authEmail = mb_strtolower(trim((string) (Auth::user()->email ?? '')));
-        $canEditPoBank = $authEmail === 'purchase@5core.com';
+        $canEditPoBank = in_array($authEmail, [
+            'sourcing1@5core.com',
+            'purchase@5core.com',
+            'president@5core.com',
+        ], true);
 
         $supplierDefaultAdvancePercent = null;
         if ($supplierId > 0 && Schema::hasTable('supplier_advances')) {
@@ -1795,6 +1800,7 @@ class PurchaseOrderController extends Controller
             'bankAccounts' => $bankAccounts,
             'canEditPoBank' => $canEditPoBank,
             'supplierDefaultAdvancePercent' => $supplierDefaultAdvancePercent,
+            'bankSupplierNames' => Supplier::distinctNamesForListPage()->values()->all(),
         ]);
     }
 

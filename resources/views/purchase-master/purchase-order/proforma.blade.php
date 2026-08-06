@@ -1083,52 +1083,357 @@
         }
 
         .po-bank-block {
-            border: 1px solid #e3e6ea;
-            border-radius: 10px;
-            padding: 12px 14px;
-            background: #f8fafc;
+            border: 1px solid #9fd4c2;
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: linear-gradient(145deg, #e8f8f2 0%, #f3fbf7 45%, #eef6ff 100%);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        }
+
+        .po-bank-block-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #a7d8c5;
+        }
+
+        .po-bank-block-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f766e;
+            letter-spacing: 0.01em;
+        }
+
+        .po-bank-block-title-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #14b8a6;
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+            flex-shrink: 0;
         }
 
         .po-bank-empty {
             display: flex;
             align-items: center;
             gap: 8px;
-            color: #64748b;
+            color: #0f766e;
             font-size: 13px;
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px dashed #99d5c4;
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 10px;
         }
 
         .po-bank-accounts {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
         }
 
         .po-bank-card {
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid #b7e2d3;
+            border-radius: 10px;
+            padding: 12px 14px;
+            box-shadow: 0 1px 2px rgba(15, 118, 110, 0.06);
         }
 
         .po-bank-card-title {
-            font-weight: 700;
-            color: #1e293b;
-            margin-bottom: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 800;
+            color: #115e59;
+            margin-bottom: 10px;
             font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #ccfbf1;
+            border: 1px solid #99f6e4;
         }
 
         .po-bank-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 4px 12px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
             font-size: 12px;
             color: #334155;
         }
 
+        .po-bank-field {
+            background: #f0fdfa;
+            border: 1px solid #cceedf;
+            border-radius: 8px;
+            padding: 7px 9px;
+            min-width: 0;
+        }
+
+        .po-bank-field:nth-child(3n+2) {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
+        .po-bank-field:nth-child(3n) {
+            background: #fff7ed;
+            border-color: #fed7aa;
+        }
+
         .po-bank-label {
+            display: block;
             font-weight: 700;
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
             color: #64748b;
-            margin-right: 4px;
+            margin-bottom: 2px;
+        }
+
+        .po-bank-value {
+            display: block;
+            font-weight: 600;
+            color: #0f172a;
+            word-break: break-word;
+            line-height: 1.3;
+        }
+
+        /* Edit Bank Details modal */
+        #poBankModal .modal-content {
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 18px 50px rgba(15, 118, 110, 0.18);
+        }
+
+        #poBankModal .modal-header {
+            background: linear-gradient(135deg, #0f766e 0%, #0e7490 55%, #1d4ed8 100%);
+            color: #fff;
+            border-bottom: 0;
+            padding: 14px 18px;
+        }
+
+        #poBankModal .modal-header .modal-title {
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            font-size: 1.05rem;
+        }
+
+        #poBankModal .modal-header .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
+        }
+
+        #poBankModal .modal-body {
+            background: linear-gradient(180deg, #f0fdfa 0%, #f8fafc 40%, #fff 100%);
+            padding: 16px 18px 8px;
+        }
+
+        #poBankModal .po-bank-modal-hint {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 12px;
+            color: #0f766e;
+            background: #ccfbf1;
+            border: 1px solid #99f6e4;
+            border-radius: 10px;
+            padding: 8px 12px;
+            margin-bottom: 14px;
+        }
+
+        #poBankModal .po-bank-modal-hint-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #14b8a6;
+            margin-top: 4px;
+            flex-shrink: 0;
+        }
+
+        #poBankModal .po-bank-group {
+            height: 100%;
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid transparent;
+            margin-bottom: 12px;
+        }
+
+        #poBankModal .po-bank-group-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        #poBankModal .po-bank-group-title-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 7px;
+            font-size: 11px;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        #poBankModal .po-bank-group-party {
+            background: #eef6ff;
+            border-color: #c7ddf8;
+        }
+
+        #poBankModal .po-bank-group-party .po-bank-group-title {
+            color: #1d4ed8;
+        }
+
+        #poBankModal .po-bank-group-party .po-bank-group-title-badge {
+            background: #2563eb;
+        }
+
+        #poBankModal .po-bank-group-account {
+            background: #eefaf3;
+            border-color: #b9e4c9;
+        }
+
+        #poBankModal .po-bank-group-account .po-bank-group-title {
+            color: #15803d;
+        }
+
+        #poBankModal .po-bank-group-account .po-bank-group-title-badge {
+            background: #16a34a;
+        }
+
+        #poBankModal .po-bank-group-location {
+            background: #fff7ed;
+            border-color: #fdba74;
+        }
+
+        #poBankModal .po-bank-group-location .po-bank-group-title {
+            color: #c2410c;
+        }
+
+        #poBankModal .po-bank-group-location .po-bank-group-title-badge {
+            background: #ea580c;
+        }
+
+        #poBankModal .po-bank-field-tile {
+            background: rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 10px;
+            padding: 8px 10px;
+            height: 100%;
+        }
+
+        #poBankModal .po-bank-field-tile .form-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 4px;
+        }
+
+        #poBankModal .po-bank-field-tile .form-control,
+        #poBankModal .po-bank-field-tile .form-select {
+            border-radius: 8px;
+            border-color: #cbd5e1;
+            background: #fff;
+        }
+
+        #poBankModal .po-bank-field-tile .form-control:focus,
+        #poBankModal .po-bank-field-tile .form-select:focus {
+            border-color: #14b8a6;
+            box-shadow: 0 0 0 0.2rem rgba(20, 184, 166, 0.18);
+        }
+
+        #poBankModal .po-bank-group-party .po-bank-field-tile {
+            border-color: #bfdbfe;
+        }
+
+        #poBankModal .po-bank-group-account .po-bank-field-tile {
+            border-color: #bbf7d0;
+        }
+
+        #poBankModal .po-bank-group-location .po-bank-field-tile {
+            border-color: #fed7aa;
+        }
+
+        #poBankModal .select2-container--default .select2-selection--single {
+            border-radius: 8px;
+            border-color: #cbd5e1;
+            height: 31px;
+            display: flex;
+            align-items: center;
+        }
+
+        #poBankModal .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 29px;
+            padding-left: 10px;
+            font-size: 0.875rem;
+        }
+
+        #poBankModal .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 29px;
+        }
+
+        #poBankModal .modal-footer {
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            padding: 12px 18px;
+        }
+
+        #poBankModal #poBankSaveBtn {
+            background: linear-gradient(135deg, #0f766e, #0e7490);
+            border: 0;
+            font-weight: 700;
+            min-width: 96px;
+            box-shadow: 0 4px 12px rgba(15, 118, 110, 0.25);
+        }
+
+        #poBankModal #poBankSaveBtn:hover {
+            filter: brightness(1.05);
+        }
+
+        @media (max-width: 900px) {
+            .po-bank-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 560px) {
+            .po-bank-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media print {
+            .po-bank-block {
+                background: #fff !important;
+                border-color: #cbd5e1 !important;
+                box-shadow: none !important;
+            }
+
+            .po-bank-card,
+            .po-bank-field,
+            .po-bank-card-title {
+                background: #fff !important;
+                border-color: #cbd5e1 !important;
+                box-shadow: none !important;
+            }
+
+            .po-bank-block-title {
+                color: #0f172a !important;
+            }
         }
 
         .po-special-qc-cell {
@@ -1295,13 +1600,17 @@
                 : (is_array($bankAccounts) && count($bankAccounts) > 0);
             $poSupplierId = (int) ($order->supplier_id ?? ($supplier->id ?? 0));
             $poMissing = '<span class="po-missing-badge no-print">Missing</span><span class="po-missing-print-dash">—</span>';
-            $poMissingEdit = '<span class="badge bg-danger-subtle text-danger po-missing-badge no-print">Missing — edit: purchase@5core.com</span>';
+            $poMissingEdit = '<span class="badge bg-danger-subtle text-danger po-missing-badge no-print">Missing — ask purchase / sourcing1 / president to edit</span>';
             $bankFieldLabels = [
                 'Supplier', 'Beneficiary', 'Nick', 'SWIFT', 'Account',
-                'Address', 'City', 'Province', 'Country',
+                'Address', 'City', 'Province', 'Country', 'Acc Type',
             ];
             $bankHasBlankField = false;
+            $poBankEditAccount = null;
             if ($hasBankAccounts) {
+                $poBankEditAccount = $bankAccounts instanceof \Illuminate\Support\Collection
+                    ? $bankAccounts->first()
+                    : (is_array($bankAccounts) ? ($bankAccounts[0] ?? null) : null);
                 foreach ($bankAccounts as $__acct) {
                     foreach ([
                         $__acct->supplier_name ?? null,
@@ -1309,6 +1618,7 @@
                         $__acct->nick_name ?? null,
                         $__acct->swift ?? null,
                         $__acct->account_number ?? null,
+                        $__acct->acc_type ?? null,
                         $__acct->address ?? null,
                         $__acct->city ?? null,
                         $__acct->province ?? null,
@@ -1323,20 +1633,17 @@
             }
         @endphp
         <div class="po-bank-block mb-3">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <h6 class="mb-0 fw-bold text-primary">Bank Details</h6>
-                @if(!$hasBankAccounts && $canEditPoBank && $poSupplierId > 0)
-                    <button type="button" class="btn btn-sm btn-outline-primary no-print" id="poBankEditBtn">
+            <div class="po-bank-block-head">
+                <h6 class="po-bank-block-title">
+                    <span class="po-bank-block-title-dot" aria-hidden="true"></span>
+                    Bank Details
+                </h6>
+                @if($canEditPoBank && $poSupplierId > 0)
+                    <button type="button" class="btn btn-sm btn-primary no-print" id="poBankEditBtn">
                         Edit Bank Details
                     </button>
-                @elseif(!$hasBankAccounts && !$canEditPoBank)
+                @elseif(!$hasBankAccounts || $bankHasBlankField)
                     {!! $poMissingEdit !!}
-                @elseif($hasBankAccounts && $bankHasBlankField && !$canEditPoBank)
-                    {!! $poMissingEdit !!}
-                @elseif($hasBankAccounts && $bankHasBlankField && $canEditPoBank && $poSupplierId > 0)
-                    <button type="button" class="btn btn-sm btn-outline-primary no-print" id="poBankEditBtn">
-                        Edit Bank Details
-                    </button>
                 @endif
             </div>
             @if($hasBankAccounts)
@@ -1347,24 +1654,31 @@
                                 {{ $acct->nick_name ?: ($acct->company_name ?: ('Account #'.$acct->id)) }}
                             </div>
                             <div class="po-bank-grid">
+                                @php
+                                    $accTypeRaw = strtoupper(trim((string) ($acct->acc_type ?? '')));
+                                    $accTypeDisplay = $accTypeRaw === 'USD' ? 'US $' : ($accTypeRaw === 'RMB' ? 'RMB' : '');
+                                @endphp
                                 @foreach([
                                     'Supplier' => $acct->supplier_name,
                                     'Beneficiary' => $acct->company_name,
                                     'Nick' => $acct->nick_name,
                                     'SWIFT' => $acct->swift,
                                     'Account' => $acct->account_number,
+                                    'Acc Type' => $accTypeDisplay,
                                     'Address' => $acct->address,
                                     'City' => $acct->city,
                                     'Province' => $acct->province,
                                     'Country' => $acct->country,
                                 ] as $label => $val)
-                                    <div>
-                                        <span class="po-bank-label">{{ $label }}:</span>
-                                        @if(trim((string) $val) !== '')
-                                            {{ $val }}
-                                        @else
-                                            {!! $poMissing !!}
-                                        @endif
+                                    <div class="po-bank-field">
+                                        <span class="po-bank-label">{{ $label }}</span>
+                                        <span class="po-bank-value">
+                                            @if(trim((string) $val) !== '')
+                                                {{ $val }}
+                                            @else
+                                                {!! $poMissing !!}
+                                            @endif
+                                        </span>
                                     </div>
                                 @endforeach
                             </div>
@@ -1372,15 +1686,15 @@
                     @endforeach
                 </div>
             @else
-                <div class="po-bank-empty mb-2">
+                <div class="po-bank-empty">
                     <span class="po-approval-dot" aria-hidden="true"></span>
                     <span>No bank details on supplier list for this supplier.</span>
                 </div>
                 <div class="po-bank-grid">
                     @foreach($bankFieldLabels as $label)
-                        <div>
-                            <span class="po-bank-label">{{ $label }}:</span>
-                            {!! $poMissing !!}
+                        <div class="po-bank-field">
+                            <span class="po-bank-label">{{ $label }}</span>
+                            <span class="po-bank-value">{!! $poMissing !!}</span>
                         </div>
                     @endforeach
                 </div>
@@ -2503,54 +2817,156 @@
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="poBankModalLabel">Add Bank Details</h5>
+                    <h5 class="modal-title" id="poBankModalLabel">Edit Bank Details</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="form-text mb-2">Saved to the same supplier bank data as /supplier.list (max 30 chars per field).</div>
-                    <form id="poBankForm" class="row g-2">
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Supplier name</label>
-                            <input type="text" name="supplier_name" maxlength="30" class="form-control form-control-sm"
-                                   value="{{ $supplier->name ?? '' }}">
+                    <div class="po-bank-modal-hint">
+                        <span class="po-bank-modal-hint-dot" aria-hidden="true"></span>
+                        <span>All fields required. Saved to the same supplier bank data as /supplier.list (max 50 chars per field).</span>
+                    </div>
+                    <form id="poBankForm" data-account-id="{{ $poBankEditAccount->id ?? '' }}">
+                        @php
+                            $poBankAccType = strtoupper(trim((string) ($poBankEditAccount->acc_type ?? '')));
+                            $poBankProvinces = config('supplier_bank.provinces', []);
+                            $poBankProvince = trim((string) ($poBankEditAccount->province ?? ''));
+                            $poBankCountry = trim((string) ($poBankEditAccount->country ?? ''));
+                        @endphp
+
+                        {{-- Party --}}
+                        <div class="po-bank-group po-bank-group-party">
+                            <div class="po-bank-group-title">
+                                <span class="po-bank-group-title-badge">1</span>
+                                Party
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Supplier name <span class="text-danger">*</span></label>
+                                        @php
+                                            $bankSupplierNames = $bankSupplierNames ?? [];
+                                            $poBankSupplierName = trim((string) ($poBankEditAccount->supplier_name ?? ($supplier->name ?? '')));
+                                        @endphp
+                                        <select name="supplier_name" id="poBankSupplierName" class="form-select form-select-sm" required
+                                                data-placeholder="Search supplier…">
+                                            <option value="">Select…</option>
+                                            @if($poBankSupplierName !== '' && !in_array($poBankSupplierName, $bankSupplierNames, true))
+                                                <option value="{{ $poBankSupplierName }}" selected>{{ $poBankSupplierName }}</option>
+                                            @endif
+                                            @foreach($bankSupplierNames as $sName)
+                                                <option value="{{ $sName }}" @selected($poBankSupplierName === $sName)>{{ $sName }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Nick name <span class="text-danger">*</span></label>
+                                        <input type="text" name="nick_name" maxlength="50" class="form-control form-control-sm" required
+                                               value="{{ $poBankEditAccount->nick_name ?? '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Beneficiary <span class="text-danger">*</span></label>
+                                        <input type="text" name="company_name" maxlength="50" class="form-control form-control-sm po-bank-no-special" required
+                                               value="{{ $poBankEditAccount->company_name ?? ($supplier->company ?? '') }}"
+                                               title="Letters, numbers and spaces only"
+                                               placeholder="No special characters">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Nick name</label>
-                            <input type="text" name="nick_name" maxlength="30" class="form-control form-control-sm">
+
+                        {{-- Account --}}
+                        <div class="po-bank-group po-bank-group-account">
+                            <div class="po-bank-group-title">
+                                <span class="po-bank-group-title-badge">2</span>
+                                Account
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Swift <span class="text-danger">*</span></label>
+                                        <input type="text" name="swift" maxlength="50" class="form-control form-control-sm" required
+                                               value="{{ $poBankEditAccount->swift ?? '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Account number <span class="text-danger">*</span></label>
+                                        <input type="text" name="account_number" maxlength="50" class="form-control form-control-sm" required
+                                               value="{{ $poBankEditAccount->account_number ?? '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Acc Type <span class="text-danger">*</span></label>
+                                        <select name="acc_type" class="form-select form-select-sm" required>
+                                            <option value="">Select…</option>
+                                            <option value="RMB" @selected($poBankAccType === 'RMB')>RMB</option>
+                                            <option value="USD" @selected($poBankAccType === 'USD')>US $</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Beneficiary</label>
-                            <input type="text" name="company_name" maxlength="30" class="form-control form-control-sm"
-                                   value="{{ $supplier->company ?? '' }}">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Swift</label>
-                            <input type="text" name="swift" maxlength="30" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Account number</label>
-                            <input type="text" name="account_number" maxlength="30" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Address</label>
-                            <input type="text" name="address" maxlength="30" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">City</label>
-                            <input type="text" name="city" maxlength="30" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Province</label>
-                            <input type="text" name="province" maxlength="30" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Country</label>
-                            <input type="text" name="country" maxlength="30" class="form-control form-control-sm">
+
+                        {{-- Location --}}
+                        <div class="po-bank-group po-bank-group-location">
+                            <div class="po-bank-group-title">
+                                <span class="po-bank-group-title-badge">3</span>
+                                Location
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Address <span class="text-danger">*</span></label>
+                                        <input type="text" name="address" maxlength="50" class="form-control form-control-sm po-bank-no-special" required
+                                               value="{{ $poBankEditAccount->address ?? '' }}"
+                                               title="Letters, numbers and spaces only"
+                                               placeholder="No special characters">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">City <span class="text-danger">*</span></label>
+                                        <input type="text" name="city" maxlength="50" class="form-control form-control-sm" required
+                                               value="{{ $poBankEditAccount->city ?? '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Province <span class="text-danger">*</span></label>
+                                        <select name="province" id="poBankProvince" class="form-select form-select-sm" required
+                                                data-placeholder="Search province…">
+                                            <option value="">Select…</option>
+                                            @if($poBankProvince !== '' && !in_array($poBankProvince, $poBankProvinces, true))
+                                                <option value="{{ $poBankProvince }}" selected>{{ $poBankProvince }}</option>
+                                            @endif
+                                            @foreach($poBankProvinces as $prov)
+                                                <option value="{{ $prov }}" @selected($poBankProvince === $prov)>{{ $prov }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="po-bank-field-tile">
+                                        <label class="form-label mb-0">Country <span class="text-danger">*</span></label>
+                                        <select name="country" class="form-select form-select-sm" required>
+                                            <option value="">Select…</option>
+                                            <option value="China" @selected($poBankCountry === 'China')>China</option>
+                                            <option value="India" @selected($poBankCountry === 'India')>India</option>
+                                            <option value="Hong Kong" @selected($poBankCountry === 'Hong Kong')>Hong Kong</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="poBankSaveBtn">Save</button>
                 </div>
             </div>
@@ -3100,41 +3516,137 @@
             const skuSearchUrl = @json(url('/purchase/search-sku'));
             const poSupplierId = @json((int) ($order->supplier_id ?? ($supplier->id ?? 0)));
             const canEditPoBank = @json((bool) ($canEditPoBank ?? false));
-            const poBankStoreUrl = poSupplierId > 0
+            const poBankBaseUrl = poSupplierId > 0
                 ? @json(url('/supplier')) + '/' + poSupplierId + '/bank-accounts'
                 : '';
 
+            function stripPoBankSpecialChars(value) {
+                return String(value || '').replace(/[^\p{L}\p{N}\s]/gu, '');
+            }
+            function hasPoBankSpecialChars(value) {
+                return /[^\p{L}\p{N}\s]/u.test(String(value || ''));
+            }
+
+            document.querySelectorAll('#poBankForm .po-bank-no-special').forEach((input) => {
+                input.addEventListener('input', function () {
+                    const cleaned = stripPoBankSpecialChars(this.value);
+                    if (this.value !== cleaned) this.value = cleaned;
+                });
+                input.addEventListener('paste', function (e) {
+                    e.preventDefault();
+                    const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+                    const cleaned = stripPoBankSpecialChars(text).slice(0, 50);
+                    const start = this.selectionStart ?? this.value.length;
+                    const end = this.selectionEnd ?? this.value.length;
+                    this.value = (this.value.slice(0, start) + cleaned + this.value.slice(end)).slice(0, 50);
+                });
+            });
+
+            const poBankProvinces = @json(config('supplier_bank.provinces', []));
+
+            function initPoBankSelect2($el, placeholder) {
+                if (!window.jQuery || !$.fn.select2 || !$el.length) return;
+                if ($el.hasClass('select2-hidden-accessible')) {
+                    $el.select2('destroy');
+                }
+                $el.select2({
+                    dropdownParent: $('#poBankModal'),
+                    width: '100%',
+                    placeholder: placeholder,
+                    allowClear: false,
+                });
+            }
+
+            function initPoBankSearchSelects() {
+                initPoBankSelect2($('#poBankSupplierName'), 'Search supplier…');
+                initPoBankSelect2($('#poBankProvince'), 'Search province…');
+            }
+
             document.getElementById('poBankEditBtn')?.addEventListener('click', () => {
                 if (!canEditPoBank) {
-                    alert('Only purchase@5core.com can add bank details.');
+                    alert('You are not allowed to edit bank details.');
                     return;
                 }
-                if (!poBankStoreUrl) {
+                if (!poBankBaseUrl) {
                     alert('Supplier missing on this purchase contract.');
                     return;
                 }
+                // Strip any existing special chars when opening edit.
+                document.querySelectorAll('#poBankForm .po-bank-no-special').forEach((input) => {
+                    input.value = stripPoBankSpecialChars(input.value).slice(0, 50);
+                });
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('poBankModal')).show();
             });
 
+            document.getElementById('poBankModal')?.addEventListener('shown.bs.modal', () => {
+                initPoBankSearchSelects();
+            });
+
             document.getElementById('poBankSaveBtn')?.addEventListener('click', async () => {
-                if (!canEditPoBank || !poBankStoreUrl) {
-                    alert('Only purchase@5core.com can save bank details.');
+                if (!canEditPoBank || !poBankBaseUrl) {
+                    alert('You are not allowed to edit bank details.');
                     return;
                 }
                 const form = document.getElementById('poBankForm');
                 if (!form) return;
                 const payload = {};
-                form.querySelectorAll('input[name]').forEach((el) => {
-                    payload[el.name] = String(el.value || '').trim();
+                form.querySelectorAll('input[name], select[name]').forEach((el) => {
+                    let val = String(el.value || '').trim();
+                    if (el.classList.contains('po-bank-no-special')) {
+                        val = stripPoBankSpecialChars(val).trim();
+                        el.value = val;
+                    }
+                    payload[el.name] = val;
                 });
+                const requiredBankFields = [
+                    ['supplier_name', 'Supplier name'],
+                    ['nick_name', 'Nick name'],
+                    ['company_name', 'Beneficiary'],
+                    ['swift', 'Swift'],
+                    ['account_number', 'Account number'],
+                    ['acc_type', 'Acc Type'],
+                    ['address', 'Address'],
+                    ['city', 'City'],
+                    ['province', 'Province'],
+                    ['country', 'Country'],
+                ];
+                for (const [key, label] of requiredBankFields) {
+                    if (!String(payload[key] || '').trim()) {
+                        alert(label + ' is required.');
+                        form.querySelector('[name="' + key + '"]')?.focus();
+                        return;
+                    }
+                }
+                if (payload.acc_type !== 'RMB' && payload.acc_type !== 'USD') {
+                    alert('Acc Type must be RMB or US $.');
+                    form.querySelector('[name="acc_type"]')?.focus();
+                    return;
+                }
+                if (!['China', 'India', 'Hong Kong'].includes(payload.country)) {
+                    alert('Country must be China, India, or Hong Kong.');
+                    form.querySelector('[name="country"]')?.focus();
+                    return;
+                }
+                if (!poBankProvinces.includes(payload.province)) {
+                    alert('Please select a valid province.');
+                    form.querySelector('[name="province"]')?.focus();
+                    return;
+                }
+                if (hasPoBankSpecialChars(payload.company_name) || hasPoBankSpecialChars(payload.address)) {
+                    alert('Beneficiary and Address cannot contain special characters.');
+                    return;
+                }
+                const accountId = String(form.getAttribute('data-account-id') || '').trim();
+                const saveUrl = accountId ? (poBankBaseUrl + '/' + accountId) : poBankBaseUrl;
+                const method = accountId ? 'PUT' : 'POST';
                 const btn = document.getElementById('poBankSaveBtn');
                 if (btn) {
                     btn.disabled = true;
                     btn.textContent = 'Saving…';
                 }
                 try {
-                    const res = await fetch(poBankStoreUrl, {
-                        method: 'POST',
+                    const res = await fetch(saveUrl, {
+                        method: method,
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
@@ -3144,7 +3656,10 @@
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok || data.success === false) {
-                        throw new Error(data.message || 'Failed to save bank details');
+                        const firstErr = data.errors
+                            ? (Object.values(data.errors).flat()[0] || data.message)
+                            : data.message;
+                        throw new Error(firstErr || 'Failed to save bank details');
                     }
                     window.location.reload();
                 } catch (err) {

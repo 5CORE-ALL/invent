@@ -12,15 +12,16 @@ return new class extends Migration
             $table->id();
             // suppliers.id is signed INT(11)
             $table->integer('supplier_id')->index();
-            $table->string('supplier_name', 30)->nullable();
-            $table->string('nick_name', 30)->nullable();
-            $table->string('company_name', 30)->nullable();
-            $table->string('swift', 30)->nullable();
-            $table->string('address', 30)->nullable();
-            $table->string('city', 30)->nullable();
-            $table->string('province', 30)->nullable();
-            $table->string('country', 30)->nullable();
-            $table->string('account_number', 30)->nullable();
+            $table->string('supplier_name', 50)->nullable();
+            $table->string('nick_name', 50)->nullable();
+            $table->string('company_name', 50)->nullable();
+            $table->string('swift', 50)->nullable();
+            $table->string('address', 50)->nullable();
+            $table->string('city', 50)->nullable();
+            $table->string('province', 50)->nullable();
+            $table->string('country', 50)->nullable();
+            $table->string('account_number', 50)->nullable();
+            $table->string('acc_type', 10)->nullable();
             $table->timestamps();
 
             $table->foreign('supplier_id')->references('id')->on('suppliers')->onDelete('cascade');

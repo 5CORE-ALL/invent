@@ -799,43 +799,68 @@
                     <form id="supplierBankForm" class="row g-2 border rounded-3 p-3 bg-light">
                         <div class="col-12">
                             <div class="fw-semibold mb-1" id="supplierBankFormTitle">Account details</div>
-                            <small class="text-muted">Max 30 characters per field.</small>
+                            <small class="text-muted">All fields required. Max 50 characters per field.</small>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Supplier name</label>
-                            <input type="text" name="supplier_name" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Supplier name <span class="text-danger">*</span></label>
+                            <select name="supplier_name" id="supplierBankSupplierName" class="form-select form-select-sm" required disabled
+                                    data-placeholder="Search supplier…">
+                                <option value="">Select…</option>
+                                @foreach($bankSupplierNames ?? [] as $sName)
+                                    <option value="{{ $sName }}">{{ $sName }}</option>
+                                @endforeach
+                            </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Nick name</label>
-                            <input type="text" name="nick_name" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Nick name <span class="text-danger">*</span></label>
+                            <input type="text" name="nick_name" maxlength="50" class="form-control form-control-sm" required disabled>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Benificiary</label>
-                            <input type="text" name="company_name" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Benificiary <span class="text-danger">*</span></label>
+                            <input type="text" name="company_name" maxlength="50" class="form-control form-control-sm" required disabled>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Swift</label>
-                            <input type="text" name="swift" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Swift <span class="text-danger">*</span></label>
+                            <input type="text" name="swift" maxlength="50" class="form-control form-control-sm" required disabled>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Address</label>
-                            <input type="text" name="address" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Account number <span class="text-danger">*</span></label>
+                            <input type="text" name="account_number" maxlength="50" class="form-control form-control-sm" required disabled>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">City</label>
-                            <input type="text" name="city" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Acc Type <span class="text-danger">*</span></label>
+                            <select name="acc_type" class="form-select form-select-sm" required disabled>
+                                <option value="">Select…</option>
+                                <option value="RMB">RMB</option>
+                                <option value="USD">US $</option>
+                            </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Province</label>
-                            <input type="text" name="province" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Address <span class="text-danger">*</span></label>
+                            <input type="text" name="address" maxlength="50" class="form-control form-control-sm" required disabled>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Country</label>
-                            <input type="text" name="country" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">City <span class="text-danger">*</span></label>
+                            <input type="text" name="city" maxlength="50" class="form-control form-control-sm" required disabled>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-semibold mb-0">Account number</label>
-                            <input type="text" name="account_number" maxlength="30" class="form-control form-control-sm" disabled>
+                            <label class="form-label small fw-semibold mb-0">Province <span class="text-danger">*</span></label>
+                            <select name="province" id="supplierBankProvince" class="form-select form-select-sm" required disabled
+                                    data-placeholder="Search province…">
+                                <option value="">Select…</option>
+                                @foreach(config('supplier_bank.provinces', []) as $prov)
+                                    <option value="{{ $prov }}">{{ $prov }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Country <span class="text-danger">*</span></label>
+                            <select name="country" class="form-select form-select-sm" required disabled>
+                                <option value="">Select…</option>
+                                <option value="China">China</option>
+                                <option value="India">India</option>
+                                <option value="Hong Kong">Hong Kong</option>
+                            </select>
                         </div>
                         <div class="col-12 d-flex gap-2 mt-2 d-none" id="supplierBankFormActions">
                             <button type="submit" class="btn btn-primary btn-sm" id="supplierBankSaveBtn">
@@ -2402,18 +2427,54 @@
         let supplierBankAccountsCache = [];
         let supplierBankDefaultName = '';
 
+        const SUPPLIER_BANK_PROVINCES = @json(config('supplier_bank.provinces', []));
+
+        function initSupplierBankSelect2($el, placeholder) {
+            if (!$el.length || !$.fn.select2) return;
+            if ($el.hasClass('select2-hidden-accessible')) {
+                $el.select2('destroy');
+            }
+            $el.select2({
+                dropdownParent: $('#supplierBankModal'),
+                width: '100%',
+                placeholder: placeholder,
+                allowClear: false,
+                theme: 'bootstrap-5',
+            });
+        }
+
+        function initSupplierBankSearchSelects() {
+            initSupplierBankSelect2($('#supplierBankSupplierName'), 'Search supplier…');
+            initSupplierBankSelect2($('#supplierBankProvince'), 'Search province…');
+        }
+
+        function supplierBankEnsureSelectOption($el, value) {
+            const val = String(value || '').trim();
+            if (!val || !$el.length) return;
+            if (!$el.find('option').filter(function () { return $(this).val() === val; }).length) {
+                $el.append($('<option>', { value: val, text: val }));
+            }
+        }
+
         function supplierBankSetFormEnabled(enabled) {
-            $('#supplierBankForm').find('input').prop('disabled', !enabled);
+            $('#supplierBankForm').find('input, select').prop('disabled', !enabled);
             $('#supplierBankFormActions').toggleClass('d-none', !enabled);
+            ['#supplierBankSupplierName', '#supplierBankProvince'].forEach(function (sel) {
+                const $el = $(sel);
+                if ($el.hasClass('select2-hidden-accessible')) {
+                    $el.prop('disabled', !enabled).trigger('change.select2');
+                }
+            });
         }
 
         function supplierBankClearForm(prefillName) {
             $('#supplierBankAccountId').val('');
             const form = document.getElementById('supplierBankForm');
             form.reset();
-            if (prefillName) {
-                form.querySelector('[name="supplier_name"]').value = prefillName;
-            }
+            const nameVal = String(prefillName || '').trim();
+            supplierBankEnsureSelectOption($('#supplierBankSupplierName'), nameVal);
+            $('#supplierBankSupplierName').val(nameVal).trigger('change');
+            $('#supplierBankProvince').val('').trigger('change');
             $('#supplierBankFormTitle').text('New bank account');
             $('#supplierBankDeleteBtn').addClass('d-none');
         }
@@ -2421,10 +2482,16 @@
         function supplierBankFillForm(account) {
             $('#supplierBankAccountId').val(account.id || '');
             const form = document.getElementById('supplierBankForm');
-            ['supplier_name','nick_name','company_name','swift','address','city','province','country','account_number'].forEach(function (f) {
+            ['nick_name','company_name','swift','address','city','country','account_number','acc_type'].forEach(function (f) {
                 const el = form.querySelector('[name="' + f + '"]');
                 if (el) el.value = account[f] || '';
             });
+            const supplierNameVal = account.supplier_name || '';
+            supplierBankEnsureSelectOption($('#supplierBankSupplierName'), supplierNameVal);
+            $('#supplierBankSupplierName').val(supplierNameVal).trigger('change');
+            const provinceVal = account.province || '';
+            supplierBankEnsureSelectOption($('#supplierBankProvince'), provinceVal);
+            $('#supplierBankProvince').val(provinceVal).trigger('change');
             $('#supplierBankFormTitle').text(account.id ? ('Edit account #' + account.id) : 'New bank account');
             $('#supplierBankDeleteBtn').toggleClass('d-none', !account.id || !SUPPLIER_BANK_CAN_EDIT);
         }
@@ -2487,6 +2554,10 @@
             bootstrap.Modal.getOrCreateInstance(document.getElementById('supplierBankModal')).show();
         }
 
+        $('#supplierBankModal').on('shown.bs.modal', function () {
+            initSupplierBankSearchSelects();
+        });
+
         $(document).on('click', '.supplier-bank-open-btn', function () {
             supplierBankOpenModal($(this).data('supplier-id'), $(this).data('supplier-name'));
         });
@@ -2533,7 +2604,12 @@
             const accountId = $('#supplierBankAccountId').val();
             const formData = new FormData(this);
             const payload = {};
-            formData.forEach((v, k) => { payload[k] = String(v).slice(0, 30); });
+            formData.forEach((v, k) => { payload[k] = String(v).slice(0, 50); });
+            if (!SUPPLIER_BANK_PROVINCES.includes(String(payload.province || '').trim())) {
+                alert('Please select a valid province.');
+                $('#supplierBankProvince').select2('open');
+                return;
+            }
 
             const url = accountId
                 ? '/supplier/' + supplierId + '/bank-accounts/' + accountId
