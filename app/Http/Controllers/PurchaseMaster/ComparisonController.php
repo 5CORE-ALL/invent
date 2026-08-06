@@ -458,6 +458,8 @@ class ComparisonController extends Controller
             ?? $record?->sheet_data['cells']
             ?? ComparisonData::defaultSheetCells();
         $cells = $this->sheetService->ensureLeadColumns($cells);
+        // 5 Core PRICE USD ← CP Master (product_master.Values.cp) for the opened SKU.
+        $cells = $this->sheetService->enrichFiveCoreCpPrice($cells, $this->resolveCpForSku($sku));
         $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
         $formats = $this->sheetStorage->formatsFromPayload(is_array($filePayload) ? $filePayload : null);
         if ($formats === ComparisonData::defaultSheetFormats() && is_array($record?->sheet_data)) {
@@ -880,19 +882,48 @@ class ComparisonController extends Controller
             $decoded = $this->sheetStorage->readPhotoById($sheetSku, $photoId);
             $etagSeed = 'photo|' . $photoId;
         } elseif ($row >= 0 && $col >= 0) {
+            // Read-only lookup — do not persist/mutate sheet cells while serving an image.
             $cells = $this->sheetStorage->cellsForSku($sheetSku);
             if (is_array($cells)) {
                 $cells = $this->sheetService->ensureLeadColumns($cells);
-                $cells = $this->sheetService->moveLowestPriceSupplierAfterSpec($cells);
-                $cells = $this->sheetStorage->persistPhotosInCells($sheetSku, $cells);
-                $cellVal = trim((string) ($cells[$row][$col] ?? ''));
-                $tokenPhoto = $this->sheetStorage->photoIdFromToken($cellVal);
-                if ($tokenPhoto) {
-                    $decoded = $this->sheetStorage->readPhotoById($sheetSku, $tokenPhoto);
-                    $etagSeed = 'photo|' . $tokenPhoto;
-                } else {
+                $grids = [
+                    $cells,
+                    $this->sheetService->moveLowestPriceSupplierAfterSpec($cells),
+                ];
+                $candidateVals = [];
+                foreach ($grids as $grid) {
+                    $candidateVals[] = trim((string) ($grid[$row][$col] ?? ''));
+                }
+                $candidateVals = array_values(array_unique(array_filter($candidateVals, fn ($v) => $v !== '')));
+
+                foreach ($candidateVals as $cellVal) {
+                    $tokenPhoto = $this->sheetStorage->photoIdFromToken($cellVal);
+                    if ($tokenPhoto) {
+                        $decoded = $this->sheetStorage->readPhotoById($sheetSku, $tokenPhoto);
+                        if (is_array($decoded) && ! empty($decoded['bytes'])) {
+                            $etagSeed = 'photo|' . $tokenPhoto;
+                            break;
+                        }
+                    }
+
+                    $legacyRow = $row;
+                    $legacyCol = $col;
+                    if (preg_match('/^\[embedded-image:(\d+):(\d+)\]$/', $cellVal, $m)) {
+                        $legacyRow = (int) $m[1];
+                        $legacyCol = (int) $m[2];
+                    }
+
                     $decoded = $this->sheetStorage->readImageFile($sheetSku, $row, $col)
+                        ?? $this->sheetStorage->readImageFile($sheetSku, $legacyRow, $legacyCol)
                         ?? $this->sheetStorage->decodeEmbeddedImage($cellVal);
+                    if (is_array($decoded) && ! empty($decoded['bytes'])) {
+                        $etagSeed = "cell|{$row}|{$col}|{$legacyRow}|{$legacyCol}";
+                        break;
+                    }
+                }
+
+                if (! is_array($decoded) || empty($decoded['bytes'])) {
+                    $decoded = $this->sheetStorage->readImageFile($sheetSku, $row, $col);
                     $etagSeed = "cell|{$row}|{$col}";
                 }
             }
@@ -1216,6 +1247,7 @@ class ComparisonController extends Controller
             $shopify = ShopifySku::firstForProductSku($sku);
             $productImage = $product ? $this->resolveProductImage($product, $shopify) : null;
             $cells = $this->sheetService->enrichProductPhotoRow($cells, $productImage);
+            $cells = $this->sheetService->enrichFiveCoreCpPrice($cells, $this->resolveCpFromValues($product?->Values));
             $autoFormats = $this->sheetService->computeAutoFormats($cells);
 
             $record = ComparisonData::whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])->first();
@@ -1627,6 +1659,41 @@ class ComparisonController extends Controller
         $new = trim((string) ($newValue ?? ''));
 
         return sprintf('%s changed from "%s" to "%s"', $label, $old ?: 'empty', $new ?: 'empty');
+    }
+
+    /**
+     * CP Master cost price for a SKU (product_master.Values.cp).
+     */
+    private function resolveCpForSku(string $sku): ?float
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+
+        $values = ProductMaster::query()
+            ->whereRaw('TRIM(UPPER(sku)) = ?', [strtoupper($sku)])
+            ->value('Values');
+
+        return $this->resolveCpFromValues($values);
+    }
+
+    /**
+     * @param  mixed  $values
+     */
+    private function resolveCpFromValues($values): ?float
+    {
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($values)) {
+            return null;
+        }
+
+        $cp = $values['cp'] ?? $values['CP'] ?? $values['CP$'] ?? null;
+
+        return is_numeric($cp) ? (float) $cp : null;
     }
 
     private function resolveProductImage(ProductMaster $product, ?ShopifySku $shopify): ?string

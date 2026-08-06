@@ -332,7 +332,8 @@ class ComparisonSheetStorage
                 }
 
                 $resolved = $this->resolveLegacyPlaceholder($sku, $cells, $text, (int) $rowIndex, (int) $colIndex);
-                $cells[$rowIndex][$colIndex] = $resolved ?? '';
+                // Never wipe a photo placeholder — keep it so a later save / lookup can still resolve.
+                $cells[$rowIndex][$colIndex] = $resolved ?? $text;
             }
         }
 

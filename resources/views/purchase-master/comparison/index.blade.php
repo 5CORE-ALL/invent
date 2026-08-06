@@ -650,6 +650,24 @@
         line-height: 0;
     }
 
+    .cd-sheet-table .comparison-clink-dot-present,
+    .cd-sheet-table .cd-sheet-link-btn .comparison-clink-dot {
+        background-color: #16a34a;
+    }
+
+    .cd-sheet-table .cd-sheet-link-btn:hover .comparison-clink-dot {
+        background-color: #15803d;
+    }
+
+    .cd-sheet-table .comparison-clink-dot-missing {
+        background-color: #dc2626;
+        cursor: pointer;
+    }
+
+    .cd-sheet-table .cd-sheet-cell-link-missing {
+        cursor: pointer;
+    }
+
     .cd-sheet-table .cd-sheet-cell-company {
         padding: 2px 4px;
         text-align: center;
@@ -819,8 +837,18 @@
         line-height: 1;
     }
 
+    #comparisonColumnEditModal {
+        z-index: 1080;
+    }
+
+    #comparisonColumnEditModal .modal-dialog {
+        max-width: min(920px, 96vw);
+    }
+
     #comparisonColumnEditModal .cd-col-edit-table {
         margin-bottom: 0;
+        width: 100%;
+        table-layout: fixed;
         border-collapse: separate;
         border-spacing: 0;
         --bs-table-bg: transparent;
@@ -846,18 +874,81 @@
         --bs-table-color: #1e3a8a;
     }
 
+    #comparisonColumnEditModal .cd-col-edit-check {
+        width: 42px;
+        min-width: 42px;
+        max-width: 42px;
+        text-align: center;
+        vertical-align: middle;
+        padding-left: 0.35rem !important;
+        padding-right: 0.35rem !important;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-check .form-check-input {
+        margin: 0;
+        cursor: pointer;
+        width: 1rem;
+        height: 1rem;
+    }
+
     #comparisonColumnEditModal .cd-col-edit-label {
-        width: 34%;
+        width: 28%;
         min-width: 120px;
+        max-width: 220px;
         font-size: 0.82rem;
         font-weight: 600;
         color: #475569;
         vertical-align: middle;
+        word-break: break-word;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-value {
+        width: auto;
+        min-width: 200px;
+        vertical-align: middle;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-bulk-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        padding: 0.55rem 0.7rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-bulk-bar .cd-col-edit-bulk-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #475569;
+        margin: 0;
+        white-space: nowrap;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-bulk-bar .cd-col-edit-bulk-value {
+        flex: 1 1 160px;
+        min-width: 140px;
+        max-width: 280px;
+    }
+
+    #comparisonColumnEditModal .cd-col-edit-bulk-count {
+        font-size: 0.78rem;
+        color: #64748b;
+        margin-left: auto;
+    }
+
+    #comparisonColumnEditModal tr.cd-col-edit-row-selected {
+        background: #eff6ff;
     }
 
     #comparisonColumnEditModal .cd-col-edit-input,
     #comparisonColumnEditModal .cd-col-edit-select {
         font-size: 0.85rem;
+        min-width: 140px;
+        width: 100%;
     }
 
     #comparisonColumnEditModal .cd-col-edit-hint {
@@ -904,13 +995,16 @@
         display: flex;
         align-items: stretch;
         gap: 4px;
+        width: 100%;
+        min-width: 180px;
     }
 
     .cd-field-clip-wrap .cd-col-edit-field,
     .cd-field-clip-wrap .form-select,
     .cd-field-clip-wrap .form-control {
         flex: 1 1 auto;
-        min-width: 0;
+        min-width: 140px;
+        width: auto;
     }
 
     .cd-field-clip-btns {
@@ -1214,6 +1308,18 @@
         font-weight: 600;
     }
 
+    #comparison-cd-supplier-count {
+        font-size: 0.68rem;
+        font-weight: 700;
+        min-width: 1.35rem;
+        vertical-align: middle;
+    }
+
+    #comparison-cd-autopopulate-suppliers-btn #comparison-cd-supplier-count.has-suppliers {
+        background: #0d6efd !important;
+        color: #fff !important;
+    }
+
     #comparisonQcIssuesModal .cd-qc-issues-table thead th {
         background: #b2ebf2;
         font-size: 0.72rem;
@@ -1313,10 +1419,6 @@
         background: transparent;
         text-decoration: none;
         line-height: 0;
-    }
-
-    .cd-sheet-table .cd-sheet-link-btn:hover .comparison-clink-dot {
-        background-color: #1e3a8a;
     }
 
     .cd-sheet-table .cd-sheet-img {
@@ -1609,7 +1711,7 @@
                 <ul class="nav nav-tabs mb-3" id="comparison-cd-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="cd-sheet-tab-btn" data-bs-toggle="tab" data-bs-target="#cd-sheet-tab-pane" type="button" role="tab">
-                            <i class="fas fa-table"></i> Comparison Sheet
+                            <i class="fas fa-table"></i> Comparison Data
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -1647,6 +1749,7 @@
                                 <span class="cd-sheet-toolbar-divider" aria-hidden="true"></span>
                                 <button type="button" class="btn btn-sm btn-info text-white" id="comparison-cd-autopopulate-suppliers-btn" title="Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category">
                                     <i class="mdi mdi-account-multiple-plus"></i> Suppliers
+                                    <span class="badge rounded-pill bg-light text-dark ms-1" id="comparison-cd-supplier-count">0</span>
                                 </button>
                                 <button type="button" class="btn btn-sm btn-warning text-dark" id="comparison-cd-roi-btn" title="Open cost calculator ROI from lowest supplier price column">
                                     <i class="mdi mdi-percent"></i> ROI%
@@ -2067,6 +2170,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let selectedSheetMultiRows = new Set();
     let priorityBulkEditTargetRows = [];
     let columnEditTargetCol = null;
+    let columnEditSelectedRows = new Set();
     let sheetRenderColCache = null;
     let sheetDimWtApplyTimer = null;
     let lmpLoadedForSku = null;
@@ -2385,6 +2489,15 @@ document.addEventListener('DOMContentLoaded', function () {
         const specCol = detectSpecColumnIndex(cells || currentSheetCells);
         const label = String(((cells || currentSheetCells)[rowIndex] || [])[specCol] || '').trim().toLowerCase();
         return label.includes('company name');
+    }
+
+    function isSheetLinkRow(rowIndex, cells) {
+        if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex)) {
+            return false;
+        }
+        const specCol = detectSpecColumnIndex(cells || currentSheetCells);
+        const label = String(((cells || currentSheetCells)[rowIndex] || [])[specCol] || '').trim().toLowerCase();
+        return label === 'link' || label === 'supplier link' || label.startsWith('supplier link ');
     }
 
     function isCommRow(rowIndex, cells) {
@@ -3059,6 +3172,158 @@ document.addEventListener('DOMContentLoaded', function () {
             || (qcCol !== null && colIndex === qcCol);
     }
 
+    function isColumnEditRowSelectable(rowIndex, col, isPriorityCol, isSpecCol) {
+        if (rowIndex === null || rowIndex === undefined || Number.isNaN(rowIndex) || rowIndex < 0) {
+            return false;
+        }
+        if (isPriorityCol && rowIndex === 0) {
+            return false;
+        }
+        if (isCommRow(rowIndex, currentSheetCells) && !isSpecCol && !isPriorityCol) {
+            return false;
+        }
+        return true;
+    }
+
+    function columnEditRowCheckboxHtml(rowIndex, selectable) {
+        if (!selectable) {
+            return `<td class="cd-col-edit-check"></td>`;
+        }
+        const checked = columnEditSelectedRows.has(rowIndex) ? ' checked' : '';
+        return `<td class="cd-col-edit-check">
+            <input type="checkbox" class="form-check-input cd-col-edit-row-check" data-row="${rowIndex}"
+                title="Select row for bulk apply" aria-label="Select row ${rowIndex + 1}"${checked}>
+        </td>`;
+    }
+
+    function setupColumnEditBulkValueControl(isPriorityCol) {
+        const bulkValueWrap = document.getElementById('comparison-column-edit-bulk-value-wrap');
+        if (!bulkValueWrap) {
+            return;
+        }
+        const existing = document.getElementById('comparison-column-edit-bulk-value');
+        const existingIsSelect = !!(existing && existing.tagName === 'SELECT');
+        if (isPriorityCol && existingIsSelect) {
+            return;
+        }
+        if (!isPriorityCol && existing && existing.tagName === 'INPUT' && existing.type === 'text') {
+            return;
+        }
+
+        if (isPriorityCol) {
+            bulkValueWrap.innerHTML = `<select id="comparison-column-edit-bulk-value" class="form-select form-select-sm cd-col-edit-bulk-value" title="Value to apply to selected rows">
+                <option value="Normal">Normal</option>
+                <option value="Important">Important</option>
+                <option value="Critical" selected>Critical</option>
+            </select>`;
+        } else {
+            bulkValueWrap.innerHTML = `<input type="text" id="comparison-column-edit-bulk-value" class="form-control form-control-sm cd-col-edit-bulk-value" value="" placeholder="Value for selected rows" title="Value to apply to selected rows">`;
+        }
+    }
+
+    function refreshColumnEditBulkBar() {
+        const col = columnEditTargetCol;
+        const bulkBar = document.getElementById('comparison-column-edit-bulk-bar');
+        const countEl = document.getElementById('comparison-column-edit-bulk-count');
+        const applyBtn = document.getElementById('comparison-column-edit-bulk-apply-btn');
+        const selectAll = document.getElementById('comparison-column-edit-select-all');
+        if (!bulkBar) {
+            return;
+        }
+
+        if (col === null || col === undefined || Number.isNaN(col)) {
+            bulkBar.classList.add('d-none');
+            return;
+        }
+
+        const selectableChecks = document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-row-check');
+        const selectedCount = columnEditSelectedRows.size;
+        const selectableCount = selectableChecks.length;
+
+        bulkBar.classList.remove('d-none');
+        if (countEl) {
+            countEl.textContent = selectedCount
+                ? `${selectedCount} selected`
+                : 'Select rows to apply';
+        }
+        if (applyBtn) {
+            applyBtn.disabled = selectedCount === 0;
+        }
+        if (selectAll) {
+            selectAll.disabled = selectableCount === 0;
+            selectAll.checked = selectableCount > 0 && selectedCount === selectableCount;
+            selectAll.indeterminate = selectedCount > 0 && selectedCount < selectableCount;
+        }
+
+        document.querySelectorAll('#comparison-column-edit-tbody tr[data-edit-row]').forEach((tr) => {
+            const rowIndex = parseInt(tr.dataset.editRow, 10);
+            tr.classList.toggle('cd-col-edit-row-selected', columnEditSelectedRows.has(rowIndex));
+        });
+    }
+
+    function syncColumnEditSelectedRowsFromDom() {
+        columnEditSelectedRows = new Set();
+        document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-row-check:checked').forEach((check) => {
+            const rowIndex = parseInt(check.dataset.row, 10);
+            if (!Number.isNaN(rowIndex)) {
+                columnEditSelectedRows.add(rowIndex);
+            }
+        });
+        refreshColumnEditBulkBar();
+    }
+
+    function applyBulkValueToSelectedColumnEditRows() {
+        const bulkField = document.getElementById('comparison-column-edit-bulk-value');
+        if (!bulkField) {
+            return;
+        }
+        const selected = [...columnEditSelectedRows].sort((a, b) => a - b);
+        if (!selected.length) {
+            setSheetStatus('Select one or more rows first.', true);
+            return;
+        }
+
+        const col = columnEditTargetCol;
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const isPriorityCol = (criticalCol !== null && col === criticalCol)
+            || (qcCol !== null && col === qcCol);
+        let nextVal = String(bulkField.value ?? '');
+        if (isPriorityCol) {
+            nextVal = normalizePriorityValue(nextVal);
+        }
+
+        let applied = 0;
+        selected.forEach((rowIndex) => {
+            const field = document.querySelector(
+                `#comparison-column-edit-tbody .cd-col-edit-field[data-row="${rowIndex}"]:not([type="hidden"])`
+            );
+            if (!field || field.readOnly || field.disabled) {
+                return;
+            }
+            if (field.tagName === 'SELECT') {
+                const options = Array.from(field.options || []);
+                const match = options.find(opt => opt.value === nextVal);
+                if (!match) {
+                    return;
+                }
+                field.value = match.value;
+            } else {
+                field.value = nextVal;
+            }
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+            applied += 1;
+        });
+
+        if (!applied) {
+            setSheetStatus('No editable selected rows to update.', true);
+            return;
+        }
+        setSheetStatus(`Applied "${nextVal}" to ${applied} selected row(s). Click Save column to keep changes.`, false);
+    }
+
     function renderColumnEditModalRows() {
         const col = columnEditTargetCol;
         const tbody = document.getElementById('comparison-column-edit-tbody');
@@ -3072,6 +3337,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const isPriorityCol = (criticalCol !== null && col === criticalCol)
             || (qcCol !== null && col === qcCol);
         const isSpecCol = col === specCol;
+
+        // Drop stale selections after row count changes.
+        columnEditSelectedRows = new Set(
+            [...columnEditSelectedRows].filter((rowIndex) =>
+                isColumnEditRowSelectable(rowIndex, col, isPriorityCol, isSpecCol)
+                && rowIndex < currentSheetCells.length
+            )
+        );
 
         const parts = [];
         for (let r = 0; r < currentSheetCells.length; r++) {
@@ -3087,11 +3360,15 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!rowLabel) {
                 rowLabel = r === 0 ? 'Header' : `Row ${r + 1}`;
             }
+            const selectable = isColumnEditRowSelectable(r, col, isPriorityCol, isSpecCol);
+            const checkHtml = columnEditRowCheckboxHtml(r, selectable);
+            const selectedClass = columnEditSelectedRows.has(r) ? ' cd-col-edit-row-selected' : '';
 
             if (isCommRow(r, currentSheetCells) && !isSpecCol && !isPriorityCol) {
-                parts.push(`<tr data-edit-row="${r}">
+                parts.push(`<tr data-edit-row="${r}" class="${selectedClass.trim()}">
+                    ${checkHtml}
                     <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
-                    <td>
+                    <td class="cd-col-edit-value">
                         <input type="hidden" class="cd-col-edit-field" data-row="${r}" value="">
                         <span class="cd-col-edit-hint">Comm actions are managed in the sheet (not edited here).</span>
                     </td>
@@ -3106,9 +3383,10 @@ document.addEventListener('DOMContentLoaded', function () {
                             <option value="Important" ${normalized === 'Important' ? 'selected' : ''}>Important</option>
                             <option value="Critical" ${normalized === 'Critical' ? 'selected' : ''}>Critical</option>
                         </select>`;
-                parts.push(`<tr data-edit-row="${r}">
+                parts.push(`<tr data-edit-row="${r}" class="${selectedClass.trim()}">
+                    ${checkHtml}
                     <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
-                    <td>${wrapFieldWithClipboardActions(fieldHtml)}</td>
+                    <td class="cd-col-edit-value">${wrapFieldWithClipboardActions(fieldHtml)}</td>
                 </tr>`);
                 continue;
             }
@@ -3116,8 +3394,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (isPriorityCol && r === 0) {
                 const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" readonly>`;
                 parts.push(`<tr data-edit-row="${r}">
+                    ${checkHtml}
                     <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
-                    <td>${wrapFieldWithClipboardActions(fieldHtml)}</td>
+                    <td class="cd-col-edit-value">${wrapFieldWithClipboardActions(fieldHtml)}</td>
                 </tr>`);
                 continue;
             }
@@ -3130,12 +3409,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? '<div class="cd-col-edit-hint mt-1">Embedded photo — leave as-is to keep, or paste an image URL to replace.</div>'
                 : '';
             const fieldHtml = `<input type="text" class="form-control form-control-sm cd-col-edit-field cd-col-edit-input" data-row="${r}" value="${escapeHtmlAttr(displayValue)}" ${isImage ? 'placeholder="Image URL or keep embedded placeholder"' : ''}>`;
-            parts.push(`<tr data-edit-row="${r}">
+            parts.push(`<tr data-edit-row="${r}" class="${selectedClass.trim()}">
+                ${checkHtml}
                 <td class="cd-col-edit-label">${escapeHtml(rowLabel)}</td>
-                <td>${wrapFieldWithClipboardActions(fieldHtml)}${hint}</td>
+                <td class="cd-col-edit-value">${wrapFieldWithClipboardActions(fieldHtml)}${hint}</td>
             </tr>`);
         }
         tbody.innerHTML = parts.join('');
+        setupColumnEditBulkValueControl(isPriorityCol);
+        refreshColumnEditBulkBar();
     }
 
     function refreshColumnEditModalChrome() {
@@ -3160,6 +3442,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         ? 'Protected column (Amazon / 5 Core / Spec / Critical / QC) cannot be deleted'
                         : 'Cannot delete the last column');
             });
+
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const criticalCol = detectCriticalColumnIndex(currentSheetCells, specCol);
+        const qcCol = detectQcColumnIndex(currentSheetCells, specCol);
+        const isPriorityCol = (criticalCol !== null && col === criticalCol)
+            || (qcCol !== null && col === qcCol);
+        setupColumnEditBulkValueControl(isPriorityCol);
+        refreshColumnEditBulkBar();
     }
 
     function openColumnEditModal(colIndex) {
@@ -3174,6 +3464,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         columnEditTargetCol = col;
+        columnEditSelectedRows = new Set();
         selectedSheetCol = col;
         applySheetSelectionHighlight();
         refreshColumnEditModalChrome();
@@ -4032,6 +4323,41 @@ document.addEventListener('DOMContentLoaded', function () {
         return String((sheetCells[supplierRowIndex] || [])[colIndex] || '').trim();
     }
 
+    function countNamedSupplierColumns(cells) {
+        const sheetCells = cells || currentSheetCells || [];
+        if (!sheetCells.length) {
+            return 0;
+        }
+        const specCol = detectSpecColumnIndex(sheetCells);
+        const firstSupplierCol = getFirstSupplierColumnIndex(sheetCells, specCol);
+        const colCount = Math.max(...sheetCells.map(row => (Array.isArray(row) ? row.length : 0)), 0);
+        let count = 0;
+        for (let c = firstSupplierCol; c < colCount; c++) {
+            if (getSupplierNameForColumn(c, sheetCells)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    function updateSupplierCountBadge(cells) {
+        const countEl = document.getElementById('comparison-cd-supplier-count');
+        const btn = document.getElementById('comparison-cd-autopopulate-suppliers-btn');
+        if (!countEl) {
+            return;
+        }
+        const count = countNamedSupplierColumns(cells);
+        countEl.textContent = String(count);
+        countEl.classList.toggle('has-suppliers', count > 0);
+        countEl.classList.toggle('bg-light', count === 0);
+        countEl.classList.toggle('text-dark', count === 0);
+        if (btn) {
+            btn.title = count > 0
+                ? `${count} supplier(s) in this sheet — click to add/update from supplier.list for this category`
+                : 'Add suppliers into blank columns from column D; update C-link preloaded names when they match supplier.list for this category';
+        }
+    }
+
     function cacheComparisonSuppliers(suppliers) {
         comparisonSuppliersByName = {};
         (suppliers || []).forEach(function (supplier) {
@@ -4175,7 +4501,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (companyRowIndex !== null) {
                 insertAt = companyRowIndex;
             } else {
-                const supplierLinkRow = findRowIndexByLabel(cells, 'supplier link', specCol);
+                const supplierLinkRow = findSheetLinkRowIndex(cells, specCol);
                 if (supplierLinkRow !== null) {
                     insertAt = supplierLinkRow + 1;
                 }
@@ -5470,8 +5796,9 @@ document.addEventListener('DOMContentLoaded', function () {
             // NEVER put megabyte base64 data-URLs into innerHTML — that freezes the page.
             // Load stored photos via /sheet/image?photo=… (stable) or legacy row/col.
             if (isStoredPhoto) {
-                const coords = parseEmbeddedImageCoords(attrValue, rowIndex, colIndex);
-                const src = sheetEmbeddedImageSrc(coords.row, coords.col, attrValue);
+                // Request by current cell position so the server can read this cell's value;
+                // legacy [embedded-image:r:c] coords inside the value still locate the file.
+                const src = sheetEmbeddedImageSrc(rowIndex, colIndex, attrValue);
                 if (src) {
                     return `<div class="cd-sheet-cell cd-sheet-cell-image" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="${escapeHtmlAttr(attrValue)}" data-embedded="1" title="Product photo">
                         <img src="${escapeHtmlAttr(src)}" class="cd-sheet-img" alt="Product photo" loading="lazy" decoding="async">
@@ -5488,8 +5815,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 <a href="${escapeHtmlAttr(text)}" target="_blank" rel="noopener noreferrer"
                     class="cd-sheet-link-btn"
                     title="Open link" aria-label="Open link">
-                    <span class="comparison-clink-dot" aria-hidden="true"></span>
+                    <span class="comparison-clink-dot comparison-clink-dot-present" aria-hidden="true"></span>
                 </a>
+            </div>`;
+        }
+        if (!forceText && !text && isSheetLinkRow(rowIndex)
+            && !isSheetSpecColumn(colIndex)
+            && !isSheetCriticalColumn(colIndex)
+            && !isSheetQcColumn(colIndex)) {
+            return `<div class="cd-sheet-cell cd-sheet-cell-link cd-sheet-cell-link-missing" contenteditable="false" spellcheck="false" data-row="${rowIndex}" data-col="${colIndex}" data-value="" title="No link — double-click to add" aria-label="No link">
+                <span class="comparison-clink-dot comparison-clink-dot-missing" aria-hidden="true"></span>
             </div>`;
         }
         if (!forceText && isCompanyNameDataCell(rowIndex, colIndex, forceText) && text) {
@@ -5636,6 +5971,7 @@ document.addEventListener('DOMContentLoaded', function () {
         sheetRenderColCache = null;
 
         applyPriorityRowFilters();
+        updateSupplierCountBadge(currentSheetCells);
     }
 
     function applySheetSelectionHighlight() {
@@ -5920,17 +6256,23 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Photo cells: keep tokens / data:image in memory; never pull base64 from DOM.
                 if (cell.classList.contains('cd-sheet-cell-image')) {
                     const fromMemory = (currentSheetCells[rowIndex] || [])[colIndex] || '';
+                    const memoryText = String(fromMemory || '');
+                    const storedText = String(stored || '');
+                    // Preserve ALL photo token forms, including legacy [embedded-image:r:c]
+                    // (coords point at the stored file — do not rewrite them here).
                     if (
-                        fromMemory
-                        && (
-                            String(fromMemory).startsWith('data:image/')
-                            || String(fromMemory).startsWith('[cmp-photo:')
-                        )
+                        memoryText.startsWith('data:image/')
+                        || memoryText.startsWith('[cmp-photo:')
+                        || memoryText.startsWith('[embedded-image:')
                     ) {
                         row[colIndex] = fromMemory;
                         return;
                     }
-                    if (stored && (stored.startsWith('[cmp-photo:') || !stored.startsWith('[embedded-image:'))) {
+                    if (
+                        storedText.startsWith('[cmp-photo:')
+                        || storedText.startsWith('[embedded-image:')
+                        || storedText.startsWith('data:image/')
+                    ) {
                         row[colIndex] = stored;
                         return;
                     }
@@ -6281,9 +6623,25 @@ document.addEventListener('DOMContentLoaded', function () {
         return null;
     }
 
-    function ensureSupplierLinkRow(cells, specCol) {
+    function findSheetLinkRowIndex(cells, specCol) {
         specCol = specCol ?? detectSpecColumnIndex(cells);
         let rowIndex = findRowIndexByLabel(cells, 'supplier link', specCol);
+        if (rowIndex !== null) {
+            return rowIndex;
+        }
+        // Sheets often label this row simply "Link".
+        for (let r = 0; r < (cells || []).length; r++) {
+            const label = String((cells[r] || [])[specCol] || '').trim().toLowerCase();
+            if (label === 'link') {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    function ensureSupplierLinkRow(cells, specCol) {
+        specCol = specCol ?? detectSpecColumnIndex(cells);
+        let rowIndex = findSheetLinkRowIndex(cells, specCol);
         if (rowIndex !== null) {
             return { cells, rowIndex };
         }
@@ -6303,7 +6661,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const nextCells = cells.slice();
         nextCells.splice(insertAt, 0, newRow);
-
         return { cells: nextCells, rowIndex: insertAt };
     }
 
@@ -6323,7 +6680,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (companyRowIndex !== null) {
             insertAt = companyRowIndex;
         } else {
-            const supplierLinkRow = findRowIndexByLabel(cells, 'supplier link', specCol);
+            const supplierLinkRow = findSheetLinkRowIndex(cells, specCol);
             if (supplierLinkRow !== null) {
                 insertAt = supplierLinkRow + 1;
             }
@@ -6351,7 +6708,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (supplierNameRow !== null) {
             insertAt = supplierNameRow + 1;
         } else {
-            const supplierLinkRow = findRowIndexByLabel(cells, 'supplier link', specCol);
+            const supplierLinkRow = findSheetLinkRowIndex(cells, specCol);
             if (supplierLinkRow !== null) {
                 insertAt = supplierLinkRow + 1;
             }
@@ -6384,8 +6741,12 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        const firstSupplierCol = getFirstSupplierColumnIndex(cells, specCol);
         const row = cells[supplierRowIndex] || [];
-        for (let col = FIRST_SUPPLIER_COLUMN; col < row.length; col++) {
+        for (let col = firstSupplierCol; col < row.length; col++) {
+            if (isProtectedSheetColumn(col, cells)) {
+                continue;
+            }
             const name = String(row[col] || '').trim();
             if (!name) {
                 continue;
@@ -6424,15 +6785,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const placedIds = new Set();
         let updated = 0;
         let added = 0;
+        const specCol = detectSpecColumnIndex(currentSheetCells);
+        const firstSupplierCol = getFirstSupplierColumnIndex(currentSheetCells, specCol);
 
         let maxCol = Math.max(
             ...currentSheetCells.map(row => row.length),
-            FIRST_SUPPLIER_COLUMN
+            firstSupplierCol
         );
 
         Object.keys(clinkPreloadedSupplierByCol).forEach(key => {
             const col = parseInt(key, 10);
-            if (Number.isNaN(col)) {
+            if (Number.isNaN(col) || col < firstSupplierCol || isProtectedSheetColumn(col, currentSheetCells)) {
                 return;
             }
 
@@ -6462,22 +6825,28 @@ document.addEventListener('DOMContentLoaded', function () {
             updated++;
         });
 
-        let col = FIRST_SUPPLIER_COLUMN;
+        let col = firstSupplierCol;
         while (placedIds.size < suppliers.length) {
             const supplier = suppliers.find(item => !placedIds.has(item.id));
             if (!supplier) {
                 break;
             }
 
-            while (col < maxCol && !isSupplierNameColumnBlank(currentSheetCells, supplierRowIndex, col)) {
+            while (
+                col < maxCol
+                && (
+                    isProtectedSheetColumn(col, currentSheetCells)
+                    || !isSupplierNameColumnBlank(currentSheetCells, supplierRowIndex, col)
+                )
+            ) {
                 col++;
             }
 
             if (col >= maxCol) {
                 currentSheetCells = ensureSupplierColumnCount(
                     currentSheetCells,
-                    FIRST_SUPPLIER_COLUMN,
-                    col - FIRST_SUPPLIER_COLUMN + 1
+                    firstSupplierCol,
+                    col - firstSupplierCol + 1
                 );
                 maxCol = Math.max(...currentSheetCells.map(row => row.length), maxCol + 1);
             }
@@ -9516,6 +9885,26 @@ document.addEventListener('DOMContentLoaded', function () {
         if (e.target.closest('#comparison-column-edit-delete-col-btn-footer')) {
             e.preventDefault();
             deleteCurrentColumnFromColumnEditModal();
+            return;
+        }
+        if (e.target.closest('#comparison-column-edit-bulk-apply-btn')) {
+            e.preventDefault();
+            applyBulkValueToSelectedColumnEditRows();
+        }
+    });
+
+    document.getElementById('comparisonColumnEditModal')?.addEventListener('change', function (e) {
+        const selectAll = e.target.closest('#comparison-column-edit-select-all');
+        if (selectAll) {
+            const checked = !!selectAll.checked;
+            document.querySelectorAll('#comparison-column-edit-tbody .cd-col-edit-row-check').forEach((check) => {
+                check.checked = checked;
+            });
+            syncColumnEditSelectedRowsFromDom();
+            return;
+        }
+        if (e.target.closest('.cd-col-edit-row-check')) {
+            syncColumnEditSelectedRowsFromDom();
         }
     });
 
@@ -9839,12 +10228,35 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="table-responsive" style="max-height: min(65vh, 560px);">
+                <div class="cd-col-edit-bulk-bar" id="comparison-column-edit-bulk-bar">
+                    <label class="cd-col-edit-bulk-label" for="comparison-column-edit-bulk-value">Apply to selected</label>
+                    <span id="comparison-column-edit-bulk-value-wrap">
+                        <select id="comparison-column-edit-bulk-value" class="form-select form-select-sm cd-col-edit-bulk-value">
+                            <option value="Normal">Normal</option>
+                            <option value="Important">Important</option>
+                            <option value="Critical" selected>Critical</option>
+                        </select>
+                    </span>
+                    <button type="button" class="btn btn-sm btn-info text-white" id="comparison-column-edit-bulk-apply-btn" disabled title="Set this value on all checked rows">
+                        <i class="mdi mdi-checkbox-multiple-marked-outline me-1"></i> Apply
+                    </button>
+                    <span class="cd-col-edit-bulk-count" id="comparison-column-edit-bulk-count">Select rows to apply</span>
+                </div>
+                <div class="table-responsive" style="max-height: min(65vh, 560px); overflow-x: auto;">
                     <table class="table table-sm table-bordered align-middle cd-col-edit-table">
+                        <colgroup>
+                            <col style="width: 42px;">
+                            <col style="width: 28%;">
+                            <col>
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Spec / Row</th>
-                                <th>Value</th>
+                                <th scope="col" class="cd-col-edit-check">
+                                    <input type="checkbox" class="form-check-input" id="comparison-column-edit-select-all"
+                                        title="Select all editable rows" aria-label="Select all editable rows">
+                                </th>
+                                <th scope="col">Spec / Row</th>
+                                <th scope="col">Value</th>
                             </tr>
                         </thead>
                         <tbody id="comparison-column-edit-tbody"></tbody>

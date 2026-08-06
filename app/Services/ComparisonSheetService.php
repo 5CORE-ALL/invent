@@ -432,6 +432,10 @@ class ComparisonSheetService
 
         $labelCol = $this->detectLabelColumnIndex($cells);
         $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol) ?? 0;
+        // During Google import this is usually Spec+1 (no Amazon/Critical/QC yet).
+        // After ensureLeadColumns it becomes QC+1. Never hardcode Spec+3 — that shoved
+        // the first two supplier images onto the third supplier column.
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $labelCol);
 
         // A pasted image is anchored to a cell (row/col) PLUS a pixel offset (x) that can
         // push it visually into a NEIGHBOURING column. Resolve the true target column from
@@ -450,9 +454,9 @@ class ComparisonSheetService
             $anchorLeft = $colLefts[$placement['col']] ?? ($placement['col'] * 100);
             $absLeft = $anchorLeft + max(0, $placement['x']);
             $targetCol = $this->columnAtOffset($colWidths, $colLefts, $absLeft, $placement['col']);
-            // Never drop a supplier photo onto Spec, Critical, or QC columns.
-            if ($targetCol <= $labelCol + 2) {
-                $targetCol = $labelCol + 3;
+            // Keep photos on supplier columns only (never Spec / Critical / QC / lead cols).
+            if ($targetCol < $firstSupplierCol || $targetCol === $labelCol) {
+                $targetCol = $firstSupplierCol;
             }
 
             $resolved[] = [
@@ -835,6 +839,7 @@ class ComparisonSheetService
 
         $labelCol = $this->detectLabelColumnIndex($cells);
         $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol) ?? 0;
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $labelCol);
         $colWidth = $this->estimateColumnWidthFromHtml($html);
         $rowHeight = $this->estimateRowHeightFromHtml($html);
 
@@ -854,8 +859,8 @@ class ComparisonSheetService
 
             foreach ($images as $image) {
                 $col = (int) max(0, floor($image['left'] / max(1, $colWidth)));
-                if ($col === $labelCol) {
-                    $col++;
+                if ($col < $firstSupplierCol || $col === $labelCol) {
+                    $col = $firstSupplierCol;
                 }
 
                 if ($bandKey === $firstBandKey) {
@@ -1037,10 +1042,13 @@ class ComparisonSheetService
 
         $labelCol = $this->detectLabelColumnIndex($cells);
         $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol) ?? 0;
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $labelCol);
         $queueIndex = 0;
 
         foreach ($cells[$photoRowIndex] ?? [] as $colIndex => $value) {
-            if ((int) $colIndex === $labelCol) {
+            $colIndex = (int) $colIndex;
+            // Only backfill real supplier columns — never Amazon / 5 Core / Spec / Critical / QC.
+            if ($colIndex < $firstSupplierCol || $colIndex === $labelCol) {
                 continue;
             }
             $trimmed = trim((string) $value);
@@ -1265,6 +1273,7 @@ class ComparisonSheetService
 
         $labelCol = $this->detectLabelColumnIndex($cells);
         $photoRowIndex = $this->findRowIndexByLabel($cells, 'product photo', $labelCol) ?? 0;
+        $firstSupplierCol = $this->getFirstSupplierColumnIndex($cells, $labelCol);
         if (! isset($cells[$photoRowIndex]) || ! is_array($cells[$photoRowIndex])) {
             return $cells;
         }
@@ -1286,7 +1295,8 @@ class ComparisonSheetService
         $queueIndex = 0;
 
         foreach ($cells[$photoRowIndex] as $colIndex => $value) {
-            if ((int) $colIndex === $labelCol) {
+            $colIndex = (int) $colIndex;
+            if ($colIndex < $firstSupplierCol || $colIndex === $labelCol) {
                 continue;
             }
             $trimmed = trim((string) $value);
@@ -1511,6 +1521,78 @@ class ComparisonSheetService
         }
 
         return $cells;
+    }
+
+    /**
+     * Write CP Master cost price into the 5 Core column PRICE USD row.
+     * 5 Core is the in-house column — CP from product_master.Values.cp is the source of truth.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @return array<int, array<int, string>>
+     */
+    public function enrichFiveCoreCpPrice(array $cells, null|int|float|string $cp): array
+    {
+        if ($cells === []) {
+            return $cells;
+        }
+
+        $cpNumber = is_numeric($cp) ? (float) $cp : null;
+        if ($cpNumber === null || $cpNumber < 0) {
+            return $cells;
+        }
+
+        $cells = ComparisonData::normalizeCells($cells);
+        $specCol = $this->detectSpecColumnIndex($cells);
+        $fiveCoreCol = $specCol - 1;
+        if ($fiveCoreCol < 0) {
+            return $cells;
+        }
+
+        $priceRow = $this->findRowIndexByLabels(
+            $cells,
+            ['price usd', 'usd (pair)', 'usd', 'supplier price'],
+            $specCol
+        );
+        if ($priceRow === null) {
+            return $cells;
+        }
+
+        // Avoid matching a "Price RMB" row if a loose "usd" needle somehow missed.
+        $priceLabel = strtolower(trim((string) ($cells[$priceRow][$specCol] ?? '')));
+        if (str_contains($priceLabel, 'rmb') && ! str_contains($priceLabel, 'usd')) {
+            return $cells;
+        }
+
+        $cpText = number_format($cpNumber, 2, '.', '');
+        $cpText = rtrim(rtrim($cpText, '0'), '.');
+        if ($cpText === '' || $cpText === '-') {
+            $cpText = '0';
+        }
+
+        while (count($cells[$priceRow]) <= $fiveCoreCol) {
+            $cells[$priceRow][] = '';
+        }
+        $cells[$priceRow][$fiveCoreCol] = $cpText;
+
+        // Keep Supplier Name aligned with the 5 Core column when blank.
+        $supplierNameRow = null;
+        foreach ($cells as $rowIndex => $row) {
+            $label = strtolower(trim((string) ($row[$specCol] ?? '')));
+            if ($label === 'supplier name' || $label === 'supplier' || $label === 'suppliers') {
+                $supplierNameRow = (int) $rowIndex;
+                break;
+            }
+        }
+        if ($supplierNameRow !== null) {
+            while (count($cells[$supplierNameRow]) <= $fiveCoreCol) {
+                $cells[$supplierNameRow][] = '';
+            }
+            if (trim((string) ($cells[$supplierNameRow][$fiveCoreCol] ?? '')) === '') {
+                $cells[$supplierNameRow][$fiveCoreCol] = '5 Core';
+            }
+        }
+
+        return ComparisonData::normalizeCells($cells);
     }
 
     public const SPEC_COLUMN_COLOR = '#fed7aa';
