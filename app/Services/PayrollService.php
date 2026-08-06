@@ -249,18 +249,14 @@ class PayrollService
     }
 
     /**
-     * Drop sheet rows with no working hours for the month. Inactive users are
-     * still shown when they have login hours; they are only removed when hours
-     * are zero (e.g. after they leave and stop logging time).
+     * Drop sheet rows with no working hours for the month. Runs on locked months
+     * too — lock freezes salary edits, not ghost rows. Inactive users are kept
+     * only when they still have login hours; zero-hour rows are always removed.
      *
      * @return int Number of rows removed
      */
     public function removeEmployeesWithoutHours(PayrollMonth $month): int
     {
-        if ($month->is_locked) {
-            return 0;
-        }
-
         $teamLogger = $this->teamLoggerDataForMonth($month->month_label);
         $removeIds = [];
 

@@ -120,15 +120,16 @@ class PayrollController extends Controller
 
     public function monthData(PayrollMonth $payrollMonth): JsonResponse
     {
-  
         if (! $payrollMonth->is_locked) {
             $this->payroll->removeIneligibleEmployees($payrollMonth);
             $this->payroll->ensureSheetPopulated($payrollMonth);
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
             $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
-            $this->payroll->removeEmployeesWithoutHours($payrollMonth);
         }
+
+        // Always drop zero-hour rows (including locked months / inactive leavers).
+        $this->payroll->removeEmployeesWithoutHours($payrollMonth);
 
         $payrollMonth->loadCount([
             'employeeSalaries',
@@ -947,8 +948,11 @@ class PayrollController extends Controller
             $this->payroll->syncBankDetails($payrollMonth);
         }
 
+        $this->payroll->removeEmployeesWithoutHours($payrollMonth);
+
         $rows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
+            ->where('hours_worked', '>', 0)
             ->get();
 
         $csv = '"Name","Hours","Gross","Net","B1","B2","UPI"'."\n";
@@ -984,13 +988,16 @@ class PayrollController extends Controller
             $this->payroll->syncCarryForwardSalaries($payrollMonth);
             $this->payroll->syncBankDetails($payrollMonth);
             $this->payroll->refreshLiveHours($payrollMonth);
-            $this->payroll->removeEmployeesWithoutHours($payrollMonth);
         }
+
+        // Zero-hour rows out of the download even when the month is locked.
+        $this->payroll->removeEmployeesWithoutHours($payrollMonth);
 
         $rows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
             ->get()
             ->reject(fn ($r) => $this->isDirectorForPayoutSheet($r->user))
+            ->reject(fn ($r) => (float) $r->hours_worked <= 0)
             ->sortBy(fn ($r) => $r->user?->name)
             ->values();
 
