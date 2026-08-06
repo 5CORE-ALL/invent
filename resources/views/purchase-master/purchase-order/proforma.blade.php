@@ -1543,11 +1543,11 @@
                                     </span>
                                 </div>
                                 <div class="po-pkg-combined-row">
-                                    <span class="po-pkg-combined-label">Itm pkg Cover</span>
+                                    <span class="po-pkg-combined-label">Item Pkg Image</span>
                                     <span class="po-pkg-combined-value po-cover-text">
                                         @if($itemPkgCover !== '')
                                             @if($coverIsImage)
-                                                <img src="{{ $itemPkgCover }}" alt="Itm pkg Cover" class="po-pkg-combined-thumb">
+                                                <img src="{{ $itemPkgCover }}" alt="Item Pkg Image" class="po-pkg-combined-thumb">
                                             @else
                                                 <span class="po-pkg-combined-link">{{ basename(parse_url($itemPkgCover, PHP_URL_PATH) ?: $itemPkgCover) }}</span>
                                             @endif
@@ -1557,11 +1557,11 @@
                                     </span>
                                 </div>
                                 <div class="po-pkg-combined-row">
-                                    <span class="po-pkg-combined-label">Design File</span>
+                                    <span class="po-pkg-combined-label">Design File Item</span>
                                     <span class="po-pkg-combined-value po-design-text">
                                         @if($designFile !== '')
                                             @if($designIsImage)
-                                                <img src="{{ $designFile }}" alt="Design File" class="po-pkg-combined-thumb">
+                                                <img src="{{ $designFile }}" alt="Design File Item" class="po-pkg-combined-thumb">
                                             @else
                                                 <span class="po-pkg-combined-link">{{ $designFileName !== '' ? $designFileName : 'File' }}</span>
                                             @endif
@@ -2039,14 +2039,14 @@
                         <div class="form-text">Saved to Dim Wt Master → Instructions item PKG</div>
                     </div>
                     <div class="mb-3">
-                        <label for="poPkgCoverInput" class="form-label fw-semibold">Itm pkg Cover</label>
+                        <label for="poPkgCoverInput" class="form-label fw-semibold">Item Pkg Image</label>
                         <input type="text" id="poPkgCoverInput" class="form-control"
                                placeholder="Image URL or path"
                                autocomplete="off">
                         <div class="form-text">Saved to product master (Values.item_pkg_cover). Leave blank to clear.</div>
                     </div>
                     <div class="mb-3">
-                        <label for="poDesignFileInput" class="form-label fw-semibold">Design File</label>
+                        <label for="poDesignFileInput" class="form-label fw-semibold">Design File Item</label>
                         <div class="input-group">
                             <input type="text" id="poDesignFileInput" class="form-control"
                                    placeholder="File URL or path"
@@ -2138,11 +2138,11 @@
                             <input type="text" class="form-control" id="poAddItemPkg" autocomplete="off">
                         </div>
                         <div class="col-md-6">
-                            <label for="poAddCover" class="form-label fw-semibold">Itm pkg Cover</label>
+                            <label for="poAddCover" class="form-label fw-semibold">Item Pkg Image</label>
                             <input type="text" class="form-control" id="poAddCover" placeholder="Image URL or path" autocomplete="off">
                         </div>
                         <div class="col-md-6">
-                            <label for="poAddDesign" class="form-label fw-semibold">Design File</label>
+                            <label for="poAddDesign" class="form-label fw-semibold">Design File Item</label>
                             <input type="text" class="form-control" id="poAddDesign" placeholder="File URL or path" autocomplete="off">
                         </div>
                         <div class="col-md-6">
@@ -3747,7 +3747,7 @@
                         });
                         const coverData = await coverRes.json().catch(() => ({}));
                         if (!coverRes.ok || coverData.success === false) {
-                            throw new Error(coverData.message || 'Failed to save Itm pkg Cover');
+                            throw new Error(coverData.message || 'Failed to save Item Pkg Image');
                         }
                         savedCoverUrl = coverData.url != null ? String(coverData.url) : coverPath;
                     }
