@@ -55,6 +55,10 @@ return [
             'timeout' => 7200,
             'max_time' => 7200,
         ],
+        'pricing-errors-fix-push' => [
+            'timeout' => 14400,
+            'max_time' => 14400,
+        ],
         'marketplace-manager' => [
             'timeout' => 1800,
             'max_time' => 7200,

@@ -95,6 +95,24 @@
         .pef-success-dot.err { background: #ef4444; border-color: #b91c1c; }
         .pef-success-dot.pending { background: #f59e0b; border-color: #b45309; }
         .pef-success-dot.saved { background: #3b82f6; border-color: #1d4ed8; }
+        #pef-push-progress {
+            display: none;
+            margin: 0;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+            padding: 8px 12px;
+        }
+        #pef-push-progress.active { display: block; }
+        #pef-push-progress .pef-push-bar {
+            height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden;
+        }
+        #pef-push-progress .pef-push-bar > span {
+            display: block; height: 100%; background: #0d6efd; width: 0%; transition: width .25s ease;
+        }
+        #pef-push-fail-list {
+            max-height: 120px; overflow: auto; font-size: 12px; margin-top: 6px;
+        }
+        #pef-push-fail-list .pef-fail-item { color: #b91c1c; padding: 2px 0; }
         .status-circle {
             display: inline-block;
             width: 10px;
@@ -560,13 +578,25 @@
                         </button>
                         <span class="small text-muted d-none" id="pef-pull-hint"></span>
                         <button type="button" class="btn btn-sm btn-primary" id="pef-bulk-push-btn" disabled
-                            title="Push SPRICE for selected rows">
+                            title="Queue SPRICE push in background (auto-retry until done)">
                             <i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="pef-push-cancel-btn"
+                            style="display:none;" title="Cancel background push">
+                            <i class="fas fa-stop"></i> Cancel
                         </button>
                     </div>
                 </div>
             </div>
             <div class="card-body p-0 position-relative">
+                <div id="pef-push-progress">
+                    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <div class="small fw-semibold" id="pef-push-progress-msg">Ready</div>
+                        <div class="small text-muted" id="pef-push-progress-counts"></div>
+                    </div>
+                    <div class="pef-push-bar mt-1"><span id="pef-push-progress-bar"></span></div>
+                    <div id="pef-push-fail-list"></div>
+                </div>
                 <div id="pef-loading" style="display:none;"><i class="fas fa-spinner fa-spin me-2"></i> Pull Data to load…</div>
                 <div id="pef-table-wrapper">
                     {{-- Shown only when Prc Mode Decrease/Increase/Same is active --}}
@@ -611,6 +641,8 @@
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
+    let pefPushInFlight = false;
+    let pefPushPollTimer = null;
 
     function toast(msg, type) {
         const bg = type === 'error' ? 'text-bg-danger' : (type === 'success' ? 'text-bg-success' : 'text-bg-dark');
@@ -655,13 +687,16 @@
         return '$' + n.toFixed(2);
     }
 
-    function successDot(status) {
+    function successDot(status, errorMsg) {
         const s = String(status || '').toLowerCase();
         let cls = '';
         let tip = status || '—';
-        if (['pushed', 'success', 'ok', 'applied'].includes(s)) cls = 'ok';
-        else if (['error', 'failed', 'fail'].includes(s)) cls = 'err';
-        else if (['pushing', 'pending', 'queued'].includes(s)) cls = 'pending';
+        if (['pushed', 'success', 'ok', 'applied', 'done'].includes(s)) cls = 'ok';
+        else if (['error', 'failed', 'fail'].includes(s)) {
+            cls = 'err';
+            if (errorMsg) tip = String(errorMsg);
+        }
+        else if (['pushing', 'pending', 'queued', 'retrying'].includes(s)) cls = 'pending';
         else if (['saved'].includes(s)) cls = 'saved';
         return `<span class="pef-success-dot ${cls}" title="${String(tip).replace(/"/g, '&quot;')}"></span>`;
     }
@@ -674,7 +709,7 @@
         'bestbuy', 'bestbuyusa', 'macy', 'macys',
         'ppower', 'purchasingpower', 'purchase',
         'reverb', 'fba', 'topdawg', 'temu', 'temu2',
-        'tiktok', 'tiktok1', 'tiktok2', 'walmart',
+        'tiktok', 'tiktok1', 'tiktok2',
     ];
 
     function isPushableChannel(d) {
@@ -690,12 +725,12 @@
                 const d = row.getData();
                 if (selectedIds.has(d.id)) {
                     selected++;
-                    if (d.sprice > 0 && isPushableChannel(d)) n++;
+                    if (Number(d.sprice) > 0 && isPushableChannel(d)) n++;
                 }
             });
         }
         $('#pef-push-count').text(n);
-        $('#pef-bulk-push-btn').prop('disabled', n === 0);
+        $('#pef-bulk-push-btn').prop('disabled', pefPushInFlight || n === 0);
         if (selected > 0) {
             $('#pef-selected-count').show().text(selected + ' selected');
         } else {
@@ -1341,7 +1376,16 @@
                 // Prefer breakdown margin; Amazon breakdown sends 0.80
                 margin: match.margin != null ? Number(match.margin) : d.margin,
                 ads_pct: d.ads_pct,
+                // Channel L30 sold qty from CVR breakdown
+                l30: match.l30 != null && isFinite(Number(match.l30))
+                    ? Number(match.l30)
+                    : d.l30,
             };
+            // Temu push IDs from breakdown (same as /price-increase)
+            const gid = match.goods_id != null ? String(match.goods_id).trim() : '';
+            const sid = match.sku_id != null ? String(match.sku_id).trim() : '';
+            if (gid) patch.goods_id = gid;
+            if (sid) patch.sku_id = sid;
             // Breakdown stores SROI as net and often omits SGROI — recompute channel-wise
             const live = recalcLiveForRow(Object.assign({}, d, patch));
             const sug = recalcSuggestedForRow(Object.assign({}, d, patch, {
@@ -1542,6 +1586,26 @@
                     title: 'OVL30', field: 'ov_l30', width: 58, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number', sorterParams: { alignEmptyValues: 'bottom' },
                     cssClass: 'pef-sortable',
+                    headerTooltip: 'Overall Shopify L30 (all channels)',
+                },
+                {
+                    title: 'L30',
+                    field: 'l30',
+                    width: 52,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    sorter: 'number',
+                    sorterParams: { alignEmptyValues: 'bottom' },
+                    cssClass: 'pef-sortable',
+                    headerTooltip: 'Channel L30 — units sold on this marketplace in the last 30 days',
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '') return '';
+                        const n = Number(v);
+                        if (!isFinite(n) || n <= 0) return n === 0 ? '0' : '';
+                        return Number.isInteger(n) ? String(n) : n.toFixed(0);
+                    },
                 },
                 {
                     title: 'Dil%',
@@ -1679,7 +1743,8 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     formatter: function(cell) {
-                        return successDot(cell.getValue());
+                        const d = cell.getRow().getData() || {};
+                        return successDot(cell.getValue(), d.push_error || d.push_message || null);
                     },
                 },
             ],
@@ -1885,33 +1950,30 @@
                 if (parsed && (parsed.message || parsed.error)) return String(parsed.message || parsed.error);
             } catch (e) { /* ignore */ }
         }
-        return fallback || (xhr.statusText || 'error');
+        return fallback || xhr.message || xhr.statusText || 'error';
     }
 
     /**
-     * Push SPRICE via /cvr-master-push-price — same payload rules as /price-increase:
-     * - Doba: Self Pick = SPRICE − Ship
+     * Push SPRICE via /cvr-master-push-price — same payload rules as /price-increase & Doba:
+     * - Doba: price = SPRICE, self_pick_price = SPRICE − Ship
      * - Temu/Temu2: convert SPRICE → push base
+     * Retries mirror /doba-tabulator (transient API / IP whitelist blips).
      */
-    function pushOne(d) {
+    function buildPushPayload(d) {
         const mp = pushMarketplaceKey(d);
         const sprice = parseFloat(d.sprice);
         if (!d.sku || !(sprice > 0)) {
-            return $.Deferred().reject({
-                responseJSON: { message: 'SKU and SPRICE required' },
-            }).promise();
+            return { error: 'SKU and SPRICE required' };
         }
 
         let pushPrice = +sprice.toFixed(2);
         if (mp === 'temu' || mp === 'temu2') {
             const converted = temuPushBaseFromSprice(sprice);
             if (converted == null) {
-                return $.Deferred().reject({
-                    responseJSON: {
-                        message: 'Skipped — ' + (mp === 'temu2' ? 'Temu2' : 'Temu')
-                            + ' SPRICE converts to invalid base',
-                    },
-                }).promise();
+                return {
+                    error: 'Skipped — ' + (mp === 'temu2' ? 'Temu2' : 'Temu')
+                        + ' SPRICE converts to invalid base',
+                };
             }
             pushPrice = converted;
         }
@@ -1920,6 +1982,7 @@
             sku: d.sku,
             price: pushPrice,
             marketplace: mp,
+            _token: csrf,
         };
 
         // Doba: Self Pick = SPRICE − Ship (same as /price-increase & /doba-tabulator)
@@ -1928,70 +1991,282 @@
             payload.self_pick_price = Math.max(0, +(sprice - ship).toFixed(2));
         }
 
-        return $.ajax({
-            url: '/cvr-master-push-price',
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrf },
-            data: payload,
-            timeout: 90000,
+        // Temu / Temu2: pass goods_id / sku_id when available (same as /price-increase)
+        if (mp === 'temu' || mp === 'temu2') {
+            const goodsId = String(d.goods_id || d.temu_goods_id || '').trim();
+            const skuId = String(d.sku_id || d.temu_sku_id || '').trim();
+            if (goodsId) payload.goods_id = goodsId;
+            if (skuId) payload.sku_id = skuId;
+        }
+
+        return { payload: payload, pushPrice: pushPrice, mp: mp, sprice: sprice };
+    }
+
+    function collectPushItems(rowIds) {
+        const items = [];
+        const skip = [];
+        if (!table) return { items: items, skip: skip };
+        const want = rowIds ? new Set(rowIds) : null;
+        table.getRows().forEach(function(row) {
+            const d = row.getData();
+            if (!d || !d.id) return;
+            if (want && !want.has(d.id)) return;
+            if (!want && !selectedIds.has(d.id)) return;
+            if (!(Number(d.sprice) > 0) || !isPushableChannel(d)) return;
+            const built = buildPushPayload(d);
+            if (built.error) {
+                skip.push({ row: row, d: d, error: built.error });
+                return;
+            }
+            items.push({
+                row: row,
+                d: d,
+                built: built,
+                queueItem: {
+                    row_id: d.id,
+                    sku: built.payload.sku,
+                    marketplace: built.payload.marketplace,
+                    channel: d.channel || built.mp,
+                    price: built.payload.price,
+                    sprice: built.sprice,
+                    self_pick_price: built.payload.self_pick_price,
+                    goods_id: built.payload.goods_id || null,
+                    sku_id: built.payload.sku_id || null,
+                },
+            });
+        });
+        return { items: items, skip: skip };
+    }
+
+    /**
+     * After push: update live Price only. Keep SPRICE / SROI / SGPFT formulas as-is.
+     */
+    function patchRowAfterPush(row, d, pushPrice) {
+        const mp = pushMarketplaceKey(d);
+        const sprice = Number(d.sprice) > 0 ? +Number(d.sprice).toFixed(2) : null;
+        let newPrice = sprice;
+        if (mp === 'temu' || mp === 'temu2') {
+            newPrice = pushPrice > 0 ? +Number(pushPrice).toFixed(2) : sprice;
+        }
+        const patch = { success: 'pushed', push_error: null, push_message: 'pushed' };
+        if (newPrice > 0) {
+            const live = recalcLiveForRow(Object.assign({}, d, { price: newPrice }));
+            Object.assign(patch, { price: newPrice }, live);
+        }
+        if (sprice > 0) {
+            patch.sprice = sprice;
+            if (d.sroi != null) patch.sroi = d.sroi;
+            if (d.sgpft != null) patch.sgpft = d.sgpft;
+            if (d.snroi != null) patch.snroi = d.snroi;
+            if (d.snpft != null) patch.snpft = d.snpft;
+        }
+        row.update(patch);
+        const idx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+        if (idx >= 0) pulledRows[idx] = Object.assign({}, pulledRows[idx], patch);
+    }
+
+    function patchRowPushFailed(row, errorMsg) {
+        const patch = {
+            success: 'error',
+            push_error: errorMsg || 'Push failed',
+            push_message: errorMsg || 'Push failed',
+        };
+        row.update(patch);
+        const d = row.getData();
+        const idx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+        if (idx >= 0) pulledRows[idx] = Object.assign({}, pulledRows[idx], patch);
+    }
+
+    function setPushProgressUi(active, msg, done, total, ok, fail, failedTasks) {
+        const $box = $('#pef-push-progress');
+        if (active) $box.addClass('active');
+        else if (!fail) $box.removeClass('active');
+        else $box.addClass('active');
+        $('#pef-push-progress-msg').text(msg || '');
+        const t = total || 0;
+        const d = done || 0;
+        const pct = t > 0 ? Math.min(100, Math.round((d / t) * 100)) : 0;
+        $('#pef-push-progress-bar').css('width', pct + '%');
+        $('#pef-push-progress-counts').text(
+            t ? (d + '/' + t + ' · ' + (ok || 0) + ' ok · ' + (fail || 0) + ' failed') : ''
+        );
+        const $fail = $('#pef-push-fail-list').empty();
+        (failedTasks || []).slice(0, 50).forEach(function(f) {
+            $fail.append(
+                $('<div class="pef-fail-item"></div>').text(
+                    (f.sku || '') + ' → ' + (f.channel || f.marketplace || '') + ': ' + (f.error || 'failed')
+                )
+            );
+        });
+        $('#pef-push-cancel-btn').toggle(!!active);
+    }
+
+    function stopPushPoll() {
+        if (pefPushPollTimer) {
+            clearInterval(pefPushPollTimer);
+            pefPushPollTimer = null;
+        }
+        pefPushInFlight = false;
+        $('#pef-bulk-push-btn')
+            .html('<i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)');
+        updatePushBtn();
+    }
+
+    function applyPushJobToRows(resp) {
+        if (!table || !resp || !resp.job) return;
+        const results = (resp.job.results && typeof resp.job.results === 'object') ? resp.job.results : {};
+        const tasks = Array.isArray(resp.job.tasks) ? resp.job.tasks : [];
+        const byId = {};
+        tasks.forEach(function(t) {
+            if (t && t.row_id) byId[t.row_id] = t;
+        });
+        Object.keys(results).forEach(function(id) {
+            if (!byId[id]) byId[id] = results[id];
+        });
+
+        table.getRows().forEach(function(row) {
+            const d = row.getData();
+            const t = byId[d.id];
+            if (!t) return;
+            const st = String(t.status || (t.success === true ? 'done' : (t.success === false ? 'failed' : ''))).toLowerCase();
+            if (st === 'done' || st === 'pushed' || t.success === true) {
+                const pushPrice = (results[d.id] && results[d.id].price != null)
+                    ? Number(results[d.id].price)
+                    : (t.price != null ? Number(t.price) : null);
+                patchRowAfterPush(row, d, pushPrice);
+            } else if (st === 'failed' || st === 'error' || t.success === false) {
+                patchRowPushFailed(row, t.error || t.message || 'Push failed');
+            } else if (st === 'pushing' || st === 'retrying' || st === 'pending' || st === 'queued') {
+                row.update({
+                    success: st === 'retrying' ? 'retrying' : 'pushing',
+                    push_error: t.error || null,
+                    push_message: t.message || st,
+                });
+            }
         });
     }
 
-    async function pushSelected() {
-        if (!table) return;
-        const items = [];
-        table.getRows('active').forEach(row => {
-            const d = row.getData();
-            if (selectedIds.has(d.id) && d.sprice > 0 && isPushableChannel(d)) {
-                items.push({ row, d });
-            }
-        });
-        if (!items.length) return;
-        if (!confirm('Push SPRICE for ' + items.length + ' row(s) using each channel\'s push logic?')) return;
+    function pollPushStatus() {
+        $.ajax({
+            url: '/pricing-errors-fix-push-status',
+            method: 'GET',
+            dataType: 'json',
+            timeout: 30000,
+        }).done(function(resp) {
+            const job = resp && resp.job ? resp.job : {};
+            const status = String(job.status || 'idle');
+            const active = status === 'running';
+            const total = Number(resp.total || job.total || 0);
+            const done = Number(resp.done_count != null ? resp.done_count : job.current_index || 0);
+            const ok = Number(resp.ok_count || job.ok_count || 0);
+            const fail = Number(resp.fail_count || job.fail_count || 0);
+            setPushProgressUi(
+                active,
+                resp.message || job.last_message || '',
+                done,
+                total,
+                ok,
+                fail,
+                resp.failed_tasks || []
+            );
+            applyPushJobToRows(resp);
+            try { table && table.redraw(true); } catch (e) { /* ignore */ }
 
-        const $btn = $('#pef-bulk-push-btn').prop('disabled', true)
-            .html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-        let ok = 0, fail = 0;
-
-        const failMsgs = [];
-        for (const item of items) {
-            try {
-                const resp = await pushOne(item.d);
-                const body = resp;
-                if (body && body.success === false) {
-                    fail++;
-                    item.row.update({ success: 'error' });
-                    failMsgs.push((item.d.sku || '') + ': ' + (body.message || 'failed'));
-                } else {
-                    ok++;
-                    item.row.update({ success: 'pushed' });
-                    // Doba: live Price becomes pushed SPRICE (anticipated_income)
-                    if (pushMarketplaceKey(item.d) === 'doba' && Number(item.d.sprice) > 0) {
-                        const live = recalcLiveForRow(Object.assign({}, item.d, {
-                            price: +Number(item.d.sprice).toFixed(2),
-                        }));
-                        item.row.update(Object.assign({
-                            price: +Number(item.d.sprice).toFixed(2),
-                        }, live));
-                    }
-                    // Row-wise only — never re-pull the whole channel
-                    await refreshRowFromBreakdown(item.row);
-                    item.row.update({ success: 'pushed' });
+            if (!active) {
+                stopPushPoll();
+                syncSelectAllCheckbox();
+                if (fail > 0) {
+                    const first = (resp.failed_tasks && resp.failed_tasks[0])
+                        ? ((resp.failed_tasks[0].sku || '') + ': ' + (resp.failed_tasks[0].error || 'failed'))
+                        : '';
+                    toast(
+                        'Push done: ' + ok + ' ok, ' + fail + ' failed'
+                            + (first ? ' — ' + first : ''),
+                        'error'
+                    );
+                } else if (status === 'completed') {
+                    toast('Push done: ' + ok + ' ok', 'success');
+                } else if (status === 'failed') {
+                    toast(resp.message || job.last_message || 'Push failed', 'error');
                 }
-            } catch (e) {
-                fail++;
-                item.row.update({ success: 'error' });
-                failMsgs.push((item.d.sku || '') + ': ' + ajaxErrorMessage(e, 'Push failed'));
             }
+        }).fail(function(xhr) {
+            // Keep polling — worker may still be fine
+            console.warn('PEF push status poll failed', ajaxErrorMessage(xhr, 'status error'));
+        });
+    }
+
+    function startPushPoll() {
+        if (pefPushPollTimer) clearInterval(pefPushPollTimer);
+        pefPushPollTimer = setInterval(pollPushStatus, 2500);
+        pollPushStatus();
+    }
+
+    async function queuePushItems(collected) {
+        const items = collected.items || [];
+        const skip = collected.skip || [];
+        skip.forEach(function(s) {
+            patchRowPushFailed(s.row, s.error);
+        });
+        if (!items.length) {
+            toast(skip.length ? ('Nothing to queue — ' + skip[0].error) : 'No pushable rows', 'error');
+            return;
         }
 
-        $btn.html('<i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)');
-        updatePushBtn();
-        if (fail && failMsgs.length) {
-            toast(`Push done: ${ok} ok, ${fail} failed — ${failMsgs.slice(0, 3).join(' | ')}`, 'error');
-        } else {
-            toast(`Push done: ${ok} ok, ${fail} failed`, fail ? 'error' : 'success');
+        items.forEach(function(it) {
+            it.row.update({ success: 'queued', push_error: null, push_message: 'queued' });
+        });
+
+        pefPushInFlight = true;
+        $('#pef-bulk-push-btn').prop('disabled', true)
+            .html('<i class="fas fa-spinner fa-spin"></i> Queuing...');
+        setPushProgressUi(true, 'Queuing ' + items.length + ' row(s)…', 0, items.length, 0, 0, []);
+
+        try {
+            const resp = await $.ajax({
+                url: '/pricing-errors-fix-push',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                data: {
+                    _token: csrf,
+                    items: items.map(function(it) { return it.queueItem; }),
+                },
+                dataType: 'json',
+                timeout: 60000,
+            });
+            toast(resp.message || ('Queued ' + items.length + ' push(es)'), 'success');
+            $('#pef-bulk-push-btn').html('<i class="fas fa-spinner fa-spin"></i> Running…');
+            startPushPoll();
+        } catch (xhr) {
+            stopPushPoll();
+            const msg = ajaxErrorMessage(xhr, 'Could not queue push');
+            items.forEach(function(it) { patchRowPushFailed(it.row, msg); });
+            setPushProgressUi(false, msg, 0, items.length, 0, items.length, items.map(function(it) {
+                return { sku: it.d.sku, channel: it.d.channel, error: msg };
+            }));
+            toast(msg, 'error');
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+            updatePushBtn();
         }
+    }
+
+    async function pushSelected() {
+        if (!table || pefPushInFlight) return;
+        const collected = collectPushItems(null);
+        if (!collected.items.length && !collected.skip.length) {
+            toast('No selected pushable rows with SPRICE > 0', 'error');
+            return;
+        }
+        const n = collected.items.length;
+        if (!n) {
+            toast(collected.skip[0] ? collected.skip[0].error : 'Nothing to push', 'error');
+            return;
+        }
+        if (!confirm(
+            'Queue SPRICE push for ' + n + ' row(s) in background?\n'
+            + 'Worker will retry until each push succeeds (or fails with a reason).'
+        )) return;
+        await queuePushItems(collected);
     }
 
     $(document).on('change', '#pef-select-all', function() {
@@ -2010,7 +2285,9 @@
     });
 
     $(document).on('change', '.pef-row-cb', function() {
-        const id = $(this).data('id');
+        // Use attr — jQuery .data() can coerce / cache and break id matching for bulk push
+        const id = $(this).attr('data-id');
+        if (!id) return;
         if ($(this).is(':checked')) selectedIds.add(id);
         else selectedIds.delete(id);
         updatePushBtn();
@@ -2018,41 +2295,60 @@
     });
 
     $(document).on('click', '.pef-push-one', async function() {
-        const id = $(this).data('id');
-        if (!table) return;
-        const row = table.getRows().find(r => r.getData().id === id);
+        const id = $(this).attr('data-id');
+        if (!table || !id || pefPushInFlight) return;
+        const row = table.getRows().find(function(r) { return r.getData().id === id; });
         if (!row) return;
         const d = row.getData();
         if (!(Number(d.sprice) > 0) || !isPushableChannel(d)) return;
-        const $btn = $(this);
-        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-        try {
-            const resp = await pushOne(d);
-            if (resp && resp.success === false) {
-                row.update({ success: 'error' });
-                toast(resp.message || 'Push failed', 'error');
-            } else {
-                row.update({ success: 'pushed' });
-                // Doba: live Price becomes pushed SPRICE (anticipated_income) — patch immediately
-                if (pushMarketplaceKey(d) === 'doba' && Number(d.sprice) > 0) {
-                    const live = recalcLiveForRow(Object.assign({}, d, {
-                        price: +Number(d.sprice).toFixed(2),
-                    }));
-                    row.update(Object.assign({ price: +Number(d.sprice).toFixed(2) }, live));
-                }
-                await refreshRowFromBreakdown(row);
-                row.update({ success: 'pushed' });
-                toast('Pushed ' + d.sku + ' → ' + d.channel, 'success');
-            }
-        } catch (e) {
-            row.update({ success: 'error' });
-            toast(ajaxErrorMessage(e, 'Push failed'), 'error');
-        } finally {
-            // Reformat so Push never stays stuck disabled/faded after click
-            try { row.reformat(); } catch (err) { /* ignore */ }
-            try { table.redraw(true); } catch (err) { /* ignore */ }
+        const collected = collectPushItems([id]);
+        await queuePushItems(collected);
+    });
+
+    $(document).on('click', '#pef-push-cancel-btn', function() {
+        if (!confirm('Cancel the background price push?')) return;
+        $.ajax({
+            url: '/pricing-errors-fix-push-cancel',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            dataType: 'json',
+        }).always(function(resp) {
+            stopPushPoll();
+            setPushProgressUi(false, (resp && resp.message) || 'Push cancelled', 0, 0, 0, 0, (resp && resp.failed_tasks) || []);
+            toast((resp && resp.message) || 'Push cancelled', 'error');
             updatePushBtn();
-        }
+        });
+    });
+
+    // Resume progress UI if a push is already running when the page opens
+    $(function() {
+        $.ajax({
+            url: '/pricing-errors-fix-push-status',
+            method: 'GET',
+            dataType: 'json',
+            timeout: 15000,
+        }).done(function(resp) {
+            const st = resp && resp.job && resp.job.status;
+            if (st === 'running') {
+                pefPushInFlight = true;
+                $('#pef-bulk-push-btn').prop('disabled', true)
+                    .html('<i class="fas fa-spinner fa-spin"></i> Running…');
+                startPushPoll();
+            } else if (st === 'completed' || st === 'failed') {
+                if ((resp.fail_count || 0) > 0) {
+                    setPushProgressUi(
+                        false,
+                        resp.message || '',
+                        resp.done_count || 0,
+                        resp.total || 0,
+                        resp.ok_count || 0,
+                        resp.fail_count || 0,
+                        resp.failed_tasks || []
+                    );
+                    applyPushJobToRows(resp);
+                }
+            }
+        });
     });
 
     function rebuildParentDatalist() {

@@ -729,7 +729,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             return null;
         }
 
-        $goodsId = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('goods_id');
+        $goodsId = TemuMetric::where(function ($q) use ($sku) {
+            $q->where('sku', $sku)
+                ->orWhere('sku_id', $sku)
+                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+        })->value('goods_id');
         if ($goodsId !== null && $goodsId !== '') {
             return (string) $goodsId;
         }
@@ -837,7 +841,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         if ($sku === '') {
             return null;
         }
-        $skuId = TemuMetric::where('sku', $sku)->orWhere('sku_id', $sku)->value('sku_id');
+        $skuId = TemuMetric::where(function ($q) use ($sku) {
+            $q->where('sku', $sku)
+                ->orWhere('sku_id', $sku)
+                ->orWhereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+        })->value('sku_id');
         if ($skuId !== null && $skuId !== '') {
             return (string) $skuId;
         }

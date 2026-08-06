@@ -267,15 +267,24 @@ class DobaApiService
             $content = $this->getContent($timestamp);
             $sign = $this->generateSignature($content);
 
-            // Ensure the payload format exactly matches Doba's requirements
+            // Payload: listing price and/or pickup (prepaid) price.
+            // Pickup-only pushes omit anticipatedIncome so listing price is unchanged.
             $payload = [
                 'itemNo' => (string)$itemId,
-                'anticipatedIncome' => (float)$price
             ];
-            
-            // Add selfPickAnticipatedIncome if provided
-            if ($selfPickPrice !== null) {
+
+            if ($price !== null && $price !== '') {
+                $payload['anticipatedIncome'] = (float)$price;
+            }
+
+            if ($selfPickPrice !== null && $selfPickPrice !== '') {
                 $payload['selfPickAnticipatedIncome'] = (float)$selfPickPrice;
+            }
+
+            if (!isset($payload['anticipatedIncome']) && !isset($payload['selfPickAnticipatedIncome'])) {
+                return [
+                    'errors' => 'Price or self pick price is required.',
+                ];
             }
 
             Log::info('Doba API request prepared', [

@@ -162,62 +162,83 @@ class Ebay2ApiService
 
     public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
     {
-                // Build XML body
+        // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
+        // When a SKU is provided, revise that variation only — same as EbayThreeApiService.
+        $skuTrim = trim((string) $sku);
+        $isVariationListing = $skuTrim !== '';
+
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $credentials = $xml->addChild('RequesterCredentials');
-        
-        $authToken = $this->generateBearerToken();
 
+        $authToken = $this->generateBearerToken();
         $credentials->addChild('eBayAuthToken', $authToken ?? '');
 
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
 
         $item = $xml->addChild('Item');
         $item->addChild('ItemID', $itemId);
 
-        // Update price
-        $item->addChild('StartPrice', $price);
-
-        // Optionally update quantity
-        if ($quantity !== null) {
-            $item->addChild('Quantity', $quantity);
-        }
-
-        // If variation exists, use variation structure
-        if ($variationSpecifics && $variationSpecificsSet) {
+        if ($isVariationListing) {
             $variations = $item->addChild('Variations');
             $variation = $variations->addChild('Variation');
-
-            if ($sku) {
-                $variation->addChild('SKU', $sku);
-            }
-
+            $variation->addChild('SKU', $skuTrim);
             $variation->addChild('StartPrice', $price);
             if ($quantity !== null) {
                 $variation->addChild('Quantity', $quantity);
             }
 
-            // VariationSpecifics
-            $vs = $variation->addChild('VariationSpecifics');
-            foreach ($variationSpecifics as $name => $value) {
-                $nvl = $vs->addChild('NameValueList');
-                $nvl->addChild('Name', $name);
-                $nvl->addChild('Value', $value);
+            if ($variationSpecifics) {
+                $vs = $variation->addChild('VariationSpecifics');
+                foreach ($variationSpecifics as $name => $value) {
+                    $nvl = $vs->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Value', $value);
+                }
+            }
+            if ($variationSpecificsSet) {
+                $vss = $item->addChild('VariationSpecificsSet');
+                foreach ($variationSpecificsSet as $name => $values) {
+                    $nvl = $vss->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    foreach ($values as $val) {
+                        $nvl->addChild('Value', $val);
+                    }
+                }
+            }
+        } else {
+            $item->addChild('StartPrice', $price);
+            if ($quantity !== null) {
+                $item->addChild('Quantity', $quantity);
             }
 
-            // VariationSpecificsSet
-            $vss = $item->addChild('VariationSpecificsSet');
-            foreach ($variationSpecificsSet as $name => $values) {
-                $nvl = $vss->addChild('NameValueList');
-                $nvl->addChild('Name', $name);
-                foreach ($values as $val) {
-                    $nvl->addChild('Value', $val);
+            // Legacy path: only when caller supplies both specifics sets
+            if ($variationSpecifics && $variationSpecificsSet) {
+                $variations = $item->addChild('Variations');
+                $variation = $variations->addChild('Variation');
+                $variation->addChild('StartPrice', $price);
+                if ($quantity !== null) {
+                    $variation->addChild('Quantity', $quantity);
+                }
+                $vs = $variation->addChild('VariationSpecifics');
+                foreach ($variationSpecifics as $name => $value) {
+                    $nvl = $vs->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Value', $value);
+                }
+                $vss = $item->addChild('VariationSpecificsSet');
+                foreach ($variationSpecificsSet as $name => $values) {
+                    $nvl = $vss->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    foreach ($values as $val) {
+                        $nvl->addChild('Value', $val);
+                    }
                 }
             }
         }
 
         $xmlBody = $xml->asXML();
 
-        // Prepare headers
         $headers = [
             'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
             'X-EBAY-API-DEV-NAME'            => $this->devId,
@@ -228,17 +249,15 @@ class Ebay2ApiService
             'Content-Type'                   => 'text/xml',
         ];
 
-        // Send API request
         $response = Http::withHeaders($headers)
             ->withBody($xmlBody, 'text/xml')
             ->post($this->endpoint);
 
         $body = $response->body();
 
-        // Parse XML response
         libxml_use_internal_errors(true);
         $xmlResp = simplexml_load_string($body);
-        
+
         if ($xmlResp === false) {
             return [
                 'success' => false,
@@ -251,18 +270,94 @@ class Ebay2ApiService
         $ack = $responseArray['Ack'] ?? 'Failure';
 
         if ($ack === 'Success' || $ack === 'Warning') {
+            // Treat "item-level price ignored on variation listing" as failure (silent no-op).
+            $warnErrors = $responseArray['Errors'] ?? [];
+            if ($warnErrors !== [] && ! isset($warnErrors[0]) && is_array($warnErrors)) {
+                $warnErrors = [$warnErrors];
+            }
+            if (! is_array($warnErrors)) {
+                $warnErrors = [$warnErrors];
+            }
+            foreach ($warnErrors as $warnErr) {
+                if (! is_array($warnErr)) {
+                    continue;
+                }
+                $warnCode = (string) ($warnErr['ErrorCode'] ?? '');
+                $warnMsg = (string) ($warnErr['LongMessage'] ?? $warnErr['ShortMessage'] ?? '');
+                if (
+                    $warnCode === '21916618'
+                    || stripos($warnMsg, 'Item level start price will be ignored') !== false
+                ) {
+                    return [
+                        'success' => false,
+                        'message' => 'eBay2 ignored the price update because this is a multi-variation listing. Retry with the variation SKU.',
+                        'errors' => [[
+                            'code' => $warnCode ?: '21916618',
+                            'message' => $warnMsg ?: 'Item level start price will be ignored on variation listings.',
+                        ]],
+                        'data' => $responseArray,
+                    ];
+                }
+            }
+
             return [
                 'success' => true,
                 'message' => 'Item updated successfully.',
                 'data' => $responseArray,
             ];
-        } else {
-            return [
-                'success' => false,
-                'errors' => $responseArray['Errors'] ?? 'Unknown error',
-                'data' => $responseArray,
-            ];
         }
+
+        $errors = $responseArray['Errors'] ?? [];
+        if ($errors !== [] && ! isset($errors[0]) && is_array($errors)) {
+            $errors = [$errors];
+        }
+        if (! is_array($errors)) {
+            $errors = [$errors];
+        }
+        $first = is_array($errors[0] ?? null) ? $errors[0] : [];
+        $message = (string) ($first['LongMessage'] ?? $first['ShortMessage'] ?? $responseArray['message'] ?? 'Failed to update price on eBay2');
+        if (! empty($first['ErrorCode']) && ! str_contains($message, (string) $first['ErrorCode'])) {
+            $message = '[eBay #'.$first['ErrorCode'].'] '.$message;
+        }
+
+        // Variation SKU path used on a non-variation listing — retry item-level once.
+        if (
+            $isVariationListing
+            && $this->ebayErrorLooksLikeNonVariationListing($errors, $message)
+        ) {
+            return $this->reviseFixedPriceItem($itemId, $price, $quantity, null, $variationSpecifics, $variationSpecificsSet);
+        }
+
+        return [
+            'success' => false,
+            'message' => $message,
+            'errors' => $errors,
+            'data' => $responseArray,
+        ];
+    }
+
+    /**
+     * @param  list<mixed>  $errors
+     */
+    private function ebayErrorLooksLikeNonVariationListing(array $errors, string $message): bool
+    {
+        $blob = strtolower($message);
+        foreach ($errors as $err) {
+            if (! is_array($err)) {
+                continue;
+            }
+            $blob .= ' '.strtolower((string) ($err['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower((string) ($err['ShortMessage'] ?? ''));
+            $blob .= ' '.(string) ($err['ErrorCode'] ?? '');
+        }
+
+        return str_contains($blob, 'not a multi-variation')
+            || str_contains($blob, 'not a multi-sku')
+            || str_contains($blob, 'variations node')
+            || str_contains($blob, 'does not have variations')
+            || str_contains($blob, '21916587')
+            || str_contains($blob, '21916613')
+            || str_contains($blob, '21916317');
     }
 
     /**

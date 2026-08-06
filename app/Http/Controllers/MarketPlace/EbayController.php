@@ -2936,7 +2936,9 @@ class EbayController extends Controller
 
             // Push price DIRECTLY to eBay via the local EbayApiService (no microservice).
             $ebayService = new EbayApiService();
-            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
+            // Pass variation SKU so multi-variation listings update the correct child price.
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $apiSku);
 
             // --- Success path ---
             if (isset($result['success']) && $result['success']) {

@@ -465,7 +465,11 @@
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
 
-                    
+                    <button id="push-to-doba-btn" class="btn btn-sm btn-primary" style="display: none;"
+                            title="Push pickup / prepaid price (selfPickAnticipatedIncome) to Doba">
+                        <i class="fas fa-upload"></i> Push Pickup Price
+                    </button>
+
                     <div class="d-inline-flex align-items-center gap-1 ms-1 p-1 border rounded bg-white"
                         id="target-roi-controls"
                         title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100)) / {{ ($dobaPercentage ?? 95) / 100 }} on every selected row (back-solves so SROI column equals the target)">
@@ -570,6 +574,26 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="dwsSaveLinksBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Doba Push API Response Modal -->
+    <div class="modal fade" id="dwsPushResponseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Doba Pickup Price — API Response</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="dws-push-response-summary" class="mb-2 small text-muted"></div>
+                    <pre id="dws-push-response-body" class="bg-light border rounded p-3 mb-0"
+                         style="max-height: 60vh; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12px;"></pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -2095,6 +2119,42 @@
                         }
                     },
                     {
+                        title: "Push",
+                        field: "_push",
+                        width: 50,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.is_parent;
+                            const sprice = parseFloat(rowData.sprice) || 0;
+                            const pushStatus = rowData.push_status || null;
+                            const applyStatus = rowData.apply_status || null;
+
+                            if (isParent || sprice <= 0) return '';
+
+                            const sku = rowData['(Child) sku'];
+
+                            if (applyStatus === 'applying') {
+                                return '<i class="fas fa-clock fa-spin" style="color: #ffc107;" title="Applying..."></i>';
+                            }
+                            if (pushStatus === 'pushing') {
+                                return '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing pickup price..."></i>';
+                            }
+                            if (pushStatus === 'pushed') {
+                                return '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pickup price pushed to Doba"></i>';
+                            }
+                            if (pushStatus === 'error') {
+                                return `<button class="push-single-btn" data-sku="${sku}" data-price="${sprice}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed - Click to retry">
+                                    <i class="fa-solid fa-x"></i>
+                                </button>`;
+                            }
+                            return `<button class="push-single-btn" data-sku="${sku}" data-price="${sprice}" style="border: none; background: none; color: #0d6efd; cursor: pointer;" title="Push pickup / prepaid price to Doba">
+                                <i class="fas fa-upload"></i>
+                            </button>`;
+                        }
+                    },
+                    {
                         title: "MSRP",
                         field: "msrp",
                         width: 75,
@@ -2505,12 +2565,13 @@
                         // Calculate S(PP) = SPRICE - SHIP
                         const sSelfPick = sprice - ship;
                         
-                        // Update row data with all calculated values
+                        // Update row data with all calculated values; reset push so button shows again
                         cell.getRow().update({
                             spft: spft,
                             sroi: sroi,
                             s_self_pick: sSelfPick,
-                            apply_status: null
+                            apply_status: null,
+                            push_status: null
                         });
                         
                         // Save to backend with S(PP)
@@ -2528,6 +2589,7 @@
                             },
                             success: function(response) {
                                 showToast('success', 'SPRICE updated successfully');
+                                updatePushButtonVisibility();
                             },
                             error: function(xhr) {
                                 showToast('danger', 'Failed to update SPRICE');
@@ -2581,8 +2643,282 @@
                 }, 100);
             });
 
-            // Pushing has been removed from this page; kept as a no-op so existing callers don't break.
-            function updatePushButtonVisibility() {}
+            // Save push status to without-ship SPRICE JSON
+            function savePushStatusToDatabase(sku, pushStatus, rowData) {
+                return $.ajax({
+                    url: '/doba/save-sprice-withoutship',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        sprice: rowData.sprice || 0,
+                        spft_percent: rowData.spft || 0,
+                        sroi_percent: rowData.sroi || 0,
+                        s_self_pick: rowData.s_self_pick || rowData.sprice || 0,
+                        push_status: pushStatus,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    }
+                });
+            }
+
+            function showPushResponseModal(entries, summaryText) {
+                const pretty = JSON.stringify(entries, null, 2);
+                $('#dws-push-response-summary').text(summaryText || '');
+                $('#dws-push-response-body').text(pretty);
+                const modalEl = document.getElementById('dwsPushResponseModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    $('#dwsPushResponseModal').modal('show');
+                }
+            }
+
+            // Push pickup / prepaid price only (mode=pickup → selfPickAnticipatedIncome)
+            function pushPickupPriceToDobaWithRetry(sku, pickupPrice, maxRetries = 5, delay = 5000) {
+                return new Promise((resolve, reject) => {
+                    let attempt = 0;
+
+                    function attemptPush() {
+                        attempt++;
+                        console.log(`Pickup push attempt ${attempt}/${maxRetries} for SKU ${sku}`);
+
+                        $.ajax({
+                            url: '/doba/push-price',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                mode: 'pickup',
+                                self_pick_price: pickupPrice,
+                                _token: $('meta[name="csrf-token"]').attr('content')
+                            },
+                            success: function(response) {
+                                console.log(`Pickup push response for SKU ${sku}:`, response);
+                                if (response.success === false || (response.errors && response.errors.length > 0)) {
+                                    const errorMsg = response.errors?.[0]?.message || 'Push failed';
+                                    if (attempt < maxRetries) {
+                                        setTimeout(attemptPush, delay);
+                                    } else {
+                                        reject({ error: true, response: response, message: errorMsg });
+                                    }
+                                } else {
+                                    resolve({ success: true, response: response });
+                                }
+                            },
+                            error: function(xhr) {
+                                const response = xhr.responseJSON || { raw: xhr.responseText };
+                                const errorMsg = response?.errors?.[0]?.message || xhr.responseText || 'Network error';
+                                console.error(`Pickup push failed for SKU ${sku}:`, errorMsg, response);
+                                if (attempt < maxRetries) {
+                                    setTimeout(attemptPush, delay);
+                                } else {
+                                    reject({ error: true, response: response, message: errorMsg, xhr: xhr });
+                                }
+                            }
+                        });
+                    }
+
+                    attemptPush();
+                });
+            }
+
+            function updatePushCell(row, sku, pickupPrice, status) {
+                const pushCell = row.getCell('_push');
+                if (!pushCell) return;
+                if (status === 'pushed') {
+                    pushCell.getElement().innerHTML = '<i class="fa-solid fa-check-double" style="color: #28a745;" title="Pickup price pushed to Doba"></i>';
+                } else if (status === 'error') {
+                    pushCell.getElement().innerHTML = `<button class="push-single-btn" data-sku="${sku}" data-price="${pickupPrice}" style="border: none; background: none; color: #dc3545; cursor: pointer;" title="Push failed - Click to retry">
+                        <i class="fa-solid fa-x"></i>
+                    </button>`;
+                } else if (status === 'pushing') {
+                    pushCell.getElement().innerHTML = '<i class="fas fa-spinner fa-spin" style="color: #ffc107;" title="Pushing pickup price..."></i>';
+                }
+            }
+
+            function updatePushButtonVisibility() {
+                if (!table) return;
+                let count = 0;
+                selectedSkus.forEach(sku => {
+                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                    if (!row) return;
+                    const data = row.getData();
+                    if (!data.is_parent && parseFloat(data.sprice) > 0) {
+                        count++;
+                    }
+                });
+                if (count > 0) {
+                    $('#push-to-doba-btn').show().html(`<i class="fas fa-upload"></i> Push Pickup Price (${count})`);
+                } else {
+                    $('#push-to-doba-btn').hide();
+                }
+            }
+
+            // Bulk push selected SKUs' pickup / prepaid price
+            $('#push-to-doba-btn').on('click', function() {
+                const skusWithSprice = [];
+                selectedSkus.forEach(sku => {
+                    const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
+                    if (!row) return;
+                    const data = row.getData();
+                    if (data.is_parent) return;
+                    const pickupPrice = parseFloat(data.s_self_pick) || parseFloat(data.sprice) || 0;
+                    if (pickupPrice > 0) {
+                        skusWithSprice.push({ sku: sku, pickupPrice: pickupPrice, row: row });
+                    }
+                });
+
+                if (skusWithSprice.length === 0) {
+                    showToast('warning', 'No selected SKUs with SPRICE. Set SPRICE first.');
+                    return;
+                }
+
+                if (!confirm(`Push pickup / prepaid price for ${skusWithSprice.length} SKU(s) to Doba?`)) {
+                    return;
+                }
+
+                const $btn = $(this);
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+
+                let currentIndex = 0;
+                let successCount = 0;
+                let errorCount = 0;
+                const responseLog = [];
+
+                function processNextSku() {
+                    if (currentIndex >= skusWithSprice.length) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        updatePushButtonVisibility();
+                        if (successCount > 0 && errorCount === 0) {
+                            showToast('success', `Pushed pickup price for ${successCount} SKU(s)`);
+                        } else if (successCount > 0) {
+                            showToast('warning', `Pushed ${successCount}, failed ${errorCount}`);
+                        } else {
+                            showToast('danger', `Failed to push pickup price for ${errorCount} SKU(s)`);
+                        }
+                        showPushResponseModal(responseLog, `Done: ${successCount} ok, ${errorCount} failed`);
+                        return;
+                    }
+
+                    const { sku, pickupPrice, row } = skusWithSprice[currentIndex];
+                    $btn.html(`<i class="fas fa-spinner fa-spin"></i> ${currentIndex + 1}/${skusWithSprice.length}`);
+                    row.update({ push_status: 'pushing' });
+                    updatePushCell(row, sku, pickupPrice, 'pushing');
+
+                    pushPickupPriceToDobaWithRetry(sku, pickupPrice, 5, 5000)
+                        .then((result) => {
+                            successCount++;
+                            const apiResponse = result.response || {};
+                            responseLog.push({
+                                sku: sku,
+                                pickup_price: pickupPrice,
+                                success: true,
+                                request: apiResponse.data?.request_payload || null,
+                                doba_response: apiResponse.data?.price_update || apiResponse
+                            });
+                            row.update({
+                                push_status: 'pushed',
+                                apply_status: null,
+                                self_pick_price: pickupPrice,
+                                s_self_pick: pickupPrice
+                            });
+                            updatePushCell(row, sku, pickupPrice, 'pushed');
+                            savePushStatusToDatabase(sku, 'pushed', row.getData());
+                            currentIndex++;
+                            setTimeout(processNextSku, 2000);
+                        })
+                        .catch((error) => {
+                            errorCount++;
+                            const apiResponse = error.response || {};
+                            responseLog.push({
+                                sku: sku,
+                                pickup_price: pickupPrice,
+                                success: false,
+                                message: error.message || 'Push failed',
+                                request: apiResponse.data?.request_payload || null,
+                                doba_response: apiResponse.data?.price_update || apiResponse
+                            });
+                            row.update({ push_status: 'error', apply_status: null });
+                            updatePushCell(row, sku, pickupPrice, 'error');
+                            selectedSkus.delete(sku);
+                            savePushStatusToDatabase(sku, 'error', row.getData());
+                            currentIndex++;
+                            setTimeout(processNextSku, 2000);
+                        });
+                }
+
+                processNextSku();
+            });
+
+            // Single-row push
+            $(document).on('click', '.push-single-btn', function(e) {
+                e.stopPropagation();
+                const $btn = $(this);
+                const sku = $btn.data('sku');
+                let pickupPrice = parseFloat($btn.data('price')) || 0;
+
+                let row = null;
+                table.getRows().forEach(r => {
+                    if (r.getData()['(Child) sku'] === sku) row = r;
+                });
+                if (!row) {
+                    showToast('danger', 'Row not found');
+                    return;
+                }
+
+                const rowData = row.getData();
+                pickupPrice = parseFloat(rowData.s_self_pick) || parseFloat(rowData.sprice) || pickupPrice;
+                if (!sku || pickupPrice <= 0) {
+                    showToast('danger', 'Invalid SKU or pickup price');
+                    return;
+                }
+
+                $btn.prop('disabled', true);
+                row.update({ push_status: 'pushing' });
+                updatePushCell(row, sku, pickupPrice, 'pushing');
+
+                pushPickupPriceToDobaWithRetry(sku, pickupPrice, 5, 5000)
+                    .then((result) => {
+                        const apiResponse = result.response || {};
+                        row.update({
+                            push_status: 'pushed',
+                            apply_status: null,
+                            self_pick_price: pickupPrice,
+                            s_self_pick: pickupPrice
+                        });
+                        updatePushCell(row, sku, pickupPrice, 'pushed');
+                        savePushStatusToDatabase(sku, 'pushed', row.getData());
+                        showToast('success', `Pickup price pushed for ${sku}`);
+                        showPushResponseModal([{
+                            sku: sku,
+                            pickup_price: pickupPrice,
+                            success: true,
+                            request: apiResponse.data?.request_payload || null,
+                            doba_response: apiResponse.data?.price_update || apiResponse
+                        }], `SKU ${sku} — success`);
+                    })
+                    .catch((error) => {
+                        const apiResponse = error.response || {};
+                        row.update({ push_status: 'error', apply_status: null });
+                        updatePushCell(row, sku, pickupPrice, 'error');
+                        selectedSkus.delete(sku);
+                        savePushStatusToDatabase(sku, 'error', row.getData());
+                        showToast('danger', `Failed for ${sku}: ${error.message || 'Unknown error'}`);
+                        showPushResponseModal([{
+                            sku: sku,
+                            pickup_price: pickupPrice,
+                            success: false,
+                            message: error.message || 'Push failed',
+                            request: apiResponse.data?.request_payload || null,
+                            doba_response: apiResponse.data?.price_update || apiResponse
+                        }], `SKU ${sku} — failed`);
+                    });
+            });
 
             // Toggle column from dropdown — persist choice to server (same as /ebay3-tabulator-view).
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {

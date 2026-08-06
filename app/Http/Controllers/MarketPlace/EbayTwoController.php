@@ -2043,9 +2043,10 @@ class EbayTwoController extends Controller
             }
 
             // Push price DIRECTLY to eBay via the local Ebay2ApiService (no microservice).
-            // The service returns ['success' => bool, 'errors' => ..., 'message' => ...].
+            // Pass variation SKU — multi-variation listings ignore item-level StartPrice.
             $service = new Ebay2ApiService();
-            $result  = $service->reviseFixedPriceItem(itemId: $ebayMetric->item_id, price: $priceFloat);
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
+            $result  = $service->reviseFixedPriceItem(itemId: $ebayMetric->item_id, price: $priceFloat, sku: $apiSku);
 
             if (isset($result['success']) && $result['success']) {
                 $ebayMetric->ebay_price = $priceFloat;
@@ -2068,8 +2069,19 @@ class EbayTwoController extends Controller
             $isAccountRestricted = (bool) ($result['accountRestricted'] ?? false);
             $this->saveSpriceStatus($sku, $isAccountRestricted ? 'account_restricted' : 'failed');
 
-            $errors  = $result['errors'] ?? [];
-            $message = $errors[0]['message'] ?? ($result['message'] ?? 'Failed to update price on eBay2');
+            $errors = $result['errors'] ?? [];
+            if ($errors !== [] && ! isset($errors[0]) && is_array($errors)) {
+                $errors = [$errors];
+            }
+            $first = is_array($errors[0] ?? null) ? $errors[0] : [];
+            $message = (string) ($result['message']
+                ?? $first['message']
+                ?? $first['LongMessage']
+                ?? $first['ShortMessage']
+                ?? 'Failed to update price on eBay2');
+            if (! empty($first['ErrorCode']) && ! str_contains($message, (string) $first['ErrorCode'])) {
+                $message = '[eBay #'.$first['ErrorCode'].'] '.$message;
+            }
 
             Log::error('[EbayTwoController] eBay2 price push failed via microservice', [
                 'sku'    => $sku,

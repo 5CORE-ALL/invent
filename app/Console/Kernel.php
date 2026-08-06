@@ -132,6 +132,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\RunImageMasterPush::class,
         \App\Console\Commands\RunShopifyVideoPull::class,
         \App\Console\Commands\RunVideoMasterPush::class,
+        \App\Console\Commands\RunPricingErrorsFixPush::class,
     ];
 
     /**

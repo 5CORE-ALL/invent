@@ -303,9 +303,17 @@ class EbayApiService
 
     public function reviseFixedPriceItem($itemId, $price, $quantity = null, $sku = null, $variationSpecifics = null, $variationSpecificsSet = null)
     {
-        // First, try to get item details to ensure we have all required fields
-        $itemDetails = $this->getItem($itemId);
-        
+        // Multi-variation listings ignore item-level StartPrice (ErrorCode 21916618).
+        // When a SKU is provided, revise that variation only — same as EbayThreeApiService.
+        $skuTrim = trim((string) $sku);
+        $isVariationListing = $skuTrim !== '';
+        $itemDetails = null;
+
+        // Only fetch GetItem for single-SKU / legacy paths (avoids rate-limit + wrong price path).
+        if (! $isVariationListing) {
+            $itemDetails = $this->getItem($itemId);
+        }
+
         // Build XML body
         $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
         $credentials = $xml->addChild('RequesterCredentials');
@@ -322,58 +330,82 @@ class EbayApiService
         $item = $xml->addChild('Item');
         $item->addChild('ItemID', $itemId);
 
-        // Update price
-        $item->addChild('StartPrice', $price);
-
-        // Optionally update quantity
-        if ($quantity !== null) {
-            $item->addChild('Quantity', $quantity);
-        }
-        
-        // If we have item details, include required fields to pass validation
-        if ($itemDetails && isset($itemDetails['Item'])) {
-            $existingItem = $itemDetails['Item'];
-            
-            // Include SKU if available (helps with validation)
-            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
-                $item->addChild('SKU', $existingItem['SKU']);
-            }
-            
-            // Include ListingType if available
-            if (isset($existingItem['ListingType'])) {
-                $item->addChild('ListingType', $existingItem['ListingType']);
-            }
-        }
-
-        // If variation exists, use variation structure
-        if ($variationSpecifics && $variationSpecificsSet) {
+        if ($isVariationListing) {
             $variations = $item->addChild('Variations');
             $variation = $variations->addChild('Variation');
-
-            if ($sku) {
-                $variation->addChild('SKU', $sku);
-            }
-
+            $variation->addChild('SKU', $skuTrim);
             $variation->addChild('StartPrice', $price);
             if ($quantity !== null) {
                 $variation->addChild('Quantity', $quantity);
             }
 
-            // VariationSpecifics
-            $vs = $variation->addChild('VariationSpecifics');
-            foreach ($variationSpecifics as $name => $value) {
-                $nvl = $vs->addChild('NameValueList');
-                $nvl->addChild('Name', $name);
-                $nvl->addChild('Value', $value);
+            if ($variationSpecifics) {
+                $vs = $variation->addChild('VariationSpecifics');
+                foreach ($variationSpecifics as $name => $value) {
+                    $nvl = $vs->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Value', $value);
+                }
+            }
+            if ($variationSpecificsSet) {
+                $vss = $item->addChild('VariationSpecificsSet');
+                foreach ($variationSpecificsSet as $name => $values) {
+                    $nvl = $vss->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    foreach ($values as $val) {
+                        $nvl->addChild('Value', $val);
+                    }
+                }
+            }
+        } else {
+            // Single listing — item-level price
+            $item->addChild('StartPrice', $price);
+
+            if ($quantity !== null) {
+                $item->addChild('Quantity', $quantity);
             }
 
-            // VariationSpecificsSet
-            $vss = $item->addChild('VariationSpecificsSet');
-            foreach ($variationSpecificsSet as $name => $values) {
-                $nvl = $vss->addChild('NameValueList');
-                $nvl->addChild('Name', $name);
-                foreach ($values as $val) {
-                    $nvl->addChild('Value', $val);
+            // If we have item details, include required fields to pass validation
+            if ($itemDetails && isset($itemDetails['Item'])) {
+                $existingItem = $itemDetails['Item'];
+
+                if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
+                    $item->addChild('SKU', $existingItem['SKU']);
+                }
+
+                if (isset($existingItem['ListingType'])) {
+                    $item->addChild('ListingType', $existingItem['ListingType']);
+                }
+            }
+
+            // Legacy path: only when caller supplies both specifics sets
+            if ($variationSpecifics && $variationSpecificsSet) {
+                $variations = $item->addChild('Variations');
+                $variation = $variations->addChild('Variation');
+
+                if ($sku) {
+                    $variation->addChild('SKU', $sku);
+                }
+
+                $variation->addChild('StartPrice', $price);
+                if ($quantity !== null) {
+                    $variation->addChild('Quantity', $quantity);
+                }
+
+                $vs = $variation->addChild('VariationSpecifics');
+                foreach ($variationSpecifics as $name => $value) {
+                    $nvl = $vs->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    $nvl->addChild('Value', $value);
+                }
+
+                $vss = $item->addChild('VariationSpecificsSet');
+                foreach ($variationSpecificsSet as $name => $values) {
+                    $nvl = $vss->addChild('NameValueList');
+                    $nvl->addChild('Name', $name);
+                    foreach ($values as $val) {
+                        $nvl->addChild('Value', $val);
+                    }
                 }
             }
         }
@@ -414,6 +446,36 @@ class EbayApiService
         $ack = $responseArray['Ack'] ?? 'Failure';
 
         if ($ack === 'Success' || $ack === 'Warning') {
+            // Treat "item-level price ignored on variation listing" as failure (silent no-op).
+            $warnErrors = $responseArray['Errors'] ?? [];
+            if ($warnErrors !== [] && ! isset($warnErrors[0]) && is_array($warnErrors)) {
+                $warnErrors = [$warnErrors];
+            }
+            if (! is_array($warnErrors)) {
+                $warnErrors = [$warnErrors];
+            }
+            foreach ($warnErrors as $warnErr) {
+                if (! is_array($warnErr)) {
+                    continue;
+                }
+                $warnCode = (string) ($warnErr['ErrorCode'] ?? '');
+                $warnMsg = (string) ($warnErr['LongMessage'] ?? $warnErr['ShortMessage'] ?? '');
+                if (
+                    $warnCode === '21916618'
+                    || stripos($warnMsg, 'Item level start price will be ignored') !== false
+                ) {
+                    return [
+                        'success' => false,
+                        'message' => 'eBay ignored the price update because this is a multi-variation listing. Retry with the variation SKU.',
+                        'errors' => [[
+                            'code' => $warnCode ?: '21916618',
+                            'message' => $warnMsg ?: 'Item level start price will be ignored on variation listings.',
+                        ]],
+                        'data' => $responseArray,
+                    ];
+                }
+            }
+
             return [
                 'success' => true,
                 'message' => 'Item updated successfully.',
@@ -424,8 +486,10 @@ class EbayApiService
             $errors = $responseArray['Errors'] ?? [];
             $hasLvisError = false;
             
-            // Handle both single error and array of errors
-            if (!is_array($errors)) {
+            // Handle both single error object and array of errors
+            if (! is_array($errors)) {
+                $errors = [$errors];
+            } elseif ($errors !== [] && ! isset($errors[0])) {
                 $errors = [$errors];
             }
             
@@ -478,6 +542,30 @@ class EbayApiService
             if ($hasLvisError && $itemDetails && isset($itemDetails['Item'])) {
                 Log::info('Lvis error detected, trying alternative revision method', ['itemId' => $itemId]);
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
+            }
+
+            // Variation SKU path used on a non-variation listing — retry item-level once.
+            if ($isVariationListing) {
+                $errBlob = '';
+                foreach ($errors as $error) {
+                    if (! is_array($error)) {
+                        continue;
+                    }
+                    $errBlob .= ' '.strtolower((string) ($error['LongMessage'] ?? ''));
+                    $errBlob .= ' '.strtolower((string) ($error['ShortMessage'] ?? ''));
+                    $errBlob .= ' '.(string) ($error['ErrorCode'] ?? '');
+                }
+                if (
+                    str_contains($errBlob, 'not a multi-variation')
+                    || str_contains($errBlob, 'not a multi-sku')
+                    || str_contains($errBlob, 'variations node')
+                    || str_contains($errBlob, 'does not have variations')
+                    || str_contains($errBlob, '21916587')
+                    || str_contains($errBlob, '21916613')
+                    || str_contains($errBlob, '21916317')
+                ) {
+                    return $this->reviseFixedPriceItem($itemId, $price, $quantity, null, $variationSpecifics, $variationSpecificsSet);
+                }
             }
             
             return [

@@ -264,6 +264,25 @@ class PricingErrorsFixCvrCacheBuilder
             $norm, $price, $sprice, $lp, $ship, $margin, $tacosCh, $l30, $adSku
         );
 
+        $goodsId = $item['goods_id'] ?? $item['temu_goods_id'] ?? null;
+        $skuId = $item['sku_id'] ?? $item['temu_sku_id'] ?? null;
+        if (is_scalar($goodsId)) {
+            $goodsId = trim((string) $goodsId);
+            if ($goodsId === '') {
+                $goodsId = null;
+            }
+        } else {
+            $goodsId = null;
+        }
+        if (is_scalar($skuId)) {
+            $skuId = trim((string) $skuId);
+            if ($skuId === '') {
+                $skuId = null;
+            }
+        } else {
+            $skuId = null;
+        }
+
         return [
             'id' => $marketplace.'|'.$sku,
             'channel' => $channelLabel,
@@ -275,6 +294,7 @@ class PricingErrorsFixCvrCacheBuilder
             'sku' => $sku,
             'inv' => $inv,
             'ov_l30' => $ovL30,
+            'l30' => $l30,
             'dil' => $dil,
             'price' => $price > 0 ? round($price, 2) : null,
             'groi' => $metrics['groi'],
@@ -291,6 +311,8 @@ class PricingErrorsFixCvrCacheBuilder
             'ship' => $ship,
             'margin' => $margin,
             'ads_pct' => $tacosCh,
+            'goods_id' => $goodsId,
+            'sku_id' => $skuId,
             '_selected' => false,
         ];
     }

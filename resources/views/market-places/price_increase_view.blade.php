@@ -4601,7 +4601,8 @@
                     'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'bestbuy', 'bestbuyusa', 'macy', 'macys',
                     'ppower', 'purchasingpower', 'purchase',
-                    'reverb', 'fba', 'topdawg', 'temu', 'temu2'
+                    'reverb', 'fba', 'topdawg', 'temu', 'temu2',
+                    'tiktok', 'tiktok1', 'tiktok2', 'tiktok 2',
                 ];
                 const canPushPrice = pushableChannels.includes((item.marketplace || '').toLowerCase()) && isListed;
                 const hasPushableSprice = parseFloat(item.sprice) > 0;

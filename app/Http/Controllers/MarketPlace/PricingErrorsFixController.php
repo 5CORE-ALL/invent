@@ -4,9 +4,11 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Controller;
+use App\Jobs\RunPricingErrorsFixPushJob;
 use App\Models\ChannelMasterCalculatedData;
 use App\Models\PricingErrorsFixCalculatedData;
 use App\Services\PricingErrorsFixCvrCacheBuilder;
+use App\Services\Support\PricingErrorsFixPushJobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -183,7 +185,7 @@ class PricingErrorsFixController extends Controller
         $q = \Illuminate\Support\Facades\DB::table('pricing_errors_fix_calculated_data')
             ->select([
                 'sku', 'marketplace', 'pull_key', 'channel_label', 'parent',
-                'inv', 'ov_l30', 'dil', 'price', 'groi', 'nroi', 'gpft', 'npft',
+                'inv', 'ov_l30', 'l30', 'dil', 'price', 'groi', 'nroi', 'gpft', 'npft',
                 'sprice', 'sroi', 'sgpft', 'snroi', 'snpft', 'success',
                 'lp', 'ship', 'margin', 'ads_pct',
             ]);
@@ -212,6 +214,7 @@ class PricingErrorsFixController extends Controller
                 'sku' => $r->sku,
                 'inv' => (float) $r->inv,
                 'ov_l30' => (float) $r->ov_l30,
+                'l30' => (float) ($r->l30 ?? 0),
                 'dil' => $r->dil !== null ? (float) $r->dil : null,
                 'price' => $price > 0 ? round($price, 2) : null,
                 'groi' => $r->groi !== null ? (float) $r->groi : null,
@@ -228,11 +231,91 @@ class PricingErrorsFixController extends Controller
                 'ship' => (float) $r->ship,
                 'margin' => (float) $r->margin,
                 'ads_pct' => (float) $r->ads_pct,
+                'goods_id' => null,
+                'sku_id' => null,
                 '_selected' => false,
             ];
         }
 
-        return $out;
+        return $this->enrichTemuPushIds($out);
+    }
+
+    /**
+     * Attach Temu/Temu2 goods_id + sku_id for price push (cache table has no ID columns).
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichTemuPushIds(array $rows): array
+    {
+        $temuSkus = [];
+        $temu2Skus = [];
+        foreach ($rows as $r) {
+            $mp = strtolower((string) ($r['marketplace'] ?? ''));
+            $sku = trim((string) ($r['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            if ($mp === 'temu') {
+                $temuSkus[strtoupper($sku)] = $sku;
+            } elseif ($mp === 'temu2') {
+                $temu2Skus[strtoupper($sku)] = $sku;
+            }
+        }
+
+        $temuMap = [];
+        if ($temuSkus !== [] && Schema::hasTable('temu_metrics')) {
+            $cols = ['sku', 'goods_id'];
+            if (Schema::hasColumn('temu_metrics', 'sku_id')) {
+                $cols[] = 'sku_id';
+            }
+            // Case-insensitive match — PEF SKUs and temu_metrics casing can differ.
+            $upperList = array_keys($temuSkus);
+            foreach (DB::table('temu_metrics')->select($cols)
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $upperList)
+                ->get() as $m) {
+                $temuMap[strtoupper(trim((string) $m->sku))] = $m;
+            }
+        }
+
+        $temu2Map = [];
+        if ($temu2Skus !== [] && Schema::hasTable('temu2_metrics')) {
+            $cols2 = ['sku', 'goods_id'];
+            if (Schema::hasColumn('temu2_metrics', 'sku_id')) {
+                $cols2[] = 'sku_id';
+            }
+            $upperList2 = array_keys($temu2Skus);
+            foreach (DB::table('temu2_metrics')->select($cols2)
+                ->whereIn(DB::raw('UPPER(TRIM(sku))'), $upperList2)
+                ->get() as $m) {
+                $temu2Map[strtoupper(trim((string) $m->sku))] = $m;
+            }
+        }
+
+        foreach ($rows as &$r) {
+            $mp = strtolower((string) ($r['marketplace'] ?? ''));
+            $key = strtoupper(trim((string) ($r['sku'] ?? '')));
+            $m = null;
+            if ($mp === 'temu') {
+                $m = $temuMap[$key] ?? null;
+            } elseif ($mp === 'temu2') {
+                $m = $temu2Map[$key] ?? null;
+            }
+            if (! $m) {
+                continue;
+            }
+            $gid = trim((string) ($m->goods_id ?? ''));
+            $sid = trim((string) ($m->sku_id ?? ''));
+            if ($gid !== '') {
+                $r['goods_id'] = $gid;
+            }
+            if ($sid !== '') {
+                $r['sku_id'] = $sid;
+            }
+        }
+        unset($r);
+
+        return $rows;
     }
 
     /**
@@ -379,6 +462,150 @@ class PricingErrorsFixController extends Controller
         }
 
         return response()->json($list);
+    }
+
+    /**
+     * Queue selected PEF price pushes — worker retries transient failures in background.
+     */
+    public function queuePush(Request $request, PricingErrorsFixPushJobStore $store): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $current = $store->load();
+        if ($store->isActive($current) && ! $store->isStale($current)) {
+            return response()->json(array_merge($store->toApiResponse($current), [
+                'success' => false,
+                'message' => 'A price push is already running. Wait for it to finish or cancel it.',
+            ]), 409);
+        }
+        if ($store->isActive($current)) {
+            $store->forceStop('Cleared a stale push job (no worker was processing it).');
+            $this->releaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'row_id' => $item['row_id'] ?? null,
+                'sku' => $item['sku'] ?? null,
+                'marketplace' => $item['marketplace'] ?? null,
+                'channel' => $item['channel'] ?? null,
+                'price' => $item['price'] ?? null,
+                'sprice' => $item['sprice'] ?? null,
+                'self_pick_price' => $item['self_pick_price'] ?? null,
+                'goods_id' => $item['goods_id'] ?? null,
+                'sku_id' => $item['sku_id'] ?? null,
+            ];
+        }
+
+        $job = $store->create($tasks);
+        if ((int) ($job['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + price > 0)'], 400);
+        }
+
+        $queued = false;
+        try {
+            RunPricingErrorsFixPushJob::dispatch();
+            $queued = true;
+        } catch (\Throwable $e) {
+            Log::warning('PEF push queue dispatch failed — spawning artisan --sync', [
+                'error' => $e->getMessage(),
+            ]);
+            $queued = $this->spawnPricingErrorsFixPushWorker();
+            if (! $queued) {
+                $store->markFailed('Could not queue worker: '.$e->getMessage());
+
+                return response()->json(array_merge($store->toApiResponse($store->load()), [
+                    'success' => false,
+                    'message' => 'Could not start price push worker. Run: php artisan queue:work --queue=pricing-errors-fix-push  OR  php artisan pricing-errors:push-run --sync',
+                ]), 500);
+            }
+        }
+
+        // Also try spawning the dedicated worker if nothing is listening (best-effort).
+        if ($queued) {
+            $this->ensurePricingErrorsFixPushWorkerHint();
+        }
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Price push queued ('.$job['total'].' row(s)). Processing in background with retries…',
+        ]));
+    }
+
+    /**
+     * Spawn `pricing-errors:push-run --sync` in the background when the DB queue is unavailable.
+     */
+    private function spawnPricingErrorsFixPushWorker(): bool
+    {
+        try {
+            $php = PHP_BINARY ?: 'php';
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/pricing-errors-fix-push.log');
+            $cmd = escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' pricing-errors:push-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            if (stripos(PHP_OS_FAMILY, 'Windows') === 0) {
+                pclose(popen('start /B '.$php.' '.$artisan.' pricing-errors:push-run --sync', 'r'));
+            } else {
+                exec($cmd);
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('PEF push spawn failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    private function ensurePricingErrorsFixPushWorkerHint(): void
+    {
+        // Soft hint only — watchdog should keep pricing-errors-fix-push alive in prod.
+        try {
+            $pending = (int) DB::table('jobs')
+                ->where('queue', RunPricingErrorsFixPushJob::QUEUE)
+                ->count();
+            if ($pending > 0) {
+                Log::info('PEF push job pending on queue', [
+                    'queue' => RunPricingErrorsFixPushJob::QUEUE,
+                    'pending' => $pending,
+                    'hint' => 'php artisan queue:work --queue=pricing-errors-fix-push',
+                ]);
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    public function pushJobStatus(PricingErrorsFixPushJobStore $store): JsonResponse
+    {
+        return response()->json($store->toApiResponse($store->load()));
+    }
+
+    public function cancelPush(PricingErrorsFixPushJobStore $store): JsonResponse
+    {
+        $job = $store->forceStop('Cancelled by user.');
+        $this->releaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push cancelled.',
+        ]));
+    }
+
+    private function releaseUniqueJobLock(string $jobClass, string $uniqueId): void
+    {
+        try {
+            Cache::lock('laravel_unique_job:'.$jobClass.':'.$uniqueId)->forceRelease();
+        } catch (\Throwable) {
+            // best-effort
+        }
     }
 
     /**
@@ -606,7 +833,7 @@ class PricingErrorsFixController extends Controller
 
         $parent = $this->pick($r, ['Parent', 'parent', 'parent_sku'], null);
         $inv = $this->toFloat($this->pick($r, ['INV', 'inv', 'inventory', 'Inventory'], 0));
-        $ovL30 = $this->toFloat($this->pick($r, ['L30', 'OV L30', 'ov_l30', 'overall_l30', 'quantity'], 0));
+        $ovL30 = $this->toFloat($this->pick($r, ['L30', 'OV L30', 'ov_l30', 'ovl30', 'overall_l30'], 0));
         $dil = $this->pick($r, ['Dil', 'Dil%', 'dil', 'dil_percent', 'dil%'], null);
         if ($dil === null || $dil === '') {
             $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 0) : 0;
@@ -629,9 +856,28 @@ class PricingErrorsFixController extends Controller
         $lp = $this->toFloat($this->pick($r, ['LP_productmaster', 'lp', 'LP'], 0));
         $ship = $this->toFloat($this->pick($r, ['Ship_productmaster', 'ship', 'Ship', 'temu_ship'], 0));
         $rowMargin = $this->toFloat($this->pick($r, ['percentage', 'margin'], 0));
+        $goodsId = $this->pick($r, ['goods_id', 'temu_goods_id', 'Goods ID', 'goodsId'], null);
+        $skuId = $this->pick($r, ['sku_id', 'temu_sku_id', 'skuId'], null);
+        if (is_scalar($goodsId)) {
+            $goodsId = trim((string) $goodsId);
+            if ($goodsId === '') {
+                $goodsId = null;
+            }
+        } else {
+            $goodsId = null;
+        }
+        if (is_scalar($skuId)) {
+            $skuId = trim((string) $skuId);
+            if ($skuId === '') {
+                $skuId = null;
+            }
+        } else {
+            $skuId = null;
+        }
 
         // Channel-wise take-home + Ads% — same formulas as amazon/ebay/temu tabulators
         $marketplace = (string) $cfg['marketplace'];
+        $channelL30 = $this->extractChannelL30($r, $marketplace);
         $margin = $this->resolveTakeHome($marketplace, $rowMargin);
         $adsPct = $this->resolveAdsPercent($marketplace);
 
@@ -658,6 +904,7 @@ class PricingErrorsFixController extends Controller
             'sku' => $sku,
             'inv' => $inv,
             'ov_l30' => $ovL30,
+            'l30' => $channelL30,
             'dil' => $dil,
             'price' => $price > 0 ? round($price, 2) : null,
             'groi' => $calc['groi'],
@@ -675,6 +922,8 @@ class PricingErrorsFixController extends Controller
             'ship' => $ship,
             'margin' => $margin,
             'ads_pct' => $adsPct,
+            'goods_id' => $goodsId,
+            'sku_id' => $skuId,
             '_selected' => false,
         ];
     }
@@ -816,6 +1065,47 @@ class PricingErrorsFixController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Channel-specific L30 sold qty (not Shopify overall ov_l30).
+     * Keys match each marketplace pricing tabulator / CVR breakdown `l30`.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function extractChannelL30(array $row, string $marketplace): float
+    {
+        $mp = strtolower(trim($marketplace));
+        $keysByMp = [
+            'amazon' => ['A_L30', 'a_l30', 'units_ordered_l30', 'l30'],
+            'ebay' => ['eBay L30', 'Ebay L30', 'ebay_l30', 'l30'],
+            'ebay1' => ['eBay L30', 'Ebay L30', 'ebay_l30', 'l30'],
+            'ebay2' => ['eBay L30', 'Ebay L30', 'ebay_l30', 'l30'],
+            'ebay3' => ['eBay L30', 'Ebay L30', 'ebay_l30', 'l30'],
+            'temu' => ['temu_l30', 'l30'],
+            'temu2' => ['temu_l30', 'l30'],
+            'doba' => ['doba L30', 'doba_l30', 'quantity_l30', 'l30'],
+            'tiktok' => ['TT L30', 'tt_l30', 'l30'],
+            'tiktok2' => ['TT L30', 'tt_l30', 'l30'],
+            'bestbuy' => ['BB L30', 'bb_l30', 'm_l30', 'l30'],
+            'macy' => ['MC L30', 'mc_l30', 'm_l30', 'l30'],
+            'reverb' => ['RV L30', 'rv_l30', 'r_l30', 'l30'],
+            'topdawg' => ['TD L30', 'td_l30', 'r_l30', 'l30'],
+            'walmart' => ['W_L30', 'w_l30', 'sheet_l30', 'l30'],
+            'sb2c' => ['B2B L30', 'b2c_l30', 'l30'],
+            'sb2b' => ['B2B L30', 'b2b_l30', 'l30'],
+            'ppower' => ['PP L30', 'pp_l30', 'm_l30', 'l30'],
+            'tiendamia' => ['M L30', 'm_l30', 'l30'],
+            'pls' => ['pls_l30', 'p_l30', 'l30'],
+            'wayfair' => ['al30', 'l30'],
+            'shein' => ['al30', 'l30'],
+            'faire' => ['al30', 'A L30', 'l30'],
+            'aliexpress' => ['al30', 'A L30', 'l30'],
+        ];
+
+        $keys = $keysByMp[$mp] ?? ['l30', 'channel_l30'];
+
+        return $this->toFloat($this->pick($row, $keys, 0));
     }
 
     /**

@@ -689,7 +689,11 @@ class CvrMasterController extends Controller
             if (Schema::hasTable('temu2_pricing') && Schema::hasTable('temu2_daily_data')) {
                 try {
                     $temu2L30ByProductSku = $this->buildTemu2L30ByProductSkusMap($skus, true);
-                    $temu2PricingsAll = Temu2Metric::query()->get(['sku', 'base_price', 'goods_id']);
+                    $temu2MetricCols = ['sku', 'base_price', 'goods_id'];
+                    if (Schema::hasColumn('temu2_metrics', 'sku_id')) {
+                        $temu2MetricCols[] = 'sku_id';
+                    }
+                    $temu2PricingsAll = Temu2Metric::query()->get($temu2MetricCols);
                     $temu2PricingByProductSku = $this->buildTemu2PricingMapForProductSkus($temu2PricingsAll, $skus);
                     Log::info('CVR Master - Temu 2 Data fetched', [
                         'temu2_pricing_rows'   => $temu2PricingsAll->count(),
@@ -2169,8 +2173,8 @@ class CvrMasterController extends Controller
                         ['marketplace' => 'Ebay1', 'price' => $ebay1Price, 'sprice' => $ebay1Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay1Percentage, 'ad' => $ebay1ChannelAdsPct, 'tacos_ch' => $ebay1ChannelAdsPct, 'l30' => $ebay1L30, 'push_status' => $ebay1St],
                         ['marketplace' => 'Ebay2', 'price' => $ebay2Price, 'sprice' => $ebay2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay2Percentage, 'ad' => $ebay2ChannelAdsPct, 'tacos_ch' => $ebay2ChannelAdsPct, 'l30' => $ebay2L30, 'push_status' => $ebay2St],
                         ['marketplace' => 'Ebay3', 'price' => $ebay3Price, 'sprice' => $ebay3Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay3Percentage, 'ad' => $ebay3ChannelAdsPct, 'tacos_ch' => $ebay3ChannelAdsPct, 'l30' => $ebay3L30, 'push_status' => $ebay3St],
-                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'push_status' => null],
-                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'push_status' => $temu2St],
+                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
+                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
                         ['marketplace' => 'Doba', 'price' => $dobaPrice, 'sprice' => $dobaSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $dobaL30, 'push_status' => $dobaSt],
                         ['marketplace' => 'TikTok', 'price' => $tiktokPrice, 'sprice' => $ttSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktokPercentage, 'ad' => round($tiktokAD, 2), 'tacos_ch' => round($tiktokAD, 2), 'l30' => $tiktokL30, 'push_status' => $ttSt],
                         ['marketplace' => 'TikTok 2', 'price' => $tiktok2Price, 'sprice' => $tt2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktok2Percentage, 'ad' => $tt2AdsPef, 'tacos_ch' => $tt2AdsPef, 'l30' => $tiktok2L30, 'push_status' => $tt2St],
@@ -4132,6 +4136,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $temuShip,
                 'margin' => $temuMargin,
+                'goods_id' => $temuPricing ? ($temuPricing->goods_id ?? null) : null,
+                'sku_id' => $temuPricing ? ($temuPricing->sku_id ?? null) : null,
                 'pushed_by' => null,
                 'pushed_at' => null,
                 'buyer_link' => ($temuLinks = $getListingLinks(TemuListingStatus::class, $fullSku))[0],
@@ -4153,7 +4159,11 @@ class CvrMasterController extends Controller
                 try {
                     $l30MapOne = $this->buildTemu2L30ByProductSkusMap([$fullSku], true);
                     $temu2L30Br = (int) ($l30MapOne[$fullSku] ?? 0);
-                    $temu2AllPricing = Temu2Metric::query()->get(['sku', 'base_price', 'goods_id']);
+                    $temu2BrCols = ['sku', 'base_price', 'goods_id'];
+                    if (Schema::hasColumn('temu2_metrics', 'sku_id')) {
+                        $temu2BrCols[] = 'sku_id';
+                    }
+                    $temu2AllPricing = Temu2Metric::query()->get($temu2BrCols);
                     $t2PriceMap = $this->buildTemu2PricingMapForProductSkus($temu2AllPricing, [$fullSku]);
                     $temu2PricingRow = $t2PriceMap[$fullSku] ?? null;
                     if ($temu2PricingRow) {
@@ -4226,6 +4236,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $temuShip,
                 'margin' => $temu2Margin,
+                'goods_id' => $temu2PricingRow ? ($temu2PricingRow->goods_id ?? null) : null,
+                'sku_id' => $temu2PricingRow ? ($temu2PricingRow->sku_id ?? null) : null,
                 'pushed_by' => null,
                 'pushed_at' => null,
                 'buyer_link' => $temu2Buyer,
@@ -6607,7 +6619,8 @@ class CvrMasterController extends Controller
                 ], 400);
             }
 
-            $sku = strtoupper(trim($request->input('sku')));
+            $skuRaw = trim((string) $request->input('sku'));
+            $sku = strtoupper($skuRaw);
             $rawPrice = $request->input('price');
             // Normalize "Ebay 3" / "eBay3" / "ebaythree" → compact lowercase keys
             $marketplace = preg_replace('/\s+/', '', strtolower(trim((string) $request->input('marketplace'))));
@@ -6664,18 +6677,31 @@ class CvrMasterController extends Controller
             } elseif ($marketplace === 'topdawg') {
                 $response = $this->pushToTopDawg($sku, $price);
             } elseif ($marketplace === 'temu') {
-                $response = $this->pushToTemu(
-                    $sku,
-                    $price,
+                // Keep original SKU case for Temu metric lookup; resolve goods_id/sku_id when omitted (PEF)
+                [$temuGoodsId, $temuSkuId] = $this->resolveTemuPushIds(
+                    $skuRaw !== '' ? $skuRaw : $sku,
                     $request->input('goods_id'),
-                    $request->input('sku_id')
+                    $request->input('sku_id'),
+                    false
+                );
+                $response = $this->pushToTemu(
+                    $skuRaw !== '' ? $skuRaw : $sku,
+                    $price,
+                    $temuGoodsId,
+                    $temuSkuId
                 );
             } elseif ($marketplace === 'temu2') {
-                $response = $this->pushToTemu2(
-                    $sku,
-                    $price,
+                [$temu2GoodsId, $temu2SkuId] = $this->resolveTemuPushIds(
+                    $skuRaw !== '' ? $skuRaw : $sku,
                     $request->input('goods_id'),
-                    $request->input('sku_id')
+                    $request->input('sku_id'),
+                    true
+                );
+                $response = $this->pushToTemu2(
+                    $skuRaw !== '' ? $skuRaw : $sku,
+                    $price,
+                    $temu2GoodsId,
+                    $temu2SkuId
                 );
             } elseif (in_array($marketplace, ['tiktok', 'tiktok1', 'tiktokshop', 'tiktokshop1'], true)) {
                 $response = $this->pushToTikTok($sku, $price);
@@ -6790,6 +6816,24 @@ class CvrMasterController extends Controller
             if (isset($result['errors']) && !empty($result['errors'])) {
                 // Save error status to amazon_data_view
                 $this->savePricePushStatus($sku, 'amazon', 'error', $price);
+
+                $errDetail = collect($result['errors'])
+                    ->map(function ($e) {
+                        if (is_string($e)) {
+                            return $e;
+                        }
+                        if (! is_array($e)) {
+                            return null;
+                        }
+
+                        return $e['message'] ?? $e['code'] ?? null;
+                    })
+                    ->filter()
+                    ->unique()
+                    ->implode('; ');
+                $failMessage = $errDetail !== ''
+                    ? 'Failed to push price to Amazon: '.$errDetail
+                    : 'Failed to push price to Amazon.';
                 
                 Log::error('CVR Master - Amazon price push failed', [
                     'sku' => $sku,
@@ -6799,7 +6843,7 @@ class CvrMasterController extends Controller
                 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to push price to Amazon.',
+                    'message' => $failMessage,
                     'errors' => $result['errors']
                 ], 400);
             }
@@ -7350,15 +7394,23 @@ class CvrMasterController extends Controller
                 ], 404);
             }
 
+            // Prefer metric SKU casing so multi-variation listings match (same as eBay3).
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
+
             $ebayService = new EbayApiService();
-            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $price);
+            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $price, null, $apiSku);
 
             if (isset($result['success']) && $result['success']) {
+                if (isset($ebayMetric->ebay_price)) {
+                    $ebayMetric->ebay_price = $price;
+                    $ebayMetric->save();
+                }
                 $this->savePricePushStatus($sku, 'ebay', 'pushed', $price);
                 Log::info('CVR Master - eBay price push successful', [
                     'sku' => $sku,
                     'price' => $price,
                     'item_id' => $ebayMetric->item_id,
+                    'api_sku' => $apiSku,
                 ]);
                 return response()->json([
                     'success' => true,
@@ -7370,18 +7422,12 @@ class CvrMasterController extends Controller
             $isAccountRestricted = !empty($result['accountRestricted']);
             $this->savePricePushStatus($sku, 'ebay', $isAccountRestricted ? 'account_restricted' : 'error', $price);
 
-            $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
-            if (!is_array($errors)) {
-                $errors = [$errors];
-            }
-            $firstMsg = is_array($errors[0] ?? null)
-                ? ($errors[0]['message'] ?? $errors[0]['LongMessage'] ?? 'Failed to update eBay price')
-                : (string) $errors[0];
+            $firstMsg = $this->extractEbayPushErrorMessage($result, 'Failed to update eBay price');
 
             return response()->json([
                 'success' => false,
                 'message' => $firstMsg,
-                'errors' => $errors,
+                'errors' => $result['errors'] ?? [['message' => $firstMsg]],
             ], 400);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'ebay', 'error', $price);
@@ -7419,9 +7465,13 @@ class CvrMasterController extends Controller
                 ], 404);
             }
 
+            // Multi-variation listings need the variation SKU (same as eBay3 / EbayThreeApiService).
+            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
+
             $result = (new Ebay2ApiService())->reviseFixedPriceItem(
                 itemId: $ebayMetric->item_id,
-                price: $price
+                price: $price,
+                sku: $apiSku
             );
 
             if (!empty($result['success'])) {
@@ -7430,20 +7480,53 @@ class CvrMasterController extends Controller
                 $this->savePricePushStatus($sku, 'ebay2', 'pushed', $price);
                 return response()->json([
                     'success' => true,
-                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay2 for SKU: $sku",
+                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay2 for SKU: $apiSku",
                     'result' => $result,
                 ]);
             }
 
             $this->savePricePushStatus($sku, 'ebay2', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
-            $errors = $result['errors'] ?? [];
-            $message = $errors[0]['message'] ?? ($result['message'] ?? 'Failed to update price on eBay2');
-            return response()->json(['success' => false, 'message' => $message, 'errors' => $errors], 400);
+            $message = $this->extractEbayPushErrorMessage($result, 'Failed to update price on eBay2');
+            return response()->json(['success' => false, 'message' => $message, 'errors' => $result['errors'] ?? []], 400);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'ebay2', 'error', $price);
             Log::error('CVR Master - eBay2 push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'message' => 'eBay2 API error: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Normalize Trading API Errors (single object or list) into a readable message for PEF UI.
+     */
+    private function extractEbayPushErrorMessage(array $result, string $fallback): string
+    {
+        if (! empty($result['message']) && is_string($result['message'])) {
+            return $result['message'];
+        }
+
+        $errors = $result['errors'] ?? [];
+        if ($errors !== [] && ! isset($errors[0]) && is_array($errors)) {
+            $errors = [$errors];
+        }
+        if (! is_array($errors)) {
+            $errors = [$errors];
+        }
+
+        $first = $errors[0] ?? null;
+        if (is_string($first) && $first !== '') {
+            return $first;
+        }
+        if (! is_array($first)) {
+            return $fallback;
+        }
+
+        $msg = (string) ($first['message'] ?? $first['LongMessage'] ?? $first['ShortMessage'] ?? $fallback);
+        $code = (string) ($first['code'] ?? $first['ErrorCode'] ?? '');
+        if ($code !== '' && ! str_contains($msg, $code)) {
+            $msg = '[eBay #'.$code.'] '.$msg;
+        }
+
+        return $msg !== '' ? $msg : $fallback;
     }
 
     /**
@@ -7493,11 +7576,12 @@ class CvrMasterController extends Controller
             }
 
             $this->savePricePushStatus($apiSku, 'ebay3', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
-            $errors = $result['errors'] ?? [['message' => 'Failed to update price']];
-            $firstMsg = is_array($errors[0] ?? null)
-                ? ($errors[0]['message'] ?? $errors[0]['LongMessage'] ?? 'Failed to update eBay3 price')
-                : (string) ($errors[0] ?? 'Failed to update eBay3 price');
-            return response()->json(['success' => false, 'message' => $firstMsg, 'errors' => $errors], 400);
+            $firstMsg = $this->extractEbayPushErrorMessage($result, 'Failed to update eBay3 price');
+            return response()->json([
+                'success' => false,
+                'message' => $firstMsg,
+                'errors' => $result['errors'] ?? [['message' => $firstMsg]],
+            ], 400);
         } catch (\Exception $e) {
             $this->savePricePushStatus($sku, 'ebay3', 'error', $price);
             Log::error('CVR Master - eBay3 push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
@@ -7727,6 +7811,65 @@ class CvrMasterController extends Controller
                 'errors' => [['message' => $e->getMessage()]]
             ], 500);
         }
+    }
+
+    /**
+     * Resolve Temu / Temu2 goods_id + sku_id for price push (PEF often omits them).
+     *
+     * @return array{0:?string,1:?string}
+     */
+    private function resolveTemuPushIds(string $sku, $goodsId, $skuId, bool $temu2 = false): array
+    {
+        $goodsId = ($goodsId !== null && $goodsId !== '') ? (string) $goodsId : null;
+        $skuId = ($skuId !== null && $skuId !== '') ? (string) $skuId : null;
+        if ($goodsId && $skuId) {
+            return [$goodsId, $skuId];
+        }
+
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [$goodsId, $skuId];
+        }
+
+        try {
+            if ($temu2) {
+                if (! Schema::hasTable('temu2_metrics')) {
+                    return [$goodsId, $skuId];
+                }
+                $row = Temu2Metric::query()
+                    ->where(function ($q) use ($sku) {
+                        $q->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                            ->orWhere('sku', $sku);
+                    })
+                    ->first(['goods_id', 'sku_id']);
+            } else {
+                if (! Schema::hasTable('temu_metrics')) {
+                    return [$goodsId, $skuId];
+                }
+                $row = TemuMetric::query()
+                    ->where(function ($q) use ($sku) {
+                        $q->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                            ->orWhere('sku', $sku);
+                    })
+                    ->first(['goods_id', 'sku_id']);
+            }
+            if ($row) {
+                if (! $goodsId && $row->goods_id !== null && $row->goods_id !== '') {
+                    $goodsId = (string) $row->goods_id;
+                }
+                if (! $skuId && $row->sku_id !== null && $row->sku_id !== '') {
+                    $skuId = (string) $row->sku_id;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('resolveTemuPushIds failed', [
+                'sku' => $sku,
+                'temu2' => $temu2,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [$goodsId, $skuId];
     }
 
     /**

@@ -10,7 +10,7 @@ class PricingErrorsFixCalculatedData extends Model
 
     protected $fillable = [
         'sku', 'marketplace', 'pull_key', 'channel_label', 'parent', 'image_path',
-        'inv', 'ov_l30', 'dil', 'price', 'groi', 'nroi', 'gpft', 'npft',
+        'inv', 'ov_l30', 'l30', 'dil', 'price', 'groi', 'nroi', 'gpft', 'npft',
         'sprice', 'sroi', 'sgpft', 'snroi', 'snpft', 'success',
         'lp', 'ship', 'margin', 'ads_pct', 'calculated_at',
     ];
@@ -18,6 +18,7 @@ class PricingErrorsFixCalculatedData extends Model
     protected $casts = [
         'inv' => 'float',
         'ov_l30' => 'float',
+        'l30' => 'float',
         'dil' => 'float',
         'price' => 'float',
         'groi' => 'float',
@@ -66,6 +67,7 @@ class PricingErrorsFixCalculatedData extends Model
             'sku' => $this->sku,
             'inv' => $this->inv,
             'ov_l30' => $this->ov_l30,
+            'l30' => $this->l30,
             'dil' => $this->dil,
             'price' => $this->price !== null && (float) $this->price > 0 ? round((float) $this->price, 2) : null,
             'groi' => $this->groi,

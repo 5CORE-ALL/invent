@@ -624,15 +624,35 @@ class DobaController extends Controller
     }
 
     /**
-     * Push price to Doba API
+     * Push price to Doba API.
+     *
+     * mode=full (default): push listing price (+ optional self pick).
+     * mode=pickup: push only selfPickAnticipatedIncome (prepaid / pickup price).
      */
     public function pushPriceToDoba(Request $request)
     {
         $sku = $request->input('sku');
         $price = $request->input('price');
-        $selfPickPrice = $request->input('self_pick_price'); // Optional
+        $selfPickPrice = $request->input('self_pick_price'); // Optional for full; required for pickup
+        $mode = strtolower((string) $request->input('mode', 'full'));
+        $isPickupOnly = $mode === 'pickup';
 
-        if (!$sku || !$price) {
+        if (!$sku) {
+            return response()->json([
+                'success' => false,
+                'errors' => [['message' => 'SKU is required.']]
+            ], 400);
+        }
+
+        if ($isPickupOnly) {
+            if ($selfPickPrice === null || $selfPickPrice === '' || floatval($selfPickPrice) <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => [['message' => 'Pickup price (self_pick_price) is required.']]
+                ], 400);
+            }
+            $price = null; // do not change listing anticipatedIncome
+        } elseif (!$price) {
             return response()->json([
                 'success' => false,
                 'errors' => [['message' => 'SKU and price are required.']]
@@ -653,7 +673,7 @@ class DobaController extends Controller
 
         try {
             $dobaApiService = new DobaApiService();
-            
+
             // Only call Price API (Sale API disabled - requires special permission)
             $priceResult = $dobaApiService->updateItemPrice($itemId, $price, $selfPickPrice);
 
@@ -662,6 +682,7 @@ class DobaController extends Controller
                 Log::warning('Doba price push failed', [
                     'sku' => $sku,
                     'item_id' => $itemId,
+                    'mode' => $mode,
                     'price' => $price,
                     'self_pick_price' => $selfPickPrice,
                     'error' => $priceResult['errors']
@@ -669,13 +690,24 @@ class DobaController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'errors' => [['message' => 'Price update: ' . $priceResult['errors']]]
+                    'errors' => [['message' => 'Price update: ' . $priceResult['errors']]],
+                    'data' => [
+                        'mode' => $mode,
+                        'request_payload' => [
+                            'itemNo' => $itemId,
+                            'anticipatedIncome' => $price,
+                            'selfPickAnticipatedIncome' => $selfPickPrice,
+                        ],
+                        'price_update' => $priceResult['debug'] ?? $priceResult,
+                    ]
                 ], 400);
             }
 
-            // Success - update the anticipated_income in DobaMetric as well
-            $dobaMetric->anticipated_income = $price;
-            if ($selfPickPrice !== null) {
+            // Success — update local DobaMetric to match what we pushed
+            if (!$isPickupOnly) {
+                $dobaMetric->anticipated_income = $price;
+            }
+            if ($selfPickPrice !== null && $selfPickPrice !== '') {
                 $dobaMetric->self_pick_price = $selfPickPrice;
             }
             $dobaMetric->save();
@@ -683,14 +715,23 @@ class DobaController extends Controller
             Log::info('Doba price push successful', [
                 'sku' => $sku,
                 'item_id' => $itemId,
+                'mode' => $mode,
                 'price' => $price,
                 'self_pick_price' => $selfPickPrice
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Price pushed to Doba successfully',
+                'message' => $isPickupOnly
+                    ? 'Pickup price pushed to Doba successfully'
+                    : 'Price pushed to Doba successfully',
                 'data' => [
+                    'mode' => $mode,
+                    'request_payload' => [
+                        'itemNo' => $itemId,
+                        'anticipatedIncome' => $price,
+                        'selfPickAnticipatedIncome' => $selfPickPrice,
+                    ],
                     'price_update' => $priceResult
                 ]
             ]);
@@ -699,6 +740,7 @@ class DobaController extends Controller
             Log::error('Doba price push exception', [
                 'sku' => $sku,
                 'item_id' => $itemId,
+                'mode' => $mode,
                 'price' => $price,
                 'self_pick_price' => $selfPickPrice,
                 'error' => $e->getMessage()

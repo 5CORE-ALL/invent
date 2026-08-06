@@ -95,6 +95,7 @@ class CalculatePricingErrorsFixData extends Command
                     'image_path' => is_string($r['image_path'] ?? null) ? substr($r['image_path'], 0, 512) : null,
                     'inv' => $r['inv'] ?? 0,
                     'ov_l30' => $r['ov_l30'] ?? 0,
+                    'l30' => $r['l30'] ?? 0,
                     'dil' => $r['dil'],
                     'price' => $r['price'],
                     'groi' => $r['groi'],
@@ -204,6 +205,7 @@ class CalculatePricingErrorsFixData extends Command
                         'image_path' => is_string($r['image_path'] ?? null) ? substr($r['image_path'], 0, 512) : null,
                         'inv' => $r['inv'] ?? 0,
                         'ov_l30' => $r['ov_l30'] ?? 0,
+                        'l30' => $r['l30'] ?? 0,
                         'dil' => $r['dil'],
                         'price' => $r['price'],
                         'groi' => $r['groi'],
@@ -225,7 +227,17 @@ class CalculatePricingErrorsFixData extends Command
                         'updated_at' => $calculatedAt,
                     ];
                 }
-                PricingErrorsFixCalculatedData::query()->insert($insert);
+                // Upsert on unique (sku, marketplace) — safer than raw insert if id/AI glitches
+                PricingErrorsFixCalculatedData::query()->upsert(
+                    $insert,
+                    ['sku', 'marketplace'],
+                    [
+                        'pull_key', 'channel_label', 'parent', 'image_path',
+                        'inv', 'ov_l30', 'l30', 'dil', 'price', 'groi', 'nroi', 'gpft', 'npft',
+                        'sprice', 'sroi', 'sgpft', 'snroi', 'snpft', 'success',
+                        'lp', 'ship', 'margin', 'ads_pct', 'calculated_at', 'updated_at',
+                    ]
+                );
                 $total += count($insert);
             }
         } catch (\Throwable $e) {
