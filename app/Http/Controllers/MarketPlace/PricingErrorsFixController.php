@@ -509,52 +509,65 @@ class PricingErrorsFixController extends Controller
             return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + price > 0)'], 400);
         }
 
-        $queued = false;
+        // Clear unique lock so a prior stuck queue job cannot block this run.
+        $this->releaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+
+        // Prefer DB queue when a dedicated worker/watchdog is alive…
         try {
             RunPricingErrorsFixPushJob::dispatch();
-            $queued = true;
         } catch (\Throwable $e) {
-            Log::warning('PEF push queue dispatch failed — spawning artisan --sync', [
-                'error' => $e->getMessage(),
-            ]);
-            $queued = $this->spawnPricingErrorsFixPushWorker();
-            if (! $queued) {
-                $store->markFailed('Could not queue worker: '.$e->getMessage());
-
-                return response()->json(array_merge($store->toApiResponse($store->load()), [
-                    'success' => false,
-                    'message' => 'Could not start price push worker. Run: php artisan queue:work --queue=pricing-errors-fix-push  OR  php artisan pricing-errors:push-run --sync',
-                ]), 500);
-            }
+            Log::warning('PEF push queue dispatch failed', ['error' => $e->getMessage()]);
         }
 
-        // Also try spawning the dedicated worker if nothing is listening (best-effort).
-        if ($queued) {
-            $this->ensurePricingErrorsFixPushWorkerHint();
+        // …but ALWAYS spawn a sync runner too. On many servers the
+        // pricing-errors-fix-push queue has no worker, so jobs sat at 0/N forever.
+        // Runner uses a process lock — only one will process tasks.
+        $spawned = $this->spawnPricingErrorsFixPushWorker();
+        if (! $spawned) {
+            Log::error('PEF push sync spawn failed — push may stall until a queue worker picks it up');
         }
 
-        return response()->json(array_merge($store->toApiResponse($job), [
+        $store->update(function (array $state) use ($spawned) {
+            $state['last_message'] = $spawned
+                ? 'Worker started — pushing '.$state['total'].' row(s)…'
+                : 'Queued — waiting for worker (spawn failed; ensure queue:work --queue=pricing-errors-fix-push)';
+            $state['worker_spawned_at'] = now()->toDateTimeString();
+
+            return $state;
+        });
+
+        return response()->json(array_merge($store->toApiResponse($store->load()), [
             'success' => true,
-            'message' => 'Price push queued ('.$job['total'].' row(s)). Processing in background with retries…',
+            'message' => 'Price push started ('.$job['total'].' row(s)). Processing in background with retries…',
+            'worker_spawned' => $spawned,
         ]));
     }
 
     /**
-     * Spawn `pricing-errors:push-run --sync` in the background when the DB queue is unavailable.
+     * Spawn `pricing-errors:push-run --sync` detached so push works without a queue worker.
      */
     private function spawnPricingErrorsFixPushWorker(): bool
     {
         try {
             $php = PHP_BINARY ?: 'php';
+            // Prefer CLI binary when PHP_BINARY is php-fpm
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
             $artisan = base_path('artisan');
             $log = storage_path('logs/pricing-errors-fix-push.log');
-            $cmd = escapeshellarg($php).' '.escapeshellarg($artisan)
-                .' pricing-errors:push-run --sync >> '.escapeshellarg($log).' 2>&1 &';
             if (stripos(PHP_OS_FAMILY, 'Windows') === 0) {
-                pclose(popen('start /B '.$php.' '.$artisan.' pricing-errors:push-run --sync', 'r'));
-            } else {
-                exec($cmd);
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' pricing-errors:push-run --sync', 'r'));
+
+                return true;
             }
+
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' pricing-errors:push-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            exec($cmd);
 
             return true;
         } catch (\Throwable $e) {
@@ -564,28 +577,50 @@ class PricingErrorsFixController extends Controller
         }
     }
 
-    private function ensurePricingErrorsFixPushWorkerHint(): void
-    {
-        // Soft hint only — watchdog should keep pricing-errors-fix-push alive in prod.
-        try {
-            $pending = (int) DB::table('jobs')
-                ->where('queue', RunPricingErrorsFixPushJob::QUEUE)
-                ->count();
-            if ($pending > 0) {
-                Log::info('PEF push job pending on queue', [
-                    'queue' => RunPricingErrorsFixPushJob::QUEUE,
-                    'pending' => $pending,
-                    'hint' => 'php artisan queue:work --queue=pricing-errors-fix-push',
-                ]);
-            }
-        } catch (\Throwable) {
-            // ignore
-        }
-    }
-
     public function pushJobStatus(PricingErrorsFixPushJobStore $store): JsonResponse
     {
-        return response()->json($store->toApiResponse($store->load()));
+        $state = $store->load();
+
+        // Auto-kick if job is running but nothing has progressed (no worker / spawn died).
+        if ($store->isActive($state) && $this->pefPushLooksStuck($state)) {
+            $this->releaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+            $kicked = $this->spawnPricingErrorsFixPushWorker();
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing push…'
+                    : 'Push stalled — could not start worker. Click Cancel, then Push again, or run: php artisan pricing-errors:push-run --sync';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    /**
+     * Stuck = still running, no task advanced, and no update for ~45s.
+     *
+     * @param  array<string, mixed>  $state
+     */
+    private function pefPushLooksStuck(array $state): bool
+    {
+        if ((int) ($state['current_index'] ?? 0) > 0) {
+            return false; // already making progress — don't re-spawn
+        }
+        if (($state['current_sku'] ?? null) !== null) {
+            return false; // actively pushing first item
+        }
+        $updatedAt = $state['worker_spawned_at'] ?? $state['updated_at'] ?? $state['started_at'] ?? null;
+        if (! is_string($updatedAt) || $updatedAt === '') {
+            return true;
+        }
+        try {
+            return abs(now()->diffInSeconds(\Illuminate\Support\Carbon::parse($updatedAt))) >= 45;
+        } catch (\Throwable) {
+            return true;
+        }
     }
 
     public function cancelPush(PricingErrorsFixPushJobStore $store): JsonResponse

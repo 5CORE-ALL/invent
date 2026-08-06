@@ -33,6 +33,32 @@ class PricingErrorsFixPushRunner
             'level' => 'debug',
         ]);
 
+        // Only one runner process at a time (queue worker + sync spawn must not double-push).
+        $lockPath = storage_path('app/pricing-errors-fix-push/runner.lock');
+        $lockDir = dirname($lockPath);
+        if (! is_dir($lockDir)) {
+            @mkdir($lockDir, 0755, true);
+        }
+        $lockHandle = @fopen($lockPath, 'c+');
+        if (! $lockHandle || ! flock($lockHandle, LOCK_EX | LOCK_NB)) {
+            $logger->info('PEF push runner skipped — another process already holds the lock');
+            if ($lockHandle) {
+                fclose($lockHandle);
+            }
+
+            return 0;
+        }
+
+        try {
+            return $this->runLocked($logger);
+        } finally {
+            flock($lockHandle, LOCK_UN);
+            fclose($lockHandle);
+        }
+    }
+
+    private function runLocked(\Psr\Log\LoggerInterface $logger): int
+    {
         while (true) {
             $state = $this->store->load();
             if (($state['status'] ?? 'idle') !== 'running') {

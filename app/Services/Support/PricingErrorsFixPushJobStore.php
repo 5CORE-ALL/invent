@@ -132,7 +132,7 @@ class PricingErrorsFixPushJobStore
         return in_array($state['status'] ?? 'idle', ['running'], true);
     }
 
-    public function isStale(array $state, int $seconds = 600): bool
+    public function isStale(array $state, int $seconds = 120): bool
     {
         if (! $this->isActive($state)) {
             return false;

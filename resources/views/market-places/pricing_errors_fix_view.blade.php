@@ -2257,6 +2257,7 @@
         });
     }
 
+    let pefPushStuckToastAt = 0;
     function pollPushStatus() {
         $.ajax({
             url: '/pricing-errors-fix-push-status',
@@ -2271,9 +2272,18 @@
             const done = Number(resp.done_count != null ? resp.done_count : job.current_index || 0);
             const ok = Number(resp.ok_count || job.ok_count || 0);
             const fail = Number(resp.fail_count || job.fail_count || 0);
+            let msg = resp.message || job.last_message || '';
+            // Surface stall clearly (server with no queue worker used to sit at 0/N forever)
+            if (active && done === 0 && total > 0 && /queued|waiting for worker|stalled/i.test(String(msg))) {
+                const now = Date.now();
+                if (now - pefPushStuckToastAt > 60000) {
+                    pefPushStuckToastAt = now;
+                    toast('Push still starting… if this stays at 0, click Cancel then Push again after deploy.', 'error');
+                }
+            }
             setPushProgressUi(
                 active,
-                resp.message || job.last_message || '',
+                msg,
                 done,
                 total,
                 ok,
