@@ -3278,6 +3278,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase-order/item-pkg-cover', 'saveItemPkgCover')->name('purchase-order.item-pkg-cover');
         Route::post('/purchase-order/design-file', 'saveDesignFile')->name('purchase-order.design-file');
         Route::post('/purchase-order/ctn-print-file', 'saveCtnPrintFile')->name('purchase-order.ctn-print-file');
+        Route::post('/purchase-order/pkg-ignore', 'savePkgFieldIgnore')->name('purchase-order.pkg-ignore');
+        Route::post('/purchase-order/pkg-apply-siblings', 'applyPkgToSiblings')->name('purchase-order.pkg-apply-siblings');
+        Route::post('/purchase-order/pallet-fields', 'savePalletFields')->name('purchase-order.pallet-fields');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
         Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');

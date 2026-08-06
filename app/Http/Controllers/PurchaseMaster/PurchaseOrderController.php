@@ -338,7 +338,7 @@ class PurchaseOrderController extends Controller
             'price_rmb' => 'nullable|numeric|min:0',
             'item_pkg' => 'nullable|string',
             'ctn_pkg' => 'nullable|string|max:100',
-            'item_pkg_cover' => 'nullable|string|max:2048',
+            'item_pkg_cover' => 'nullable|string|max:5000',
             'design_file' => 'nullable|string|max:2048',
             'ctn_qty' => 'nullable|string|max:100',
             'ctn_print_file' => 'nullable|string|max:2048',
@@ -446,7 +446,10 @@ class PurchaseOrderController extends Controller
             // Only write non-empty packaging fields so blank add-row inputs do not wipe master data.
             $cover = trim((string) ($validated['item_pkg_cover'] ?? ''));
             if ($cover !== '') {
-                $values['item_pkg_cover'] = $normalizePath($cover);
+                // Image/path → normalize; free text notes stay as typed.
+                $values['item_pkg_cover'] = $this->looksLikeImageOrFilePath($cover)
+                    ? $normalizePath($cover)
+                    : $cover;
                 $valuesDirty = true;
             }
             $design = trim((string) ($validated['design_file'] ?? ''));
@@ -703,16 +706,257 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * Save / replace Itm pkg Cover on product_master.Values.item_pkg_cover.
-     * Accepts image URL/path text, or optional file upload.
+     * Persist Ignore flags for packaging fields (blank + ignored ⇒ no Missing on proforma).
+     * Stored in product_master.Values.pkg_ignore.
+     */
+    public function savePkgFieldIgnore(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+            'pkg_ignore' => 'nullable|array',
+            'pkg_ignore.item_pkg' => 'nullable|boolean',
+            'pkg_ignore.item_pkg_image' => 'nullable|boolean',
+            'pkg_ignore.design_file' => 'nullable|boolean',
+            'pkg_ignore.ctn_pkg' => 'nullable|boolean',
+            'pkg_ignore.ctn_qty' => 'nullable|boolean',
+            'pkg_ignore.ctn_print_file' => 'nullable|boolean',
+            'pkg_ignore.pallet_instructions' => 'nullable|boolean',
+            'pkg_ignore.pallet_size' => 'nullable|boolean',
+        ]);
+
+        $product = ProductMaster::find($validated['product_id']);
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        try {
+            $values = $this->productValuesArray($product);
+            $incoming = is_array($validated['pkg_ignore'] ?? null) ? $validated['pkg_ignore'] : [];
+            $normalized = [];
+            foreach ([
+                'item_pkg', 'item_pkg_image', 'design_file', 'ctn_pkg', 'ctn_qty', 'ctn_print_file',
+                'pallet_instructions', 'pallet_size',
+            ] as $key) {
+                $normalized[$key] = ! empty($incoming[$key]);
+            }
+            $values['pkg_ignore'] = $normalized;
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Ignore flags saved.',
+                'pkg_ignore' => $normalized,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PO pkg ignore save failed', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save Ignore flags: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Copy packaging fields (+ Ignore flags) from a product to all sibling SKUs
+     * that share the same product_master.parent (excludes PARENT summary rows).
+     */
+    public function applyPkgToSiblings(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+        ]);
+
+        $source = ProductMaster::find($validated['product_id']);
+        if (! $source) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        $parent = trim((string) ($source->parent ?? ''));
+        if ($parent === '') {
+            return response()->json([
+                'success' => true,
+                'message' => 'No parent set — nothing to copy to siblings.',
+                'updated' => 0,
+                'siblings' => [],
+                'pkg' => null,
+            ]);
+        }
+
+        try {
+            $siblings = ProductMaster::query()
+                ->whereNull('deleted_at')
+                ->whereRaw('TRIM(parent) = ?', [$parent])
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->where('id', '!=', $source->id)
+                ->orderBy('sku')
+                ->get();
+
+            if ($siblings->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No sibling SKUs found.',
+                    'updated' => 0,
+                    'siblings' => [],
+                    'pkg' => null,
+                ]);
+            }
+
+            $srcValues = $this->productValuesArray($source);
+            $copyKeys = [
+                'item_pkg_cover',
+                'packing_cdr_path',
+                'ctn_print_file',
+                'ctn_instructions',
+                'ctn_qty',
+                'pallet_instructions',
+                'pallet_size',
+                'pkg_ignore',
+            ];
+
+            $itemPkg = InstructionsItemPkg::where('product_master_id', $source->id)->value('instructions');
+            $itemPkgText = $itemPkg !== null ? trim((string) $itemPkg) : '';
+
+            $updatedSkus = [];
+            foreach ($siblings as $sib) {
+                $values = $this->productValuesArray($sib);
+                foreach ($copyKeys as $key) {
+                    if ($key === 'pkg_ignore') {
+                        if (array_key_exists('pkg_ignore', $srcValues)) {
+                            $values['pkg_ignore'] = is_array($srcValues['pkg_ignore'])
+                                ? $srcValues['pkg_ignore']
+                                : [];
+                        } else {
+                            unset($values['pkg_ignore']);
+                        }
+                        continue;
+                    }
+                    if (array_key_exists($key, $srcValues) && $srcValues[$key] !== null && $srcValues[$key] !== '') {
+                        $values[$key] = $srcValues[$key];
+                    } else {
+                        unset($values[$key]);
+                    }
+                }
+
+                $sib->Values = $values;
+                $sib->save();
+
+                if ($itemPkgText === '') {
+                    InstructionsItemPkg::where('product_master_id', $sib->id)->delete();
+                } else {
+                    InstructionsItemPkg::updateOrCreate(
+                        ['product_master_id' => $sib->id],
+                        ['instructions' => $itemPkgText]
+                    );
+                }
+
+                $updatedSkus[] = trim((string) $sib->sku);
+            }
+
+            $pkgIgnore = is_array($srcValues['pkg_ignore'] ?? null) ? $srcValues['pkg_ignore'] : [];
+            $pkgPayload = [
+                'item_pkg' => $itemPkgText,
+                'ctn_pkg' => trim((string) ($srcValues['ctn_instructions'] ?? '')),
+                'item_pkg_cover' => trim((string) ($srcValues['item_pkg_cover'] ?? '')),
+                'design_file' => trim((string) ($srcValues['packing_cdr_path'] ?? '')),
+                'ctn_qty' => array_key_exists('ctn_qty', $srcValues) ? $srcValues['ctn_qty'] : '',
+                'ctn_print_file' => trim((string) ($srcValues['ctn_print_file'] ?? '')),
+                'pallet_instructions' => trim((string) ($srcValues['pallet_instructions'] ?? '')),
+                'pallet_size' => trim((string) ($srcValues['pallet_size'] ?? '')),
+                'pkg_ignore' => $pkgIgnore,
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => count($updatedSkus).' sibling SKU(s) updated.',
+                'updated' => count($updatedSkus),
+                'siblings' => $updatedSkus,
+                'parent' => $parent,
+                'pkg' => $pkgPayload,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PO pkg apply siblings failed', [
+                'product_id' => $source->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to copy packaging to siblings: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Save Pallet Text Instructions + Pallet Size on product_master.Values.
+     */
+    public function savePalletFields(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|integer',
+            'pallet_instructions' => 'nullable|string|max:5000',
+            'pallet_size' => 'nullable|string|max:255',
+        ]);
+
+        $product = ProductMaster::find($validated['product_id']);
+        if (! $product) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
+        try {
+            $values = $this->productValuesArray($product);
+            $instructions = trim((string) ($validated['pallet_instructions'] ?? ''));
+            $size = trim((string) ($validated['pallet_size'] ?? ''));
+
+            if ($instructions === '') {
+                unset($values['pallet_instructions']);
+            } else {
+                $values['pallet_instructions'] = $instructions;
+            }
+
+            if ($size === '') {
+                unset($values['pallet_size']);
+            } else {
+                $values['pallet_size'] = $size;
+            }
+
+            $product->Values = $values;
+            $product->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pallet fields saved.',
+                'pallet_instructions' => $instructions,
+                'pallet_size' => $size,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PO pallet fields save failed', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save Pallet fields: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Save / replace Item Pkg Image on product_master.Values.item_pkg_cover.
+     * Accepts image URL/path, free text notes, or optional file upload.
      */
     public function saveItemPkgCover(Request $request)
     {
         $validated = $request->validate([
             'product_id' => 'required|integer',
             'sku' => 'nullable|string|max:255',
-            'path' => 'nullable|string|max:2048',
-            'url' => 'nullable|string|max:2048',
+            'path' => 'nullable|string|max:5000',
+            'url' => 'nullable|string|max:5000',
             'image' => 'nullable|file|image|max:10240',
         ]);
 
@@ -726,13 +970,14 @@ class PurchaseOrderController extends Controller
         if (!$hasFile && !$request->exists('path') && !$request->exists('url')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cover path/URL is required.',
+                'message' => 'Item Pkg Image value is required (or leave blank to clear).',
             ], 422);
         }
 
         try {
             $publicPath = '';
             $displayName = null;
+            $isImageAsset = false;
 
             if ($hasFile) {
                 $safeSku = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim((string) $product->sku)) ?: ('id_'.$product->id);
@@ -743,16 +988,25 @@ class PurchaseOrderController extends Controller
                 );
                 $publicPath = 'storage/'.$stored;
                 $displayName = $request->file('image')->getClientOriginalName();
+                $isImageAsset = true;
             } else {
-                // Store relative paths without leading slash; keep absolute http(s)/data URLs as-is.
                 if ($pathInput === '') {
                     $publicPath = '';
-                } elseif (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
-                    $publicPath = $pathInput;
+                } elseif ($this->looksLikeImageOrFilePath($pathInput)) {
+                    // Store relative paths without leading slash; keep absolute http(s)/data URLs as-is.
+                    if (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
+                        $publicPath = $pathInput;
+                    } else {
+                        $publicPath = ltrim($pathInput, '/');
+                    }
+                    $displayName = basename(parse_url($publicPath, PHP_URL_PATH) ?: $publicPath) ?: 'cover';
+                    $isImageAsset = true;
                 } else {
-                    $publicPath = ltrim($pathInput, '/');
+                    // Free text notes — store as-is (no path normalization).
+                    $publicPath = $pathInput;
+                    $displayName = null;
+                    $isImageAsset = false;
                 }
-                $displayName = basename(parse_url($publicPath, PHP_URL_PATH) ?: $publicPath) ?: 'cover';
             }
 
             $values = $this->productValuesArray($product);
@@ -761,46 +1015,55 @@ class PurchaseOrderController extends Controller
             } else {
                 $values['item_pkg_cover'] = $publicPath;
 
-                // Keep Packing Instructions photos in sync: put cover first in packing_images.
-                $list = [];
-                $raw = $values['packing_images'] ?? [];
-                if (is_array($raw)) {
-                    foreach ($raw as $item) {
-                        if (is_string($item) && trim($item) !== '') {
-                            $list[] = ['path' => trim($item)];
-                        } elseif (is_array($item) && !empty($item['path'])) {
-                            $list[] = $item;
+                // Sync packing_images only for real image/file paths (not free text).
+                if ($isImageAsset) {
+                    $list = [];
+                    $raw = $values['packing_images'] ?? [];
+                    if (is_array($raw)) {
+                        foreach ($raw as $item) {
+                            if (is_string($item) && trim($item) !== '') {
+                                $list[] = ['path' => trim($item)];
+                            } elseif (is_array($item) && ! empty($item['path'])) {
+                                $list[] = $item;
+                            }
                         }
                     }
-                }
-                array_unshift($list, [
-                    'id' => 'cover-'.$product->id,
-                    'path' => $publicPath,
-                    'name' => $displayName,
-                    'uploaded_at' => now()->toIso8601String(),
-                ]);
-                // Dedupe by path
-                $seen = [];
-                $deduped = [];
-                foreach ($list as $img) {
-                    $p = (string) ($img['path'] ?? '');
-                    if ($p === '' || isset($seen[$p])) {
-                        continue;
+                    array_unshift($list, [
+                        'id' => 'cover-'.$product->id,
+                        'path' => $publicPath,
+                        'name' => $displayName,
+                        'uploaded_at' => now()->toIso8601String(),
+                    ]);
+                    $seen = [];
+                    $deduped = [];
+                    foreach ($list as $img) {
+                        $p = (string) ($img['path'] ?? '');
+                        if ($p === '' || isset($seen[$p])) {
+                            continue;
+                        }
+                        $seen[$p] = true;
+                        $deduped[] = $img;
                     }
-                    $seen[$p] = true;
-                    $deduped[] = $img;
+                    $values['packing_images'] = $deduped;
                 }
-                $values['packing_images'] = $deduped;
             }
 
             $product->Values = $values;
             $product->save();
 
+            $responseUrl = '';
+            if ($publicPath !== '') {
+                $responseUrl = $isImageAsset
+                    ? (string) ($this->normalizeImageUrl($publicPath) ?? $publicPath)
+                    : $publicPath;
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Itm pkg Cover saved.',
-                'url' => $publicPath === '' ? '' : $this->normalizeImageUrl($publicPath),
+                'message' => 'Item Pkg Image saved.',
+                'url' => $responseUrl,
                 'path' => $publicPath,
+                'is_text' => $publicPath !== '' && ! $isImageAsset,
             ]);
         } catch (\Throwable $e) {
             Log::error('PO item pkg cover save failed', [
@@ -810,9 +1073,32 @@ class PurchaseOrderController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save cover: '.$e->getMessage(),
+                'message' => 'Failed to save Item Pkg Image: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * True when value looks like an image/file URL or storage path (not free text).
+     */
+    private function looksLikeImageOrFilePath(string $value): bool
+    {
+        $v = trim($value);
+        if ($v === '') {
+            return false;
+        }
+        if (preg_match('/^https?:\/\//i', $v) || str_starts_with($v, 'data:')) {
+            return true;
+        }
+        if (preg_match('/\.(jpe?g|png|gif|webp|bmp|svg|pdf|cdr|ai|zip)(\?|$)/i', $v)) {
+            return true;
+        }
+        // Path-like (has slash) and no spaces spanning multi-word notes.
+        if ((str_contains($v, '/') || str_contains($v, '\\')) && ! preg_match('/\s/', $v)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -940,17 +1226,22 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * Cover image for Itm pkg: Values.item_pkg_cover, else first packing_images entry.
+     * Item Pkg Image: Values.item_pkg_cover (image path or free text),
+     * else first packing_images entry.
      */
     private function resolveItemPkgCoverUrl(array $values): ?string
     {
         $direct = trim((string) ($values['item_pkg_cover'] ?? ''));
         if ($direct !== '') {
-            return $this->normalizeImageUrl($direct);
+            if ($this->looksLikeImageOrFilePath($direct)) {
+                return $this->normalizeImageUrl($direct);
+            }
+
+            return $direct;
         }
 
         $raw = $values['packing_images'] ?? [];
-        if (!is_array($raw) || $raw === []) {
+        if (! is_array($raw) || $raw === []) {
             return null;
         }
 
@@ -958,7 +1249,7 @@ class PurchaseOrderController extends Controller
         if (is_string($first) && trim($first) !== '') {
             return $this->normalizeImageUrl($first);
         }
-        if (is_array($first) && !empty($first['path'])) {
+        if (is_array($first) && ! empty($first['path'])) {
             return $this->normalizeImageUrl((string) $first['path']);
         }
 
@@ -1320,7 +1611,10 @@ class PurchaseOrderController extends Controller
             $item->design_file = $pkg['design_file'] ?? null;
             $item->ctn_qty = $pkg['ctn_qty'] ?? null;
             $item->ctn_print_file = $pkg['ctn_print_file'] ?? null;
+            $item->pallet_instructions = $pkg['pallet_instructions'] ?? '';
+            $item->pallet_size = $pkg['pallet_size'] ?? '';
             $item->special_instruction_qc = $pkg['special_instruction_qc'] ?? '';
+            $item->pkg_ignore = is_array($pkg['pkg_ignore'] ?? null) ? $pkg['pkg_ignore'] : [];
             $item->product_master_id = $pkg['product_id'] ?? ($product?->id);
             $item->product_master_sku = $matchedSku;
 
@@ -2416,6 +2710,8 @@ class PurchaseOrderController extends Controller
             $item = $pkg && $pkg->instructions !== null ? trim((string) $pkg->instructions) : '';
             $designRaw = trim((string) ($values['packing_cdr_path'] ?? ''));
             $printRaw = trim((string) ($values['ctn_print_file'] ?? ''));
+            $palletInstructions = trim((string) ($values['pallet_instructions'] ?? ''));
+            $palletSize = trim((string) ($values['pallet_size'] ?? ''));
             $ctnQty = $values['ctn_qty'] ?? null;
             if ($ctnQty !== null && $ctnQty !== '') {
                 $ctnQty = is_scalar($ctnQty) ? trim((string) $ctnQty) : null;
@@ -2430,6 +2726,18 @@ class PurchaseOrderController extends Controller
                 ? trim((string) $qc->qc_improvement_req)
                 : '';
 
+            $pkgIgnore = $values['pkg_ignore'] ?? [];
+            if (! is_array($pkgIgnore)) {
+                $pkgIgnore = [];
+            }
+            $pkgIgnoreNormalized = [];
+            foreach ([
+                'item_pkg', 'item_pkg_image', 'design_file', 'ctn_pkg', 'ctn_qty', 'ctn_print_file',
+                'pallet_instructions', 'pallet_size',
+            ] as $ignoreKey) {
+                $pkgIgnoreNormalized[$ignoreKey] = ! empty($pkgIgnore[$ignoreKey]);
+            }
+
             return [
                 'item_pkg' => $item,
                 'ctn_pkg' => $ctn,
@@ -2437,7 +2745,10 @@ class PurchaseOrderController extends Controller
                 'design_file' => $designRaw !== '' ? $this->normalizeImageUrl($designRaw) : null,
                 'ctn_qty' => $ctnQty,
                 'ctn_print_file' => $printRaw !== '' ? $this->normalizeImageUrl($printRaw) : null,
+                'pallet_instructions' => $palletInstructions,
+                'pallet_size' => $palletSize,
                 'special_instruction_qc' => $specialQc,
+                'pkg_ignore' => $pkgIgnoreNormalized,
                 'product_id' => (int) $product->id,
                 'matched_sku' => trim((string) $product->sku),
             ];

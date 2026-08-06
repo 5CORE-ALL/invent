@@ -549,6 +549,157 @@
             display: block;
         }
 
+        .po-pkg-copy-field-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0 !important;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            color: #475569;
+            background: #fff;
+            text-decoration: none !important;
+            line-height: 1;
+        }
+
+        .po-pkg-copy-field-btn svg {
+            width: 14px;
+            height: 14px;
+            display: block;
+        }
+
+        .po-pkg-copy-field-btn:hover,
+        .po-pkg-copy-field-btn.is-copied {
+            color: #0d6efd;
+            border-color: #0d6efd;
+            background: #eef4ff;
+        }
+
+        #poPkgCopyAllBtn,
+        #poPkgPasteAllBtn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+        }
+
+        #poPkgCopyAllBtn svg,
+        #poPkgPasteAllBtn svg {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            display: block;
+        }
+
+        .po-pkg-ignore-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .po-pkg-ignore-wrap .form-check-input {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .po-pkg-ignored {
+            color: #94a3b8;
+            font-weight: 500;
+        }
+
+        #poPkgModal .modal-dialog {
+            max-width: 1180px;
+        }
+
+        #poPkgModal .po-pkg-group {
+            height: 100%;
+            min-width: 0;
+            border-radius: 10px;
+            padding: 12px;
+            border: 1px solid transparent;
+        }
+
+        #poPkgModal .po-pkg-group-title {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        #poPkgModal .po-pkg-group-item {
+            background: #eef6ff;
+            border-color: #c7ddf8;
+        }
+
+        #poPkgModal .po-pkg-group-item .po-pkg-group-title {
+            color: #1d4ed8;
+        }
+
+        #poPkgModal .po-pkg-group-cover {
+            background: #f3eefc;
+            border-color: #d8c8f5;
+        }
+
+        #poPkgModal .po-pkg-group-cover .po-pkg-group-title {
+            color: #6d28d9;
+        }
+
+        #poPkgModal .po-pkg-group-ctn {
+            background: #eefaf3;
+            border-color: #b9e4c9;
+        }
+
+        #poPkgModal .po-pkg-group-ctn .po-pkg-group-title {
+            color: #15803d;
+        }
+
+        #poPkgModal .po-pkg-group-pallet {
+            background: #fff7ed;
+            border-color: #fdba74;
+        }
+
+        #poPkgModal .po-pkg-group-pallet .po-pkg-group-title {
+            color: #c2410c;
+        }
+
+        #poPkgModal .po-pkg-field-block + .po-pkg-field-block {
+            margin-top: 12px;
+        }
+
+        #poPkgModal .po-pkg-group .form-label {
+            font-size: 13px;
+        }
+
+        #poPkgModal #poDesignFileHint:empty {
+            display: none;
+        }
+
+        .po-pkg-siblings-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #334155;
+            user-select: none;
+            cursor: pointer;
+        }
+
+        .po-pkg-siblings-wrap .form-check-input {
+            margin: 0;
+            cursor: pointer;
+        }
+
         .po-add-row-btn {
             display: inline-flex;
             align-items: center;
@@ -1513,11 +1664,19 @@
                             $designFile = trim((string) ($item->design_file ?? ''));
                             $ctnQty = $item->ctn_qty ?? '';
                             $ctnPrintFile = trim((string) ($item->ctn_print_file ?? ''));
+                            $palletInstructions = trim((string) ($item->pallet_instructions ?? ''));
+                            $palletSize = trim((string) ($item->pallet_size ?? ''));
                             $designFileName = $designFile !== '' ? basename(parse_url($designFile, PHP_URL_PATH) ?: $designFile) : '';
                             $designIsImage = $designFile !== '' && preg_match('/\.(jpe?g|png|gif|webp|bmp|svg)(\?|$)/i', $designFile);
-                            $coverIsImage = $itemPkgCover !== '' && preg_match('/\.(jpe?g|png|gif|webp|bmp|svg)(\?|$)/i', $itemPkgCover);
+                            $coverIsImage = $itemPkgCover !== '' && (
+                                preg_match('/^https?:\/\//i', $itemPkgCover)
+                                || str_starts_with($itemPkgCover, 'data:')
+                                || preg_match('/\.(jpe?g|png|gif|webp|bmp|svg)(\?|$)/i', $itemPkgCover)
+                            );
                             $pkgProductId = $item->product_master_id ?? null;
                             $pkgSku = $item->product_master_sku ?? ($item->sku ?? '');
+                            $pkgIgnore = is_array($item->pkg_ignore ?? null) ? $item->pkg_ignore : [];
+                            $pkgIgnoredHtml = '<span class="po-pkg-ignored">—</span>';
                         @endphp
                         <td class="wrap-text col-pkg">
                             <div class="po-pkg-combined"
@@ -1531,12 +1690,17 @@
                                  data-cover-url="{{ $itemPkgCover }}"
                                  data-design-file="{{ $designFile }}"
                                  data-ctn-qty="{{ $ctnQty }}"
-                                 data-ctn-print-file="{{ $ctnPrintFile }}">
+                                 data-ctn-print-file="{{ $ctnPrintFile }}"
+                                 data-pallet-instructions="{{ $palletInstructions }}"
+                                 data-pallet-size="{{ $palletSize }}"
+                                 data-pkg-ignore='@json($pkgIgnore)'>
                                 <div class="po-pkg-combined-row">
                                     <span class="po-pkg-combined-label">Item Pkg</span>
                                     <span class="po-pkg-combined-value po-item-pkg-text">
                                         @if($itemPkg !== '')
                                             {!! nl2br(e($itemPkg)) !!}
+                                        @elseif(!empty($pkgIgnore['item_pkg']))
+                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -1549,8 +1713,10 @@
                                             @if($coverIsImage)
                                                 <img src="{{ $itemPkgCover }}" alt="Item Pkg Image" class="po-pkg-combined-thumb">
                                             @else
-                                                <span class="po-pkg-combined-link">{{ basename(parse_url($itemPkgCover, PHP_URL_PATH) ?: $itemPkgCover) }}</span>
+                                                {!! nl2br(e($itemPkgCover)) !!}
                                             @endif
+                                        @elseif(!empty($pkgIgnore['item_pkg_image']))
+                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -1565,6 +1731,8 @@
                                             @else
                                                 <span class="po-pkg-combined-link">{{ $designFileName !== '' ? $designFileName : 'File' }}</span>
                                             @endif
+                                        @elseif(!empty($pkgIgnore['design_file']))
+                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -1575,6 +1743,8 @@
                                     <span class="po-pkg-combined-value po-ctn-pkg-text">
                                         @if($ctnPkg !== '')
                                             {!! nl2br(e($ctnPkg)) !!}
+                                        @elseif(!empty($pkgIgnore['ctn_pkg']))
+                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -1585,6 +1755,8 @@
                                     <span class="po-pkg-combined-value po-ctn-qty-text">
                                         @if($ctnQty !== '' && $ctnQty !== null)
                                             {{ $ctnQty }}
+                                        @elseif(!empty($pkgIgnore['ctn_qty']))
+                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -1595,6 +1767,32 @@
                                     <span class="po-pkg-combined-value po-ctn-print-text">
                                         @if($ctnPrintFile !== '')
                                             <span class="po-pkg-combined-link">{{ basename(parse_url($ctnPrintFile, PHP_URL_PATH) ?: $ctnPrintFile) }}</span>
+                                        @elseif(!empty($pkgIgnore['ctn_print_file']))
+                                            {!! $pkgIgnoredHtml !!}
+                                        @else
+                                            {!! $poMissing !!}
+                                        @endif
+                                    </span>
+                                </div>
+                                <div class="po-pkg-combined-row">
+                                    <span class="po-pkg-combined-label">Pallet Instructions</span>
+                                    <span class="po-pkg-combined-value po-pallet-instructions-text">
+                                        @if($palletInstructions !== '')
+                                            {!! nl2br(e($palletInstructions)) !!}
+                                        @elseif(!empty($pkgIgnore['pallet_instructions']))
+                                            {!! $pkgIgnoredHtml !!}
+                                        @else
+                                            {!! $poMissing !!}
+                                        @endif
+                                    </span>
+                                </div>
+                                <div class="po-pkg-combined-row">
+                                    <span class="po-pkg-combined-label">Pallet Size</span>
+                                    <span class="po-pkg-combined-value po-pallet-size-text">
+                                        @if($palletSize !== '')
+                                            {{ $palletSize }}
+                                        @elseif(!empty($pkgIgnore['pallet_size']))
+                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -2021,70 +2219,202 @@
 
     {{-- Item Pkg / Itm pkg Cover / Ctn Pkg edit modal (Dim Wt Master data source) --}}
     <div class="modal fade" id="poPkgModal" tabindex="-1" aria-labelledby="poPkgModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="poPkgModalLabel">Edit Packaging</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-2 small text-muted">
-                        SKU: <strong id="poPkgModalSku">—</strong>
-                    </div>
-                    <div class="mb-3">
-                        <label for="poPkgItemInput" class="form-label fw-semibold">Item Pkg</label>
-                        <input type="text" class="form-control" id="poPkgItemInput"
-                               placeholder="Item packaging instructions (from Dim Wt Master)"
-                               autocomplete="off">
-                        <div class="form-text">Saved to Dim Wt Master → Instructions item PKG</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="poPkgCoverInput" class="form-label fw-semibold">Item Pkg Image</label>
-                        <input type="text" id="poPkgCoverInput" class="form-control"
-                               placeholder="Image URL or path"
-                               autocomplete="off">
-                        <div class="form-text">Saved to product master (Values.item_pkg_cover). Leave blank to clear.</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="poDesignFileInput" class="form-label fw-semibold">Design File Item</label>
-                        <div class="input-group">
-                            <input type="text" id="poDesignFileInput" class="form-control"
-                                   placeholder="File URL or path"
-                                   autocomplete="off">
-                            <button type="button" class="btn btn-outline-secondary" id="poDesignFilePickBtn" title="Upload design file">
-                                Add file
+                    <div class="mb-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <div class="small text-muted mb-0">
+                            SKU: <strong id="poPkgModalSku">—</strong>
+                        </div>
+                        @php
+                            $poPkgCopyIcon = $poCopyIcon ?? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/></svg>';
+                            $poPkgPasteIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.5 0a.5.5 0 0 1 .5.5.5.5 0 0 0 .5.5.5.5 0 0 1 .5.5V2a.5.5 0 0 1-.5.5h-5A.5.5 0 0 1 5 2v-.5a.5.5 0 0 1 .5-.5.5.5 0 0 0 .5-.5.5.5 0 0 1 .5-.5h3z"/><path d="M3.5 1h.585A1.5 1.5 0 0 0 4 1.5V2a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 12 2v-.5c0-.175-.026-.344-.075-.5h.585A1.5 1.5 0 0 1 14 2.5v12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-12A1.5 1.5 0 0 1 3.5 1zm5 6.5a.5.5 0 0 0-1 0V10H6a.5.5 0 0 0 0 1h1.5v1.5a.5.5 0 0 0 1 0V11H10a.5.5 0 0 0 0-1H8.5V7.5z"/></svg>';
+                        @endphp
+                        <div class="d-flex gap-1 no-print">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="poPkgCopyAllBtn" title="Copy all" aria-label="Copy all">
+                                {!! $poPkgCopyIcon !!}
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="poPkgPasteAllBtn" title="Paste all" aria-label="Paste all">
+                                {!! $poPkgPasteIcon !!}
                             </button>
                         </div>
-                        <input type="file" id="poDesignFilePicker" class="d-none"
-                               accept=".cdr,.zip,.pdf,.ai,image/*,application/octet-stream">
-                        <div class="form-text" id="poDesignFileHint">
-                            Saved to product master (Values.packing_cdr_path). Use <strong>Add file</strong> to upload, or paste a path. Leave blank to clear.
+                    </div>
+                    <div class="form-text mb-2 no-print d-none" id="poPkgClipboardHint"></div>
+                    <div class="row g-2 align-items-stretch">
+                        {{-- Col 1: Item PKG --}}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="po-pkg-group po-pkg-group-item">
+                                <div class="po-pkg-group-title">Item PKG</div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poPkgItemInput" class="form-label fw-semibold mb-0">Item Pkg</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="item_pkg" id="poPkgIgnore_item_pkg">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="item_pkg" title="Copy Item Pkg" aria-label="Copy Item Pkg">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" class="form-control po-pkg-field-input" id="poPkgItemInput"
+                                           data-pkg-field="item_pkg"
+                                           placeholder="Item packaging instructions"
+                                           autocomplete="off">
+                                </div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poDesignFileInput" class="form-label fw-semibold mb-0">Design File Item</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="design_file" id="poPkgIgnore_design_file">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="design_file" title="Copy Design File Item" aria-label="Copy Design File Item">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <div class="input-group">
+                                        <input type="text" id="poDesignFileInput" class="form-control po-pkg-field-input"
+                                               data-pkg-field="design_file"
+                                               placeholder="File URL or path"
+                                               autocomplete="off">
+                                        <button type="button" class="btn btn-outline-secondary" id="poDesignFilePickBtn" title="Upload design file">
+                                            Add file
+                                        </button>
+                                    </div>
+                                    <input type="file" id="poDesignFilePicker" class="d-none"
+                                           accept=".cdr,.zip,.pdf,.ai,image/*,application/octet-stream">
+                                    <div class="form-text" id="poDesignFileHint"></div>
+                                    <a href="#" id="poDesignFileOpenLink" class="small d-none" target="_blank" rel="noopener">Open current file</a>
+                                </div>
+                            </div>
                         </div>
-                        <a href="#" id="poDesignFileOpenLink" class="small d-none" target="_blank" rel="noopener">Open current file</a>
-                    </div>
-                    <div class="mb-3">
-                        <label for="poPkgCtnInput" class="form-label fw-semibold">Ctn Pkg</label>
-                        <input type="text" class="form-control" id="poPkgCtnInput" maxlength="100"
-                               placeholder="Carton packaging instructions (max 100 characters)" autocomplete="off">
-                        <div class="form-text">Saved to Dim Wt Master → Ctn pkg (max 100)</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="poCtnQtyInput" class="form-label fw-semibold">Ctn Qty</label>
-                        <input type="text" class="form-control" id="poCtnQtyInput"
-                               placeholder="Carton quantity" autocomplete="off">
-                        <div class="form-text">Saved to Dim Wt Master → CTN (QTY) (Values.ctn_qty)</div>
-                    </div>
-                    <div class="mb-1">
-                        <label for="poCtnPrintFileInput" class="form-label fw-semibold">Ctn Print File</label>
-                        <input type="text" id="poCtnPrintFileInput" class="form-control"
-                               placeholder="File URL or path"
-                               autocomplete="off">
-                        <div class="form-text">Saved to product master (Values.ctn_print_file). Leave blank to clear.</div>
+                        {{-- Col 2: Item Cover --}}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="po-pkg-group po-pkg-group-cover">
+                                <div class="po-pkg-group-title">Item Cover</div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poPkgCoverInput" class="form-label fw-semibold mb-0">Item Pkg Image</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="item_pkg_image" id="poPkgIgnore_item_pkg_image">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="item_pkg_image" title="Copy Item Pkg Image" aria-label="Copy Item Pkg Image">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <textarea id="poPkgCoverInput" class="form-control po-pkg-field-input" rows="6"
+                                           data-pkg-field="item_pkg_image"
+                                           placeholder="Image URL / path, or any text notes"
+                                           autocomplete="off"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        {{-- Col 3: CTN --}}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="po-pkg-group po-pkg-group-ctn">
+                                <div class="po-pkg-group-title">CTN</div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poPkgCtnInput" class="form-label fw-semibold mb-0">Ctn Pkg</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="ctn_pkg" id="poPkgIgnore_ctn_pkg">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="ctn_pkg" title="Copy Ctn Pkg" aria-label="Copy Ctn Pkg">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" class="form-control po-pkg-field-input" id="poPkgCtnInput" maxlength="100"
+                                           data-pkg-field="ctn_pkg"
+                                           placeholder="Carton packaging (max 100)" autocomplete="off">
+                                </div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poCtnQtyInput" class="form-label fw-semibold mb-0">Ctn Qty</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="ctn_qty" id="poPkgIgnore_ctn_qty">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="ctn_qty" title="Copy Ctn Qty" aria-label="Copy Ctn Qty">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" class="form-control po-pkg-field-input" id="poCtnQtyInput"
+                                           data-pkg-field="ctn_qty"
+                                           placeholder="Carton quantity" autocomplete="off">
+                                </div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poCtnPrintFileInput" class="form-label fw-semibold mb-0">Ctn Print File</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="ctn_print_file" id="poPkgIgnore_ctn_print_file">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="ctn_print_file" title="Copy Ctn Print File" aria-label="Copy Ctn Print File">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" id="poCtnPrintFileInput" class="form-control po-pkg-field-input"
+                                           data-pkg-field="ctn_print_file"
+                                           placeholder="File URL or path"
+                                           autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                        {{-- Col 4: Pallet --}}
+                        <div class="col-lg-3 col-md-6">
+                            <div class="po-pkg-group po-pkg-group-pallet">
+                                <div class="po-pkg-group-title">Pallet</div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poPalletInstructionsInput" class="form-label fw-semibold mb-0">Text Instructions</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="pallet_instructions" id="poPkgIgnore_pallet_instructions">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="pallet_instructions" title="Copy Text Instructions" aria-label="Copy Text Instructions">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <textarea id="poPalletInstructionsInput" class="form-control po-pkg-field-input" rows="4"
+                                           data-pkg-field="pallet_instructions"
+                                           placeholder="Pallet text instructions"
+                                           autocomplete="off"></textarea>
+                                </div>
+                                <div class="po-pkg-field-block">
+                                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                        <label for="poPalletSizeInput" class="form-label fw-semibold mb-0">Pallet Size</label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="po-pkg-ignore-wrap mb-0" title="If blank, do not show Missing on proforma">
+                                                <input type="checkbox" class="form-check-input po-pkg-ignore-cb" data-pkg-field="pallet_size" id="poPkgIgnore_pallet_size">
+                                                <span>Ignore</span>
+                                            </label>
+                                            <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="pallet_size" title="Copy Pallet Size" aria-label="Copy Pallet Size">{!! $poPkgCopyIcon !!}</button>
+                                        </div>
+                                    </div>
+                                    <input type="text" class="form-control po-pkg-field-input" id="poPalletSizeInput"
+                                           data-pkg-field="pallet_size"
+                                           placeholder="Pallet size"
+                                           autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="poPkgSaveBtn">Save</button>
+                <div class="modal-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <label class="po-pkg-siblings-wrap mb-0 no-print" title="Also save these packaging fields to sibling SKUs (same parent)">
+                        <input type="checkbox" class="form-check-input" id="poPkgApplySiblings">
+                        <span>Siblings</span>
+                    </label>
+                    <div class="d-flex gap-2 ms-auto">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="poPkgSaveBtn">Save</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2139,7 +2469,7 @@
                         </div>
                         <div class="col-md-6">
                             <label for="poAddCover" class="form-label fw-semibold">Item Pkg Image</label>
-                            <input type="text" class="form-control" id="poAddCover" placeholder="Image URL or path" autocomplete="off">
+                            <textarea class="form-control" id="poAddCover" rows="2" placeholder="Image URL / path, or any text notes" autocomplete="off"></textarea>
                         </div>
                         <div class="col-md-6">
                             <label for="poAddDesign" class="form-label fw-semibold">Design File Item</label>
@@ -3446,8 +3776,16 @@
             const designFileUrl = @json(route('purchase-order.design-file'));
             const designFileUploadUrl = @json(route('packing.instructions.master.upload.cdr'));
             const ctnPrintFileUrl = @json(route('purchase-order.ctn-print-file'));
+            const pkgIgnoreUrl = @json(route('purchase-order.pkg-ignore'));
+            const pkgApplySiblingsUrl = @json(route('purchase-order.pkg-apply-siblings'));
+            const palletFieldsUrl = @json(route('purchase-order.pallet-fields'));
             const itemPkgUrl = @json(route('instructions.item.pkg.update'));
             const ctnPkgUrl = @json(route('dim.wt.master.update'));
+            const PO_PKG_IGNORE_KEYS = [
+                'item_pkg', 'item_pkg_image', 'design_file', 'ctn_pkg', 'ctn_qty', 'ctn_print_file',
+                'pallet_instructions', 'pallet_size',
+            ];
+            const poPkgIgnoredHtml = '<span class="po-pkg-ignored">—</span>';
             let pkgInitialCtnQty = '';
             let pkgInitialCtnPrint = '';
             const pkgModalEl = document.getElementById('poPkgModal');
@@ -3494,22 +3832,170 @@
                 updateFileOpenLink('poDesignFileOpenLink', url);
             }
 
-            function renderPkgText(el, text) {
-                const t = (text || '').trim();
-                if (!el) return;
-                el.innerHTML = t ? escapeHtml(t).replace(/\n/g, '<br>') : poMissingHtml;
+            // Packaging modal clipboard — Copy all / row copy → Paste all into same fields on another SKU.
+            const PO_PKG_CLIP_MARKER = '__po_pkg_clipboard_v1__';
+            const PO_PKG_FIELD_IDS = {
+                item_pkg: 'poPkgItemInput',
+                item_pkg_image: 'poPkgCoverInput',
+                design_file: 'poDesignFileInput',
+                ctn_pkg: 'poPkgCtnInput',
+                ctn_qty: 'poCtnQtyInput',
+                ctn_print_file: 'poCtnPrintFileInput',
+                pallet_instructions: 'poPalletInstructionsInput',
+                pallet_size: 'poPalletSizeInput',
+            };
+            let poPkgMemoryClipboard = null;
+
+            function readPkgModalFields() {
+                const out = {};
+                Object.keys(PO_PKG_FIELD_IDS).forEach((key) => {
+                    const el = document.getElementById(PO_PKG_FIELD_IDS[key]);
+                    out[key] = el ? String(el.value || '').trim() : '';
+                });
+                return out;
             }
 
-            function renderFileValueHtml(url) {
+            function applyPkgModalFields(payload, onlyField) {
+                if (!payload || typeof payload !== 'object') return 0;
+                let applied = 0;
+                const keys = onlyField
+                    ? [onlyField]
+                    : Object.keys(PO_PKG_FIELD_IDS);
+                keys.forEach((key) => {
+                    if (!Object.prototype.hasOwnProperty.call(PO_PKG_FIELD_IDS, key)) return;
+                    if (!Object.prototype.hasOwnProperty.call(payload, key)) return;
+                    const el = document.getElementById(PO_PKG_FIELD_IDS[key]);
+                    if (!el) return;
+                    const val = payload[key] == null ? '' : String(payload[key]);
+                    el.value = key === 'ctn_pkg' ? val.slice(0, 100) : val;
+                    if (key === 'design_file') updateDesignFileOpenLink(el.value);
+                    applied += 1;
+                });
+                return applied;
+            }
+
+            function buildPkgClipboardPayload(mode, fieldKey) {
+                const fields = readPkgModalFields();
+                if (mode === 'field') {
+                    const key = String(fieldKey || '');
+                    const value = fields[key] || '';
+                    return {
+                        [PO_PKG_CLIP_MARKER]: 1,
+                        mode: 'field',
+                        field: key,
+                        value,
+                        [key]: value,
+                    };
+                }
+                return {
+                    [PO_PKG_CLIP_MARKER]: 1,
+                    mode: 'all',
+                    ...fields,
+                };
+            }
+
+            function parsePkgClipboardText(text) {
+                const raw = String(text || '').trim();
+                if (!raw) return null;
+                try {
+                    const data = JSON.parse(raw);
+                    if (data && data[PO_PKG_CLIP_MARKER] === 1) return data;
+                } catch (e) { /* plain text */ }
+                return null;
+            }
+
+            async function copyPkgClipboard(payload) {
+                const text = JSON.stringify(payload);
+                poPkgMemoryClipboard = payload;
+                try {
+                    await writeClipboard(text);
+                } catch (err) {
+                    // Memory clipboard still works for Paste all in this tab.
+                    if (!poPkgMemoryClipboard) throw err;
+                }
+            }
+
+            async function readPkgClipboardPayload() {
+                let text = '';
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        text = await navigator.clipboard.readText();
+                    }
+                } catch (e) { /* fall back to memory */ }
+                const fromClip = parsePkgClipboardText(text);
+                if (fromClip) return fromClip;
+                return poPkgMemoryClipboard;
+            }
+
+            function setPkgClipboardHint(msg, isError) {
+                const hint = document.getElementById('poPkgClipboardHint');
+                if (!hint) return;
+                const text = (msg || '').trim();
+                hint.textContent = text;
+                hint.classList.toggle('d-none', !text);
+                hint.classList.toggle('text-danger', !!isError);
+                hint.classList.toggle('text-success', !isError && !!text);
+            }
+
+            function readPkgIgnoreFlags() {
+                const out = {};
+                PO_PKG_IGNORE_KEYS.forEach((key) => {
+                    const cb = document.querySelector('.po-pkg-ignore-cb[data-pkg-field="' + key + '"]');
+                    out[key] = !!(cb && cb.checked);
+                });
+                return out;
+            }
+
+            function applyPkgIgnoreFlags(flags) {
+                const map = flags && typeof flags === 'object' ? flags : {};
+                PO_PKG_IGNORE_KEYS.forEach((key) => {
+                    const cb = document.querySelector('.po-pkg-ignore-cb[data-pkg-field="' + key + '"]');
+                    if (cb) cb.checked = !!map[key];
+                });
+            }
+
+            function parsePkgIgnoreAttr(raw) {
+                try {
+                    const data = JSON.parse(raw || '{}');
+                    return data && typeof data === 'object' ? data : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function blankPkgDisplay(ignored) {
+                return ignored ? poPkgIgnoredHtml : poMissingHtml;
+            }
+
+            function renderPkgText(el, text, ignored) {
+                const t = (text || '').trim();
+                if (!el) return;
+                el.innerHTML = t ? escapeHtml(t).replace(/\n/g, '<br>') : blankPkgDisplay(!!ignored);
+            }
+
+            function renderFileValueHtml(url, ignored) {
                 const u = (url || '').trim();
-                if (!u) return poMissingHtml;
-                if (isImagePath(u)) {
-                    return `<img src="${escapeHtml(u)}" alt="" class="po-pkg-combined-thumb">`;
+                if (!u) return blankPkgDisplay(!!ignored);
+                if (isImagePath(u) || /^https?:\/\//i.test(u) || u.startsWith('data:')) {
+                    if (isImagePath(u) || /^https?:\/\//i.test(u) || u.startsWith('data:image/')) {
+                        return `<img src="${escapeHtml(u)}" alt="" class="po-pkg-combined-thumb">`;
+                    }
+                    return `<span class="po-pkg-combined-link">${escapeHtml(fileBasename(u) || 'File')}</span>`;
                 }
                 return `<span class="po-pkg-combined-link">${escapeHtml(fileBasename(u) || 'File')}</span>`;
             }
 
-            function syncPkgCellData(row, itemPkg, ctnPkg, coverUrl, designUrl, ctnQty, ctnPrintUrl) {
+            function renderCoverValueHtml(value, ignored) {
+                const u = (value || '').trim();
+                if (!u) return blankPkgDisplay(!!ignored);
+                // Image URL / path → thumbnail; otherwise show as free text.
+                if (isImagePath(u) || /^https?:\/\/.+\.(jpe?g|png|gif|webp|bmp|svg)(\?|$)/i.test(u) || u.startsWith('data:image/')) {
+                    return `<img src="${escapeHtml(u)}" alt="Item Pkg Image" class="po-pkg-combined-thumb">`;
+                }
+                return escapeHtml(u).replace(/\n/g, '<br>');
+            }
+
+            function syncPkgCellData(row, itemPkg, ctnPkg, coverUrl, designUrl, ctnQty, ctnPrintUrl, palletInstructions, palletSize, pkgIgnore) {
                 if (!row) return;
                 const cell = row.querySelector('.po-pkg-combined');
                 if (!cell) return;
@@ -3519,25 +4005,50 @@
                 if (designUrl !== undefined) cell.setAttribute('data-design-file', (designUrl || '').trim());
                 if (ctnQty !== undefined) cell.setAttribute('data-ctn-qty', ctnQty == null ? '' : String(ctnQty));
                 if (ctnPrintUrl !== undefined) cell.setAttribute('data-ctn-print-file', (ctnPrintUrl || '').trim());
+                if (palletInstructions !== undefined) cell.setAttribute('data-pallet-instructions', (palletInstructions || '').trim());
+                if (palletSize !== undefined) cell.setAttribute('data-pallet-size', (palletSize || '').trim());
+                const ignoreMap = pkgIgnore && typeof pkgIgnore === 'object'
+                    ? pkgIgnore
+                    : parsePkgIgnoreAttr(cell.getAttribute('data-pkg-ignore'));
+                cell.setAttribute('data-pkg-ignore', JSON.stringify(ignoreMap));
 
-                renderPkgText(cell.querySelector('.po-item-pkg-text'), itemPkg);
-                renderPkgText(cell.querySelector('.po-ctn-pkg-text'), ctnPkg);
+                renderPkgText(cell.querySelector('.po-item-pkg-text'), itemPkg, ignoreMap.item_pkg);
+                renderPkgText(cell.querySelector('.po-ctn-pkg-text'), ctnPkg, ignoreMap.ctn_pkg);
 
                 const coverEl = cell.querySelector('.po-cover-text');
-                if (coverEl && coverUrl !== undefined) coverEl.innerHTML = renderFileValueHtml(coverUrl);
+                if (coverEl && coverUrl !== undefined) {
+                    coverEl.innerHTML = renderCoverValueHtml(coverUrl, ignoreMap.item_pkg_image);
+                }
 
                 const designEl = cell.querySelector('.po-design-text');
-                if (designEl && designUrl !== undefined) designEl.innerHTML = renderFileValueHtml(designUrl);
+                if (designEl && designUrl !== undefined) {
+                    designEl.innerHTML = renderFileValueHtml(designUrl, ignoreMap.design_file);
+                }
 
                 const qtyEl = cell.querySelector('.po-ctn-qty-text');
                 if (qtyEl && ctnQty !== undefined) {
                     const q = ctnQty == null ? '' : String(ctnQty).trim();
-                    qtyEl.innerHTML = q !== '' ? escapeHtml(q) : poMissingHtml;
+                    qtyEl.innerHTML = q !== '' ? escapeHtml(q) : blankPkgDisplay(!!ignoreMap.ctn_qty);
                 }
 
                 const printEl = cell.querySelector('.po-ctn-print-text');
                 if (printEl && ctnPrintUrl !== undefined) {
-                    printEl.innerHTML = renderFileValueHtml(ctnPrintUrl);
+                    printEl.innerHTML = renderFileValueHtml(ctnPrintUrl, ignoreMap.ctn_print_file);
+                }
+
+                if (palletInstructions !== undefined) {
+                    renderPkgText(
+                        cell.querySelector('.po-pallet-instructions-text'),
+                        palletInstructions,
+                        ignoreMap.pallet_instructions
+                    );
+                }
+                if (palletSize !== undefined) {
+                    renderPkgText(
+                        cell.querySelector('.po-pallet-size-text'),
+                        palletSize,
+                        ignoreMap.pallet_size
+                    );
                 }
             }
 
@@ -3577,12 +4088,107 @@
                 if (ctnQtyEl) ctnQtyEl.value = currentCtnQty;
                 if (ctnPrintEl) ctnPrintEl.value = currentCtnPrint;
 
+                const palletInstrEl = document.getElementById('poPalletInstructionsInput');
+                const palletSizeEl = document.getElementById('poPalletSizeInput');
+                if (palletInstrEl) {
+                    palletInstrEl.value = decodeHtmlEntities(source.getAttribute('data-pallet-instructions') || '');
+                }
+                if (palletSizeEl) {
+                    palletSizeEl.value = decodeHtmlEntities(source.getAttribute('data-pallet-size') || '');
+                }
+
+                applyPkgIgnoreFlags(parsePkgIgnoreAttr(source.getAttribute('data-pkg-ignore')));
+
+                const siblingsCb = document.getElementById('poPkgApplySiblings');
+                if (siblingsCb) siblingsCb.checked = false;
+
+                setPkgClipboardHint('');
                 pkgModal.show();
                 pkgModalEl.addEventListener('shown.bs.modal', function onShown() {
                     pkgModalEl.removeEventListener('shown.bs.modal', onShown);
                     document.getElementById('poPkgItemInput')?.focus();
                 }, { once: true });
             }
+
+            document.getElementById('poPkgCopyAllBtn')?.addEventListener('click', async () => {
+                try {
+                    const payload = buildPkgClipboardPayload('all');
+                    await copyPkgClipboard(payload);
+                    flashCopyBtn(document.getElementById('poPkgCopyAllBtn'), 'Copied');
+                    setPkgClipboardHint('All packaging fields copied. Open another SKU and click Paste all.');
+                } catch (err) {
+                    setPkgClipboardHint(err.message || 'Copy failed', true);
+                    alert(err.message || 'Failed to copy packaging fields');
+                }
+            });
+
+            document.getElementById('poPkgPasteAllBtn')?.addEventListener('click', async () => {
+                try {
+                    const payload = await readPkgClipboardPayload();
+                    if (!payload) {
+                        throw new Error('No packaging copy found. Use Copy all (or row Copy) first.');
+                    }
+                    const onlyField = payload.mode === 'field' ? payload.field : null;
+                    const count = applyPkgModalFields(payload, onlyField || undefined);
+                    if (!count) throw new Error('Clipboard has no packaging fields to paste.');
+                    setPkgClipboardHint(
+                        onlyField
+                            ? ('Pasted into “' + String(onlyField).replace(/_/g, ' ') + '”. Click Save to store for this SKU.')
+                            : 'Pasted into matching fields. Click Save to store for this SKU.'
+                    );
+                    flashCopyBtn(document.getElementById('poPkgPasteAllBtn'), 'Pasted');
+                } catch (err) {
+                    setPkgClipboardHint(err.message || 'Paste failed', true);
+                    alert(err.message || 'Failed to paste packaging fields');
+                }
+            });
+
+            document.querySelectorAll('.po-pkg-copy-field-btn').forEach((btn) => {
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const field = btn.getAttribute('data-pkg-field') || '';
+                    try {
+                        const payload = buildPkgClipboardPayload('field', field);
+                        await copyPkgClipboard(payload);
+                        flashCopyBtn(btn);
+                        setPkgClipboardHint('Copied “' + field.replace(/_/g, ' ') + '”. Paste all on another SKU to fill the same field.');
+                    } catch (err) {
+                        alert(err.message || 'Failed to copy field');
+                    }
+                });
+            });
+
+            // Ctrl/Cmd+V in packaging inputs: if clipboard is a packaging payload, map into same fields.
+            document.querySelectorAll('#poPkgModal .po-pkg-field-input').forEach((input) => {
+                input.addEventListener('paste', async (e) => {
+                    let text = '';
+                    try {
+                        text = e.clipboardData?.getData('text') || '';
+                    } catch (err) { text = ''; }
+                    let payload = parsePkgClipboardText(text);
+                    if (!payload) payload = poPkgMemoryClipboard;
+                    if (!payload || payload[PO_PKG_CLIP_MARKER] !== 1) return;
+                    e.preventDefault();
+                    if (payload.mode === 'field' && payload.field) {
+                        // Prefer same field; fall back to focused field value only.
+                        if (Object.prototype.hasOwnProperty.call(payload, payload.field)) {
+                            applyPkgModalFields(payload, payload.field);
+                        } else {
+                            const focusKey = input.getAttribute('data-pkg-field');
+                            const el = focusKey ? document.getElementById(PO_PKG_FIELD_IDS[focusKey]) : null;
+                            if (el) el.value = String(payload.value || '');
+                        }
+                        setPkgClipboardHint('Pasted field into the matching packaging field.');
+                    } else {
+                        applyPkgModalFields(payload);
+                        setPkgClipboardHint('Pasted all packaging fields into matching inputs. Click Save to store.');
+                    }
+                    if (input.id === 'poDesignFileInput') {
+                        updateDesignFileOpenLink(input.value || '');
+                    }
+                });
+            });
 
             document.querySelectorAll('.po-pkg-combined').forEach((cell) => {
                 cell.addEventListener('click', () => openPkgModal(cell));
@@ -3644,16 +4250,17 @@
                         (document.getElementById('poPkgItemInput')?.value || '').trim(),
                         (document.getElementById('poPkgCtnInput')?.value || '').trim().slice(0, 100),
                         undefined,
-                        savedPath
+                        savedPath,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        readPkgIgnoreFlags()
                     );
-                    if (hint) {
-                        hint.innerHTML = 'Saved to product master (Values.packing_cdr_path). Use <strong>Add file</strong> to upload, or paste a path. Leave blank to clear.';
-                    }
+                    if (hint) hint.textContent = '';
                 } catch (err) {
                     alert(err.message || 'Failed to upload Design File');
-                    if (hint) {
-                        hint.innerHTML = 'Saved to product master (Values.packing_cdr_path). Use <strong>Add file</strong> to upload, or paste a path. Leave blank to clear.';
-                    }
+                    if (hint) hint.textContent = '';
                 } finally {
                     this.value = '';
                     if (pickBtn) {
@@ -3676,6 +4283,8 @@
                 const ctnPkg = (document.getElementById('poPkgCtnInput').value || '').trim().slice(0, 100);
                 const ctnQtyRaw = (document.getElementById('poCtnQtyInput')?.value || '').trim();
                 const ctnPrintPath = (document.getElementById('poCtnPrintFileInput')?.value || '').trim();
+                const palletInstructions = (document.getElementById('poPalletInstructionsInput')?.value || '').trim();
+                const palletSize = (document.getElementById('poPalletSizeInput')?.value || '').trim();
                 const row = pkgTargetCell.closest('tr');
                 const previousCover = (pkgTargetCell.getAttribute('data-cover-url') || '').trim();
                 const previousDesign = (pkgTargetCell.getAttribute('data-design-file') || '').trim();
@@ -3797,12 +4406,120 @@
                         pkgInitialCtnPrint = savedCtnPrintUrl;
                     }
 
+                    const palletRes = await fetch(palletFieldsUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify({
+                            product_id: productId,
+                            pallet_instructions: palletInstructions,
+                            pallet_size: palletSize,
+                        }),
+                    });
+                    const palletData = await palletRes.json().catch(() => ({}));
+                    if (!palletRes.ok || palletData.success === false) {
+                        throw new Error(palletData.message || 'Failed to save Pallet fields');
+                    }
+                    const savedPalletInstructions = palletData.pallet_instructions != null
+                        ? String(palletData.pallet_instructions)
+                        : palletInstructions;
+                    const savedPalletSize = palletData.pallet_size != null
+                        ? String(palletData.pallet_size)
+                        : palletSize;
+
+                    const ignoreFlags = readPkgIgnoreFlags();
+                    const ignoreRes = await fetch(pkgIgnoreUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify({
+                            product_id: productId,
+                            pkg_ignore: ignoreFlags,
+                        }),
+                    });
+                    const ignoreData = await ignoreRes.json().catch(() => ({}));
+                    if (!ignoreRes.ok || ignoreData.success === false) {
+                        throw new Error(ignoreData.message || 'Failed to save Ignore flags');
+                    }
+                    const savedIgnore = ignoreData.pkg_ignore && typeof ignoreData.pkg_ignore === 'object'
+                        ? ignoreData.pkg_ignore
+                        : ignoreFlags;
+
                     const savedItem = (itemData.instructions != null ? String(itemData.instructions) : itemPkg).trim();
                     const savedCtn = ctnPkg;
-                    const savedCtnQty = ctnQtyChanged ? ctnQtyRaw : undefined;
+                    const finalCover = coverChanged ? savedCoverUrl : coverPath;
+                    const finalDesign = designChanged ? savedDesignUrl : designPath;
+                    const finalCtnQty = ctnQtyChanged ? ctnQtyRaw : ctnQtyRaw;
+                    const finalCtnPrint = ctnPrintChanged ? savedCtnPrintUrl : ctnPrintPath;
                     if (ctnQtyChanged) pkgInitialCtnQty = ctnQtyRaw;
-                    syncPkgCellData(row, savedItem, savedCtn, savedCoverUrl, savedDesignUrl, savedCtnQty, savedCtnPrintUrl);
+
+                    // When cover/design/print unchanged, still refresh display with current values + ignore.
+                    syncPkgCellData(
+                        row,
+                        savedItem,
+                        savedCtn,
+                        finalCover,
+                        finalDesign,
+                        finalCtnQty,
+                        finalCtnPrint,
+                        savedPalletInstructions,
+                        savedPalletSize,
+                        savedIgnore
+                    );
+
+                    const applySiblings = !!document.getElementById('poPkgApplySiblings')?.checked;
+                    let siblingMsg = '';
+                    if (applySiblings) {
+                        const sibRes = await fetch(pkgApplySiblingsUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                            },
+                            body: JSON.stringify({ product_id: productId }),
+                        });
+                        const sibData = await sibRes.json().catch(() => ({}));
+                        if (!sibRes.ok || sibData.success === false) {
+                            throw new Error(sibData.message || 'Failed to copy packaging to siblings');
+                        }
+                        const sibSkus = Array.isArray(sibData.siblings) ? sibData.siblings : [];
+                        const pkg = sibData.pkg && typeof sibData.pkg === 'object' ? sibData.pkg : null;
+                        if (pkg && sibSkus.length) {
+                            const sibNorms = new Set(sibSkus.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean));
+                            document.querySelectorAll('.po-pkg-combined').forEach((cell) => {
+                                if (cell === pkgTargetCell) return;
+                                const cellSku = decodeHtmlEntities(cell.getAttribute('data-sku') || '').trim().toUpperCase();
+                                if (!cellSku || !sibNorms.has(cellSku)) return;
+                                syncPkgCellData(
+                                    cell.closest('tr'),
+                                    String(pkg.item_pkg ?? ''),
+                                    String(pkg.ctn_pkg ?? ''),
+                                    String(pkg.item_pkg_cover ?? ''),
+                                    String(pkg.design_file ?? ''),
+                                    pkg.ctn_qty == null ? '' : String(pkg.ctn_qty),
+                                    String(pkg.ctn_print_file ?? ''),
+                                    String(pkg.pallet_instructions ?? ''),
+                                    String(pkg.pallet_size ?? ''),
+                                    pkg.pkg_ignore && typeof pkg.pkg_ignore === 'object' ? pkg.pkg_ignore : {}
+                                );
+                            });
+                        }
+                        siblingMsg = sibData.message || (
+                            sibData.updated > 0
+                                ? (sibData.updated + ' sibling SKU(s) updated.')
+                                : 'No sibling SKUs found.'
+                        );
+                    }
+
                     pkgModal.hide();
+                    if (siblingMsg) alert(siblingMsg);
                 } catch (err) {
                     alert(err.message || 'Failed to save packaging');
                 } finally {
