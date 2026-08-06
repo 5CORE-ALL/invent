@@ -167,8 +167,10 @@ class PayrollService
      */
     protected function rowHasPayableHours(PayrollEmployeeSalary $row, array $teamLogger): bool
     {
+        // Manually edited hours rows stay on the sheet (including 0h) so HR can
+        // keep someone visible and adjust hours without them disappearing on reload.
         if ($row->hours_overridden) {
-            return (float) $row->hours_worked > 0;
+            return true;
         }
 
         $user = $row->user;
