@@ -14,6 +14,8 @@ use App\Models\ClaimReimbursement;
 use App\Models\ShortTitle;
 use App\Models\InstructionsItemPkg;
 use App\Models\QcImprovementReqBeforeItemPkg;
+use App\Models\PoPaymentTermOption;
+use App\Models\PoCustomTermOption;
 use App\Services\ComparisonSpecTechService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -341,7 +343,7 @@ class PurchaseOrderController extends Controller
             'item_pkg_cover' => 'nullable|string|max:5000',
             'design_file' => 'nullable|string|max:2048',
             'ctn_qty' => 'nullable|string|max:100',
-            'ctn_print_file' => 'nullable|string|max:2048',
+            'ctn_print_file' => 'nullable|string|max:5000',
             'special_instruction_qc' => 'nullable|string|max:10000',
         ]);
 
@@ -459,7 +461,10 @@ class PurchaseOrderController extends Controller
             }
             $ctnPrint = trim((string) ($validated['ctn_print_file'] ?? ''));
             if ($ctnPrint !== '') {
-                $values['ctn_print_file'] = $normalizePath($ctnPrint);
+                // File URL/path → normalize; free text notes stay as typed.
+                $values['ctn_print_file'] = $this->looksLikeImageOrFilePath($ctnPrint)
+                    ? $normalizePath($ctnPrint)
+                    : $ctnPrint;
                 $valuesDirty = true;
             }
             $ctnQty = trim((string) ($validated['ctn_qty'] ?? ''));
@@ -722,6 +727,7 @@ class PurchaseOrderController extends Controller
             'pkg_ignore.ctn_print_file' => 'nullable|boolean',
             'pkg_ignore.pallet_instructions' => 'nullable|boolean',
             'pkg_ignore.pallet_size' => 'nullable|boolean',
+            'apply_siblings' => 'nullable|boolean',
         ]);
 
         $product = ProductMaster::find($validated['product_id']);
@@ -733,6 +739,13 @@ class PurchaseOrderController extends Controller
             $values = $this->productValuesArray($product);
             $normalized = $this->normalizePkgIgnoreFlags($validated['pkg_ignore'] ?? []);
             $values['pkg_ignore'] = $normalized;
+            if (array_key_exists('apply_siblings', $validated)) {
+                if (! empty($validated['apply_siblings'])) {
+                    $values['pkg_apply_siblings'] = true;
+                } else {
+                    unset($values['pkg_apply_siblings']);
+                }
+            }
             $product->Values = $values;
             $product->save();
 
@@ -740,6 +753,7 @@ class PurchaseOrderController extends Controller
                 'success' => true,
                 'message' => 'Ignore flags saved.',
                 'pkg_ignore' => $normalized,
+                'apply_siblings' => ! empty($values['pkg_apply_siblings']),
             ]);
         } catch (\Throwable $e) {
             Log::error('PO pkg ignore save failed', [
@@ -800,6 +814,7 @@ class PurchaseOrderController extends Controller
             'pkg_ignore.ctn_print_file' => 'nullable|boolean',
             'pkg_ignore.pallet_instructions' => 'nullable|boolean',
             'pkg_ignore.pallet_size' => 'nullable|boolean',
+            'apply_siblings' => 'nullable|boolean',
         ]);
 
         $source = ProductMaster::find($validated['product_id']);
@@ -846,6 +861,8 @@ class PurchaseOrderController extends Controller
 
             // Keep source in sync with the same Ignore map that siblings receive.
             $srcValues['pkg_ignore'] = $pkgIgnore;
+            // Remember Siblings preference for future opens.
+            $srcValues['pkg_apply_siblings'] = true;
             $source->Values = $srcValues;
             $source->save();
 
@@ -900,6 +917,8 @@ class PurchaseOrderController extends Controller
                 }
                 // Always persist Ignore checkboxes onto every sibling.
                 $values['pkg_ignore'] = $pkgIgnore;
+                // Keep Siblings checked for future edits on sibling SKUs too.
+                $values['pkg_apply_siblings'] = true;
 
                 $sib->Values = $values;
                 $sib->save();
@@ -926,6 +945,7 @@ class PurchaseOrderController extends Controller
                 'pallet_instructions' => trim((string) ($srcValues['pallet_instructions'] ?? '')),
                 'pallet_size' => trim((string) ($srcValues['pallet_size'] ?? '')),
                 'pkg_ignore' => $pkgIgnore,
+                'apply_siblings' => true,
             ];
 
             return response()->json([
@@ -1216,15 +1236,16 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * Save Ctn Print File on product_master.Values.ctn_print_file (path or upload).
+     * Save Ctn Print File on product_master.Values.ctn_print_file
+     * (file URL/path, free text notes, or upload).
      */
     public function saveCtnPrintFile(Request $request)
     {
         $validated = $request->validate([
             'product_id' => 'required|integer',
             'sku' => 'nullable|string|max:255',
-            'path' => 'nullable|string|max:2048',
-            'url' => 'nullable|string|max:2048',
+            'path' => 'nullable|string|max:5000',
+            'url' => 'nullable|string|max:5000',
             'file' => 'nullable|file|max:51200',
         ]);
 
@@ -1234,7 +1255,8 @@ class PurchaseOrderController extends Controller
         }
 
         try {
-            $publicPath = '';
+            $storedValue = '';
+            $isFileAsset = false;
             if ($request->hasFile('file')) {
                 $safeSku = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim((string) $product->sku)) ?: ('id_'.$product->id);
                 $ext = $request->file('file')->getClientOriginalExtension() ?: 'bin';
@@ -1243,32 +1265,43 @@ class PurchaseOrderController extends Controller
                     $product->id.'_'.$safeSku.'_ctn_print.'.$ext,
                     'public'
                 );
-                $publicPath = 'storage/'.$stored;
+                $storedValue = 'storage/'.$stored;
+                $isFileAsset = true;
             } else {
                 $pathInput = trim((string) ($validated['path'] ?? $validated['url'] ?? ''));
                 if ($pathInput === '') {
-                    $publicPath = '';
-                } elseif (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
-                    $publicPath = $pathInput;
+                    $storedValue = '';
+                } elseif ($this->looksLikeImageOrFilePath($pathInput)) {
+                    if (preg_match('/^https?:\/\//i', $pathInput) || str_starts_with($pathInput, 'data:')) {
+                        $storedValue = $pathInput;
+                    } else {
+                        $storedValue = ltrim($pathInput, '/');
+                    }
+                    $isFileAsset = true;
                 } else {
-                    $publicPath = ltrim($pathInput, '/');
+                    // Free text notes — store as-is (no path normalization).
+                    $storedValue = $pathInput;
                 }
             }
 
             $values = $this->productValuesArray($product);
-            if ($publicPath === '') {
+            if ($storedValue === '') {
                 unset($values['ctn_print_file']);
             } else {
-                $values['ctn_print_file'] = $publicPath;
+                $values['ctn_print_file'] = $storedValue;
             }
             $product->Values = $values;
             $product->save();
 
+            $display = $storedValue === ''
+                ? ''
+                : ($isFileAsset ? ($this->normalizeImageUrl($storedValue) ?? $storedValue) : $storedValue);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Ctn Print File saved.',
-                'url' => $publicPath === '' ? '' : $this->normalizeImageUrl($publicPath),
-                'path' => $publicPath,
+                'url' => $display,
+                'path' => $storedValue,
             ]);
         } catch (\Throwable $e) {
             Log::error('PO ctn print file save failed', [
@@ -1281,6 +1314,22 @@ class PurchaseOrderController extends Controller
                 'message' => 'Failed to save Ctn Print File: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Ctn Print File: Values.ctn_print_file (file path/URL or free text).
+     */
+    private function resolveCtnPrintFileValue(array $values): ?string
+    {
+        $raw = trim((string) ($values['ctn_print_file'] ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+        if ($this->looksLikeImageOrFilePath($raw)) {
+            return $this->normalizeImageUrl($raw);
+        }
+
+        return $raw;
     }
 
     /**
@@ -1673,7 +1722,9 @@ class PurchaseOrderController extends Controller
             $item->pallet_size = $pkg['pallet_size'] ?? '';
             $item->special_instruction_qc = $pkg['special_instruction_qc'] ?? '';
             $item->special_qc_ignore = ! empty($pkg['special_qc_ignore']);
+            $item->special_qc_apply_siblings = ! empty($pkg['special_qc_apply_siblings']);
             $item->pkg_ignore = is_array($pkg['pkg_ignore'] ?? null) ? $pkg['pkg_ignore'] : [];
+            $item->pkg_apply_siblings = ! empty($pkg['pkg_apply_siblings']);
             $item->product_master_id = $pkg['product_id'] ?? ($product?->id);
             $item->product_master_sku = $matchedSku;
 
@@ -1777,7 +1828,7 @@ class PurchaseOrderController extends Controller
             }
         }
         $qcHasIssuesBySku = $this->qcHasIssuesBySkus($qcLookupSkus);
-        $claimsBySku = $this->claimLinesBySkuForSupplier($supplierId, $qcLookupSkus);
+        $supplierClaims = $this->supplierClaimsForProforma($supplierId);
 
         foreach ($items as $item) {
             if (! is_object($item)) {
@@ -1786,9 +1837,13 @@ class PurchaseOrderController extends Controller
             $sku = trim((string) ($item->product_master_sku ?? $item->sku ?? ''));
             $key = mb_strtoupper($sku);
             $item->qc_has_issues = $key !== '' && ! empty($qcHasIssuesBySku[$key]);
-            $item->claim_lines = ($key !== '' && ! empty($claimsBySku[$key]))
-                ? $claimsBySku[$key]
-                : [];
+        }
+
+        $claimNumber = 'CLM-0001';
+        if (Schema::hasTable('claim_reimbursements')) {
+            $lastClaim = ClaimReimbursement::latest()->first();
+            $nextNumber = $lastClaim ? ((int) str_replace('CLM-', '', (string) $lastClaim->claim_number)) + 1 : 1;
+            $claimNumber = 'CLM-' . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
         }
 
         return view('purchase-master.purchase-order.proforma', [
@@ -1801,28 +1856,87 @@ class PurchaseOrderController extends Controller
             'canEditPoBank' => $canEditPoBank,
             'supplierDefaultAdvancePercent' => $supplierDefaultAdvancePercent,
             'bankSupplierNames' => Supplier::distinctNamesForListPage()->values()->all(),
+            'supplierClaims' => $supplierClaims,
+            'claimNumber' => $claimNumber,
+            'paymentTermOptions' => Schema::hasTable('po_payment_term_options')
+                ? PoPaymentTermOption::optionsList()
+                : [
+                    '20% deposit, balance before shipping.',
+                    '20% deposit, balance before Release of BL.',
+                    '10% deposit, balance before Release of BL.',
+                    '30% deposit, balance before Release of BL.',
+                    'Each item includes 2% additional free goods for damages.',
+                ],
+            'customTermOptions' => Schema::hasTable('po_custom_term_options')
+                ? PoCustomTermOption::optionsList()
+                : [],
         ]);
     }
 
     /**
-     * Active claim-reimbursement line items for a supplier, keyed by UPPER(SKU).
-     * Source: /claim-reimbursement (claim_reimbursements.items[].item = SKU).
-     *
-     * @param  list<string>  $skus  PO line SKUs (used only to seed empty keys)
-     * @return array<string, list<array<string, mixed>>>
+     * Save a custom Payment Terms option (from Other) for future dropdown use.
      */
-    private function claimLinesBySkuForSupplier(int $supplierId, array $skus = []): array
+    public function savePaymentTermOption(Request $request)
     {
-        $bySku = [];
-        foreach ($skus as $sku) {
-            $key = mb_strtoupper(trim((string) $sku));
-            if ($key !== '') {
-                $bySku[$key] = [];
-            }
+        $validated = $request->validate([
+            'value' => 'required|string|min:1|max:500',
+        ]);
+
+        if (! Schema::hasTable('po_payment_term_options')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment term options table is missing. Run migrations.',
+            ], 500);
         }
 
+        $value = trim($validated['value']);
+        PoPaymentTermOption::rememberSelection($value);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment term option saved.',
+            'value' => $value,
+            'options' => PoPaymentTermOption::optionsList(),
+        ]);
+    }
+
+    /**
+     * Save a custom Terms & Conditions point for next use.
+     */
+    public function saveCustomTermOption(Request $request)
+    {
+        $validated = $request->validate([
+            'value' => 'required|string|min:1|max:1000',
+        ]);
+
+        if (! Schema::hasTable('po_custom_term_options')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Custom term options table is missing. Run migrations.',
+            ], 500);
+        }
+
+        $value = trim($validated['value']);
+        PoCustomTermOption::rememberSelection($value);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Special instruction saved for next use.',
+            'value' => $value,
+            'options' => PoCustomTermOption::optionsList(),
+        ]);
+    }
+
+    /**
+     * Active claim-reimbursement records for a supplier (PO proforma section).
+     * Source: /claim-reimbursement (claim_reimbursements).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function supplierClaimsForProforma(int $supplierId): array
+    {
         if ($supplierId <= 0 || ! Schema::hasTable('claim_reimbursements')) {
-            return $bySku;
+            return [];
         }
 
         $claimsQuery = ClaimReimbursement::query()->where('supplier_id', $supplierId);
@@ -1831,11 +1945,13 @@ class PurchaseOrderController extends Controller
                 $q->where('is_archived', false)->orWhereNull('is_archived');
             });
         }
+
         $claims = $claimsQuery
             ->orderByDesc('claim_date')
             ->orderByDesc('id')
             ->get(['id', 'claim_number', 'claim_date', 'items', 'total_amount', 'received_amount', 'details_note']);
 
+        $out = [];
         foreach ($claims as $claim) {
             $rawItems = $claim->items;
             if (is_string($rawItems)) {
@@ -1843,40 +1959,38 @@ class PurchaseOrderController extends Controller
                 $rawItems = is_array($decoded) ? $decoded : [];
             }
             if (! is_array($rawItems)) {
-                continue;
+                $rawItems = [];
             }
 
-            $claimDate = $claim->claim_date
-                ? Carbon::parse($claim->claim_date)->format('j M y')
-                : '';
-
+            $lines = [];
             foreach ($rawItems as $line) {
                 if (! is_array($line)) {
                     continue;
                 }
-                $lineSku = trim((string) ($line['item'] ?? ''));
-                if ($lineSku === '') {
-                    continue;
-                }
-                $key = mb_strtoupper($lineSku);
-                $bySku[$key][] = [
-                    'claim_id' => (int) $claim->id,
-                    'claim_number' => (string) ($claim->claim_number ?? ''),
-                    'claim_date' => $claimDate,
-                    'sku' => $lineSku,
+                $lines[] = [
+                    'item' => trim((string) ($line['item'] ?? '')),
                     'qty' => $line['qty'] ?? '',
                     'rate' => $line['rate'] ?? '',
                     'amount' => $line['amount'] ?? '',
                     'reason' => trim((string) ($line['reason'] ?? '')),
                     'image' => $line['image'] ?? null,
-                    'received_amount' => $claim->received_amount,
-                    'details_note' => $claim->details_note,
-                    'claim_total' => $claim->total_amount,
                 ];
             }
+
+            $out[] = [
+                'id' => (int) $claim->id,
+                'claim_number' => (string) ($claim->claim_number ?? ''),
+                'claim_date' => $claim->claim_date
+                    ? Carbon::parse($claim->claim_date)->format('j M y')
+                    : '',
+                'total_amount' => $claim->total_amount,
+                'received_amount' => $claim->received_amount,
+                'details_note' => $claim->details_note,
+                'items' => $lines,
+            ];
         }
 
-        return $bySku;
+        return $out;
     }
 
     /**
@@ -2844,7 +2958,6 @@ class PurchaseOrderController extends Controller
             $pkg = $pkgByProductId->get($product->id);
             $item = $pkg && $pkg->instructions !== null ? trim((string) $pkg->instructions) : '';
             $designRaw = trim((string) ($values['packing_cdr_path'] ?? ''));
-            $printRaw = trim((string) ($values['ctn_print_file'] ?? ''));
             $palletInstructions = trim((string) ($values['pallet_instructions'] ?? ''));
             $palletSize = trim((string) ($values['pallet_size'] ?? ''));
             $ctnQty = $values['ctn_qty'] ?? null;
@@ -2882,12 +2995,14 @@ class PurchaseOrderController extends Controller
                 'item_pkg_cover' => $this->resolveItemPkgCoverUrl($values),
                 'design_file' => $designRaw !== '' ? $this->normalizeImageUrl($designRaw) : null,
                 'ctn_qty' => $ctnQty,
-                'ctn_print_file' => $printRaw !== '' ? $this->normalizeImageUrl($printRaw) : null,
+                'ctn_print_file' => $this->resolveCtnPrintFileValue($values),
                 'pallet_instructions' => $palletInstructions,
                 'pallet_size' => $palletSize,
                 'special_instruction_qc' => $specialQc,
                 'special_qc_ignore' => $specialQcIgnore,
+                'special_qc_apply_siblings' => ! empty($values['special_qc_apply_siblings']),
                 'pkg_ignore' => $pkgIgnoreNormalized,
+                'pkg_apply_siblings' => ! empty($values['pkg_apply_siblings']),
                 'product_id' => (int) $product->id,
                 'matched_sku' => trim((string) $product->sku),
             ];

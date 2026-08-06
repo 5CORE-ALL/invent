@@ -185,7 +185,113 @@ class ClaimReimbursementController extends Controller
             ],
         ]);
 
+        $redirectTo = trim((string) $request->input('redirect_to', ''));
+        if ($redirectTo !== '' && str_starts_with($redirectTo, url('/'))) {
+            return redirect()->to($redirectTo)->with('flash_message', 'Claim submitted successfully.');
+        }
+
         return redirect()->back()->with('flash_message', 'Claim submitted successfully.');
+    }
+
+    /**
+     * Update claim line items (+ optional received_amount / details_note).
+     * Used by PO proforma Claim & Reimb. section.
+     */
+    public function updateClaimItems(Request $request, $id)
+    {
+        $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.item' => 'required|string|max:255',
+            'items.*.qty' => 'nullable|numeric',
+            'items.*.rate' => 'nullable|numeric',
+            'items.*.amount' => 'nullable|numeric',
+            'items.*.reason' => 'nullable|string|max:2000',
+            'items.*.image' => 'nullable|string|max:500',
+            'received_amount' => 'nullable|string|max:255',
+            'details_note' => 'nullable|string|max:5000',
+        ]);
+
+        $claim = ClaimReimbursement::findOrFail($id);
+        $existingItems = is_array($claim->items) ? $claim->items : [];
+        $items = [];
+        $totalAmount = 0.0;
+
+        foreach ($request->input('items', []) as $index => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['item'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $qty = $row['qty'] ?? '';
+            $rate = $row['rate'] ?? '';
+            $amount = $row['amount'] ?? '';
+            if ($amount === '' || $amount === null) {
+                $q = is_numeric($qty) ? (float) $qty : 0.0;
+                $r = is_numeric($rate) ? (float) $rate : 0.0;
+                $amount = round($q * $r, 2);
+            }
+            if (is_numeric($amount)) {
+                $totalAmount += (float) $amount;
+            }
+
+            $image = $row['image'] ?? null;
+            if (($image === null || $image === '') && isset($existingItems[$index]['image'])) {
+                $image = $existingItems[$index]['image'];
+            }
+
+            $items[] = [
+                'item' => $sku,
+                'qty' => $qty,
+                'rate' => $rate,
+                'amount' => $amount,
+                'reason' => trim((string) ($row['reason'] ?? '')),
+                'image' => $image,
+            ];
+        }
+
+        if ($items === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'At least one claim line with a SKU is required.',
+            ], 422);
+        }
+
+        $history = $claim->action_history ?: [];
+        $history[] = [
+            'action' => 'Items updated (PO proforma)',
+            'user' => Auth::user()->name ?? 'System',
+            'date' => now()->format('j M'),
+            'datetime' => now()->format('j M Y, g:i A'),
+        ];
+
+        $payload = [
+            'items' => $items,
+            'total_amount' => $totalAmount,
+            'action_history' => $history,
+        ];
+        if ($request->exists('received_amount')) {
+            $payload['received_amount'] = $request->input('received_amount');
+        }
+        if ($request->exists('details_note')) {
+            $payload['details_note'] = $request->input('details_note');
+        }
+
+        $claim->update($payload);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Claim updated successfully.',
+            'claim' => [
+                'id' => $claim->id,
+                'claim_number' => $claim->claim_number,
+                'total_amount' => $claim->total_amount,
+                'received_amount' => $claim->received_amount,
+                'details_note' => $claim->details_note,
+                'items' => $claim->items,
+            ],
+        ]);
     }
 
     public function updateReceivedAmount(Request $request, $id)

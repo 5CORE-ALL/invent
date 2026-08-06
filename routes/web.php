@@ -3281,6 +3281,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/purchase-order/pkg-ignore', 'savePkgFieldIgnore')->name('purchase-order.pkg-ignore');
         Route::post('/purchase-order/pkg-apply-siblings', 'applyPkgToSiblings')->name('purchase-order.pkg-apply-siblings');
         Route::post('/purchase-order/pallet-fields', 'savePalletFields')->name('purchase-order.pallet-fields');
+        Route::post('/purchase-order/payment-term-option', 'savePaymentTermOption')->name('purchase-order.payment-term-option');
+        Route::post('/purchase-order/custom-term-option', 'saveCustomTermOption')->name('purchase-order.custom-term-option');
         Route::post('/purchase-orders/delete', 'deletePurchaseOrders');
         Route::post('/purchase-orders/{id}/archive', 'archivePurchaseOrder');
         Route::post('/purchase-orders/{id}/restore', 'restorePurchaseOrder');
@@ -5703,6 +5705,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/claim-reimbursement', 'index')->name('claim.reimbursement');
         Route::get('/claim-reimbursement/view-data', 'getViewClaimReimbursementData');
         Route::post('/claim-reimbursement/save', 'saveClaimReimbursement')->name('claim.reimbursement.save');
+        Route::post('/claim-reimbursement/{id}/items', 'updateClaimItems')->name('claim.reimbursement.items');
         Route::post('/claim-reimbursement/{id}/received-amount', 'updateReceivedAmount')->name('claim.reimbursement.received-amount');
         Route::post('/claim-reimbursement/{id}/action', 'addAction')->name('claim.reimbursement.action');
         Route::post('/claim-reimbursement/{id}/details-note', 'updateDetailsNote')->name('claim.reimbursement.details-note');

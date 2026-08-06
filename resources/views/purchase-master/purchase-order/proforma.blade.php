@@ -901,32 +901,70 @@
             text-align: left;
         }
 
-        .col-claim {
-            min-width: 150px;
-            max-width: 220px;
-            font-size: 10px;
-            vertical-align: top !important;
-            text-align: left;
-            line-height: 1.3;
+        .po-claim-section {
+            margin-top: 16px;
+            border: 1px solid #fcd34d;
+            border-radius: 12px;
+            background: linear-gradient(145deg, #fffbeb 0%, #fff7ed 55%, #fef3c7 100%);
+            padding: 14px 16px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
         }
 
-        .po-claim-list {
+        .po-claim-section-head {
             display: flex;
-            flex-direction: column;
-            gap: 6px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #fbbf24;
         }
 
-        .po-claim-card {
+        .po-claim-section-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            font-size: 15px;
+            font-weight: 800;
+            color: #92400e;
+        }
+
+        .po-claim-section-title-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #f59e0b;
+            box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+        }
+
+        .po-claim-block {
             border: 1px solid #fde68a;
-            background: #fffbeb;
-            border-radius: 6px;
-            padding: 5px 7px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+
+        .po-claim-block:last-child {
+            margin-bottom: 0;
+        }
+
+        .po-claim-block-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
         }
 
         .po-claim-num {
-            font-weight: 700;
+            font-weight: 800;
             color: #92400e;
             text-decoration: none;
+            font-size: 14px;
         }
 
         .po-claim-num:hover {
@@ -936,12 +974,67 @@
         .po-claim-meta {
             color: #78350f;
             font-weight: 600;
+            font-size: 12px;
         }
 
-        .po-claim-reason {
-            color: #44403c;
-            margin-top: 2px;
-            word-break: break-word;
+        .po-claim-lines-table {
+            width: 100%;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .po-claim-lines-table th {
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 6px 8px;
+            border: 1px solid #fde68a;
+        }
+
+        .po-claim-lines-table td {
+            padding: 4px 6px;
+            border: 1px solid #fde68a;
+            vertical-align: middle;
+            background: #fff;
+        }
+
+        .po-claim-lines-table .form-control,
+        .po-claim-block .form-control {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border-color: #fcd34d;
+        }
+
+        .po-claim-block-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 700px) {
+            .po-claim-block-meta {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .po-claim-empty {
+            font-size: 13px;
+            color: #78350f;
+            padding: 8px 0;
+        }
+
+        .po-claim-save-hint {
+            font-size: 11px;
+            min-height: 16px;
+            color: #15803d;
+        }
+
+        .po-claim-save-hint.is-error {
+            color: #b91c1c;
         }
 
         .col-qc {
@@ -1082,10 +1175,100 @@
             font-weight: 600;
         }
 
+        .po-terms-form {
+            background: #e6e9e94d;
+            padding: 16px 18px;
+            margin-top: 20px;
+            border-radius: 8px;
+        }
+
+        .po-terms-form > h5 {
+            margin-top: 0 !important;
+            margin-bottom: 14px;
+        }
+
+        .po-terms-section {
+            height: 100%;
+            margin-bottom: 0;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+        }
+
+        .po-terms-section > h6,
+        .po-terms-custom > h6 {
+            margin: -10px -12px 10px;
+            padding: 7px 12px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #1e3a5f;
+            background: linear-gradient(180deg, #e8f1fb 0%, #dceaf8 100%);
+            border-bottom: 1px solid #c5d9ef;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .po-terms-section label {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            font-size: 12.5px;
+            line-height: 1.35;
+            margin-bottom: 4px;
+        }
+
+        .po-terms-section label input[type="checkbox"] {
+            margin-top: 3px;
+            flex-shrink: 0;
+        }
+
+        .po-terms-section .form-select,
+        .po-terms-section .form-control {
+            max-width: 100%;
+        }
+
+        .po-terms-delivery-line {
+            margin-bottom: 0 !important;
+            font-size: 12.5px;
+        }
+
+        .po-terms-custom {
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.55);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+        }
+
+        @media print {
+            .po-terms-form {
+                background: transparent !important;
+                padding: 0 !important;
+                border-radius: 0 !important;
+            }
+
+            .po-terms-section,
+            .po-terms-custom {
+                background: transparent !important;
+                border: none !important;
+                padding: 0 4px 8px 0 !important;
+                border-radius: 0 !important;
+            }
+
+            .po-terms-section > h6,
+            .po-terms-custom > h6 {
+                margin: 0 0 4px !important;
+                padding: 0 !important;
+                background: transparent !important;
+                border: none !important;
+                border-radius: 0 !important;
+                color: #000 !important;
+            }
+        }
+
         .po-bank-block {
             border: 1px solid #9fd4c2;
-            border-radius: 12px;
-            padding: 14px 16px;
+            border-radius: 10px;
+            padding: 8px 10px;
             background: linear-gradient(145deg, #e8f8f2 0%, #f3fbf7 45%, #eef6ff 100%);
             box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
         }
@@ -1095,56 +1278,61 @@
             align-items: center;
             justify-content: space-between;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
+            gap: 6px;
+            margin-bottom: 6px;
+            padding-bottom: 6px;
             border-bottom: 1px dashed #a7d8c5;
         }
 
         .po-bank-block-title {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             margin: 0;
-            font-size: 15px;
+            font-size: 13px;
             font-weight: 800;
             color: #0f766e;
             letter-spacing: 0.01em;
         }
 
         .po-bank-block-title-dot {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: #14b8a6;
-            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+            box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.2);
             flex-shrink: 0;
+        }
+
+        .po-bank-block-head .btn {
+            padding: 0.15rem 0.5rem;
+            font-size: 12px;
         }
 
         .po-bank-empty {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             color: #0f766e;
-            font-size: 13px;
+            font-size: 12px;
             background: rgba(255, 255, 255, 0.7);
             border: 1px dashed #99d5c4;
-            border-radius: 8px;
-            padding: 8px 10px;
-            margin-bottom: 10px;
+            border-radius: 6px;
+            padding: 4px 8px;
+            margin-bottom: 6px;
         }
 
         .po-bank-accounts {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 6px;
         }
 
         .po-bank-card {
-            background: rgba(255, 255, 255, 0.92);
+            background: rgba(255, 255, 255, 0.55);
             border: 1px solid #b7e2d3;
-            border-radius: 10px;
-            padding: 12px 14px;
+            border-radius: 8px;
+            padding: 6px;
             box-shadow: 0 1px 2px rgba(15, 118, 110, 0.06);
         }
 
@@ -1154,56 +1342,165 @@
             gap: 6px;
             font-weight: 800;
             color: #115e59;
-            margin-bottom: 10px;
-            font-size: 13px;
-            padding: 4px 10px;
+            margin-bottom: 6px;
+            font-size: 11px;
+            padding: 2px 8px;
             border-radius: 999px;
             background: #ccfbf1;
             border: 1px solid #99f6e4;
         }
 
-        .po-bank-grid {
+        .po-bank-groups {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 8px;
-            font-size: 12px;
+            gap: 6px;
+        }
+
+        .po-bank-group {
+            border-radius: 8px;
+            padding: 6px;
+            border: 1px solid transparent;
+            margin-bottom: 0;
+            min-width: 0;
+        }
+
+        .po-bank-group-title {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .po-bank-group-title-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .po-bank-group-party {
+            background: #eef6ff;
+            border-color: #c7ddf8;
+        }
+
+        .po-bank-group-party .po-bank-group-title {
+            color: #1d4ed8;
+        }
+
+        .po-bank-group-party .po-bank-group-title-badge {
+            background: #2563eb;
+        }
+
+        .po-bank-group-account {
+            background: #eefaf3;
+            border-color: #b9e4c9;
+        }
+
+        .po-bank-group-account .po-bank-group-title {
+            color: #15803d;
+        }
+
+        .po-bank-group-account .po-bank-group-title-badge {
+            background: #16a34a;
+        }
+
+        .po-bank-group-location {
+            background: #fff7ed;
+            border-color: #fdba74;
+        }
+
+        .po-bank-group-location .po-bank-group-title {
+            color: #c2410c;
+        }
+
+        .po-bank-group-location .po-bank-group-title-badge {
+            background: #ea580c;
+        }
+
+        .po-bank-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 4px;
+            font-size: 11px;
             color: #334155;
         }
 
         .po-bank-field {
-            background: #f0fdfa;
-            border: 1px solid #cceedf;
-            border-radius: 8px;
-            padding: 7px 9px;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 6px;
+            padding: 3px 7px;
             min-width: 0;
         }
 
-        .po-bank-field:nth-child(3n+2) {
-            background: #eff6ff;
+        .po-bank-group-party .po-bank-field {
             border-color: #bfdbfe;
         }
 
-        .po-bank-field:nth-child(3n) {
-            background: #fff7ed;
+        .po-bank-group-account .po-bank-field {
+            border-color: #bbf7d0;
+        }
+
+        .po-bank-group-location .po-bank-field {
             border-color: #fed7aa;
         }
 
         .po-bank-label {
-            display: block;
+            flex: 0 0 auto;
             font-weight: 700;
-            font-size: 10px;
-            letter-spacing: 0.04em;
+            font-size: 9px;
+            letter-spacing: 0.03em;
             text-transform: uppercase;
             color: #64748b;
-            margin-bottom: 2px;
+            margin-bottom: 0;
+            white-space: nowrap;
+        }
+
+        .po-bank-label::after {
+            content: ':';
         }
 
         .po-bank-value {
-            display: block;
+            flex: 1 1 auto;
+            min-width: 0;
             font-weight: 600;
             color: #0f172a;
             word-break: break-word;
-            line-height: 1.3;
+            line-height: 1.25;
+            font-size: 11px;
+        }
+
+        .po-bank-value .po-missing-badge {
+            font-size: 10px;
+            padding: 1px 5px;
+        }
+
+        @media (max-width: 900px) {
+            .po-bank-groups {
+                grid-template-columns: 1fr;
+            }
+
+            .po-bank-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 560px) {
+            .po-bank-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         /* Edit Bank Details modal */
@@ -1259,73 +1556,7 @@
         }
 
         #poBankModal .po-bank-group {
-            height: 100%;
-            border-radius: 12px;
-            padding: 12px;
-            border: 1px solid transparent;
             margin-bottom: 12px;
-        }
-
-        #poBankModal .po-bank-group-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-        }
-
-        #poBankModal .po-bank-group-title-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 22px;
-            height: 22px;
-            border-radius: 7px;
-            font-size: 11px;
-            font-weight: 800;
-            color: #fff;
-        }
-
-        #poBankModal .po-bank-group-party {
-            background: #eef6ff;
-            border-color: #c7ddf8;
-        }
-
-        #poBankModal .po-bank-group-party .po-bank-group-title {
-            color: #1d4ed8;
-        }
-
-        #poBankModal .po-bank-group-party .po-bank-group-title-badge {
-            background: #2563eb;
-        }
-
-        #poBankModal .po-bank-group-account {
-            background: #eefaf3;
-            border-color: #b9e4c9;
-        }
-
-        #poBankModal .po-bank-group-account .po-bank-group-title {
-            color: #15803d;
-        }
-
-        #poBankModal .po-bank-group-account .po-bank-group-title-badge {
-            background: #16a34a;
-        }
-
-        #poBankModal .po-bank-group-location {
-            background: #fff7ed;
-            border-color: #fdba74;
-        }
-
-        #poBankModal .po-bank-group-location .po-bank-group-title {
-            color: #c2410c;
-        }
-
-        #poBankModal .po-bank-group-location .po-bank-group-title-badge {
-            background: #ea580c;
         }
 
         #poBankModal .po-bank-field-tile {
@@ -1404,18 +1635,6 @@
             filter: brightness(1.05);
         }
 
-        @media (max-width: 900px) {
-            .po-bank-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
-        @media (max-width: 560px) {
-            .po-bank-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
         @media print {
             .po-bank-block {
                 background: #fff !important;
@@ -1424,6 +1643,7 @@
             }
 
             .po-bank-card,
+            .po-bank-group,
             .po-bank-field,
             .po-bank-card-title {
                 background: #fff !important;
@@ -1431,8 +1651,19 @@
                 box-shadow: none !important;
             }
 
-            .po-bank-block-title {
+            .po-bank-groups {
+                grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+                gap: 4px !important;
+            }
+
+            .po-bank-block-title,
+            .po-bank-group-title {
                 color: #0f172a !important;
+            }
+
+            .po-bank-group-title-badge {
+                background: #64748b !important;
+                color: #fff !important;
             }
         }
 
@@ -1599,12 +1830,11 @@
                 ? $bankAccounts->isNotEmpty()
                 : (is_array($bankAccounts) && count($bankAccounts) > 0);
             $poSupplierId = (int) ($order->supplier_id ?? ($supplier->id ?? 0));
+            $poClaimSupplierId = $poSupplierId;
+            $poClaimSupplierName = trim((string) ($supplier->name ?? ''));
+            $claimNumber = $claimNumber ?? 'CLM-0001';
             $poMissing = '<span class="po-missing-badge no-print">Missing</span><span class="po-missing-print-dash">—</span>';
             $poMissingEdit = '<span class="badge bg-danger-subtle text-danger po-missing-badge no-print">Missing — ask purchase / sourcing1 / president to edit</span>';
-            $bankFieldLabels = [
-                'Supplier', 'Beneficiary', 'Nick', 'SWIFT', 'Account',
-                'Address', 'City', 'Province', 'Country', 'Acc Type',
-            ];
             $bankHasBlankField = false;
             $poBankEditAccount = null;
             if ($hasBankAccounts) {
@@ -1631,75 +1861,54 @@
                     }
                 }
             }
+
+            $renderBankField = static function (string $label, $val) use ($poMissing): string {
+                $text = trim((string) ($val ?? ''));
+                $inner = $text !== '' ? e($text) : $poMissing;
+
+                return '<div class="po-bank-field">'
+                    .'<span class="po-bank-label">'.e($label).'</span>'
+                    .'<span class="po-bank-value">'.$inner.'</span>'
+                    .'</div>';
+            };
+
+            $renderBankGroups = static function (array $fields) use ($renderBankField): string {
+                $party = [
+                    'Supplier name' => $fields['supplier_name'] ?? '',
+                    'Nick name' => $fields['nick_name'] ?? '',
+                    'Beneficiary' => $fields['company_name'] ?? '',
+                ];
+                $account = [
+                    'Swift' => $fields['swift'] ?? '',
+                    'Account number' => $fields['account_number'] ?? '',
+                    'Acc Type' => $fields['acc_type'] ?? '',
+                ];
+                $location = [
+                    'Address' => $fields['address'] ?? '',
+                    'City' => $fields['city'] ?? '',
+                    'Province' => $fields['province'] ?? '',
+                    'Country' => $fields['country'] ?? '',
+                ];
+
+                $html = '<div class="po-bank-groups">';
+                foreach ([
+                    ['party', '1', 'Party', $party],
+                    ['account', '2', 'Account', $account],
+                    ['location', '3', 'Location', $location],
+                ] as [$key, $num, $title, $map]) {
+                    $html .= '<div class="po-bank-group po-bank-group-'.$key.'">';
+                    $html .= '<div class="po-bank-group-title"><span class="po-bank-group-title-badge">'.$num.'</span>'.e($title).'</div>';
+                    $html .= '<div class="po-bank-grid">';
+                    foreach ($map as $label => $val) {
+                        $html .= $renderBankField($label, $val);
+                    }
+                    $html .= '</div></div>';
+                }
+                $html .= '</div>';
+
+                return $html;
+            };
         @endphp
-        <div class="po-bank-block mb-3">
-            <div class="po-bank-block-head">
-                <h6 class="po-bank-block-title">
-                    <span class="po-bank-block-title-dot" aria-hidden="true"></span>
-                    Bank Details
-                </h6>
-                @if($canEditPoBank && $poSupplierId > 0)
-                    <button type="button" class="btn btn-sm btn-primary no-print" id="poBankEditBtn">
-                        Edit Bank Details
-                    </button>
-                @elseif(!$hasBankAccounts || $bankHasBlankField)
-                    {!! $poMissingEdit !!}
-                @endif
-            </div>
-            @if($hasBankAccounts)
-                <div class="po-bank-accounts">
-                    @foreach($bankAccounts as $acct)
-                        <div class="po-bank-card">
-                            <div class="po-bank-card-title">
-                                {{ $acct->nick_name ?: ($acct->company_name ?: ('Account #'.$acct->id)) }}
-                            </div>
-                            <div class="po-bank-grid">
-                                @php
-                                    $accTypeRaw = strtoupper(trim((string) ($acct->acc_type ?? '')));
-                                    $accTypeDisplay = $accTypeRaw === 'USD' ? 'US $' : ($accTypeRaw === 'RMB' ? 'RMB' : '');
-                                @endphp
-                                @foreach([
-                                    'Supplier' => $acct->supplier_name,
-                                    'Beneficiary' => $acct->company_name,
-                                    'Nick' => $acct->nick_name,
-                                    'SWIFT' => $acct->swift,
-                                    'Account' => $acct->account_number,
-                                    'Acc Type' => $accTypeDisplay,
-                                    'Address' => $acct->address,
-                                    'City' => $acct->city,
-                                    'Province' => $acct->province,
-                                    'Country' => $acct->country,
-                                ] as $label => $val)
-                                    <div class="po-bank-field">
-                                        <span class="po-bank-label">{{ $label }}</span>
-                                        <span class="po-bank-value">
-                                            @if(trim((string) $val) !== '')
-                                                {{ $val }}
-                                            @else
-                                                {!! $poMissing !!}
-                                            @endif
-                                        </span>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            @else
-                <div class="po-bank-empty">
-                    <span class="po-approval-dot" aria-hidden="true"></span>
-                    <span>No bank details on supplier list for this supplier.</span>
-                </div>
-                <div class="po-bank-grid">
-                    @foreach($bankFieldLabels as $label)
-                        <div class="po-bank-field">
-                            <span class="po-bank-label">{{ $label }}</span>
-                            <span class="po-bank-value">{!! $poMissing !!}</span>
-                        </div>
-                    @endforeach
-                </div>
-            @endif
-        </div>
 
         @php
             $grandTotals = [];
@@ -1756,12 +1965,6 @@
                         <span class="po-th-wrap">
                             <span>Special Instruction QC</span>
                             <button type="button" class="po-copy-col-btn no-print" data-copy-col="special_qc" title="Copy Special Instruction QC column">{!! $poCopyIcon !!}</button>
-                        </span>
-                    </th>
-                    <th class="col-claim" data-copy-key="claim" title="From /claim-reimbursement (this supplier)">
-                        <span class="po-th-wrap">
-                            <span>Claim &amp; Reimb.</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="claim" title="Copy Claim column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-qc no-print" title="QC &amp; Packing issues (SKU + siblings)">QC</th>
@@ -1990,6 +2193,7 @@
                             $pkgProductId = $item->product_master_id ?? null;
                             $pkgSku = $item->product_master_sku ?? ($item->sku ?? '');
                             $pkgIgnore = is_array($item->pkg_ignore ?? null) ? $item->pkg_ignore : [];
+                            $pkgApplySiblings = ! empty($item->pkg_apply_siblings);
                         @endphp
                         <td class="wrap-text col-pkg">
                             <div class="po-pkg-combined"
@@ -2006,7 +2210,8 @@
                                  data-ctn-print-file="{{ $ctnPrintFile }}"
                                  data-pallet-instructions="{{ $palletInstructions }}"
                                  data-pallet-size="{{ $palletSize }}"
-                                 data-pkg-ignore='@json($pkgIgnore)'>
+                                 data-pkg-ignore='@json($pkgIgnore)'
+                                 data-pkg-apply-siblings="{{ $pkgApplySiblings ? '1' : '0' }}">
                                 <div class="po-pkg-combined-row{{ !empty($pkgIgnore['item_pkg']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Item Pkg</span>
                                     <span class="po-pkg-combined-value po-item-pkg-text">
@@ -2069,7 +2274,17 @@
                                     <span class="po-pkg-combined-label">Ctn Print File</span>
                                     <span class="po-pkg-combined-value po-ctn-print-text">
                                         @if($ctnPrintFile !== '')
-                                            <span class="po-pkg-combined-link">{{ basename(parse_url($ctnPrintFile, PHP_URL_PATH) ?: $ctnPrintFile) }}</span>
+                                            @php
+                                                $ctnPrintIsFile = preg_match('/^https?:\/\//i', $ctnPrintFile)
+                                                    || str_starts_with($ctnPrintFile, 'data:')
+                                                    || preg_match('/\.(jpe?g|png|gif|webp|bmp|svg|pdf|cdr|ai|zip)(\?|$)/i', $ctnPrintFile)
+                                                    || ((str_contains($ctnPrintFile, '/') || str_contains($ctnPrintFile, '\\')) && ! preg_match('/\s/', $ctnPrintFile));
+                                            @endphp
+                                            @if($ctnPrintIsFile)
+                                                <span class="po-pkg-combined-link">{{ basename(parse_url($ctnPrintFile, PHP_URL_PATH) ?: $ctnPrintFile) }}</span>
+                                            @else
+                                                {!! nl2br(e($ctnPrintFile)) !!}
+                                            @endif
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -2099,6 +2314,7 @@
                         </td>
                         @php
                             $specialQcIgnore = ! empty($item->special_qc_ignore);
+                            $specialQcApplySiblings = ! empty($item->special_qc_apply_siblings);
                             $specialQcText = $specialQcIgnore ? '' : trim((string) ($item->special_instruction_qc ?? ''));
                             $specialQcPoints = preg_split('/\r\n|\r|\n/', $specialQcText) ?: [];
                             $specialQcPoints = array_values(array_filter(array_map(function ($line) {
@@ -2115,7 +2331,8 @@
                                  data-product-id="{{ $item->product_master_id ?? '' }}"
                                  data-sku="{{ $item->product_master_sku ?? ($item->sku ?? '') }}"
                                  data-special-qc="{{ $specialQcText }}"
-                                 data-special-qc-ignore="{{ $specialQcIgnore ? '1' : '0' }}">
+                                 data-special-qc-ignore="{{ $specialQcIgnore ? '1' : '0' }}"
+                                 data-special-qc-apply-siblings="{{ $specialQcApplySiblings ? '1' : '0' }}">
                                 @if($specialQcIgnore)
                                     {{-- Ignored: hide field (no Missing) --}}
                                 @elseif(count($specialQcPoints) > 0)
@@ -2128,38 +2345,6 @@
                                     <span class="po-special-qc-empty">{!! $poMissing !!}</span>
                                 @endif
                             </div>
-                        </td>
-                        <td class="col-claim">
-                            @php
-                                $claimLines = is_array($item->claim_lines ?? null) ? $item->claim_lines : [];
-                            @endphp
-                            @if(count($claimLines) > 0)
-                                <div class="po-claim-list">
-                                    @foreach($claimLines as $cl)
-                                        <div class="po-claim-card">
-                                            <div>
-                                                <a class="po-claim-num"
-                                                   href="{{ url('/claim-reimbursement') }}"
-                                                   target="_blank"
-                                                   rel="noopener"
-                                                   title="Open Claim &amp; Reimbursement">{{ $cl['claim_number'] ?? 'Claim' }}</a>
-                                                @if(!empty($cl['claim_date']))
-                                                    <span class="po-claim-meta"> · {{ $cl['claim_date'] }}</span>
-                                                @endif
-                                            </div>
-                                            <div class="po-claim-meta">
-                                                Qty {{ $cl['qty'] !== '' && $cl['qty'] !== null ? $cl['qty'] : '—' }}
-                                                · Amt {{ $cl['amount'] !== '' && $cl['amount'] !== null ? $cl['amount'] : '—' }}
-                                            </div>
-                                            @if(trim((string) ($cl['reason'] ?? '')) !== '')
-                                                <div class="po-claim-reason">{{ $cl['reason'] }}</div>
-                                            @endif
-                                        </div>
-                                    @endforeach
-                                </div>
-                            @else
-                                {!! $poMissing !!}
-                            @endif
                         </td>
                         <td class="col-qc no-print">
                             @php
@@ -2294,7 +2479,7 @@
             </tbody>
             <tfoot>
                 <tr>
-                    <td colspan="{{ $showRmbColumns ? 10 : 9 }}" class="text-end">Grand Total</td>
+                    <td colspan="{{ $showRmbColumns ? 9 : 8 }}" class="text-end">Grand Total</td>
                     <td>{{ $hasUsdTotal ? number_format(round($subtotalUsd), 0) . '$' : '—' }}</td>
                     @if($showRmbColumns)
                         <td>{{ $hasRmbTotal ? number_format(round($subtotalRmb), 0) . '¥' : '—' }}</td>
@@ -2303,6 +2488,109 @@
                 </tr>
             </tfoot>
         </table>
+
+        @php $supplierClaims = $supplierClaims ?? []; @endphp
+        @if(session('flash_message'))
+            <div class="alert alert-success alert-dismissible fade show no-print py-2" role="alert">
+                {{ session('flash_message') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        @endif
+        <div class="po-claim-section" id="poClaimSection">
+            <div class="po-claim-section-head">
+                <h6 class="po-claim-section-title">
+                    <span class="po-claim-section-title-dot" aria-hidden="true"></span>
+                    Claim &amp; Reimb.
+                </h6>
+                <div class="d-flex flex-wrap align-items-center gap-2 no-print">
+                    @if($poClaimSupplierId > 0)
+                        <button type="button"
+                                class="btn btn-sm btn-primary"
+                                id="poAddClaimBtn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#poClaimAddModal">
+                            + Add Claim / Reimbursement
+                        </button>
+                    @endif
+                    <a href="{{ url('/claim-reimbursement') }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-warning">
+                        Open Claim page
+                    </a>
+                </div>
+            </div>
+            @if(count($supplierClaims) > 0)
+                @foreach($supplierClaims as $claim)
+                    <div class="po-claim-block" data-claim-id="{{ $claim['id'] }}">
+                        <div class="po-claim-block-head">
+                            <div>
+                                <a class="po-claim-num"
+                                   href="{{ url('/claim-reimbursement') }}"
+                                   target="_blank"
+                                   rel="noopener">{{ $claim['claim_number'] ?: ('Claim #'.$claim['id']) }}</a>
+                                @if(!empty($claim['claim_date']))
+                                    <span class="po-claim-meta"> · {{ $claim['claim_date'] }}</span>
+                                @endif
+                                <span class="po-claim-meta ms-2">Total: <strong class="po-claim-total-display">{{ $claim['total_amount'] !== null && $claim['total_amount'] !== '' ? $claim['total_amount'] : '—' }}</strong></span>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-warning po-claim-save-btn no-print">Save</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="po-claim-lines-table">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width:110px">SKU</th>
+                                        <th style="width:80px">Qty</th>
+                                        <th style="width:80px">Rate</th>
+                                        <th style="width:90px">Amount</th>
+                                        <th>Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse(($claim['items'] ?? []) as $line)
+                                        <tr class="po-claim-line-row">
+                                            <td>
+                                                <input type="text" class="form-control form-control-sm po-claim-line-item" value="{{ $line['item'] ?? '' }}" maxlength="255">
+                                                <input type="hidden" class="po-claim-line-image" value="{{ $line['image'] ?? '' }}">
+                                            </td>
+                                            <td><input type="number" step="any" class="form-control form-control-sm po-claim-line-qty" value="{{ $line['qty'] ?? '' }}"></td>
+                                            <td><input type="number" step="any" class="form-control form-control-sm po-claim-line-rate" value="{{ $line['rate'] ?? '' }}"></td>
+                                            <td><input type="number" step="any" class="form-control form-control-sm po-claim-line-amount" value="{{ $line['amount'] ?? '' }}"></td>
+                                            <td><input type="text" class="form-control form-control-sm po-claim-line-reason" value="{{ $line['reason'] ?? '' }}" maxlength="2000"></td>
+                                        </tr>
+                                    @empty
+                                        <tr class="po-claim-line-row">
+                                            <td>
+                                                <input type="text" class="form-control form-control-sm po-claim-line-item" value="" maxlength="255">
+                                                <input type="hidden" class="po-claim-line-image" value="">
+                                            </td>
+                                            <td><input type="number" step="any" class="form-control form-control-sm po-claim-line-qty" value=""></td>
+                                            <td><input type="number" step="any" class="form-control form-control-sm po-claim-line-rate" value=""></td>
+                                            <td><input type="number" step="any" class="form-control form-control-sm po-claim-line-amount" value=""></td>
+                                            <td><input type="text" class="form-control form-control-sm po-claim-line-reason" value="" maxlength="2000"></td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="po-claim-block-meta">
+                            <div>
+                                <label class="form-label small fw-semibold mb-0">Received amount / goods</label>
+                                <input type="text" class="form-control form-control-sm po-claim-received" value="{{ $claim['received_amount'] ?? '' }}" maxlength="255">
+                            </div>
+                            <div>
+                                <label class="form-label small fw-semibold mb-0">Details note</label>
+                                <input type="text" class="form-control form-control-sm po-claim-details-note" value="{{ $claim['details_note'] ?? '' }}">
+                            </div>
+                        </div>
+                        <div class="po-claim-save-hint no-print" aria-live="polite"></div>
+                    </div>
+                @endforeach
+            @else
+                <div class="po-claim-empty">
+                    {!! $poMissing !!}
+                    <span class="ms-1">No active claims for this supplier on /claim-reimbursement.</span>
+                </div>
+            @endif
+        </div>
 
         <div class="row mt-4">
             <div class="col-md-6">
@@ -2399,75 +2687,191 @@
         </div>
 
         @php
+            $paymentTermOptions = $paymentTermOptions ?? [
+                '20% deposit, balance before shipping.',
+                '20% deposit, balance before Release of BL.',
+                '10% deposit, balance before Release of BL.',
+                '30% deposit, balance before Release of BL.',
+                'Each item includes 2% additional free goods for damages.',
+            ];
             $terms = [
                 'Shipping Port' => ['Tianjin', 'Guangzhou', 'Ningbo'],
-                'Quality' => [
+                'Quality & Packaging' => [
                     '• We want to have repeat order if all quality and packaging is 100% okay.',
                 ],
-                'Time' => [
-                    '• Delivery within 25 days of deposit',
+                'Delivery/ Shipping Time' => [
+                    '25 Days',
+                    '30 Days',
+                    '40 Days',
+                    '45 Days',
                 ],
-                'Packaging' => [
-                    '• No printing any Chinese letters. Only "made in China" on outer box.',
-                    '• Customized packing - 2 color logo on product, customized color gift box, customized manual book / inner box 3ply & outer box 5ply.',
-                    '• Inner Box - Print logo, www.5CORE.com, certification, logo, barcode, SKU on GIFT boxes + inner box.',
-                    '• Need to put a sticker/print with Barcode and sku on top of polymailer bag/brown inner box.',
-                    '• Master carton should weigh within (15 KG to 22 kg maximum) and within size of 18x18x18 to max 25x25x25 inch.',
-                    '• Master carton must contain 5 Core Logo, SKU, QTY, GW (Lbs), Size (in Inch), Box No. xx.',
-                    '• Provide extra color and brown gift boxes for repackaging damaged items.',
-                    '• Add color stickers on each gift and outer carton for color variants.',
-                    '• Apply cello tape on corners of inner/outer box for secure packaging.',
-                    '• Use standard pallet size for small loose items that are very heavy.',
-                ],
-                'Payment Terms' => [
-                    '• 20% deposit, balance before shipping.',
-                    '• 20% deposit, balance before Release of BL.',
-                    '• 10% deposit, balance before Release of BL.',
-                    '• 30% deposit, balance before Release of BL.',
-                    '• Each item includes 2% additional free goods for damages.',
-                ],
-                'Replacements' => [
+                'Payment Terms' => $paymentTermOptions,
+                'Requirements' => [
                     '• High-quality (8 pics) HD pictures + 1 video + description + specifications with client logo for marketing.',
-                ],
-                'Others' => [
                     '• User Manual /Assembly book required in English and Spanish with 5CORE logo printed on it.',
+                ],
+                'Return & Replacement / Claims & Reimbursement' => [
+                    '• The supplier agrees to compensate for returns / replacement / deficiency in product either as Replacement or Amount Reduction in Next Order. Our intention is to ensure that the Quality and Packaging should be 100% perfect and no returns and replacement occur due to quality and packaging.',
                 ],
             ];
         @endphp
 
-        <form id="termsForm" style="background: #e6e9e94d; padding: 15px 15px; margin-top:20px;border-radius: 8px;">
-            <h5 class="fw-bold text-primary mt-3">Terms & Conditions:</h5>
-            @foreach ($terms as $heading => $points)
-                <div class="mb-1">
-                    <h6>{{ $heading }}</h6>
-                    @if ($heading === 'Shipping Port')
-                        <select name="Shipping Port" class="form-select form-select-sm mb-2" required>
-                            @foreach ($points as $port)
-                                <option value="{{ $port }}">{{ $port }}</option>
-                            @endforeach
-                        </select>
-                    @else
-                        <ul class="list-unstyled">
-                            @foreach ($points as $key => $point)
+        <div class="po-bank-block mb-3">
+            <div class="po-bank-block-head">
+                <h6 class="po-bank-block-title">
+                    <span class="po-bank-block-title-dot" aria-hidden="true"></span>
+                    Bank Details
+                </h6>
+                @if($canEditPoBank && $poSupplierId > 0)
+                    <button type="button" class="btn btn-sm btn-primary no-print" id="poBankEditBtn">
+                        Edit Bank Details
+                    </button>
+                @elseif(!$hasBankAccounts || $bankHasBlankField)
+                    {!! $poMissingEdit !!}
+                @endif
+            </div>
+            @if($hasBankAccounts)
+                <div class="po-bank-accounts">
+                    @foreach($bankAccounts as $acct)
+                        @php
+                            $accTypeRaw = strtoupper(trim((string) ($acct->acc_type ?? '')));
+                            $accTypeDisplay = $accTypeRaw === 'USD' ? 'US $' : ($accTypeRaw === 'RMB' ? 'RMB' : '');
+                        @endphp
+                        <div class="po-bank-card">
+                            <div class="po-bank-card-title">
+                                {{ $acct->nick_name ?: ($acct->company_name ?: ('Account #'.$acct->id)) }}
+                            </div>
+                            {!! $renderBankGroups([
+                                'supplier_name' => $acct->supplier_name,
+                                'nick_name' => $acct->nick_name,
+                                'company_name' => $acct->company_name,
+                                'swift' => $acct->swift,
+                                'account_number' => $acct->account_number,
+                                'acc_type' => $accTypeDisplay,
+                                'address' => $acct->address,
+                                'city' => $acct->city,
+                                'province' => $acct->province,
+                                'country' => $acct->country,
+                            ]) !!}
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <div class="po-bank-empty">
+                    <span class="po-approval-dot" aria-hidden="true"></span>
+                    <span>No bank details on supplier list for this supplier.</span>
+                </div>
+                {!! $renderBankGroups([
+                    'supplier_name' => '',
+                    'nick_name' => '',
+                    'company_name' => '',
+                    'swift' => '',
+                    'account_number' => '',
+                    'acc_type' => '',
+                    'address' => '',
+                    'city' => '',
+                    'province' => '',
+                    'country' => '',
+                ]) !!}
+            @endif
+        </div>
+
+        @php
+            $termsColClass = [
+                'Shipping Port' => 'col-md-3',
+                'Quality & Packaging' => 'col-md-9',
+                'Delivery/ Shipping Time' => 'col-md-4',
+                'Payment Terms' => 'col-md-8',
+                'Requirements' => 'col-lg-6',
+                'Return & Replacement / Claims & Reimbursement' => 'col-lg-6',
+            ];
+        @endphp
+        <form id="termsForm" class="po-terms-form">
+            <h5 class="fw-bold text-primary">Terms & Conditions:</h5>
+            <div class="row g-2 g-md-3">
+                @foreach ($terms as $heading => $points)
+                    <div class="{{ $termsColClass[$heading] ?? 'col-12' }}">
+                        <div class="po-terms-section mb-1">
+                            <h6>{{ $heading }}</h6>
+                            @if ($heading === 'Shipping Port')
+                                <select name="Shipping Port" class="form-select form-select-sm" required>
+                                    @foreach ($points as $port)
+                                        <option value="{{ $port }}">{{ $port }}</option>
+                                    @endforeach
+                                </select>
+                            @elseif ($heading === 'Delivery/ Shipping Time')
+                                <p class="po-terms-delivery-line d-flex flex-wrap align-items-center gap-1">
+                                    <span>• Delivery within</span>
+                                    <select name="Delivery Days" id="poDeliveryDaysSelect" class="form-select form-select-sm d-inline-block" style="width: auto; min-width: 7.5rem;" required>
+                                        @foreach ($points as $days)
+                                            <option value="{{ $days }}" @selected($days === '25 Days')>{{ $days }}</option>
+                                        @endforeach
+                                    </select>
+                                    <span>of deposit</span>
+                                </p>
+                            @elseif ($heading === 'Payment Terms')
+                                <select name="Payment Terms" id="poPaymentTermsSelect" class="form-select form-select-sm mb-0" required>
+                                    <option value="">Select…</option>
+                                    @foreach ($points as $term)
+                                        <option value="{{ $term }}">{{ $term }}</option>
+                                    @endforeach
+                                    <option value="__other__">Other</option>
+                                </select>
+                                <div id="poPaymentTermsOtherWrap" class="d-none mt-2">
+                                    <div class="input-group input-group-sm mb-1">
+                                        <input type="text"
+                                               id="poPaymentTermsOtherInput"
+                                               class="form-control"
+                                               maxlength="500"
+                                               placeholder="Enter custom payment term"
+                                               autocomplete="off">
+                                        <button type="button" class="btn btn-outline-primary" id="poPaymentTermsOtherSaveBtn">
+                                            Save option
+                                        </button>
+                                    </div>
+                                    <div class="form-text" id="poPaymentTermsOtherHint">Saved Other text becomes a permanent dropdown option.</div>
+                                </div>
+                            @else
+                                <ul class="list-unstyled mb-0">
+                                    @foreach ($points as $key => $point)
+                                        <li class="mb-0">
+                                            <label>
+                                                <input type="checkbox" name="terms[{{ $heading }}][]"
+                                                    value="{{ $point }}" checked>
+                                                {{ $point }}
+                                            </label>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
+
+                @php $customTermOptions = $customTermOptions ?? []; @endphp
+                <div class="col-12">
+                    <div class="po-terms-custom" id="poSavedCustomPointsWrap">
+                        <h6>Special Instructions</h6>
+                        <ul class="list-unstyled mb-2" id="poSavedCustomPointsList">
+                            @forelse($customTermOptions as $customPoint)
                                 <li class="mb-0">
                                     <label>
-                                        <input type="checkbox" name="terms[{{ $heading }}][]"
-                                            value="{{ $point }}" checked>
-                                        {{ $point }}
+                                        <input type="checkbox" name="terms[Special Instructions][]"
+                                               value="{{ $customPoint }}" checked>
+                                        • {{ $customPoint }}
                                     </label>
                                 </li>
-                            @endforeach
+                            @empty
+                                <li class="mb-0 text-muted small" id="poSavedCustomPointsEmpty">No saved special instructions yet.</li>
+                            @endforelse
                         </ul>
-                    @endif
+                        <div class="no-print">
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="poAddCustomPointBtn">+ Add Special Instruction</button>
+                        </div>
+                        <div id="customPoints" class="mt-2"></div>
+                    </div>
                 </div>
-            @endforeach
-
-            <div class="mb-3">
-                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addCustomPoint()">+ Add Custom Point</button>
             </div>
-
-            <div id="customPoints"></div>
-
         </form>
 
         @php
@@ -2660,10 +3064,10 @@
                                             <button type="button" class="btn btn-sm po-pkg-copy-field-btn" data-pkg-field="ctn_print_file" title="Copy Ctn Print File" aria-label="Copy Ctn Print File">{!! $poPkgCopyIcon !!}</button>
                                         </div>
                                     </div>
-                                    <input type="text" id="poCtnPrintFileInput" class="form-control po-pkg-field-input"
+                                    <textarea id="poCtnPrintFileInput" class="form-control po-pkg-field-input" rows="3"
                                            data-pkg-field="ctn_print_file"
-                                           placeholder="File URL or path"
-                                           autocomplete="off">
+                                           placeholder="File URL / path, or any text notes"
+                                           autocomplete="off"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -2708,7 +3112,7 @@
                     </div>
                 </div>
                 <div class="modal-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <label class="po-pkg-siblings-wrap mb-0 no-print" title="Also save these packaging fields to sibling SKUs (same parent)">
+                    <label class="po-pkg-siblings-wrap mb-0 no-print" title="Apply to sibling SKUs and remember this choice for future saves">
                         <input type="checkbox" class="form-check-input" id="poPkgApplySiblings">
                         <span>Siblings</span>
                     </label>
@@ -2786,7 +3190,7 @@
                         </div>
                         <div class="col-md-6">
                             <label for="poAddCtnPrint" class="form-label fw-semibold">Ctn Print File</label>
-                            <input type="text" class="form-control" id="poAddCtnPrint" placeholder="File URL or path" autocomplete="off">
+                            <textarea class="form-control" id="poAddCtnPrint" rows="2" placeholder="File URL / path, or any text notes" autocomplete="off"></textarea>
                         </div>
                         <div class="col-12">
                             <label for="poAddSpecialQc" class="form-label fw-semibold">Special Instruction QC</label>
@@ -3005,6 +3409,82 @@
         </div>
     </div>
 
+    {{-- Add Claim / Reimbursement (same save as /claim-reimbursement) --}}
+    <div class="modal fade" id="poClaimAddModal" tabindex="-1" aria-labelledby="poClaimAddModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="poClaimAddModalLabel">Add Claim / Reimbursement</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="poClaimAddForm"
+                          action="{{ route('claim.reimbursement.save') }}"
+                          method="POST"
+                          enctype="multipart/form-data">
+                        @csrf
+                        <input type="hidden" name="redirect_to" value="{{ url()->current() }}">
+                        <input type="hidden" name="supplier" value="{{ $poClaimSupplierId }}">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">From Supplier</label>
+                                <input type="text" class="form-control" value="{{ $poClaimSupplierName !== '' ? $poClaimSupplierName : ('Supplier #'.$poClaimSupplierId) }}" readonly>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="poClaimNo" class="form-label fw-semibold">Claim No.</label>
+                                <input type="text" id="poClaimNo" name="claim_number" class="form-control" value="{{ $claimNumber }}" readonly>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="poClaimDate" class="form-label fw-semibold">Date</label>
+                                <input type="date" id="poClaimDate" name="claim_date" class="form-control" value="{{ date('Y-m-d') }}" required>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle text-center" id="poClaimAddTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="min-width: 220px;">SKU</th>
+                                        <th>Qty</th>
+                                        <th>Rate USD</th>
+                                        <th>Amount</th>
+                                        <th>Reason/Notes</th>
+                                        <th>Image (if ANY)</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="poClaimAddTableBody">
+                                    <tr>
+                                        <td>
+                                            <select name="item[]" class="form-control po-claim-sku-select" required style="width: 100%;">
+                                                <option value="">Search SKU...</option>
+                                            </select>
+                                        </td>
+                                        <td><input type="number" name="qty[]" class="form-control po-claim-add-qty" required></td>
+                                        <td><input type="number" step="0.01" name="rate[]" class="form-control po-claim-add-rate" required></td>
+                                        <td><input type="number" name="amount[]" class="form-control po-claim-add-amount" readonly></td>
+                                        <td><input type="text" name="reason[]" class="form-control"></td>
+                                        <td><input type="file" name="image[]" class="form-control" accept=".jpg,.jpeg,.png,.pdf"></td>
+                                        <td><button type="button" class="btn btn-danger btn-sm po-claim-add-remove-row">&times;</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-success btn-sm" id="poClaimAddRowBtn">+ Add Row</button>
+                        </div>
+                        <div class="text-end">
+                            <strong>Total Amount: $<span id="poClaimAddTotal">0.00</span></strong>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" form="poClaimAddForm" class="btn btn-primary" {{ $poClaimSupplierId <= 0 ? 'disabled' : '' }}>Save Claim</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Special Instruction QC — numbered points modal --}}
     <div class="modal fade" id="poSpecialQcModal" tabindex="-1" aria-labelledby="poSpecialQcModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -3029,9 +3509,15 @@
                         <div class="form-text mt-2">Saved as numbered points to QC Improvement Req (before item pkg).</div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="poSpecialQcSaveBtn">Save</button>
+                <div class="modal-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <label class="po-pkg-siblings-wrap mb-0 no-print" title="Apply to sibling SKUs and remember this choice for future saves">
+                        <input type="checkbox" class="form-check-input" id="poSpecialQcApplySiblings">
+                        <span>Siblings</span>
+                    </label>
+                    <div class="d-flex gap-2 ms-auto">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="poSpecialQcSaveBtn">Save</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3046,13 +3532,117 @@
     <script>
         function addCustomPoint() {
             const container = document.getElementById('customPoints');
+            if (!container) return;
             const newDiv = document.createElement('div');
-            newDiv.className = "mb-0";
+            newDiv.className = 'mb-2 po-custom-point-row border rounded p-2 bg-white';
             newDiv.innerHTML = `
-                <input type="text" name="custom_terms[]" class="form-control form-control-sm" placeholder="Enter custom point" required>
+                <input type="text" name="custom_terms[]" class="form-control form-control-sm mb-2 po-custom-point-input" placeholder="Enter special instruction" autocomplete="off">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label class="mb-0 small fw-semibold d-inline-flex align-items-center gap-1">
+                        <input type="checkbox" class="form-check-input po-custom-point-save-next" checked>
+                        <span>Save for next use</span>
+                    </label>
+                    <button type="button" class="btn btn-sm btn-primary po-custom-point-save-btn">Save</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary po-custom-point-remove-btn">Remove</button>
+                    <span class="small text-muted po-custom-point-hint"></span>
+                </div>
             `;
             container.appendChild(newDiv);
+            newDiv.querySelector('.po-custom-point-input')?.focus();
         }
+
+        (function initPoCustomPoints() {
+            const addBtn = document.getElementById('poAddCustomPointBtn');
+            const list = document.getElementById('poSavedCustomPointsList');
+            const emptyEl = document.getElementById('poSavedCustomPointsEmpty');
+            const container = document.getElementById('customPoints');
+            if (!addBtn || !list || !container) return;
+
+            const saveUrl = @json(route('purchase-order.custom-term-option'));
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+            addBtn.addEventListener('click', () => addCustomPoint());
+
+            function appendSavedCheckbox(value) {
+                const val = String(value || '').trim();
+                if (!val) return;
+                const exists = Array.from(list.querySelectorAll('input[type="checkbox"]'))
+                    .some((cb) => String(cb.value || '').trim() === val);
+                if (exists) return;
+                emptyEl?.remove();
+                const li = document.createElement('li');
+                li.className = 'mb-0';
+                li.innerHTML = `
+                    <label>
+                        <input type="checkbox" name="terms[Special Instructions][]" value="">
+                        • <span class="po-custom-point-label"></span>
+                    </label>
+                `;
+                const cb = li.querySelector('input');
+                const labelSpan = li.querySelector('.po-custom-point-label');
+                if (cb) {
+                    cb.value = val;
+                    cb.checked = true;
+                }
+                if (labelSpan) labelSpan.textContent = val;
+                list.appendChild(li);
+            }
+
+            container.addEventListener('click', async (e) => {
+                const removeBtn = e.target.closest('.po-custom-point-remove-btn');
+                if (removeBtn) {
+                    removeBtn.closest('.po-custom-point-row')?.remove();
+                    return;
+                }
+                const saveBtn = e.target.closest('.po-custom-point-save-btn');
+                if (!saveBtn) return;
+                const row = saveBtn.closest('.po-custom-point-row');
+                if (!row) return;
+                const input = row.querySelector('.po-custom-point-input');
+                const saveNext = row.querySelector('.po-custom-point-save-next');
+                const hint = row.querySelector('.po-custom-point-hint');
+                const value = String(input?.value || '').trim();
+                if (!value) {
+                    alert('Enter a special instruction first.');
+                    input?.focus();
+                    return;
+                }
+
+                if (!saveNext?.checked) {
+                    // One-time only: keep as temporary input for this print/session.
+                    if (hint) hint.textContent = 'Added for this document only.';
+                    return;
+                }
+
+                saveBtn.disabled = true;
+                const orig = saveBtn.textContent;
+                saveBtn.textContent = 'Saving…';
+                if (hint) hint.textContent = '';
+                try {
+                    const res = await fetch(saveUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({ value: value }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to save special instruction');
+                    }
+                    appendSavedCheckbox(data.value || value);
+                    row.remove();
+                } catch (err) {
+                    alert(err.message || 'Failed to save special instruction');
+                    if (hint) hint.textContent = 'Save failed.';
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = orig;
+                }
+            });
+        })();
         
         window.onbeforeprint = () => {
             // Remove all unchecked checkboxes
@@ -3066,15 +3656,28 @@
                 }
             });
 
-            // Remove empty custom input points
-            const customInputs = document.querySelectorAll('input[name="custom_terms[]"]');
-            customInputs.forEach(input => {
-                if (!input.value.trim()) {
-                    input.remove();
+            // Convert ad-hoc custom points into printable bullets; drop empty rows
+            const savedList = document.getElementById('poSavedCustomPointsList');
+            document.querySelectorAll('#customPoints .po-custom-point-row').forEach((row) => {
+                const input = row.querySelector('input[name="custom_terms[]"]');
+                const value = String(input?.value || '').trim();
+                if (!value) {
+                    row.remove();
+                    return;
+                }
+                // Prefer appending into the saved Custom Points list for print layout
+                if (savedList) {
+                    const li = document.createElement('li');
+                    li.className = 'mb-0';
+                    li.textContent = `• ${value}`;
+                    savedList.appendChild(li);
+                    document.getElementById('poSavedCustomPointsEmpty')?.remove();
+                    row.remove();
                 } else {
                     const textNode = document.createElement('p');
-                    textNode.textContent = input.value.trim();
-                    input.parentNode.replaceChild(textNode, input);
+                    textNode.className = 'mb-0';
+                    textNode.textContent = `• ${value}`;
+                    row.replaceWith(textNode);
                 }
             });
 
@@ -3094,18 +3697,59 @@
                 portSelect.parentNode.appendChild(printSpan);
             }
 
+            // Convert Time / Delivery Days dropdown to plain text
+            const daysSelect = document.getElementById('poDeliveryDaysSelect');
+            if (daysSelect) {
+                const selectedOption = daysSelect.options[daysSelect.selectedIndex];
+                const selectedDays = selectedOption ? selectedOption.textContent.trim() : '25 Days';
+                const wrap = daysSelect.closest('p');
+                const printSpan = document.createElement('p');
+                printSpan.textContent = `• Delivery within ${selectedDays} of deposit`;
+                printSpan.classList.add('print-only');
+                printSpan.style.margin = '0';
+                if (wrap) {
+                    wrap.style.display = 'none';
+                    wrap.parentNode.appendChild(printSpan);
+                } else {
+                    daysSelect.style.display = 'none';
+                    daysSelect.parentNode.appendChild(printSpan);
+                }
+            }
+
+            // Convert Payment Terms dropdown to plain text
+            const paySelect = document.getElementById('poPaymentTermsSelect');
+            if (paySelect) {
+                let selectedText = '';
+                if (paySelect.value === '__other__') {
+                    selectedText = (document.getElementById('poPaymentTermsOtherInput')?.value || '').trim();
+                } else {
+                    const selectedOption = paySelect.options[paySelect.selectedIndex];
+                    selectedText = selectedOption ? selectedOption.textContent.trim() : '';
+                }
+                if (!selectedText || selectedText === 'Select…' || selectedText === 'Other') {
+                    selectedText = 'N/A';
+                }
+                const printSpan = document.createElement('p');
+                printSpan.textContent = `Payment Terms: ${selectedText}`;
+                printSpan.classList.add('print-only');
+                printSpan.style.margin = '0';
+                paySelect.style.display = 'none';
+                document.getElementById('poPaymentTermsOtherWrap')?.classList.add('d-none');
+                paySelect.parentNode.appendChild(printSpan);
+            }
 
             // Remove all buttons inside the form
             document.querySelectorAll('form#termsForm button').forEach(btn => btn.remove());
 
             // ✅ Remove empty heading blocks
-            document.querySelectorAll('#termsForm .mb-1').forEach(section => {
+            document.querySelectorAll('#termsForm .po-terms-section').forEach(section => {
                 const listItems = section.querySelectorAll('li');
                 const hasTextInputs = section.querySelectorAll('input[type="text"], select, textarea').length;
-                const hasRemainingContent = listItems.length > 0 || hasTextInputs > 0;
+                const hasPrintText = section.parentElement?.querySelector('.print-only');
+                const hasRemainingContent = listItems.length > 0 || hasTextInputs > 0 || !!hasPrintText;
 
                 if (!hasRemainingContent) {
-                    section.remove();
+                    (section.closest('[class*="col-"]') || section).remove();
                 }
             });
 
@@ -3114,6 +3758,110 @@
         function printAsPdfStyle() {
             window.print();
         }
+
+        // Payment Terms dropdown + Other → save as permanent option
+        (function initPoPaymentTerms() {
+            const select = document.getElementById('poPaymentTermsSelect');
+            const otherWrap = document.getElementById('poPaymentTermsOtherWrap');
+            const otherInput = document.getElementById('poPaymentTermsOtherInput');
+            const saveBtn = document.getElementById('poPaymentTermsOtherSaveBtn');
+            const hint = document.getElementById('poPaymentTermsOtherHint');
+            if (!select || !otherWrap || !otherInput || !saveBtn) return;
+
+            const saveUrl = @json(route('purchase-order.payment-term-option'));
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+            function toggleOther() {
+                const isOther = select.value === '__other__';
+                otherWrap.classList.toggle('d-none', !isOther);
+                if (isOther) {
+                    otherInput.focus();
+                }
+            }
+
+            function ensureOption(value) {
+                const val = String(value || '').trim();
+                if (!val) return;
+                let found = false;
+                Array.from(select.options).forEach((opt) => {
+                    if (opt.value === val) found = true;
+                });
+                if (!found) {
+                    const otherOpt = select.querySelector('option[value="__other__"]');
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = val;
+                    if (otherOpt) {
+                        select.insertBefore(opt, otherOpt);
+                    } else {
+                        select.appendChild(opt);
+                    }
+                }
+                select.value = val;
+                toggleOther();
+            }
+
+            select.addEventListener('change', toggleOther);
+
+            saveBtn.addEventListener('click', async () => {
+                const value = String(otherInput.value || '').trim();
+                if (!value) {
+                    alert('Enter a payment term first.');
+                    otherInput.focus();
+                    return;
+                }
+                saveBtn.disabled = true;
+                const orig = saveBtn.textContent;
+                saveBtn.textContent = 'Saving…';
+                if (hint) hint.textContent = '';
+                try {
+                    const res = await fetch(saveUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({ value: value }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to save payment term option');
+                    }
+                    const options = Array.isArray(data.options) ? data.options : [value];
+                    const otherOpt = select.querySelector('option[value="__other__"]');
+                    // Rebuild options (keep Select… + Other)
+                    select.innerHTML = '<option value="">Select…</option>';
+                    options.forEach((optVal) => {
+                        const opt = document.createElement('option');
+                        opt.value = optVal;
+                        opt.textContent = optVal;
+                        select.appendChild(opt);
+                    });
+                    const other = document.createElement('option');
+                    other.value = '__other__';
+                    other.textContent = 'Other';
+                    select.appendChild(other);
+                    ensureOption(data.value || value);
+                    otherInput.value = '';
+                    if (hint) hint.textContent = 'Saved as dropdown option.';
+                } catch (err) {
+                    alert(err.message || 'Failed to save payment term option');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = orig;
+                }
+            });
+
+            otherInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveBtn.click();
+                }
+            });
+
+            toggleOther();
+        })();
 
         (function () {
             const saveUrl = @json(!empty($order->id) ? route('purchase-order.update-item-supplier-sku', $order->id) : '');
@@ -3671,6 +4419,219 @@
                 }
             });
 
+            // Claim & Reimb. (after Grand Total) — save to /claim-reimbursement
+            (function initPoClaims() {
+                const section = document.getElementById('poClaimSection');
+                if (!section) return;
+                const itemsBaseUrl = @json(url('/claim-reimbursement'));
+
+                function recalcAmount(row) {
+                    const qtyEl = row.querySelector('.po-claim-line-qty');
+                    const rateEl = row.querySelector('.po-claim-line-rate');
+                    const amtEl = row.querySelector('.po-claim-line-amount');
+                    if (!qtyEl || !rateEl || !amtEl) return;
+                    const q = parseFloat(qtyEl.value);
+                    const r = parseFloat(rateEl.value);
+                    if (!Number.isFinite(q) || !Number.isFinite(r)) return;
+                    amtEl.value = String(Math.round(q * r * 100) / 100);
+                }
+
+                section.querySelectorAll('.po-claim-line-qty, .po-claim-line-rate').forEach((el) => {
+                    el.addEventListener('input', function () {
+                        const row = this.closest('.po-claim-line-row');
+                        if (row) recalcAmount(row);
+                    });
+                });
+
+                section.querySelectorAll('.po-claim-save-btn').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const block = btn.closest('.po-claim-block');
+                        if (!block) return;
+                        const claimId = block.getAttribute('data-claim-id');
+                        if (!claimId) return;
+                        const hint = block.querySelector('.po-claim-save-hint');
+                        const items = [];
+                        block.querySelectorAll('.po-claim-line-row').forEach((row) => {
+                            const item = String(row.querySelector('.po-claim-line-item')?.value || '').trim();
+                            if (!item) return;
+                            items.push({
+                                item: item,
+                                qty: row.querySelector('.po-claim-line-qty')?.value ?? '',
+                                rate: row.querySelector('.po-claim-line-rate')?.value ?? '',
+                                amount: row.querySelector('.po-claim-line-amount')?.value ?? '',
+                                reason: row.querySelector('.po-claim-line-reason')?.value ?? '',
+                                image: row.querySelector('.po-claim-line-image')?.value || null,
+                            });
+                        });
+                        if (!items.length) {
+                            if (hint) {
+                                hint.textContent = 'Add at least one SKU line.';
+                                hint.classList.add('is-error');
+                            }
+                            return;
+                        }
+                        const payload = {
+                            items: items,
+                            received_amount: block.querySelector('.po-claim-received')?.value ?? '',
+                            details_note: block.querySelector('.po-claim-details-note')?.value ?? '',
+                        };
+                        btn.disabled = true;
+                        const orig = btn.textContent;
+                        btn.textContent = 'Saving…';
+                        if (hint) {
+                            hint.textContent = '';
+                            hint.classList.remove('is-error');
+                        }
+                        try {
+                            const res = await fetch(itemsBaseUrl + '/' + claimId + '/items', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': csrf,
+                                },
+                                body: JSON.stringify(payload),
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok || data.success === false) {
+                                const firstErr = data.errors
+                                    ? (Object.values(data.errors).flat()[0] || data.message)
+                                    : data.message;
+                                throw new Error(firstErr || 'Failed to save claim');
+                            }
+                            const totalEl = block.querySelector('.po-claim-total-display');
+                            if (totalEl && data.claim) {
+                                totalEl.textContent = data.claim.total_amount ?? '—';
+                            }
+                            if (hint) {
+                                hint.textContent = 'Saved.';
+                                hint.classList.remove('is-error');
+                            }
+                        } catch (err) {
+                            if (hint) {
+                                hint.textContent = err.message || 'Failed to save claim';
+                                hint.classList.add('is-error');
+                            } else {
+                                alert(err.message || 'Failed to save claim');
+                            }
+                        } finally {
+                            btn.disabled = false;
+                            btn.textContent = orig;
+                        }
+                    });
+                });
+            })();
+
+            // Add Claim / Reimbursement modal (same endpoint as /claim-reimbursement)
+            (function initPoClaimAddModal() {
+                const modalEl = document.getElementById('poClaimAddModal');
+                const tbody = document.getElementById('poClaimAddTableBody');
+                const addRowBtn = document.getElementById('poClaimAddRowBtn');
+                const totalEl = document.getElementById('poClaimAddTotal');
+                if (!modalEl || !tbody || !addRowBtn || !totalEl) return;
+
+                function updateTotal() {
+                    let total = 0;
+                    tbody.querySelectorAll('.po-claim-add-amount').forEach((input) => {
+                        total += parseFloat(input.value) || 0;
+                    });
+                    totalEl.textContent = total.toFixed(2);
+                }
+
+                function attachRowListeners(row) {
+                    const qtyInput = row.querySelector('.po-claim-add-qty');
+                    const rateInput = row.querySelector('.po-claim-add-rate');
+                    const amountInput = row.querySelector('.po-claim-add-amount');
+                    const recalc = () => {
+                        const qty = parseFloat(qtyInput?.value) || 0;
+                        const rate = parseFloat(rateInput?.value) || 0;
+                        if (amountInput) amountInput.value = (qty * rate).toFixed(2);
+                        updateTotal();
+                    };
+                    qtyInput?.addEventListener('input', recalc);
+                    rateInput?.addEventListener('input', recalc);
+                    row.querySelector('.po-claim-add-remove-row')?.addEventListener('click', () => {
+                        if (tbody.querySelectorAll('tr').length > 1) {
+                            const sku = row.querySelector('.po-claim-sku-select');
+                            if (window.jQuery && sku && jQuery(sku).data('select2')) {
+                                jQuery(sku).select2('destroy');
+                            }
+                            row.remove();
+                            updateTotal();
+                        } else {
+                            alert('At least one row must remain.');
+                        }
+                    });
+                }
+
+                function initSkuSelect(element) {
+                    if (!element || !window.jQuery || !jQuery.fn.select2) return;
+                    const $el = jQuery(element);
+                    if ($el.hasClass('select2-hidden-accessible')) {
+                        $el.select2('destroy');
+                    }
+                    $el.select2({
+                        ajax: {
+                            url: '/purchase/search-sku',
+                            dataType: 'json',
+                            delay: 250,
+                            data: function (params) {
+                                return { q: params.term || '', page: params.page || 1 };
+                            },
+                            processResults: function (data, params) {
+                                params.page = params.page || 1;
+                                return {
+                                    results: data.items || [],
+                                    pagination: { more: !!data.has_more },
+                                };
+                            },
+                            cache: true,
+                        },
+                        placeholder: 'Search SKU...',
+                        allowClear: true,
+                        minimumInputLength: 0,
+                        dropdownParent: jQuery('#poClaimAddModal'),
+                        width: '100%',
+                    });
+                }
+
+                function makeRowHtml() {
+                    return `
+                        <tr>
+                            <td>
+                                <select name="item[]" class="form-control po-claim-sku-select" required style="width: 100%;">
+                                    <option value="">Search SKU...</option>
+                                </select>
+                            </td>
+                            <td><input type="number" name="qty[]" class="form-control po-claim-add-qty" required></td>
+                            <td><input type="number" step="0.01" name="rate[]" class="form-control po-claim-add-rate" required></td>
+                            <td><input type="number" name="amount[]" class="form-control po-claim-add-amount" readonly></td>
+                            <td><input type="text" name="reason[]" class="form-control"></td>
+                            <td><input type="file" name="image[]" class="form-control" accept=".jpg,.jpeg,.png,.pdf"></td>
+                            <td><button type="button" class="btn btn-danger btn-sm po-claim-add-remove-row">&times;</button></td>
+                        </tr>
+                    `;
+                }
+
+                addRowBtn.addEventListener('click', () => {
+                    tbody.insertAdjacentHTML('beforeend', makeRowHtml());
+                    const row = tbody.lastElementChild;
+                    if (!row) return;
+                    attachRowListeners(row);
+                    initSkuSelect(row.querySelector('.po-claim-sku-select'));
+                });
+
+                const firstRow = tbody.querySelector('tr');
+                if (firstRow) {
+                    attachRowListeners(firstRow);
+                }
+
+                modalEl.addEventListener('shown.bs.modal', () => {
+                    tbody.querySelectorAll('.po-claim-sku-select').forEach((el) => initSkuSelect(el));
+                    updateTotal();
+                });
+            })();
+
             // Advance % → amount = Grand Total * %; save to PO + supplier_advances
             (function initPoAdvance() {
                 const percentInput = document.getElementById('po-advance-percent');
@@ -4156,10 +5117,13 @@
                     .join('\n');
             }
 
-            function renderSpecialQcCell(cell, text, ignored) {
+            function renderSpecialQcCell(cell, text, ignored, applySiblings) {
                 if (!cell) return;
                 const isIgnored = !!ignored;
                 cell.setAttribute('data-special-qc-ignore', isIgnored ? '1' : '0');
+                if (applySiblings !== undefined) {
+                    cell.setAttribute('data-special-qc-apply-siblings', applySiblings ? '1' : '0');
+                }
                 if (isIgnored) {
                     cell.setAttribute('data-special-qc', '');
                     cell.innerHTML = '';
@@ -4234,6 +5198,10 @@
                 const ignored = cell.getAttribute('data-special-qc-ignore') === '1';
                 const ignoreCb = document.getElementById('poSpecialQcIgnore');
                 if (ignoreCb) ignoreCb.checked = ignored;
+                const siblingsCb = document.getElementById('poSpecialQcApplySiblings');
+                if (siblingsCb) {
+                    siblingsCb.checked = cell.getAttribute('data-special-qc-apply-siblings') === '1';
+                }
                 const pointsWrap = document.getElementById('poSpecialQcPoints');
                 if (pointsWrap) pointsWrap.innerHTML = '';
                 if (ignored) {
@@ -4292,6 +5260,7 @@
                     return;
                 }
                 const ignored = !!document.getElementById('poSpecialQcIgnore')?.checked;
+                const applySiblings = !!document.getElementById('poSpecialQcApplySiblings')?.checked;
                 const points = ignored
                     ? []
                     : Array.from(document.querySelectorAll('#poSpecialQcPoints .po-special-qc-point-input'))
@@ -4313,6 +5282,7 @@
                             product_id: productId,
                             qc_improvement_req: text,
                             ignore: ignored,
+                            apply_siblings: applySiblings,
                         }),
                     });
                     const data = await res.json().catch(() => ({}));
@@ -4320,11 +5290,34 @@
                         throw new Error(data.message || 'Failed to save Special Instruction QC');
                     }
                     const savedIgnore = data.ignore != null ? !!data.ignore : ignored;
+                    const savedApplySiblings = data.apply_siblings != null ? !!data.apply_siblings : applySiblings;
                     const saved = savedIgnore
                         ? ''
                         : (data.qc_improvement_req != null ? String(data.qc_improvement_req) : text);
-                    renderSpecialQcCell(specialQcTargetCell, saved, savedIgnore);
+                    renderSpecialQcCell(specialQcTargetCell, saved, savedIgnore, savedApplySiblings);
+
+                    const sibSkus = Array.isArray(data.siblings) ? data.siblings : [];
+                    if (applySiblings && sibSkus.length) {
+                        const sibNorms = new Set(sibSkus.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean));
+                        document.querySelectorAll('.po-special-qc-cell').forEach((cell) => {
+                            if (cell === specialQcTargetCell) return;
+                            const cellSku = decodeHtmlEntities(cell.getAttribute('data-sku') || '').trim().toUpperCase();
+                            if (!cellSku || !sibNorms.has(cellSku)) return;
+                            renderSpecialQcCell(cell, saved, savedIgnore, true);
+                        });
+                    }
+
                     specialQcModal.hide();
+                    if (applySiblings) {
+                        const updated = Number(data.siblings_updated || 0);
+                        if (updated > 0) {
+                            alert(updated + ' sibling SKU(s) updated.');
+                        } else {
+                            alert(data.message && String(data.message).includes('parent')
+                                ? 'No parent set — nothing to copy to siblings.'
+                                : 'No sibling SKUs found.');
+                        }
+                    }
                 } catch (err) {
                     alert(err.message || 'Failed to save Special Instruction QC');
                 } finally {
@@ -4551,16 +5544,26 @@
                 el.innerHTML = t ? escapeHtml(t).replace(/\n/g, '<br>') : blankPkgDisplay(!!ignored);
             }
 
+            function looksLikeFilePath(value) {
+                const u = String(value || '').trim();
+                if (!u) return false;
+                if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return true;
+                if (/\.(jpe?g|png|gif|webp|bmp|svg|pdf|cdr|ai|zip)(\?|$)/i.test(u)) return true;
+                if ((u.includes('/') || u.includes('\\')) && !/\s/.test(u)) return true;
+                return false;
+            }
+
             function renderFileValueHtml(url, ignored) {
                 const u = (url || '').trim();
                 if (!u) return blankPkgDisplay(!!ignored);
-                if (isImagePath(u) || /^https?:\/\//i.test(u) || u.startsWith('data:')) {
-                    if (isImagePath(u) || /^https?:\/\//i.test(u) || u.startsWith('data:image/')) {
+                // File URL / path → basename (or thumb for images); otherwise free text.
+                if (looksLikeFilePath(u)) {
+                    if (isImagePath(u) || /^https?:\/\/.+\.(jpe?g|png|gif|webp|bmp|svg)(\?|$)/i.test(u) || u.startsWith('data:image/')) {
                         return `<img src="${escapeHtml(u)}" alt="" class="po-pkg-combined-thumb">`;
                     }
                     return `<span class="po-pkg-combined-link">${escapeHtml(fileBasename(u) || 'File')}</span>`;
                 }
-                return `<span class="po-pkg-combined-link">${escapeHtml(fileBasename(u) || 'File')}</span>`;
+                return escapeHtml(u).replace(/\n/g, '<br>');
             }
 
             function renderCoverValueHtml(value, ignored) {
@@ -4716,7 +5719,9 @@
                 applyPkgIgnoreFlags(parsePkgIgnoreAttr(source.getAttribute('data-pkg-ignore')));
 
                 const siblingsCb = document.getElementById('poPkgApplySiblings');
-                if (siblingsCb) siblingsCb.checked = false;
+                if (siblingsCb) {
+                    siblingsCb.checked = source.getAttribute('data-pkg-apply-siblings') === '1';
+                }
 
                 setPkgClipboardHint('');
                 pkgModal.show();
@@ -5060,6 +6065,7 @@
                         ? String(palletData.pallet_size)
                         : palletSize;
 
+                    const applySiblings = !!document.getElementById('poPkgApplySiblings')?.checked;
                     const ignoreRes = await fetch(pkgIgnoreUrl, {
                         method: 'POST',
                         headers: {
@@ -5070,6 +6076,7 @@
                         body: JSON.stringify({
                             product_id: productId,
                             pkg_ignore: ignoreFlags,
+                            apply_siblings: applySiblings,
                         }),
                     });
                     const ignoreData = await ignoreRes.json().catch(() => ({}));
@@ -5079,6 +6086,9 @@
                     const savedIgnore = ignoreData.pkg_ignore && typeof ignoreData.pkg_ignore === 'object'
                         ? ignoreData.pkg_ignore
                         : ignoreFlags;
+                    const savedApplySiblings = ignoreData.apply_siblings != null
+                        ? !!ignoreData.apply_siblings
+                        : applySiblings;
 
                     const savedItem = (itemData.instructions != null ? String(itemData.instructions) : itemPkg).trim();
                     const savedCtn = ctnPkg;
@@ -5101,8 +6111,10 @@
                         savedPalletSize,
                         savedIgnore
                     );
+                    if (pkgTargetCell) {
+                        pkgTargetCell.setAttribute('data-pkg-apply-siblings', savedApplySiblings ? '1' : '0');
+                    }
 
-                    const applySiblings = !!document.getElementById('poPkgApplySiblings')?.checked;
                     let siblingMsg = '';
                     if (applySiblings) {
                         // Always send Ignore checkbox state so siblings save the same checks.
@@ -5116,6 +6128,7 @@
                             body: JSON.stringify({
                                 product_id: productId,
                                 pkg_ignore: savedIgnore,
+                                apply_siblings: true,
                             }),
                         });
                         const sibData = await sibRes.json().catch(() => ({}));
@@ -5145,6 +6158,7 @@
                                     String(pkg.pallet_size ?? ''),
                                     sibIgnore
                                 );
+                                cell.setAttribute('data-pkg-apply-siblings', '1');
                             });
                         }
                         siblingMsg = sibData.message || (
@@ -5171,7 +6185,6 @@
                 tech: '.col-tech',
                 packaging: '.col-pkg',
                 special_qc: '.col-special-qc',
-                claim: '.col-claim',
                 qty: '.col-qty',
                 price_usd: '.col-price-usd',
                 price_rmb: '.col-price-rmb',
@@ -5184,7 +6197,6 @@
                 tech: 'Tech',
                 packaging: 'Packaging',
                 special_qc: 'Special Instruction QC',
-                claim: 'Claim & Reimb.',
                 qty: 'QTY',
                 price_usd: 'Rate $',
                 price_rmb: 'Rate ¥',
