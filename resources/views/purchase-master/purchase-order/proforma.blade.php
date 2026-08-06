@@ -1676,7 +1676,6 @@
                             $pkgProductId = $item->product_master_id ?? null;
                             $pkgSku = $item->product_master_sku ?? ($item->sku ?? '');
                             $pkgIgnore = is_array($item->pkg_ignore ?? null) ? $item->pkg_ignore : [];
-                            $pkgIgnoredHtml = '<span class="po-pkg-ignored">—</span>';
                         @endphp
                         <td class="wrap-text col-pkg">
                             <div class="po-pkg-combined"
@@ -1694,19 +1693,17 @@
                                  data-pallet-instructions="{{ $palletInstructions }}"
                                  data-pallet-size="{{ $palletSize }}"
                                  data-pkg-ignore='@json($pkgIgnore)'>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['item_pkg']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Item Pkg</span>
                                     <span class="po-pkg-combined-value po-item-pkg-text">
                                         @if($itemPkg !== '')
                                             {!! nl2br(e($itemPkg)) !!}
-                                        @elseif(!empty($pkgIgnore['item_pkg']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['item_pkg_image']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Item Pkg Image</span>
                                     <span class="po-pkg-combined-value po-cover-text">
                                         @if($itemPkgCover !== '')
@@ -1715,14 +1712,12 @@
                                             @else
                                                 {!! nl2br(e($itemPkgCover)) !!}
                                             @endif
-                                        @elseif(!empty($pkgIgnore['item_pkg_image']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['design_file']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Design File Item</span>
                                     <span class="po-pkg-combined-value po-design-text">
                                         @if($designFile !== '')
@@ -1731,68 +1726,56 @@
                                             @else
                                                 <span class="po-pkg-combined-link">{{ $designFileName !== '' ? $designFileName : 'File' }}</span>
                                             @endif
-                                        @elseif(!empty($pkgIgnore['design_file']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['ctn_pkg']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Ctn Pkg</span>
                                     <span class="po-pkg-combined-value po-ctn-pkg-text">
                                         @if($ctnPkg !== '')
                                             {!! nl2br(e($ctnPkg)) !!}
-                                        @elseif(!empty($pkgIgnore['ctn_pkg']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['ctn_qty']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Ctn Qty</span>
                                     <span class="po-pkg-combined-value po-ctn-qty-text">
                                         @if($ctnQty !== '' && $ctnQty !== null)
                                             {{ $ctnQty }}
-                                        @elseif(!empty($pkgIgnore['ctn_qty']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['ctn_print_file']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Ctn Print File</span>
                                     <span class="po-pkg-combined-value po-ctn-print-text">
                                         @if($ctnPrintFile !== '')
                                             <span class="po-pkg-combined-link">{{ basename(parse_url($ctnPrintFile, PHP_URL_PATH) ?: $ctnPrintFile) }}</span>
-                                        @elseif(!empty($pkgIgnore['ctn_print_file']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['pallet_instructions']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Pallet Instructions</span>
                                     <span class="po-pkg-combined-value po-pallet-instructions-text">
                                         @if($palletInstructions !== '')
                                             {!! nl2br(e($palletInstructions)) !!}
-                                        @elseif(!empty($pkgIgnore['pallet_instructions']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
-                                <div class="po-pkg-combined-row">
+                                <div class="po-pkg-combined-row{{ !empty($pkgIgnore['pallet_size']) ? ' d-none' : '' }}">
                                     <span class="po-pkg-combined-label">Pallet Size</span>
                                     <span class="po-pkg-combined-value po-pallet-size-text">
                                         @if($palletSize !== '')
                                             {{ $palletSize }}
-                                        @elseif(!empty($pkgIgnore['pallet_size']))
-                                            {!! $pkgIgnoredHtml !!}
                                         @else
                                             {!! $poMissing !!}
                                         @endif
@@ -1801,7 +1784,8 @@
                             </div>
                         </td>
                         @php
-                            $specialQcText = trim((string) ($item->special_instruction_qc ?? ''));
+                            $specialQcIgnore = ! empty($item->special_qc_ignore);
+                            $specialQcText = $specialQcIgnore ? '' : trim((string) ($item->special_instruction_qc ?? ''));
                             $specialQcPoints = preg_split('/\r\n|\r|\n/', $specialQcText) ?: [];
                             $specialQcPoints = array_values(array_filter(array_map(function ($line) {
                                 $line = trim((string) $line);
@@ -1816,8 +1800,11 @@
                                  title="Edit Special Instruction QC"
                                  data-product-id="{{ $item->product_master_id ?? '' }}"
                                  data-sku="{{ $item->product_master_sku ?? ($item->sku ?? '') }}"
-                                 data-special-qc="{{ $specialQcText }}">
-                                @if(count($specialQcPoints) > 0)
+                                 data-special-qc="{{ $specialQcText }}"
+                                 data-special-qc-ignore="{{ $specialQcIgnore ? '1' : '0' }}">
+                                @if($specialQcIgnore)
+                                    {{-- Ignored: hide field (no Missing) --}}
+                                @elseif(count($specialQcPoints) > 0)
                                     <ol class="po-special-qc-list">
                                         @foreach($specialQcPoints as $point)
                                             <li>{{ $point }}</li>
@@ -2611,12 +2598,20 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-2 small text-muted">
-                        SKU: <strong id="poSpecialQcModalSku">—</strong>
+                    <div class="mb-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <div class="small text-muted mb-0">
+                            SKU: <strong id="poSpecialQcModalSku">—</strong>
+                        </div>
+                        <label class="po-pkg-ignore-wrap mb-0 no-print" title="If ignored, clear text and do not show Missing on proforma">
+                            <input type="checkbox" class="form-check-input" id="poSpecialQcIgnore">
+                            <span>Ignore</span>
+                        </label>
                     </div>
-                    <div id="poSpecialQcPoints"></div>
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="poSpecialQcAddPointBtn">+ Add point</button>
-                    <div class="form-text mt-2">Saved as numbered points to QC Improvement Req (before item pkg).</div>
+                    <div id="poSpecialQcPointsWrap">
+                        <div id="poSpecialQcPoints"></div>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="poSpecialQcAddPointBtn">+ Add point</button>
+                        <div class="form-text mt-2">Saved as numbered points to QC Improvement Req (before item pkg).</div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -3646,8 +3641,15 @@
                     .join('\n');
             }
 
-            function renderSpecialQcCell(cell, text) {
+            function renderSpecialQcCell(cell, text, ignored) {
                 if (!cell) return;
+                const isIgnored = !!ignored;
+                cell.setAttribute('data-special-qc-ignore', isIgnored ? '1' : '0');
+                if (isIgnored) {
+                    cell.setAttribute('data-special-qc', '');
+                    cell.innerHTML = '';
+                    return;
+                }
                 const points = parseSpecialQcPoints(text);
                 cell.setAttribute('data-special-qc', text || '');
                 if (!points.length) {
@@ -3657,6 +3659,22 @@
                 cell.innerHTML = '<ol class="po-special-qc-list">'
                     + points.map((p) => '<li>' + escapeHtml(p) + '</li>').join('')
                     + '</ol>';
+            }
+
+            function setSpecialQcPointsDisabled(disabled) {
+                const wrap = document.getElementById('poSpecialQcPointsWrap');
+                if (wrap) wrap.classList.toggle('opacity-50', !!disabled);
+                document.querySelectorAll('#poSpecialQcPoints .po-special-qc-point-input').forEach((el) => {
+                    el.disabled = !!disabled;
+                });
+                const addBtn = document.getElementById('poSpecialQcAddPointBtn');
+                if (addBtn) addBtn.disabled = !!disabled;
+            }
+
+            function clearSpecialQcPointInputs() {
+                const wrap = document.getElementById('poSpecialQcPoints');
+                if (wrap) wrap.innerHTML = '';
+                addSpecialQcPointRow('');
             }
 
             function renumberSpecialQcRows() {
@@ -3698,18 +3716,29 @@
                 }
                 specialQcTargetCell = cell;
                 document.getElementById('poSpecialQcModalSku').textContent = sku || '—';
+                const ignored = cell.getAttribute('data-special-qc-ignore') === '1';
+                const ignoreCb = document.getElementById('poSpecialQcIgnore');
+                if (ignoreCb) ignoreCb.checked = ignored;
                 const pointsWrap = document.getElementById('poSpecialQcPoints');
                 if (pointsWrap) pointsWrap.innerHTML = '';
-                const points = parseSpecialQcPoints(cell.getAttribute('data-special-qc') || '');
-                if (points.length) {
-                    points.forEach((p) => addSpecialQcPointRow(p));
-                } else {
+                if (ignored) {
                     addSpecialQcPointRow('');
+                    setSpecialQcPointsDisabled(true);
+                } else {
+                    const points = parseSpecialQcPoints(cell.getAttribute('data-special-qc') || '');
+                    if (points.length) {
+                        points.forEach((p) => addSpecialQcPointRow(p));
+                    } else {
+                        addSpecialQcPointRow('');
+                    }
+                    setSpecialQcPointsDisabled(false);
                 }
                 specialQcModal.show();
                 specialQcModalEl.addEventListener('shown.bs.modal', function onShown() {
                     specialQcModalEl.removeEventListener('shown.bs.modal', onShown);
-                    document.querySelector('#poSpecialQcPoints .po-special-qc-point-input')?.focus();
+                    if (!ignored) {
+                        document.querySelector('#poSpecialQcPoints .po-special-qc-point-input')?.focus();
+                    }
                 }, { once: true });
             }
 
@@ -3724,9 +3753,20 @@
             });
 
             document.getElementById('poSpecialQcAddPointBtn')?.addEventListener('click', () => {
+                if (document.getElementById('poSpecialQcIgnore')?.checked) return;
                 addSpecialQcPointRow('');
                 const inputs = document.querySelectorAll('#poSpecialQcPoints .po-special-qc-point-input');
                 inputs[inputs.length - 1]?.focus();
+            });
+
+            document.getElementById('poSpecialQcIgnore')?.addEventListener('change', function () {
+                if (this.checked) {
+                    clearSpecialQcPointInputs();
+                    setSpecialQcPointsDisabled(true);
+                } else {
+                    setSpecialQcPointsDisabled(false);
+                    document.querySelector('#poSpecialQcPoints .po-special-qc-point-input')?.focus();
+                }
             });
 
             document.getElementById('poSpecialQcSaveBtn')?.addEventListener('click', async () => {
@@ -3736,9 +3776,12 @@
                     alert('Product not found in Dim Wt Master for this SKU.');
                     return;
                 }
-                const points = Array.from(document.querySelectorAll('#poSpecialQcPoints .po-special-qc-point-input'))
-                    .map((el) => (el.value || '').trim())
-                    .filter((v) => v !== '');
+                const ignored = !!document.getElementById('poSpecialQcIgnore')?.checked;
+                const points = ignored
+                    ? []
+                    : Array.from(document.querySelectorAll('#poSpecialQcPoints .po-special-qc-point-input'))
+                        .map((el) => (el.value || '').trim())
+                        .filter((v) => v !== '');
                 const text = formatSpecialQcPoints(points);
                 const saveBtn = document.getElementById('poSpecialQcSaveBtn');
                 saveBtn.disabled = true;
@@ -3754,14 +3797,18 @@
                         body: JSON.stringify({
                             product_id: productId,
                             qc_improvement_req: text,
+                            ignore: ignored,
                         }),
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok || data.success === false) {
                         throw new Error(data.message || 'Failed to save Special Instruction QC');
                     }
-                    const saved = data.qc_improvement_req != null ? String(data.qc_improvement_req) : text;
-                    renderSpecialQcCell(specialQcTargetCell, saved);
+                    const savedIgnore = data.ignore != null ? !!data.ignore : ignored;
+                    const saved = savedIgnore
+                        ? ''
+                        : (data.qc_improvement_req != null ? String(data.qc_improvement_req) : text);
+                    renderSpecialQcCell(specialQcTargetCell, saved, savedIgnore);
                     specialQcModal.hide();
                 } catch (err) {
                     alert(err.message || 'Failed to save Special Instruction QC');
@@ -3946,13 +3993,29 @@
                 return out;
             }
 
+            function clearPkgFieldByKey(key) {
+                const el = document.getElementById(PO_PKG_FIELD_IDS[key]);
+                if (!el) return;
+                el.value = '';
+                if (key === 'design_file') updateDesignFileOpenLink('');
+            }
+
             function applyPkgIgnoreFlags(flags) {
                 const map = flags && typeof flags === 'object' ? flags : {};
                 PO_PKG_IGNORE_KEYS.forEach((key) => {
                     const cb = document.querySelector('.po-pkg-ignore-cb[data-pkg-field="' + key + '"]');
                     if (cb) cb.checked = !!map[key];
+                    // Ignored fields stay cleared in the modal.
+                    if (map[key]) clearPkgFieldByKey(key);
                 });
             }
+
+            document.querySelectorAll('.po-pkg-ignore-cb').forEach((cb) => {
+                cb.addEventListener('change', function () {
+                    if (!this.checked) return;
+                    clearPkgFieldByKey(this.getAttribute('data-pkg-field') || '');
+                });
+            });
 
             function parsePkgIgnoreAttr(raw) {
                 try {
@@ -3995,60 +4058,98 @@
                 return escapeHtml(u).replace(/\n/g, '<br>');
             }
 
+            function setPkgRowHidden(valueEl, hidden) {
+                const pkgRow = valueEl?.closest('.po-pkg-combined-row');
+                if (pkgRow) pkgRow.classList.toggle('d-none', !!hidden);
+            }
+
             function syncPkgCellData(row, itemPkg, ctnPkg, coverUrl, designUrl, ctnQty, ctnPrintUrl, palletInstructions, palletSize, pkgIgnore) {
                 if (!row) return;
                 const cell = row.querySelector('.po-pkg-combined');
                 if (!cell) return;
-                cell.setAttribute('data-item-pkg', itemPkg);
-                cell.setAttribute('data-ctn-pkg', ctnPkg);
-                if (coverUrl !== undefined) cell.setAttribute('data-cover-url', (coverUrl || '').trim());
-                if (designUrl !== undefined) cell.setAttribute('data-design-file', (designUrl || '').trim());
-                if (ctnQty !== undefined) cell.setAttribute('data-ctn-qty', ctnQty == null ? '' : String(ctnQty));
-                if (ctnPrintUrl !== undefined) cell.setAttribute('data-ctn-print-file', (ctnPrintUrl || '').trim());
-                if (palletInstructions !== undefined) cell.setAttribute('data-pallet-instructions', (palletInstructions || '').trim());
-                if (palletSize !== undefined) cell.setAttribute('data-pallet-size', (palletSize || '').trim());
                 const ignoreMap = pkgIgnore && typeof pkgIgnore === 'object'
                     ? pkgIgnore
                     : parsePkgIgnoreAttr(cell.getAttribute('data-pkg-ignore'));
                 cell.setAttribute('data-pkg-ignore', JSON.stringify(ignoreMap));
 
-                renderPkgText(cell.querySelector('.po-item-pkg-text'), itemPkg, ignoreMap.item_pkg);
-                renderPkgText(cell.querySelector('.po-ctn-pkg-text'), ctnPkg, ignoreMap.ctn_pkg);
+                // Ignored fields are cleared from attributes + hidden on the proforma.
+                const itemVal = ignoreMap.item_pkg ? '' : itemPkg;
+                const ctnVal = ignoreMap.ctn_pkg ? '' : ctnPkg;
+                const coverVal = ignoreMap.item_pkg_image ? '' : (coverUrl === undefined ? undefined : (coverUrl || '').trim());
+                const designVal = ignoreMap.design_file ? '' : (designUrl === undefined ? undefined : (designUrl || '').trim());
+                const qtyVal = ignoreMap.ctn_qty ? '' : ctnQty;
+                const printVal = ignoreMap.ctn_print_file ? '' : (ctnPrintUrl === undefined ? undefined : (ctnPrintUrl || '').trim());
+                const palletInstrVal = ignoreMap.pallet_instructions
+                    ? ''
+                    : (palletInstructions === undefined ? undefined : (palletInstructions || '').trim());
+                const palletSizeVal = ignoreMap.pallet_size
+                    ? ''
+                    : (palletSize === undefined ? undefined : (palletSize || '').trim());
+
+                cell.setAttribute('data-item-pkg', itemVal || '');
+                cell.setAttribute('data-ctn-pkg', ctnVal || '');
+                if (coverUrl !== undefined || ignoreMap.item_pkg_image) {
+                    cell.setAttribute('data-cover-url', coverVal || '');
+                }
+                if (designUrl !== undefined || ignoreMap.design_file) {
+                    cell.setAttribute('data-design-file', designVal || '');
+                }
+                if (ctnQty !== undefined || ignoreMap.ctn_qty) {
+                    cell.setAttribute('data-ctn-qty', qtyVal == null ? '' : String(qtyVal));
+                }
+                if (ctnPrintUrl !== undefined || ignoreMap.ctn_print_file) {
+                    cell.setAttribute('data-ctn-print-file', printVal || '');
+                }
+                if (palletInstructions !== undefined || ignoreMap.pallet_instructions) {
+                    cell.setAttribute('data-pallet-instructions', palletInstrVal || '');
+                }
+                if (palletSize !== undefined || ignoreMap.pallet_size) {
+                    cell.setAttribute('data-pallet-size', palletSizeVal || '');
+                }
+
+                const itemEl = cell.querySelector('.po-item-pkg-text');
+                setPkgRowHidden(itemEl, ignoreMap.item_pkg);
+                if (!ignoreMap.item_pkg) renderPkgText(itemEl, itemVal, false);
+
+                const ctnEl = cell.querySelector('.po-ctn-pkg-text');
+                setPkgRowHidden(ctnEl, ignoreMap.ctn_pkg);
+                if (!ignoreMap.ctn_pkg) renderPkgText(ctnEl, ctnVal, false);
 
                 const coverEl = cell.querySelector('.po-cover-text');
-                if (coverEl && coverUrl !== undefined) {
-                    coverEl.innerHTML = renderCoverValueHtml(coverUrl, ignoreMap.item_pkg_image);
+                setPkgRowHidden(coverEl, ignoreMap.item_pkg_image);
+                if (coverEl && !ignoreMap.item_pkg_image && coverVal !== undefined) {
+                    coverEl.innerHTML = renderCoverValueHtml(coverVal, false);
                 }
 
                 const designEl = cell.querySelector('.po-design-text');
-                if (designEl && designUrl !== undefined) {
-                    designEl.innerHTML = renderFileValueHtml(designUrl, ignoreMap.design_file);
+                setPkgRowHidden(designEl, ignoreMap.design_file);
+                if (designEl && !ignoreMap.design_file && designVal !== undefined) {
+                    designEl.innerHTML = renderFileValueHtml(designVal, false);
                 }
 
                 const qtyEl = cell.querySelector('.po-ctn-qty-text');
-                if (qtyEl && ctnQty !== undefined) {
-                    const q = ctnQty == null ? '' : String(ctnQty).trim();
-                    qtyEl.innerHTML = q !== '' ? escapeHtml(q) : blankPkgDisplay(!!ignoreMap.ctn_qty);
+                setPkgRowHidden(qtyEl, ignoreMap.ctn_qty);
+                if (qtyEl && !ignoreMap.ctn_qty && (ctnQty !== undefined || ignoreMap.ctn_qty === false)) {
+                    const q = qtyVal == null ? '' : String(qtyVal).trim();
+                    qtyEl.innerHTML = q !== '' ? escapeHtml(q) : blankPkgDisplay(false);
                 }
 
                 const printEl = cell.querySelector('.po-ctn-print-text');
-                if (printEl && ctnPrintUrl !== undefined) {
-                    printEl.innerHTML = renderFileValueHtml(ctnPrintUrl, ignoreMap.ctn_print_file);
+                setPkgRowHidden(printEl, ignoreMap.ctn_print_file);
+                if (printEl && !ignoreMap.ctn_print_file && printVal !== undefined) {
+                    printEl.innerHTML = renderFileValueHtml(printVal, false);
                 }
 
-                if (palletInstructions !== undefined) {
-                    renderPkgText(
-                        cell.querySelector('.po-pallet-instructions-text'),
-                        palletInstructions,
-                        ignoreMap.pallet_instructions
-                    );
+                const palletInstrEl = cell.querySelector('.po-pallet-instructions-text');
+                setPkgRowHidden(palletInstrEl, ignoreMap.pallet_instructions);
+                if (!ignoreMap.pallet_instructions && palletInstrVal !== undefined) {
+                    renderPkgText(palletInstrEl, palletInstrVal, false);
                 }
-                if (palletSize !== undefined) {
-                    renderPkgText(
-                        cell.querySelector('.po-pallet-size-text'),
-                        palletSize,
-                        ignoreMap.pallet_size
-                    );
+
+                const palletSizeEl = cell.querySelector('.po-pallet-size-text');
+                setPkgRowHidden(palletSizeEl, ignoreMap.pallet_size);
+                if (!ignoreMap.pallet_size && palletSizeVal !== undefined) {
+                    renderPkgText(palletSizeEl, palletSizeVal, false);
                 }
             }
 
@@ -4279,21 +4380,35 @@
                     return;
                 }
 
-                const itemPkg = (document.getElementById('poPkgItemInput').value || '').trim();
-                const ctnPkg = (document.getElementById('poPkgCtnInput').value || '').trim().slice(0, 100);
-                const ctnQtyRaw = (document.getElementById('poCtnQtyInput')?.value || '').trim();
-                const ctnPrintPath = (document.getElementById('poCtnPrintFileInput')?.value || '').trim();
-                const palletInstructions = (document.getElementById('poPalletInstructionsInput')?.value || '').trim();
-                const palletSize = (document.getElementById('poPalletSizeInput')?.value || '').trim();
+                const ignoreFlags = readPkgIgnoreFlags();
+                // Ignored fields are cleared before save so stored values are removed.
+                PO_PKG_IGNORE_KEYS.forEach((key) => {
+                    if (ignoreFlags[key]) clearPkgFieldByKey(key);
+                });
+
+                let itemPkg = ignoreFlags.item_pkg ? '' : (document.getElementById('poPkgItemInput').value || '').trim();
+                let ctnPkg = ignoreFlags.ctn_pkg ? '' : (document.getElementById('poPkgCtnInput').value || '').trim().slice(0, 100);
+                let ctnQtyRaw = ignoreFlags.ctn_qty ? '' : (document.getElementById('poCtnQtyInput')?.value || '').trim();
+                let ctnPrintPath = ignoreFlags.ctn_print_file ? '' : (document.getElementById('poCtnPrintFileInput')?.value || '').trim();
+                let palletInstructions = ignoreFlags.pallet_instructions
+                    ? ''
+                    : (document.getElementById('poPalletInstructionsInput')?.value || '').trim();
+                let palletSize = ignoreFlags.pallet_size
+                    ? ''
+                    : (document.getElementById('poPalletSizeInput')?.value || '').trim();
                 const row = pkgTargetCell.closest('tr');
                 const previousCover = (pkgTargetCell.getAttribute('data-cover-url') || '').trim();
                 const previousDesign = (pkgTargetCell.getAttribute('data-design-file') || '').trim();
-                const coverPath = (document.getElementById('poPkgCoverInput')?.value || '').trim();
-                const designPath = (document.getElementById('poDesignFileInput')?.value || '').trim();
-                const coverChanged = coverPath !== previousCover;
-                const designChanged = designPath !== previousDesign;
-                const ctnQtyChanged = ctnQtyRaw !== String(pkgInitialCtnQty || '').trim();
-                const ctnPrintChanged = ctnPrintPath !== String(pkgInitialCtnPrint || '').trim();
+                let coverPath = ignoreFlags.item_pkg_image
+                    ? ''
+                    : (document.getElementById('poPkgCoverInput')?.value || '').trim();
+                let designPath = ignoreFlags.design_file
+                    ? ''
+                    : (document.getElementById('poDesignFileInput')?.value || '').trim();
+                const coverChanged = coverPath !== previousCover || !!ignoreFlags.item_pkg_image;
+                const designChanged = designPath !== previousDesign || !!ignoreFlags.design_file;
+                const ctnQtyChanged = ctnQtyRaw !== String(pkgInitialCtnQty || '').trim() || !!ignoreFlags.ctn_qty;
+                const ctnPrintChanged = ctnPrintPath !== String(pkgInitialCtnPrint || '').trim() || !!ignoreFlags.ctn_print_file;
                 const saveBtn = document.getElementById('poPkgSaveBtn');
                 saveBtn.disabled = true;
                 saveBtn.textContent = 'Saving…';
@@ -4430,7 +4545,6 @@
                         ? String(palletData.pallet_size)
                         : palletSize;
 
-                    const ignoreFlags = readPkgIgnoreFlags();
                     const ignoreRes = await fetch(pkgIgnoreUrl, {
                         method: 'POST',
                         headers: {
@@ -4476,6 +4590,7 @@
                     const applySiblings = !!document.getElementById('poPkgApplySiblings')?.checked;
                     let siblingMsg = '';
                     if (applySiblings) {
+                        // Always send Ignore checkbox state so siblings save the same checks.
                         const sibRes = await fetch(pkgApplySiblingsUrl, {
                             method: 'POST',
                             headers: {
@@ -4483,7 +4598,10 @@
                                 'Accept': 'application/json',
                                 'X-CSRF-TOKEN': csrf,
                             },
-                            body: JSON.stringify({ product_id: productId }),
+                            body: JSON.stringify({
+                                product_id: productId,
+                                pkg_ignore: savedIgnore,
+                            }),
                         });
                         const sibData = await sibRes.json().catch(() => ({}));
                         if (!sibRes.ok || sibData.success === false) {
@@ -4491,6 +4609,9 @@
                         }
                         const sibSkus = Array.isArray(sibData.siblings) ? sibData.siblings : [];
                         const pkg = sibData.pkg && typeof sibData.pkg === 'object' ? sibData.pkg : null;
+                        const sibIgnore = (pkg && pkg.pkg_ignore && typeof pkg.pkg_ignore === 'object')
+                            ? pkg.pkg_ignore
+                            : savedIgnore;
                         if (pkg && sibSkus.length) {
                             const sibNorms = new Set(sibSkus.map((s) => String(s || '').trim().toUpperCase()).filter(Boolean));
                             document.querySelectorAll('.po-pkg-combined').forEach((cell) => {
@@ -4507,7 +4628,7 @@
                                     String(pkg.ctn_print_file ?? ''),
                                     String(pkg.pallet_instructions ?? ''),
                                     String(pkg.pallet_size ?? ''),
-                                    pkg.pkg_ignore && typeof pkg.pkg_ignore === 'object' ? pkg.pkg_ignore : {}
+                                    sibIgnore
                                 );
                             });
                         }

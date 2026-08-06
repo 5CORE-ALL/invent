@@ -731,14 +731,7 @@ class PurchaseOrderController extends Controller
 
         try {
             $values = $this->productValuesArray($product);
-            $incoming = is_array($validated['pkg_ignore'] ?? null) ? $validated['pkg_ignore'] : [];
-            $normalized = [];
-            foreach ([
-                'item_pkg', 'item_pkg_image', 'design_file', 'ctn_pkg', 'ctn_qty', 'ctn_print_file',
-                'pallet_instructions', 'pallet_size',
-            ] as $key) {
-                $normalized[$key] = ! empty($incoming[$key]);
-            }
+            $normalized = $this->normalizePkgIgnoreFlags($validated['pkg_ignore'] ?? []);
             $values['pkg_ignore'] = $normalized;
             $product->Values = $values;
             $product->save();
@@ -762,13 +755,51 @@ class PurchaseOrderController extends Controller
     }
 
     /**
+     * Ignore flag keys used by packaging modal / proforma.
+     *
+     * @return list<string>
+     */
+    private function pkgIgnoreKeys(): array
+    {
+        return [
+            'item_pkg', 'item_pkg_image', 'design_file', 'ctn_pkg', 'ctn_qty', 'ctn_print_file',
+            'pallet_instructions', 'pallet_size',
+        ];
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return array<string, bool>
+     */
+    private function normalizePkgIgnoreFlags($incoming): array
+    {
+        $incoming = is_array($incoming) ? $incoming : [];
+        $normalized = [];
+        foreach ($this->pkgIgnoreKeys() as $key) {
+            $normalized[$key] = ! empty($incoming[$key]);
+        }
+
+        return $normalized;
+    }
+
+    /**
      * Copy packaging fields (+ Ignore flags) from a product to all sibling SKUs
      * that share the same product_master.parent (excludes PARENT summary rows).
+     * When Siblings is checked, Ignore checkboxes are always saved onto every sibling.
      */
     public function applyPkgToSiblings(Request $request)
     {
         $validated = $request->validate([
             'product_id' => 'required|integer',
+            'pkg_ignore' => 'nullable|array',
+            'pkg_ignore.item_pkg' => 'nullable|boolean',
+            'pkg_ignore.item_pkg_image' => 'nullable|boolean',
+            'pkg_ignore.design_file' => 'nullable|boolean',
+            'pkg_ignore.ctn_pkg' => 'nullable|boolean',
+            'pkg_ignore.ctn_qty' => 'nullable|boolean',
+            'pkg_ignore.ctn_print_file' => 'nullable|boolean',
+            'pkg_ignore.pallet_instructions' => 'nullable|boolean',
+            'pkg_ignore.pallet_size' => 'nullable|boolean',
         ]);
 
         $source = ProductMaster::find($validated['product_id']);
@@ -806,7 +837,18 @@ class PurchaseOrderController extends Controller
                 ]);
             }
 
+            // Prefer Ignore flags from the request (modal), else fall back to source product.
+            $source->refresh();
             $srcValues = $this->productValuesArray($source);
+            $pkgIgnore = array_key_exists('pkg_ignore', $validated)
+                ? $this->normalizePkgIgnoreFlags($validated['pkg_ignore'] ?? [])
+                : $this->normalizePkgIgnoreFlags($srcValues['pkg_ignore'] ?? []);
+
+            // Keep source in sync with the same Ignore map that siblings receive.
+            $srcValues['pkg_ignore'] = $pkgIgnore;
+            $source->Values = $srcValues;
+            $source->save();
+
             $copyKeys = [
                 'item_pkg_cover',
                 'packing_cdr_path',
@@ -815,32 +857,49 @@ class PurchaseOrderController extends Controller
                 'ctn_qty',
                 'pallet_instructions',
                 'pallet_size',
-                'pkg_ignore',
             ];
 
             $itemPkg = InstructionsItemPkg::where('product_master_id', $source->id)->value('instructions');
             $itemPkgText = $itemPkg !== null ? trim((string) $itemPkg) : '';
 
+            // Ignored fields must be cleared on siblings as well.
+            if (! empty($pkgIgnore['item_pkg'])) {
+                $itemPkgText = '';
+            }
+            if (! empty($pkgIgnore['ctn_pkg'])) {
+                unset($srcValues['ctn_instructions']);
+            }
+            if (! empty($pkgIgnore['item_pkg_image'])) {
+                unset($srcValues['item_pkg_cover']);
+            }
+            if (! empty($pkgIgnore['design_file'])) {
+                unset($srcValues['packing_cdr_path']);
+            }
+            if (! empty($pkgIgnore['ctn_qty'])) {
+                unset($srcValues['ctn_qty']);
+            }
+            if (! empty($pkgIgnore['ctn_print_file'])) {
+                unset($srcValues['ctn_print_file']);
+            }
+            if (! empty($pkgIgnore['pallet_instructions'])) {
+                unset($srcValues['pallet_instructions']);
+            }
+            if (! empty($pkgIgnore['pallet_size'])) {
+                unset($srcValues['pallet_size']);
+            }
+
             $updatedSkus = [];
             foreach ($siblings as $sib) {
                 $values = $this->productValuesArray($sib);
                 foreach ($copyKeys as $key) {
-                    if ($key === 'pkg_ignore') {
-                        if (array_key_exists('pkg_ignore', $srcValues)) {
-                            $values['pkg_ignore'] = is_array($srcValues['pkg_ignore'])
-                                ? $srcValues['pkg_ignore']
-                                : [];
-                        } else {
-                            unset($values['pkg_ignore']);
-                        }
-                        continue;
-                    }
                     if (array_key_exists($key, $srcValues) && $srcValues[$key] !== null && $srcValues[$key] !== '') {
                         $values[$key] = $srcValues[$key];
                     } else {
                         unset($values[$key]);
                     }
                 }
+                // Always persist Ignore checkboxes onto every sibling.
+                $values['pkg_ignore'] = $pkgIgnore;
 
                 $sib->Values = $values;
                 $sib->save();
@@ -857,7 +916,6 @@ class PurchaseOrderController extends Controller
                 $updatedSkus[] = trim((string) $sib->sku);
             }
 
-            $pkgIgnore = is_array($srcValues['pkg_ignore'] ?? null) ? $srcValues['pkg_ignore'] : [];
             $pkgPayload = [
                 'item_pkg' => $itemPkgText,
                 'ctn_pkg' => trim((string) ($srcValues['ctn_instructions'] ?? '')),
@@ -1614,6 +1672,7 @@ class PurchaseOrderController extends Controller
             $item->pallet_instructions = $pkg['pallet_instructions'] ?? '';
             $item->pallet_size = $pkg['pallet_size'] ?? '';
             $item->special_instruction_qc = $pkg['special_instruction_qc'] ?? '';
+            $item->special_qc_ignore = ! empty($pkg['special_qc_ignore']);
             $item->pkg_ignore = is_array($pkg['pkg_ignore'] ?? null) ? $pkg['pkg_ignore'] : [];
             $item->product_master_id = $pkg['product_id'] ?? ($product?->id);
             $item->product_master_sku = $matchedSku;
@@ -2792,9 +2851,12 @@ class PurchaseOrderController extends Controller
                 $ctnQty = null;
             }
             $qc = $qcByProductId->get($product->id);
-            $specialQc = $qc && $qc->qc_improvement_req !== null
-                ? trim((string) $qc->qc_improvement_req)
-                : '';
+            $specialQcIgnore = ! empty($values['special_qc_ignore']);
+            $specialQc = $specialQcIgnore
+                ? ''
+                : ($qc && $qc->qc_improvement_req !== null
+                    ? trim((string) $qc->qc_improvement_req)
+                    : '');
 
             $pkgIgnore = $values['pkg_ignore'] ?? [];
             if (! is_array($pkgIgnore)) {
@@ -2818,6 +2880,7 @@ class PurchaseOrderController extends Controller
                 'pallet_instructions' => $palletInstructions,
                 'pallet_size' => $palletSize,
                 'special_instruction_qc' => $specialQc,
+                'special_qc_ignore' => $specialQcIgnore,
                 'pkg_ignore' => $pkgIgnoreNormalized,
                 'product_id' => (int) $product->id,
                 'matched_sku' => trim((string) $product->sku),

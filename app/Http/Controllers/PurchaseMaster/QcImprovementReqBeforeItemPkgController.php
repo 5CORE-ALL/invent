@@ -11,6 +11,7 @@ class QcImprovementReqBeforeItemPkgController extends Controller
 {
     /**
      * Create or update QC Improvement Req for one product_master row.
+     * Optional ignore=true clears text and hides Missing on PO proforma.
      */
     public function update(Request $request)
     {
@@ -18,6 +19,7 @@ class QcImprovementReqBeforeItemPkgController extends Controller
             'product_id' => 'required|integer',
             'sku' => 'nullable|string|max:255',
             'qc_improvement_req' => 'nullable|string',
+            'ignore' => 'nullable|boolean',
         ]);
 
         $product = ProductMaster::find($validated['product_id']);
@@ -36,15 +38,28 @@ class QcImprovementReqBeforeItemPkgController extends Controller
             ], 422);
         }
 
-        $text = isset($validated['qc_improvement_req']) ? trim((string) $validated['qc_improvement_req']) : '';
+        $ignored = ! empty($validated['ignore']);
+        $text = $ignored
+            ? ''
+            : (isset($validated['qc_improvement_req']) ? trim((string) $validated['qc_improvement_req']) : '');
+
+        $values = is_array($product->Values) ? $product->Values : [];
+        if ($ignored) {
+            $values['special_qc_ignore'] = true;
+        } else {
+            unset($values['special_qc_ignore']);
+        }
+        $product->Values = $values;
+        $product->save();
 
         if ($text === '') {
             QcImprovementReqBeforeItemPkg::where('product_master_id', $product->id)->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Cleared.',
+                'message' => $ignored ? 'Ignored.' : 'Cleared.',
                 'qc_improvement_req' => '',
+                'ignore' => $ignored,
             ]);
         }
 
@@ -57,6 +72,7 @@ class QcImprovementReqBeforeItemPkgController extends Controller
             'success' => true,
             'message' => 'Saved.',
             'qc_improvement_req' => $row->qc_improvement_req,
+            'ignore' => false,
         ]);
     }
 }
