@@ -68,22 +68,33 @@ class CalculatePricingErrorsFixData extends Command
         $n = 0;
 
         foreach ($rows as $r) {
-            if ($spriceOverride !== null && $spriceOverride > 0
-                && ($channels === null || in_array($r['pull_key'], $channels, true) || in_array($r['marketplace'], $channels, true))) {
-                $r['sprice'] = round($spriceOverride, 2);
-                $ctrl = app(PricingErrorsFixController::class);
-                $calc = $ctrl->publicComputeMetrics(
-                    $r['price'],
-                    $r['sprice'],
-                    (float) $r['lp'],
-                    (float) $r['ship'],
-                    (float) $r['margin'],
-                    (float) $r['ads_pct']
-                );
-                $r['sroi'] = $calc['sroi'];
-                $r['sgpft'] = $calc['sgpft'];
-                $r['snroi'] = $calc['snroi'];
-                $r['snpft'] = $calc['snpft'];
+            $channelMatch = $channels === null
+                || in_array($r['pull_key'], $channels, true)
+                || in_array($r['marketplace'], $channels, true);
+            if ($spriceOverride !== null && $channelMatch) {
+                if ($spriceOverride > 0) {
+                    $r['sprice'] = round($spriceOverride, 2);
+                    $ctrl = app(PricingErrorsFixController::class);
+                    $calc = $ctrl->publicComputeMetrics(
+                        $r['price'],
+                        $r['sprice'],
+                        (float) $r['lp'],
+                        (float) $r['ship'],
+                        (float) $r['margin'],
+                        (float) $r['ads_pct']
+                    );
+                    $r['sroi'] = $calc['sroi'];
+                    $r['sgpft'] = $calc['sgpft'];
+                    $r['snroi'] = $calc['snroi'];
+                    $r['snpft'] = $calc['snpft'];
+                } else {
+                    // Clear SPRICE (price-increase / PEF Clear SPRICE → --sprice=0)
+                    $r['sprice'] = null;
+                    $r['sroi'] = null;
+                    $r['sgpft'] = null;
+                    $r['snroi'] = null;
+                    $r['snpft'] = null;
+                }
             }
 
             PricingErrorsFixCalculatedData::query()->updateOrCreate(

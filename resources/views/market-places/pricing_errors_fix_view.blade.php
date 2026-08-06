@@ -577,6 +577,10 @@
                             <i class="fas fa-sync-alt"></i> Reload
                         </button>
                         <span class="small text-muted d-none" id="pef-pull-hint"></span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="pef-clear-sprice-btn" disabled
+                            title="Clear SPRICE on selected rows (same as /price-increase Clear SPRICE)">
+                            <i class="fas fa-eraser"></i> Clear SPRICE (<span id="pef-clear-sprice-count">0</span>)
+                        </button>
                         <button type="button" class="btn btn-sm btn-primary" id="pef-bulk-push-btn" disabled
                             title="Queue SPRICE push in background (auto-retry until done)">
                             <i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)
@@ -719,18 +723,24 @@
 
     function updatePushBtn() {
         let n = 0;
+        let clearN = 0;
         let selected = 0;
         if (table) {
             table.getRows('active').forEach(row => {
                 const d = row.getData();
                 if (selectedIds.has(d.id)) {
                     selected++;
-                    if (Number(d.sprice) > 0 && isPushableChannel(d)) n++;
+                    if (Number(d.sprice) > 0) {
+                        clearN++;
+                        if (isPushableChannel(d)) n++;
+                    }
                 }
             });
         }
         $('#pef-push-count').text(n);
         $('#pef-bulk-push-btn').prop('disabled', pefPushInFlight || n === 0);
+        $('#pef-clear-sprice-count').text(clearN);
+        $('#pef-clear-sprice-btn').prop('disabled', pefPushInFlight || clearN === 0);
         if (selected > 0) {
             $('#pef-selected-count').show().text(selected + ' selected');
         } else {
@@ -1543,7 +1553,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     titleFormatter: function() {
-                        return '<input type="checkbox" id="pef-select-all" title="Select current page only">';
+                        return '<input type="checkbox" id="pef-select-all" title="Select all filtered rows (site-wise / all pages)">';
                     },
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -1790,17 +1800,18 @@
     function syncSelectAllCheckbox() {
         const $all = $('#pef-select-all');
         if (!$all.length || !table) return;
-        const pageData = pefCurrentPageData();
-        if (!pageData.length) {
+        // Match header checkbox to all filtered rows (site-wise), not just current page
+        const activeData = table.getData('active') || [];
+        if (!activeData.length) {
             $all.prop({ checked: false, indeterminate: false });
             return;
         }
         let selected = 0;
-        pageData.forEach(function(d) {
+        activeData.forEach(function(d) {
             if (d && d.id && selectedIds.has(d.id)) selected++;
         });
-        $all.prop('checked', selected === pageData.length);
-        $all.prop('indeterminate', selected > 0 && selected < pageData.length);
+        $all.prop('checked', selected === activeData.length);
+        $all.prop('indeterminate', selected > 0 && selected < activeData.length);
     }
 
     /**
@@ -1915,6 +1926,105 @@
         });
     }
 
+    /** Clear SPRICE on one row — same endpoint/payload as /price-increase Clear SPRICE. */
+    function clearSpriceForRow(row) {
+        const d = row.getData();
+        if (!d || !d.sku || !d.marketplace) {
+            return $.Deferred().resolve({ ok: false, message: 'Missing SKU/marketplace' }).promise();
+        }
+        const clearPatch = {
+            sprice: null,
+            sroi: null,
+            sgpft: null,
+            snroi: null,
+            snpft: null,
+            success: 'saving',
+        };
+        row.update(clearPatch);
+        const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+        if (cacheIdx >= 0) pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], clearPatch);
+
+        return $.ajax({
+            url: '/cvr-master-save-suggested-data',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf },
+            data: {
+                sku: d.sku,
+                marketplace: d.marketplace,
+                sprice: 0,
+                sgpft: 0,
+                sroi: 0,
+                sgroi: 0,
+                spft: 0,
+                _token: csrf,
+            },
+        }).then(function() {
+            row.update({
+                sprice: null,
+                sroi: null,
+                sgpft: null,
+                snroi: null,
+                snpft: null,
+                success: 'saved',
+            });
+            const idx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+            if (idx >= 0) {
+                Object.assign(pulledRows[idx], {
+                    sprice: null, sroi: null, sgpft: null, snroi: null, snpft: null, success: 'saved',
+                });
+            }
+            return { ok: true, sku: d.sku, channel: d.channel || d.marketplace };
+        }, function(xhr) {
+            row.update({ success: 'error' });
+            return {
+                ok: false,
+                sku: d.sku,
+                channel: d.channel || d.marketplace,
+                message: ajaxErrorMessage(xhr, 'Clear failed'),
+            };
+        });
+    }
+
+    async function clearSelectedSprice() {
+        if (!table || pefPushInFlight) return;
+        const targets = [];
+        table.getRows('active').forEach(function(row) {
+            const d = row.getData();
+            if (!d || !d.id || !selectedIds.has(d.id)) return;
+            if (!(Number(d.sprice) > 0)) return;
+            targets.push(row);
+        });
+        if (!targets.length) {
+            toast('No selected rows with SPRICE to clear', 'error');
+            return;
+        }
+        if (!confirm(
+            'Clear SPRICE on ' + targets.length + ' selected row(s)?\n'
+            + 'This removes suggested price on those channel rows (same as /price-increase).'
+        )) return;
+
+        const $btn = $('#pef-clear-sprice-btn');
+        const btnHtml = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing…');
+
+        let ok = 0;
+        let fail = 0;
+        // Sequential to avoid hammering CVR / rate limits
+        for (let i = 0; i < targets.length; i++) {
+            const result = await clearSpriceForRow(targets[i]);
+            if (result && result.ok) ok++;
+            else fail++;
+        }
+
+        $btn.html(btnHtml);
+        updatePushBtn();
+        try { table.redraw(true); } catch (e) { /* ignore */ }
+        toast(
+            'Cleared SPRICE: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''),
+            fail ? 'error' : 'success'
+        );
+    }
+
     /** Normalize PEF marketplace keys for /cvr-master-push-price (TikTok 1/2 aliases). */
     function pushMarketplaceKey(d) {
         let mp = String(d.marketplace || d.channel_key || d.pull_key || d.channel || '')
@@ -2007,7 +2117,8 @@
         const skip = [];
         if (!table) return { items: items, skip: skip };
         const want = rowIds ? new Set(rowIds) : null;
-        table.getRows().forEach(function(row) {
+        // Use filtered/active rows so channel filter = site-wise push scope
+        table.getRows('active').forEach(function(row) {
             const d = row.getData();
             if (!d || !d.id) return;
             if (want && !want.has(d.id)) return;
@@ -2262,8 +2373,18 @@
             toast(collected.skip[0] ? collected.skip[0].error : 'Nothing to push', 'error');
             return;
         }
+        // Summarize by site/channel for confirm (site-wise bulk)
+        const byMp = {};
+        collected.items.forEach(function(it) {
+            const mp = it.built.mp || it.queueItem.marketplace || '?';
+            byMp[mp] = (byMp[mp] || 0) + 1;
+        });
+        const siteSummary = Object.keys(byMp).map(function(k) {
+            return k + ': ' + byMp[k];
+        }).join(', ');
         if (!confirm(
             'Queue SPRICE push for ' + n + ' row(s) in background?\n'
+            + 'Sites: ' + siteSummary + '\n'
             + 'Worker will retry until each push succeeds (or fails with a reason).'
         )) return;
         await queuePushItems(collected);
@@ -2273,8 +2394,10 @@
         const checked = $(this).is(':checked');
         if (!table) return;
         $(this).prop('indeterminate', false);
-        // Select current pagination page only (not all filtered pages)
-        pefCurrentPageData().forEach(function(d) {
+        // Site-wise: select / clear ALL filtered rows across every page
+        // (channel filter → one site; All channels → every visible row)
+        const activeData = table.getData('active') || [];
+        activeData.forEach(function(d) {
             if (!d || !d.id) return;
             if (checked) selectedIds.add(d.id);
             else selectedIds.delete(d.id);
@@ -2412,6 +2535,7 @@
     }
 
     $('#pef-bulk-push-btn').on('click', pushSelected);
+    $('#pef-clear-sprice-btn').on('click', clearSelectedSprice);
     $('#pef-reload-btn').on('click', loadFromCache);
 
     // Target ROI% / GPFT% — same as /amazon-tabulator-view
