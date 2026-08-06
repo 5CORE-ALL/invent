@@ -99,6 +99,7 @@ class TikTokShopService
                     $this->shopCipher = $shop['cipher'];
                     // Set shop cipher on the client - required for all product/inventory API calls
                     $this->client->setShopCipher($this->shopCipher);
+                    Cache::put($this->cachePrefix.'_shop_cipher', $this->shopCipher, 86400 * 30);
                 }
             }
             
@@ -712,11 +713,29 @@ class TikTokShopService
             return;
         }
 
+        // Prefer previously cached cipher (survives getShopInfo IP allow-list failures)
+        $cached = Cache::get($this->cachePrefix.'_shop_cipher');
+        if (is_string($cached) && $cached !== '') {
+            $this->shopCipher = $cached;
+            $this->client->setShopCipher($cached);
+
+            return;
+        }
+
+        $cfgCipher = config('services.'.$this->configKey.'.shop_cipher');
+        if (is_string($cfgCipher) && $cfgCipher !== '') {
+            $this->shopCipher = $cfgCipher;
+            $this->client->setShopCipher($cfgCipher);
+
+            return;
+        }
+
         $shopInfo = $this->getShopInfo();
         $cipher = $shopInfo['shops'][0]['cipher'] ?? null;
         if ($cipher) {
             $this->shopCipher = $cipher;
             $this->client->setShopCipher($cipher);
+            Cache::put($this->cachePrefix.'_shop_cipher', $cipher, 86400 * 30);
         }
     }
 
@@ -1371,19 +1390,26 @@ class TikTokShopService
 
         try {
             $this->client->setAccessToken($this->accessToken);
+
+            // Refresh cipher when possible; if getShopInfo is IP-blocked, fall back to cache
             $shopInfo = $this->getShopInfo();
-            if (is_array($shopInfo) && array_key_exists('code', $shopInfo) && (int) $shopInfo['code'] !== 0) {
-                return [
-                    'success' => false,
-                    'message' => (string) ($shopInfo['message'] ?? 'TikTok shop authorization failed.'),
-                ];
+            $shopInfoFailed = is_array($shopInfo)
+                && array_key_exists('code', $shopInfo)
+                && (int) $shopInfo['code'] !== 0;
+            if (! $shopInfoFailed && ! empty($shopInfo['shops'][0]['cipher'])) {
+                $this->shopCipher = (string) $shopInfo['shops'][0]['cipher'];
+                $this->client->setShopCipher($this->shopCipher);
+                Cache::put($this->cachePrefix.'_shop_cipher', $this->shopCipher, 86400 * 30);
+            } else {
+                $this->ensureShopCipher();
             }
-            $this->ensureShopCipher();
+
             if (! $this->shopCipher) {
-                return [
-                    'success' => false,
-                    'message' => 'TikTok shop cipher missing. Re-authorize the shop or add this server IP to the Partner Center IP allow list.',
-                ];
+                $msg = $shopInfoFailed
+                    ? (string) ($shopInfo['message'] ?? 'TikTok shop authorization failed.')
+                    : 'TikTok shop cipher missing. Re-authorize the shop or add this server IP to the Partner Center IP allow list.';
+
+                return ['success' => false, 'message' => $msg];
             }
 
             $params = [

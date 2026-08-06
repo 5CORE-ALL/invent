@@ -23,7 +23,8 @@ class PricingErrorsFixCvrCacheBuilder
         'temu' => ['temu', 'temu', 'Temu'],
         'temu2' => ['temu2', 'temu2', 'Temu 2'],
         'doba' => ['doba', 'doba', 'Doba'],
-        'tiktok' => ['tiktok', 'tiktok', 'TikTok'],
+        'tiktok' => ['tiktok', 'tiktok', 'TikTok 1'],
+        'tiktok1' => ['tiktok', 'tiktok', 'TikTok 1'],
         'tiktok2' => ['tiktok2', 'tiktok2', 'TikTok 2'],
         'bestbuy' => ['bestbuy', 'bestbuy', 'Best Buy'],
         'macy' => ['macy', 'macy', "Macy's"],
@@ -223,7 +224,9 @@ class PricingErrorsFixCvrCacheBuilder
     ): ?array {
         $label = (string) ($item['marketplace'] ?? '');
         $norm = strtolower(preg_replace('/\s+/', '', $label) ?? '');
-        if ($norm === 'tiktok2' || $norm === 'tiktokshop2') {
+        if (in_array($norm, ['tiktok1', 'tiktokshop', 'tiktokshop1'], true)) {
+            $norm = 'tiktok';
+        } elseif ($norm === 'tiktok2' || $norm === 'tiktokshop2') {
             $norm = 'tiktok2';
         }
         if ($norm === 'fba' || $norm === 'walmart') {

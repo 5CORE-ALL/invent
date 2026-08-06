@@ -5930,7 +5930,13 @@ class CvrMasterController extends Controller
     {
         try {
             $sku = trim($request->input('sku', ''));
-            $marketplace = strtolower(trim($request->input('marketplace', '')));
+            // Normalize "TikTok 1" / "TikTok 2" / spaced labels to compact keys
+            $marketplace = preg_replace('/\s+/', '', strtolower(trim((string) $request->input('marketplace', '')))) ?: '';
+            if (in_array($marketplace, ['tiktok1', 'tiktokshop', 'tiktokshop1'], true)) {
+                $marketplace = 'tiktok';
+            } elseif ($marketplace === 'tiktokshop2') {
+                $marketplace = 'tiktok2';
+            }
             if (empty($sku) || empty($marketplace)) {
                 return response()->json(['error' => 'SKU and marketplace are required'], 400);
             }
@@ -6671,9 +6677,9 @@ class CvrMasterController extends Controller
                     $request->input('goods_id'),
                     $request->input('sku_id')
                 );
-            } elseif ($marketplace === 'tiktok' || $marketplace === 'tiktokshop') {
+            } elseif (in_array($marketplace, ['tiktok', 'tiktok1', 'tiktokshop', 'tiktokshop1'], true)) {
                 $response = $this->pushToTikTok($sku, $price);
-            } elseif ($marketplace === 'tiktok2' || $marketplace === 'tiktokshop2') {
+            } elseif (in_array($marketplace, ['tiktok2', 'tiktokshop2'], true)) {
                 $response = $this->pushToTikTok2($sku, $price);
             } else {
                 return response()->json([
@@ -8218,9 +8224,10 @@ class CvrMasterController extends Controller
                 $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'temu2' && Schema::hasTable('temu2_data_view')) {
                 $dataView = Temu2DataView::firstOrNew(['sku' => $sku]);
-            } elseif ($marketplace === 'tiktok' || $marketplace === 'tiktokshop') {
-                $dataView = TiktokShopDataView::firstOrNew(['sku' => $sku]);
-            } elseif (($marketplace === 'tiktok2' || $marketplace === 'tiktokshop2')
+            } elseif (in_array($marketplace, ['tiktok', 'tiktok1', 'tiktokshop', 'tiktokshop1'], true)) {
+                $existingTt = TiktokShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                $dataView = $existingTt ?: new TiktokShopDataView(['sku' => $sku]);
+            } elseif (in_array($marketplace, ['tiktok2', 'tiktokshop2'], true)
                 && Schema::hasTable('tiktok_two_shop_data_views')) {
                 $existingTt2 = TiktokTwoShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
                 $dataView = $existingTt2 ?: new TiktokTwoShopDataView(['sku' => $sku]);

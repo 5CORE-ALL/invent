@@ -84,6 +84,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('api.vs.sheet.tabulator') }}" class="side-nav-link">
+                    <i class="ri-swap-line"></i>
+                    <span>API Vs Sheet</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('sales.order.fulfillment') }}" class="side-nav-link">
                     <i class="ri-truck-line"></i>
                     <span>Sales Order Fulfillment</span>

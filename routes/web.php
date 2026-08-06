@@ -64,6 +64,7 @@ use App\Http\Controllers\Catalouge\CatalougeManagerController;
 use App\Http\Controllers\Channels\AccountHealthMasterController;
 use App\Http\Controllers\Channels\ShippingHealthController;
 use App\Http\Controllers\Channels\EscalatedClaimsController;
+use App\Http\Controllers\Channels\ApiVsSheetController;
 use App\Http\Controllers\Channels\ShippingHealthOverviewController;
 use App\Http\Controllers\Channels\CustomerCareHealthController;
 use App\Http\Controllers\Channels\AccountHealthMasterDashboardController;
@@ -532,6 +533,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-metric-dot-trends', [ChannelMasterController::class, 'getChannelMetricDotTrends']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
+
+    // API Vs Sheet (Active Channel Master channels + download/upload source)
+    Route::controller(ApiVsSheetController::class)->group(function () {
+        Route::get('/api-vs-sheet', 'tabulator')->name('api.vs.sheet.tabulator');
+        Route::get('/api-vs-sheet-data', 'tabulatorChannelData')->name('api.vs.sheet.tabulator.data');
+        Route::post('/api-vs-sheet/save', 'saveSetting')->name('api.vs.sheet.save');
+        Route::post('/api-vs-sheet/sheet-link/save', 'saveSheetLink')->name('api.vs.sheet.sheet.link.save');
+        Route::post('/api-vs-sheet/price-api-2w/save', 'savePriceApi2w')->name('api.vs.sheet.price.api.2w.save');
+    });
     Route::get('/sales-order-fulfillment', [SalesOrderFulfillmentController::class, 'index'])->name('sales.order.fulfillment');
     Route::get('/sales-order-fulfillment/data', [SalesOrderFulfillmentController::class, 'data'])->name('sales.order.fulfillment.data');
     Route::get('/sales-order-fulfillment/pending-data', [SalesOrderFulfillmentController::class, 'pendingData'])->name('sales.order.fulfillment.pending.data');

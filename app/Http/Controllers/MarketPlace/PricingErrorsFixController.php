@@ -330,6 +330,9 @@ class PricingErrorsFixController extends Controller
             'ebay1' => 'ebay',
             'ebaytwo' => 'ebay2',
             'ebaythree' => 'ebay3',
+            'tiktok1' => 'tiktok',
+            'tiktokshop' => 'tiktok',
+            'tiktokshop1' => 'tiktok',
             'tiktokshop2' => 'tiktok2',
             'bestbuyusa' => 'bestbuy',
             'macys' => 'macy',
@@ -427,7 +430,7 @@ class PricingErrorsFixController extends Controller
                 'fetch' => fn (Request $r) => app(DobaController::class)->getViewdobaData($r),
             ],
             'tiktok' => [
-                'label' => 'TikTok',
+                'label' => 'TikTok 1',
                 'marketplace' => 'tiktok',
                 'price_keys' => ['price', 'Price', 'TT Price', 'tiktok_price'],
                 'fetch' => fn (Request $r) => app(TikTokPricingController::class)->tiktokDataJson($r),

@@ -115,6 +115,22 @@
         .pef-dil-red { color: #dc3545; font-weight: 700; }
         .pef-dil-green { color: #28a745; font-weight: 700; }
         .pef-dil-pink { color: #e83e8c; font-weight: 700; }
+        /* Keep Push full-color even on selected / already-pushed rows */
+        .pef-push-one:not(:disabled) {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+        }
+        .tabulator-row.tabulator-selected .pef-push-one:not(:disabled),
+        .tabulator-row .pef-push-one.pef-push-done:not(:disabled) {
+            opacity: 1 !important;
+            background-color: #0d6efd !important;
+            border-color: #0d6efd !important;
+            color: #fff !important;
+        }
+        .pef-push-one.pef-push-done:not(:disabled) {
+            background-color: #198754 !important;
+            border-color: #198754 !important;
+        }
         #pef-dil-filter-btn .status-circle,
         #pef-gpft-filter-btn .status-circle,
         #pef-groi-filter-btn .status-circle { margin-right: 6px; }
@@ -308,6 +324,44 @@
             width: 22px;
             padding: 0 !important;
         }
+        /* Channel multi-select dropdown */
+        #pef-channel-filter-btn {
+            min-width: 130px;
+            max-width: 200px;
+            justify-content: space-between;
+        }
+        #pef-channel-filter-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 150px;
+            display: inline-block;
+            text-align: left;
+        }
+        .pef-channel-menu {
+            max-height: 320px;
+            overflow-y: auto;
+            min-width: 200px;
+            padding: 6px 0;
+        }
+        .pef-channel-menu .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            padding: 4px 12px;
+            cursor: pointer;
+        }
+        .pef-channel-menu .dropdown-item:active,
+        .pef-channel-menu .dropdown-item:hover {
+            background: #f1f5f9;
+            color: inherit;
+        }
+        .pef-channel-menu .form-check-input {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
     </style>
 @endsection
 
@@ -334,13 +388,38 @@
                         <span class="badge text-bg-secondary" id="pef-channels-badge">Channels: 0</span>
                         <span class="badge text-bg-danger" id="pef-error-badge" style="display:none;">Channel errors: 0</span>
 
-                        <label class="pef-lbl" for="pef-channel-filter">Channel</label>
-                        <select id="pef-channel-filter" class="form-select form-select-sm" style="width:118px;" title="Filter channel (client-side)">
-                            <option value="">All channels</option>
-                            @foreach(($channels ?? []) as $ch)
-                                <option value="{{ is_array($ch) ? ($ch['key'] ?? '') : $ch }}">{{ is_array($ch) ? ($ch['label'] ?? $ch['key'] ?? '') : $ch }}</option>
-                            @endforeach
-                        </select>
+                        <label class="pef-lbl">Channel</label>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
+                                id="pef-channel-filter-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Filter channels (multi-select)">
+                                <span id="pef-channel-filter-label">All channels</span>
+                            </button>
+                            <ul class="dropdown-menu pef-channel-menu" aria-labelledby="pef-channel-filter-btn">
+                                <li>
+                                    <label class="dropdown-item mb-0">
+                                        <input type="checkbox" class="form-check-input" id="pef-channel-all" checked>
+                                        <span>All channels</span>
+                                    </label>
+                                </li>
+                                <li><hr class="dropdown-divider my-1"></li>
+                                @foreach(($channels ?? []) as $ch)
+                                    @php
+                                        $chKey = is_array($ch) ? ($ch['key'] ?? '') : $ch;
+                                        $chLabel = is_array($ch) ? ($ch['label'] ?? $ch['key'] ?? '') : $ch;
+                                    @endphp
+                                    @if($chKey !== '')
+                                        <li>
+                                            <label class="dropdown-item mb-0">
+                                                <input type="checkbox" class="form-check-input pef-channel-cb"
+                                                    value="{{ $chKey }}" data-label="{{ $chLabel }}" checked>
+                                                <span>{{ $chLabel }}</span>
+                                            </label>
+                                        </li>
+                                    @endif
+                                @endforeach
+                            </ul>
+                        </div>
 
                         <label class="pef-lbl" for="pef-inv-filter">INV</label>
                         <select id="pef-inv-filter" class="form-select form-select-sm" style="width:64px;" title="Filter by inventory">
@@ -1087,16 +1166,24 @@
         const gpftRange = $('#pef-gpft-filter').val() || 'all';
         const groiRange = $('#pef-groi-filter').val() || 'all';
         const priceFilter = $('#pef-price-filter').val() || 'all';
-        const channelKey = $('#pef-channel-filter').val() || '';
+        const channelKeys = getSelectedChannelKeys();
 
         table.clearFilter(true);
         applyTextFilters(false);
 
-        if (channelKey) {
+        // Multi-select channel filter
+        const allKeys = allChannelKeys();
+        if (channelKeys.length === 0) {
+            table.addFilter(function() { return false; }); // none checked → no rows
+        } else if (channelKeys.length < allKeys.length) {
+            const allow = {};
+            channelKeys.forEach(function(k) { allow[k] = true; });
             table.addFilter(function(data) {
-                return String(data.pull_key || data.channel_key || data.marketplace || '') === channelKey;
+                const k = String(data.pull_key || data.channel_key || data.marketplace || '');
+                return !!allow[k];
             });
         }
+        // all selected → no channel filter (show every channel)
         // INV filter (separate): All | = 0 | > 0
         if (invFilter === 'gt_0') {
             table.addFilter(function(data) { return Number(data.inv || 0) > 0; });
@@ -1195,6 +1282,8 @@
             purchasingpower: ['ppower', 'purchase', 'purchasingpower'],
             bestbuy: ['bestbuyusa', 'bestbuy'],
             bestbuyusa: ['bestbuy', 'bestbuyusa'],
+            tiktok: ['tiktok1', 'tiktokshop', 'tiktokshop1', 'tiktok'],
+            tiktok1: ['tiktok', 'tiktokshop', 'tiktokshop1', 'tiktok1'],
             tiktok2: ['tiktokshop2', 'tiktok2'],
         };
         const list = aliases[b] || [];
@@ -1310,14 +1399,51 @@
 
     function pctFormatter(cell) { return fmtPct(cell); }
 
-    /** All channel keys for Pull Data (full pull). Channel dropdown filters client-side only. */
+    /** All channel keys available in the multi-select dropdown. */
     function allChannelKeys() {
         const keys = [];
-        $('#pef-channel-filter option').each(function() {
+        $('.pef-channel-cb').each(function() {
             const v = $(this).val();
             if (v) keys.push(v);
         });
         return keys;
+    }
+
+    /** Currently checked channel keys (multi-select). */
+    function getSelectedChannelKeys() {
+        const keys = [];
+        $('.pef-channel-cb:checked').each(function() {
+            const v = $(this).val();
+            if (v) keys.push(v);
+        });
+        return keys;
+    }
+
+    function syncChannelFilterLabel() {
+        const selected = [];
+        $('.pef-channel-cb:checked').each(function() {
+            selected.push($(this).attr('data-label') || $(this).val());
+        });
+        const total = $('.pef-channel-cb').length;
+        let label = 'All channels';
+        if (selected.length === 0) {
+            label = 'No channels';
+        } else if (selected.length === 1) {
+            label = selected[0];
+        } else if (selected.length < total) {
+            label = selected.length <= 2
+                ? selected.join(', ')
+                : (selected.length + ' channels');
+        }
+        $('#pef-channel-filter-label').text(label);
+        const allOn = selected.length === total && total > 0;
+        $('#pef-channel-all').prop('checked', allOn);
+        $('#pef-channel-all').prop('indeterminate', selected.length > 0 && !allOn);
+    }
+
+    function setAllChannelsChecked(on) {
+        $('.pef-channel-cb').prop('checked', !!on);
+        syncChannelFilterLabel();
     }
 
     function initTable(rows) {
@@ -1346,7 +1472,6 @@
                 resizable: false,
                 minWidth: 40,
                 headerSort: false,
-                headerFilterLiveFilter: true,
             },
             columns: [
                 {
@@ -1371,9 +1496,6 @@
                     width: 100,
                     hozAlign: 'left',
                     vertAlign: 'middle',
-                    headerFilter: 'input',
-                    headerFilterPlaceholder: 'Parent…',
-                    headerFilterFunc: 'like',
                 },
                 {
                     title: 'SKU',
@@ -1381,9 +1503,6 @@
                     width: 160,
                     hozAlign: 'left',
                     vertAlign: 'middle',
-                    headerFilter: 'input',
-                    headerFilterPlaceholder: 'SKU…',
-                    headerFilterFunc: 'like',
                     cssClass: 'pef-sku-cell',
                 },
                 {
@@ -1392,8 +1511,6 @@
                     width: 100,
                     hozAlign: 'center',
                     vertAlign: 'middle',
-                    headerFilter: 'list',
-                    headerFilterParams: { valuesLookup: true, clearable: true },
                     formatter: function(cell) {
                         const v = cell.getValue() || '';
                         return v ? `<span class="pef-channel-badge">${v}</span>` : '';
@@ -1518,9 +1635,17 @@
                     vertAlign: 'middle',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
-                        const disabled = !(d.sprice > 0);
-                        return `<button type="button" class="btn btn-sm btn-primary pef-push-one" ${disabled ? 'disabled' : ''}
-                            data-id="${String(d.id).replace(/"/g, '&quot;')}" title="Push SPRICE to ${d.channel}">
+                        const hasSprice = Number(d.sprice) > 0;
+                        const st = String(d.success || '').toLowerCase();
+                        const alreadyPushed = ['pushed', 'success', 'ok', 'applied'].indexOf(st) !== -1;
+                        const cls = alreadyPushed ? 'btn-success pef-push-done' : 'btn-primary';
+                        const tip = !hasSprice
+                            ? 'Set SPrice before push'
+                            : (alreadyPushed
+                                ? ('Already pushed — click to push again to ' + d.channel)
+                                : ('Push SPRICE to ' + d.channel));
+                        return `<button type="button" class="btn btn-sm ${cls} pef-push-one" ${hasSprice ? '' : 'disabled'}
+                            data-id="${String(d.id).replace(/"/g, '&quot;')}" title="${String(tip).replace(/"/g, '&quot;')}">
                             <i class="fas fa-upload"></i></button>`;
                     },
                 },
@@ -1702,6 +1827,28 @@
         });
     }
 
+    /** Normalize PEF marketplace keys for /cvr-master-push-price (TikTok 1/2 aliases). */
+    function pushMarketplaceKey(d) {
+        let mp = String(d.marketplace || d.channel_key || d.pull_key || d.channel || '')
+            .toLowerCase().replace(/\s+/g, '');
+        if (['tiktok1', 'tiktokshop', 'tiktokshop1'].indexOf(mp) !== -1) mp = 'tiktok';
+        if (mp === 'tiktokshop2') mp = 'tiktok2';
+        return mp;
+    }
+
+    function ajaxErrorMessage(xhr, fallback) {
+        if (!xhr) return fallback || 'error';
+        const j = xhr.responseJSON;
+        if (j && (j.message || j.error)) return String(j.message || j.error);
+        if (xhr.responseText) {
+            try {
+                const parsed = JSON.parse(xhr.responseText);
+                if (parsed && (parsed.message || parsed.error)) return String(parsed.message || parsed.error);
+            } catch (e) { /* ignore */ }
+        }
+        return fallback || (xhr.statusText || 'error');
+    }
+
     function pushOne(d) {
         return $.ajax({
             url: '/cvr-master-push-price',
@@ -1710,8 +1857,9 @@
             data: {
                 sku: d.sku,
                 price: d.sprice,
-                marketplace: d.marketplace,
+                marketplace: pushMarketplaceKey(d),
             },
+            timeout: 90000,
         });
     }
 
@@ -1729,6 +1877,7 @@
             .html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
         let ok = 0, fail = 0;
 
+        const failMsgs = [];
         for (const item of items) {
             try {
                 const resp = await pushOne(item.d);
@@ -1736,6 +1885,7 @@
                 if (body && body.success === false) {
                     fail++;
                     item.row.update({ success: 'error' });
+                    failMsgs.push((item.d.sku || '') + ': ' + (body.message || 'failed'));
                 } else {
                     ok++;
                     item.row.update({ success: 'pushed' });
@@ -1746,12 +1896,17 @@
             } catch (e) {
                 fail++;
                 item.row.update({ success: 'error' });
+                failMsgs.push((item.d.sku || '') + ': ' + ajaxErrorMessage(e, 'Push failed'));
             }
         }
 
         $btn.html('<i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)');
         updatePushBtn();
-        toast(`Push done: ${ok} ok, ${fail} failed`, fail ? 'error' : 'success');
+        if (fail && failMsgs.length) {
+            toast(`Push done: ${ok} ok, ${fail} failed — ${failMsgs.slice(0, 3).join(' | ')}`, 'error');
+        } else {
+            toast(`Push done: ${ok} ok, ${fail} failed`, fail ? 'error' : 'success');
+        }
     }
 
     $(document).on('change', '#pef-select-all', function() {
@@ -1783,8 +1938,9 @@
         const row = table.getRows().find(r => r.getData().id === id);
         if (!row) return;
         const d = row.getData();
-        if (!(d.sprice > 0)) return;
-        $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+        if (!(Number(d.sprice) > 0)) return;
+        const $btn = $(this);
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
         try {
             const resp = await pushOne(d);
             if (resp && resp.success === false) {
@@ -1798,10 +1954,13 @@
             }
         } catch (e) {
             row.update({ success: 'error' });
-            toast('Push failed', 'error');
+            toast(ajaxErrorMessage(e, 'Push failed'), 'error');
+        } finally {
+            // Reformat so Push never stays stuck disabled/faded after click
+            try { row.reformat(); } catch (err) { /* ignore */ }
+            try { table.redraw(true); } catch (err) { /* ignore */ }
+            updatePushBtn();
         }
-        table.redraw(true);
-        updatePushBtn();
     });
 
     function rebuildParentDatalist() {
@@ -1823,11 +1982,19 @@
 
     function applyTextFilters(updateCounts) {
         if (!table) return;
-        const parentQ = ($('#pef-parent-search').val() || '').trim();
-        const skuQ = ($('#pef-sku-search').val() || '').trim();
-        // Drive column header filters so Parent / SKU search stay in sync (all pages)
-        table.setHeaderFilterValue('parent', parentQ);
-        table.setHeaderFilterValue('sku', skuQ);
+        const parentQ = ($('#pef-parent-search').val() || '').trim().toLowerCase();
+        const skuQ = ($('#pef-sku-search').val() || '').trim().toLowerCase();
+        // Toolbar Parent / SKU search (no column header filters)
+        if (parentQ) {
+            table.addFilter(function(data) {
+                return String(data.parent || '').toLowerCase().indexOf(parentQ) !== -1;
+            });
+        }
+        if (skuQ) {
+            table.addFilter(function(data) {
+                return String(data.sku || '').toLowerCase().indexOf(skuQ) !== -1;
+            });
+        }
         if (parentQ) {
             const activeParents = {};
             (table.getData('active') || []).forEach(function(d) {
@@ -1888,11 +2055,19 @@
         }
     });
 
-    // Filters are client-side on cached rows
-    $('#pef-channel-filter').on('change', function() {
-        if (!dataLoaded) return;
-        applyStatusFilter();
+    // Channel multi-select — keep menu open while toggling; filter client-side
+    $(document).on('click', '.pef-channel-menu', function(e) {
+        e.stopPropagation();
     });
+    $(document).on('change', '#pef-channel-all', function() {
+        setAllChannelsChecked($(this).is(':checked'));
+        if (dataLoaded) applyStatusFilter();
+    });
+    $(document).on('change', '.pef-channel-cb', function() {
+        syncChannelFilterLabel();
+        if (dataLoaded) applyStatusFilter();
+    });
+    syncChannelFilterLabel();
     $('#pef-listed-only').on('change', function() {
         // Reloads from cache with listed_only flag (still instant)
         loadFromCache();
