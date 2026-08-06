@@ -27,6 +27,29 @@
             background: #eef2ff;
             flex: 0 0 auto;
         }
+        #usersTabulator .user-image-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .25rem;
+        }
+        #usersTabulator .user-image-upload-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border: 0;
+            border-radius: 50%;
+            background: #0d6efd;
+            color: #fff;
+            font-size: 12px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+        #usersTabulator .user-image-upload-btn:hover { background: #0b5ed7; }
+        #usersTabulator .user-image-file { display: none; }
         #usersTabulator .tbl-dot {
             display: inline-block;
             width: 12px;
@@ -463,6 +486,18 @@
                                 <input type="date" class="form-control" id="editDateOfJoining" name="date_of_joining">
                                 <div class="form-text">Employee's joining date (for records).</div>
                             </div>
+                            @if(!empty($canEditUserImage))
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="editUserImage">Image</label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <img id="editUserImagePreview" src="{{ asset('images/users/add-image-placeholder.svg') }}" alt=""
+                                         class="rounded-circle" style="width:48px;height:48px;object-fit:cover;background:#eef2ff;">
+                                    <input type="file" class="form-control" id="editUserImage" name="image"
+                                           accept="image/jpeg,image/jpg,image/png,image/gif,image/webp">
+                                </div>
+                                <div class="form-text">Saved to the same profile image source (avatars). JPG, PNG, GIF, WEBP — max 2MB.</div>
+                            </div>
+                            @endif
                         </div>
                         <div class="alert alert-danger mt-3 d-none" id="editUserError"></div>
                     </div>
@@ -2272,6 +2307,8 @@
             const canViewResume = {{ $canViewResume ? 'true' : 'false' }};
             const canEditResume = {{ $canEditResume ? 'true' : 'false' }};
             const canViewSalary = {{ $canViewSalary ? 'true' : 'false' }};
+            const canEditUserImage = {{ !empty($canEditUserImage) ? 'true' : 'false' }};
+            const avatarPlaceholder = @json(asset('images/users/add-image-placeholder.svg'));
 
             const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             const dotFmt = (val, label) => {
@@ -2285,12 +2322,28 @@
             const columns = [
                 { title: '#', formatter: 'rownum', width: 55, hozAlign: 'center', headerSort: false },
                 {
-                    title: 'Image', field: 'avatar_url', width: 80, hozAlign: 'center', headerSort: false,
+                    title: 'Image', field: 'avatar_url', width: canEditUserImage ? 110 : 80, hozAlign: 'center', headerSort: false,
                     formatter: (c) => {
                         const d = c.getRow().getData();
-                        const placeholder = '{{ asset('images/users/add-image-placeholder.svg') }}';
-                        const src = d.avatar_url || placeholder;
-                        return '<img src="' + src + '" class="user-avatar-img" alt="" loading="lazy" onerror="this.onerror=null;this.src=\'' + placeholder + '\';">';
+                        const src = d.avatar_url || avatarPlaceholder;
+                        const img = '<img src="' + esc(src) + '" class="user-avatar-img" alt="" loading="lazy" onerror="this.onerror=null;this.src=\'' + avatarPlaceholder + '\';">';
+                        if (!canEditUserImage || d.is_deleted) {
+                            return img;
+                        }
+                        return '<div class="user-image-cell">'
+                            + img
+                            + '<button type="button" class="user-image-upload-btn" data-user-id="' + d.id + '" title="Update Image">'
+                            + '<i class="ri-camera-line"></i></button>'
+                            + '<input type="file" class="user-image-file" data-user-id="' + d.id + '" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" title="Image">'
+                            + '</div>';
+                    },
+                    cellClick: function (e, cell) {
+                        if (!canEditUserImage) return;
+                        const btn = e.target.closest('.user-image-upload-btn');
+                        if (!btn) return;
+                        e.stopPropagation();
+                        const input = btn.parentElement?.querySelector('.user-image-file');
+                        if (input) input.click();
                     }
                 },
                 { title: 'Name', field: 'name', minWidth: 160, formatter: (c) => esc(c.getValue() || '') },
@@ -2585,8 +2638,55 @@
                 document.getElementById('editPhone').value = d.phone || '';
                 document.getElementById('editDesignation').value = d.designation || '';
                 document.getElementById('editDateOfJoining').value = d.date_of_joining || '';
+                const imageInput = document.getElementById('editUserImage');
+                const imagePreview = document.getElementById('editUserImagePreview');
+                if (imageInput) imageInput.value = '';
+                if (imagePreview) imagePreview.src = d.avatar_url || avatarPlaceholder;
                 bsModal.show();
             }
+
+            async function uploadUserImage(userId, file) {
+                const fd = new FormData();
+                fd.append('image', file);
+                fd.append('_token', csrfToken);
+                const r = await fetch('/users/' + userId + '/avatar', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: fd,
+                });
+                const result = await r.json().catch(() => ({}));
+                if (!r.ok || !result.success) {
+                    let msg = result.message || 'Image upload failed.';
+                    if (result.errors) msg = Object.values(result.errors).flat().join(' ');
+                    throw new Error(msg);
+                }
+                return result;
+            }
+
+            document.getElementById('editUserImage')?.addEventListener('change', function () {
+                const file = this.files && this.files[0];
+                const preview = document.getElementById('editUserImagePreview');
+                if (!file || !preview) return;
+                preview.src = URL.createObjectURL(file);
+            });
+
+            tableEl?.addEventListener('change', async function (e) {
+                const input = e.target.closest('.user-image-file');
+                if (!input || !canEditUserImage) return;
+                const file = input.files && input.files[0];
+                const userId = input.dataset.userId;
+                if (!file || !userId) return;
+                try {
+                    const result = await uploadUserImage(userId, file);
+                    const row = usersTable.getRow(Number(userId));
+                    if (row) row.update({ avatar_url: result.avatar_url });
+                    showToast(result.message || 'Image updated.', 'success');
+                } catch (err) {
+                    showToast((err && err.message) ? err.message : 'Image upload failed.', 'danger');
+                } finally {
+                    input.value = '';
+                }
+            });
 
             if (form) {
                 form.addEventListener('submit', function (e) {
@@ -2607,38 +2707,63 @@
                     fd.append('_token', csrfToken);
                     fd.append('_method', 'PUT');
 
+                    const imageInput = document.getElementById('editUserImage');
+                    const imageFile = imageInput && imageInput.files && imageInput.files[0]
+                        ? imageInput.files[0]
+                        : null;
+
                     fetch('/users/' + userId, {
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
                         body: fd
                     })
                     .then(r => r.json())
-                    .then(result => {
-                        saveBtn.disabled = false;
-                        saveBtn.innerHTML = orig;
-                        if (result.success) {
-                            const row = usersTable.getRow(Number(userId));
-                            if (row) {
-                                row.update({
-                                    name: result.user.name,
-                                    email: result.user.email,
-                                    phone: result.user.phone || '',
-                                    designation: result.user.designation || '',
-                                    date_of_joining: result.user.date_of_joining || '',
-                                    rr_role: result.user.rr_role || '',
-                                    rr_has_portfolio: result.user.has_rr_portfolio === true,
-                                    resources: result.user.resources || '',
-                                    training: result.user.training || '',
-                                });
-                            }
-                            bsModal.hide();
-                            showToast(result.message || 'User updated successfully.', 'success');
-                        } else {
+                    .then(async (result) => {
+                        if (!result.success) {
+                            saveBtn.disabled = false;
+                            saveBtn.innerHTML = orig;
                             let msg = result.message || 'Update failed';
                             if (result.errors) msg = Object.values(result.errors).flat().join(' ');
                             errBox.textContent = msg;
                             errBox.classList.remove('d-none');
+                            return;
                         }
+
+                        let avatarUrl = null;
+                        if (canEditUserImage && imageFile) {
+                            try {
+                                const imgResult = await uploadUserImage(userId, imageFile);
+                                avatarUrl = imgResult.avatar_url || null;
+                            } catch (err) {
+                                saveBtn.disabled = false;
+                                saveBtn.innerHTML = orig;
+                                errBox.textContent = (err && err.message) ? err.message : 'Image upload failed.';
+                                errBox.classList.remove('d-none');
+                                return;
+                            }
+                        }
+
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = orig;
+                        const row = usersTable.getRow(Number(userId));
+                        if (row) {
+                            const patch = {
+                                name: result.user.name,
+                                email: result.user.email,
+                                phone: result.user.phone || '',
+                                designation: result.user.designation || '',
+                                date_of_joining: result.user.date_of_joining || '',
+                                rr_role: result.user.rr_role || '',
+                                rr_has_portfolio: result.user.has_rr_portfolio === true,
+                                resources: result.user.resources || '',
+                                training: result.user.training || '',
+                            };
+                            if (avatarUrl) patch.avatar_url = avatarUrl;
+                            row.update(patch);
+                        }
+                        if (imageInput) imageInput.value = '';
+                        bsModal.hide();
+                        showToast(result.message || 'User updated successfully.', 'success');
                     })
                     .catch(() => {
                         saveBtn.disabled = false;

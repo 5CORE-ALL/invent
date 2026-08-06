@@ -18,6 +18,9 @@ class PayrollMonth extends Model
         'payslips_released_at',
         'it_statements_released_at',
         'notes',
+        'inr_usd_rate',
+        'inr_cny_rate',
+        'fx_rates_fetched_at',
         'created_by',
     ];
 
@@ -27,6 +30,9 @@ class PayrollMonth extends Model
         'is_locked' => 'boolean',
         'payslips_released_at' => 'datetime',
         'it_statements_released_at' => 'datetime',
+        'inr_usd_rate' => 'decimal:4',
+        'inr_cny_rate' => 'decimal:4',
+        'fx_rates_fetched_at' => 'datetime',
     ];
 
     public function creator(): BelongsTo

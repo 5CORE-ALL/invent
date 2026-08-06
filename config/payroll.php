@@ -43,6 +43,22 @@ return [
     ],
 
     /*
+    | Emails treated as China salary candidates (Salary → China tab).
+    | Matched case-insensitively; also used to seed users.salary_region = china.
+    | Prefer setting Country on the Salary sheet (saved to users.salary_region).
+    */
+    'china_emails' => [
+        'sourcing@5core.com',   // Joy Huang
+        'sourcing4@5core.com',  // Huang Jack
+    ],
+
+    'salary_regions' => [
+        'india' => 'India',
+        'china' => 'China',
+        'usa' => 'USA',
+    ],
+
+    /*
     | Map user email → TeamLogger email when they differ.
     */
     'email_mapping' => [

@@ -104,6 +104,7 @@ class UserController extends Controller
         $canViewSalary = TeamManagementAccess::canViewSalary();
         $canViewResume = TeamManagementAccess::canViewResume();
         $canEditResume = TeamManagementAccess::canEditResume();
+        $canEditUserImage = TeamManagementAccess::canEditUserImage();
 
         return view('pages.add-user', compact(
             'users',
@@ -113,6 +114,7 @@ class UserController extends Controller
             'canViewSalary',
             'canViewResume',
             'canEditResume',
+            'canEditUserImage',
             'totalSalaryPP',
             'totalIncrement',
             'teamLoggerData',
@@ -121,6 +123,47 @@ class UserController extends Controller
             'previousMonth',
             'emailMapping'
         ));
+    }
+
+    /**
+     * Upload / replace a team member's profile image (HR designation only).
+     * Stored on the public disk under avatars/ — same source as profile avatars.
+     */
+    public function uploadAvatar(Request $request, User $user)
+    {
+        if (! TeamManagementAccess::canEditUserImage()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only HR can update user images.',
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:2048',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
+            Storage::disk('public')->delete($user->avatar);
+        }
+
+        $path = $request->file('image')->store('avatars', 'public');
+        $user->avatar = $path;
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Image updated successfully.',
+            'avatar' => $path,
+            'avatar_url' => asset('storage/'.$path),
+        ]);
     }
 
     /**

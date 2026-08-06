@@ -12,6 +12,7 @@ use App\Models\PayrollPreviousRecord;
 use App\Models\PayrollSalaryComponent;
 use App\Models\PayrollSettlement;
 use App\Models\User;
+use App\Services\PayrollFxRateService;
 use App\Services\PayrollService;
 use App\Support\SuperAdminAccess;
 use App\Support\UserAccountStatus;
@@ -26,7 +27,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class PayrollController extends Controller
 {
     public function __construct(
-        protected PayrollService $payroll
+        protected PayrollService $payroll,
+        protected PayrollFxRateService $fxRates
     ) {}
 
     protected function authorizeManage(): void
@@ -130,6 +132,9 @@ class PayrollController extends Controller
 
         // Always drop zero-hour rows (including locked months / inactive leavers).
         $this->payroll->removeEmployeesWithoutHours($payrollMonth);
+
+        // Pull Current INR Rate (USD + CNY) once for this month sheet (1st-of-month).
+        $payrollMonth = $this->fxRates->ensureRatesForMonth($payrollMonth);
 
         $payrollMonth->loadCount([
             'employeeSalaries',
@@ -298,10 +303,14 @@ class PayrollController extends Controller
             'upi_id' => 'nullable|string|max:255',
             'is_new_hire' => 'nullable|boolean',
             'account_status' => 'nullable|string|in:active,inactive,deleted,na',
+            'salary_region' => 'nullable|string|in:india,china,usa',
         ]);
 
         $accountStatus = $validated['account_status'] ?? null;
         unset($validated['account_status']);
+
+        $salaryRegion = $validated['salary_region'] ?? null;
+        unset($validated['salary_region']);
 
         // Empty numeric inputs come through as null; treat a blank as 0 so the
         // sheet never stores nulls and recalculation has real numbers to work with.
@@ -331,18 +340,26 @@ class PayrollController extends Controller
             }
         }
 
-        $validated['edited_by'] = $request->user()?->name;
-        $validated['edited_at'] = now();
+        $user = User::withTrashed()->find($payrollEmployeeSalary->user_id);
 
-        $payrollEmployeeSalary->update($validated);
-        $this->payroll->recalculateMonth($month);
+        // Persist Country flag on users table; drives India / China / USA tabs.
+        if ($salaryRegion && $user) {
+            $user->salary_region = $salaryRegion;
+            $user->save();
+        }
 
         // Persist Active-column status on users table (same source as /users/add).
-        if ($accountStatus) {
-            $user = User::withTrashed()->find($payrollEmployeeSalary->user_id);
-            if ($user) {
-                UserAccountStatus::apply($user, $accountStatus);
-            }
+        if ($accountStatus && $user) {
+            UserAccountStatus::apply($user, $accountStatus);
+        }
+
+        // Country-only updates should not rewrite payroll edit history or recalculate.
+        if ($validated !== []) {
+            $validated['edited_by'] = $request->user()?->name;
+            $validated['edited_at'] = now();
+
+            $payrollEmployeeSalary->update($validated);
+            $this->payroll->recalculateMonth($month);
         }
 
         return response()->json([
@@ -447,6 +464,7 @@ class PayrollController extends Controller
             'is_active' => $r->user ? (bool) $r->user->is_active : null,
             'account_status' => UserAccountStatus::for($r->user),
             'is_deleted' => $r->user ? $r->user->trashed() : false,
+            'salary_region' => $r->user ? $r->user->salaryRegion() : 'india',
             'salary_pp' => $r->salary_pp,
             'increment' => $r->increment,
             'other' => $r->other,
@@ -978,9 +996,17 @@ class PayrollController extends Controller
      * accounts team uses: Name, Amount P (net pay), B1 (bank account 1), B2 (bank
      * account 2), UPI — with a yellow header row and a green Amount P column.
      */
-    public function exportPayoutSheet(PayrollMonth $payrollMonth)
+    public function exportPayoutSheet(Request $request, PayrollMonth $payrollMonth)
     {
         $this->authorizeSheetAdmin();
+
+        $region = strtolower((string) $request->query('region', 'india'));
+        if ($region === 'default') {
+            $region = 'india';
+        }
+        if (! in_array($region, ['india', 'china', 'usa'], true)) {
+            $region = 'india';
+        }
 
         if (! $payrollMonth->is_locked) {
             $this->payroll->removeIneligibleEmployees($payrollMonth);
@@ -992,12 +1018,25 @@ class PayrollController extends Controller
 
         // Zero-hour rows out of the download even when the month is locked.
         $this->payroll->removeEmployeesWithoutHours($payrollMonth);
+        $payrollMonth = $this->fxRates->ensureRatesForMonth($payrollMonth);
 
         $rows = PayrollEmployeeSalary::with('user')
             ->where('payroll_month_id', $payrollMonth->id)
             ->get()
             ->reject(fn ($r) => $this->isDirectorForPayoutSheet($r->user))
-            ->reject(fn ($r) => (float) $r->hours_worked <= 0)
+            ->filter(function ($r) use ($region) {
+                $rowRegion = $r->user ? $r->user->salaryRegion() : 'india';
+
+                return $rowRegion === $region;
+            })
+            ->reject(function ($r) use ($region) {
+                // Overseas tabs may include zero-hour candidates; India still requires hours.
+                if (in_array($region, ['china', 'usa'], true)) {
+                    return false;
+                }
+
+                return (float) $r->hours_worked <= 0;
+            })
             ->sortBy(fn ($r) => $r->user?->name)
             ->values();
 
@@ -1005,10 +1044,43 @@ class PayrollController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle(substr($payrollMonth->month_label, 0, 31));
 
-        $headers = ['Name', 'Amount P', 'B1', 'B2', 'UPI'];
-        $sheet->fromArray($headers, null, 'A1');
+        $netInr = (float) $rows->sum(fn ($r) => (float) $r->net_amount);
+        $employeeCount = $rows->count();
+        $headerRow = 1;
 
-        $r = 2;
+        // USA / China sheets: badge summary (Employees, Current INR Rate, converted amount).
+        if (in_array($region, ['usa', 'china'], true)) {
+            $rate = $region === 'usa'
+                ? (float) ($payrollMonth->inr_usd_rate ?? 0)
+                : (float) ($payrollMonth->inr_cny_rate ?? 0);
+            $converted = $rate > 0 ? round($netInr / $rate, 2) : 0.0;
+            $convertedLabel = $region === 'usa' ? 'USD Amount' : 'RMB Amount';
+            $rateLabel = 'Current INR Rate';
+
+            $sheet->setCellValue('A1', 'Employees');
+            $sheet->setCellValue('B1', $employeeCount);
+            $sheet->setCellValue('A2', $rateLabel);
+            $sheet->setCellValue('B2', $rate > 0 ? $rate : '—');
+            $sheet->setCellValue('A3', $convertedLabel);
+            $sheet->setCellValue('B3', $converted);
+
+            $sheet->getStyle('A1:A3')->getFont()->setBold(true);
+            $sheet->getStyle('B1:B3')->applyFromArray([
+                'font' => ['bold' => true],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DCEEFF']],
+            ]);
+            if ($rate > 0) {
+                $sheet->getStyle('B2')->getNumberFormat()->setFormatCode('#,##0.0000');
+            }
+            $sheet->getStyle('B3')->getNumberFormat()->setFormatCode($region === 'usa' ? '"US $"#,##0.00' : '"RMB "#,##0.00');
+
+            $headerRow = 5;
+        }
+
+        $headers = ['Name', 'Amount P', 'B1', 'B2', 'UPI'];
+        $sheet->fromArray($headers, null, 'A'.$headerRow);
+
+        $r = $headerRow + 1;
         foreach ($rows as $row) {
             $sheet->setCellValue('A'.$r, $row->user?->name ?? '');
             $sheet->setCellValue('B'.$r, (float) $row->net_amount);
@@ -1017,27 +1089,32 @@ class PayrollController extends Controller
             $sheet->setCellValueExplicit('E'.$r, (string) ($row->upi_id ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             $r++;
         }
-        $lastRow = max(1, $r - 1);
+        $lastRow = max($headerRow, $r - 1);
+        $dataStart = $headerRow + 1;
 
         // Header row: bold black text on yellow, centered.
-        $sheet->getStyle('A1:E1')->applyFromArray([
+        $sheet->getStyle('A'.$headerRow.':E'.$headerRow)->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => '000000']],
             'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
             'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFF00']],
         ]);
 
         // Amount P column (B): green fill, centered, formatted as number.
-        $sheet->getStyle('B2:B'.$lastRow)->applyFromArray([
-            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '00E000']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-        ]);
-        $sheet->getStyle('B2:B'.$lastRow)->getNumberFormat()->setFormatCode('#,##0');
+        if ($lastRow >= $dataStart) {
+            $sheet->getStyle('B'.$dataStart.':B'.$lastRow)->applyFromArray([
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '00E000']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            ]);
+            $sheet->getStyle('B'.$dataStart.':B'.$lastRow)->getNumberFormat()->setFormatCode('#,##0');
+        }
 
         // Borders + wrap for bank detail columns on the whole table.
-        $sheet->getStyle('A1:E'.$lastRow)->getBorders()->getAllBorders()
+        $sheet->getStyle('A'.$headerRow.':E'.$lastRow)->getBorders()->getAllBorders()
             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
-        $sheet->getStyle('A1:A'.$lastRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
-        $sheet->getStyle('C2:E'.$lastRow)->getAlignment()->setWrapText(true);
+        $sheet->getStyle('A'.$headerRow.':A'.$lastRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+        if ($lastRow >= $dataStart) {
+            $sheet->getStyle('C'.$dataStart.':E'.$lastRow)->getAlignment()->setWrapText(true);
+        }
 
         $sheet->getColumnDimension('A')->setWidth(20);
         $sheet->getColumnDimension('B')->setWidth(14);
@@ -1045,7 +1122,12 @@ class PayrollController extends Controller
         $sheet->getColumnDimension('D')->setWidth(45);
         $sheet->getColumnDimension('E')->setWidth(28);
 
-        $filename = 'payout_'.str_replace(' ', '_', $payrollMonth->month_label).'.xlsx';
+        $suffix = match ($region) {
+            'china' => '_China',
+            'usa' => '_USA',
+            default => '',
+        };
+        $filename = 'payout_'.str_replace(' ', '_', $payrollMonth->month_label).$suffix.'.xlsx';
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
         return response()->streamDownload(function () use ($writer) {

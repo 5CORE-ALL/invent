@@ -261,6 +261,11 @@ class PayrollService
         $removeIds = [];
 
         foreach (PayrollEmployeeSalary::with('user')->where('payroll_month_id', $month->id)->get() as $row) {
+            // China / USA candidates stay on the sheet even without TeamLogger hours.
+            if ($row->user && $row->user->isOverseasSalaryRegion()) {
+                continue;
+            }
+
             if (! $this->rowHasPayableHours($row, $teamLogger)) {
                 $removeIds[] = $row->id;
             }
@@ -449,19 +454,29 @@ class PayrollService
         $count = 0;
 
         foreach ($missing as $user) {
-            if (! $this->userHasRecordedHours($user, $teamLogger)) {
+            // China / USA candidates always get a row (they may not use TeamLogger).
+            if (! $user->isOverseasSalaryRegion() && ! $this->userHasRecordedHours($user, $teamLogger)) {
                 continue;
             }
 
-            PayrollEmployeeSalary::create(array_merge(
-                $this->newRowAttributes($month, $user, $teamLogger),
-                [
-                    'payroll_month_id' => $month->id,
+            try {
+                PayrollEmployeeSalary::create(array_merge(
+                    $this->newRowAttributes($month, $user, $teamLogger),
+                    [
+                        'payroll_month_id' => $month->id,
+                        'user_id' => $user->id,
+                        'is_new_hire' => false,
+                    ]
+                ));
+                $count++;
+            } catch (\Throwable $e) {
+                \Log::warning('Payroll sheet row create failed', [
+                    'month' => $month->month_label,
                     'user_id' => $user->id,
-                    'is_new_hire' => false,
-                ]
-            ));
-            $count++;
+                    'email' => $user->email,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $count;

@@ -34,6 +34,7 @@ class User extends Authenticatable
         'date_of_joining',
         'is_active',
         'show_in_salary',
+        'salary_region',
         'resume_path',
         'resume_original_name',
         'deactivated_at',
@@ -74,6 +75,43 @@ class User extends Authenticatable
     public function staysLoggedIn(): bool
     {
         return (bool) ($this->stay_logged_in ?? false);
+    }
+
+    /**
+     * Normalized salary country: india | china | usa (default India).
+     */
+    public function salaryRegion(): string
+    {
+        $region = strtolower(trim((string) ($this->salary_region ?? 'india')));
+        if (in_array($region, ['china', 'usa'], true)) {
+            return $region;
+        }
+
+        // Legacy seed: configured China emails still map to China when unset/india.
+        $email = strtolower(trim((string) ($this->email ?? '')));
+        if ($email !== '' && in_array($email, array_map('strtolower', config('payroll.china_emails', [])), true)) {
+            return 'china';
+        }
+
+        return 'india';
+    }
+
+    /** Whether this user belongs on the Salary → China tab. */
+    public function isChinaSalaryRegion(): bool
+    {
+        return $this->salaryRegion() === 'china';
+    }
+
+    /** Whether this user belongs on the Salary → USA tab. */
+    public function isUsaSalaryRegion(): bool
+    {
+        return $this->salaryRegion() === 'usa';
+    }
+
+    /** China / USA candidates may appear without TeamLogger hours. */
+    public function isOverseasSalaryRegion(): bool
+    {
+        return in_array($this->salaryRegion(), ['china', 'usa'], true);
     }
 
     public function permission()

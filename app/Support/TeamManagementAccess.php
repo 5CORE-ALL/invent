@@ -59,4 +59,28 @@ class TeamManagementAccess
     {
         return self::granted($user, config('team_management.resume_editor_emails', []));
     }
+
+    /** Whether the user has an HR designation (case-insensitive). */
+    public static function isHrDesignation(?User $user = null): bool
+    {
+        $user ??= auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return strtolower(trim((string) ($user->designation ?? ''))) === 'hr';
+    }
+
+    /**
+     * Update team member profile images on /users/add.
+     * Restricted to users with designation HR (plus super-admins).
+     */
+    public static function canEditUserImage(?User $user = null): bool
+    {
+        if (SuperAdminAccess::is($user)) {
+            return true;
+        }
+
+        return self::isHrDesignation($user);
+    }
 }

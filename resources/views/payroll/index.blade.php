@@ -42,6 +42,12 @@
     .payroll-stat-employees .val { color: #084298; }
     .payroll-stat-net { background: rgba(25, 135, 84, .14); color: #146c43; }
     .payroll-stat-net .val { color: #0f5132; }
+    .payroll-stat-rate { background: rgba(253, 126, 20, .14); color: #c2410c; }
+    .payroll-stat-rate .val { color: #9a3412; }
+    .payroll-stat-fx { background: rgba(111, 66, 193, .12); color: #5a32a3; }
+    .payroll-stat-fx .val { color: #4c1d95; }
+    .payroll-fx-badges { display: none; }
+    .payroll-fx-badges.is-visible { display: inline-flex; align-items: center; gap: .35rem; }
     .payroll-history-tip {
         cursor: help; display: inline-flex; align-items: center; justify-content: center;
         font-size: 1.1rem; position: relative;
@@ -93,6 +99,24 @@
     }
     .payroll-status-menu label:hover { background: #f1f3f5; }
     .payroll-status-menu input { margin: 0; cursor: pointer; height: auto !important; min-height: 0 !important; }
+    .payroll-region-tabs { border-bottom: 1px solid rgba(0,0,0,.08); }
+    .payroll-region-tabs .nav-link {
+        font-size: .85rem; font-weight: 600; color: #6c757d;
+        border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+        padding: .55rem 1rem; margin-bottom: -1px;
+    }
+    .payroll-region-tabs .nav-link:hover { color: #0d6efd; }
+    .payroll-region-tabs .nav-link.active {
+        color: #0d6efd; background: transparent; border-bottom-color: #0d6efd;
+    }
+    #payrollApp .payroll-country-select {
+        width: 100%; max-width: 118px; height: 28px; padding: 0 .35rem;
+        border: 1px solid #ced4da; border-radius: .35rem; font-size: .78rem;
+        background: #fff; cursor: pointer; text-align: center;
+    }
+    #payrollApp .payroll-country-select:disabled {
+        background: #f8f9fa; cursor: default; opacity: .85;
+    }
 </style>
 @endsection
 
@@ -103,12 +127,37 @@
      data-active-month-id="{{ $activeMonth?->id }}"
      data-base-url="{{ url('/payroll') }}">
 
+    <ul class="nav nav-tabs payroll-region-tabs mb-2" id="payrollRegionTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-salary-btn" data-bs-toggle="tab" data-bs-target="#tab-salary"
+                type="button" role="tab" data-region="india" aria-selected="true">
+                <span class="me-1">🇮🇳</span>Salary
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-china-btn" data-bs-toggle="tab" data-bs-target="#tab-china"
+                type="button" role="tab" data-region="china" aria-selected="false">
+                <span class="me-1">🇨🇳</span>China
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-usa-btn" data-bs-toggle="tab" data-bs-target="#tab-usa"
+                type="button" role="tab" data-region="usa" aria-selected="false">
+                <span class="me-1">🇺🇸</span>USA
+            </button>
+        </li>
+    </ul>
+
     <div class="payroll-card px-3 py-2 mb-2" id="salaryStatusSection">
         <div class="payroll-toolbar flex-nowrap">
-            <h4 class="payroll-toolbar-title"><i class="ri-wallet-3-line me-1 text-primary"></i>Salary</h4>
+            <h4 class="payroll-toolbar-title" id="payrollRegionTitle"><span class="me-1">🇮🇳</span>Salary</h4>
             <div class="d-flex align-items-center gap-2 flex-shrink-0" id="monthStats">
                 <span class="payroll-stat-inline payroll-stat-employees">Employees <span class="val" id="statEmployees">—</span></span>
                 <span class="payroll-stat-inline payroll-stat-net">Net <span class="val" id="statNet">—</span></span>
+                <span class="payroll-fx-badges" id="payrollFxBadges">
+                    <span class="payroll-stat-inline payroll-stat-rate" title="INR per 1 USD/RMB — fetched on the 1st of the month">Current INR Rate <span class="val" id="statInrRate">—</span></span>
+                    <span class="payroll-stat-inline payroll-stat-fx"><span id="statFxLabel">USD Amount</span> <span class="val" id="statFxAmount">—</span></span>
+                </span>
             </div>
             <div class="input-group input-group-sm" style="width: 150px; flex-shrink: 0;">
                 <span class="input-group-text bg-light border-0 py-0"><i class="ri-search-line"></i></span>
@@ -147,10 +196,24 @@
         </div>
     </div>
 
-    <div class="payroll-card p-2">
-        <div id="employeesTable"></div>
-        <input type="file" id="payrollDocInput" class="d-none" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx">
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="tab-salary" role="tabpanel">
+            <div class="payroll-card p-2">
+                <div id="employeesTable"></div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="tab-china" role="tabpanel">
+            <div class="payroll-card p-2">
+                <div id="chinaEmployeesTable"></div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="tab-usa" role="tabpanel">
+            <div class="payroll-card p-2">
+                <div id="usaEmployeesTable"></div>
+            </div>
+        </div>
     </div>
+    <input type="file" id="payrollDocInput" class="d-none" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx">
 </div>
 
 @if($canManage)
@@ -253,7 +316,17 @@
         return j;
     }
 
-    function fmt(n) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
+    function fmt(n, region) {
+        const amount = Number(n || 0);
+        const r = String(region || (typeof activeSalaryRegion !== 'undefined' ? activeSalaryRegion : 'india') || 'india').toLowerCase();
+        if (r === 'china') {
+            return 'RMB ' + amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+        if (r === 'usa') {
+            return 'US $' + amount.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+        return '₹' + amount.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    }
 
     function formatDocSlot(d, type, label, locked) {
         const pathKey = type + '_document_path';
@@ -309,17 +382,16 @@
 
     function applyEmployeeRowUpdate(rowData) {
         if (!rowData || !rowData.id) return;
-        employeeRowsById[rowData.id] = rowData;
-        if (employeesTable && employeesTableBuilt) {
-            const row = employeesTable.getRows().find(r => String(r.getData().id) === String(rowData.id));
-            if (row) row.update(Object.assign({}, row.getData(), rowData));
-        }
+        const locked = !!(employeeRowsById[rowData.id]?._locked);
+        employeeRowsById[rowData.id] = Object.assign({}, rowData, { _locked: locked });
+        // Country change moves the row between India / China / USA tables.
+        redistributeEmployeeRows();
+        applyPayrollFilters();
     }
 
     async function onHoursEdited(cell) {
         const row = cell.getRow();
         const d = row.getData();
-        const oldValue = cell.getOldValue();
         const value = parseFloat(cell.getValue());
         if (isNaN(value) || value < 0) {
             cell.restoreOldValue();
@@ -328,7 +400,6 @@
         try {
             const res = await api(`${base}/employee-salary/${d.id}`, 'PUT', { hours_worked: value });
             const fresh = res.row || {};
-            // Reflect recalculated amounts immediately, without a full reload.
             row.update({
                 hours_worked: fresh.hours_worked ?? value,
                 hours_overridden: true,
@@ -346,12 +417,40 @@
         }
     }
 
+    const REGION_META = {
+        india: { label: 'India', flag: '🇮🇳', title: 'Salary' },
+        china: { label: 'China', flag: '🇨🇳', title: 'China' },
+        usa: { label: 'USA', flag: '🇺🇸', title: 'USA' },
+    };
+
+    function normalizeRegion(value) {
+        const v = String(value || 'india').toLowerCase();
+        if (v === 'default') return 'india';
+        return REGION_META[v] ? v : 'india';
+    }
+
+    function countryLabel(region) {
+        const meta = REGION_META[normalizeRegion(region)] || REGION_META.india;
+        return meta.flag + ' ' + meta.label;
+    }
+
     let employeesTable = null;
     let employeesTableBuilt = false;
+    let chinaEmployeesTable = null;
+    let chinaEmployeesTableBuilt = false;
+    let usaEmployeesTable = null;
+    let usaEmployeesTableBuilt = false;
     let pendingEmployeesData = [];
-    function renderEmployeesTable(emps, locked) {
-        const data = (emps || []).map(e => Object.assign({}, e, { _locked: locked }));
-        pendingEmployeesData = data;
+    let pendingChinaEmployeesData = [];
+    let pendingUsaEmployeesData = [];
+    let allEmployeesData = [];
+    let activeSalaryRegion = 'india';
+
+    function regionForEmployee(d) {
+        return normalizeRegion(d?.salary_region);
+    }
+
+    function buildEmployeeColumns() {
         const statusMeta = {
             active: { cls: 'tbl-dot--green', label: 'Active' },
             inactive: { cls: 'tbl-dot--yellow', label: 'Inactive' },
@@ -369,7 +468,22 @@
                     return '<span class="tbl-dot ' + meta.cls + '" title="' + meta.label + '"></span>';
                 }
             },
-            { title: 'Name', field: 'name', minWidth: 180, formatter: (c) => esc(c.getRow().getData().name || '—') },
+            { title: 'Name', field: 'name', minWidth: 160, formatter: (c) => esc(c.getRow().getData().name || '—') },
+            {
+                title: 'Country', field: 'salary_region', hozAlign: 'center', width: 130, headerSort: false,
+                formatter: (c) => {
+                    const region = normalizeRegion(c.getValue());
+                    const locked = !!c.getRow().getData()._locked || !canManage;
+                    if (locked) {
+                        return '<span title="Country">' + countryLabel(region) + '</span>';
+                    }
+                    return '<select class="payroll-country-select" data-row-id="' + esc(String(c.getRow().getData().id)) + '" title="Country">'
+                        + '<option value="india"' + (region === 'india' ? ' selected' : '') + '>🇮🇳 India</option>'
+                        + '<option value="china"' + (region === 'china' ? ' selected' : '') + '>🇨🇳 China</option>'
+                        + '<option value="usa"' + (region === 'usa' ? ' selected' : '') + '>🇺🇸 USA</option>'
+                        + '</select>';
+                }
+            },
             { title: 'Hours LM', field: 'hours_worked', hozAlign: 'center', width: 110,
                 editor: canManage ? 'number' : false,
                 editorParams: { min: 0, step: 1, selectContents: true },
@@ -379,23 +493,27 @@
                     const d = c.getRow().getData();
                     const v = parseFloat(c.getValue());
                     const txt = isNaN(v) ? '—' : (Math.round(v) + 'h');
-                    // Pen tag shows ONLY when the hours were manually edited (overridden),
-                    // so live working hours stay clean and edited values stand out in bold.
                     if (d.hours_overridden) {
                         const who = d.edited_by ? ' title="Edited by ' + esc(d.edited_by) + '"' : '';
                         return '<strong>' + txt + ' <i class="ri-pencil-fill text-primary"' + who + '></i></strong>';
                     }
                     return txt;
                 } },
-            { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
-            { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
-            { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
-            { title: 'Incentive', field: 'incentive', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
+            { title: 'Salary PP', field: 'salary_pp', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Incr', field: 'increment', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Other', field: 'other', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Incentive', field: 'incentive', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
             { title: 'Docs', field: 'documents', hozAlign: 'center', headerSort: false, width: 70, minWidth: 70,
                 formatter: (c) => formatDocumentsCell(c.getRow().getData(), !!c.getRow().getData()._locked) },
-            { title: 'Advance', field: 'adv_inc_other', hozAlign: 'right', formatter: (c) => fmt(c.getValue()) },
-            { title: 'Amount', field: 'gross_amount', hozAlign: 'right', formatter: (c) => fmt(c.getRow().getData().gross_amount ?? c.getRow().getData().amount_lm) },
-            { title: 'Payable', field: 'net_amount', hozAlign: 'right', formatter: (c) => '<strong>' + fmt(c.getRow().getData().net_amount ?? c.getRow().getData().amount_p) + '</strong>' },
+            { title: 'Advance', field: 'adv_inc_other', hozAlign: 'right', formatter: (c) => fmt(c.getValue(), c.getRow().getData().salary_region) },
+            { title: 'Amount', field: 'gross_amount', hozAlign: 'right', formatter: (c) => {
+                const d = c.getRow().getData();
+                return fmt(d.gross_amount ?? d.amount_lm, d.salary_region);
+            } },
+            { title: 'Payable', field: 'net_amount', hozAlign: 'right', formatter: (c) => {
+                const d = c.getRow().getData();
+                return '<strong>' + fmt(d.net_amount ?? d.amount_p, d.salary_region) + '</strong>';
+            } },
         ];
         columns.push({
             title: 'History', field: 'edited_at', hozAlign: 'center', headerSort: false, width: 80,
@@ -436,26 +554,78 @@
                      + '<a href="' + url + '?print=1" target="_blank" class="btn btn-sm btn-success py-0" title="Download"><i class="ri-download-line"></i></a>';
             }
         });
+        return columns;
+    }
 
-        if (!employeesTable) {
-            employeesTable = new Tabulator('#employeesTable', {
-                layout: 'fitColumns',
-                placeholder: 'No employees — sync from Team Management.',
-                pagination: true,
-                paginationSize: 100,
-                paginationSizeSelector: [25, 50, 100, 200],
-                columns: columns,
-            });
-            employeesTable.on('tableBuilt', () => {
-                employeesTableBuilt = true;
-                employeesTable.setData(pendingEmployeesData);
-                applyPayrollFilters();
-            });
-        } else if (employeesTableBuilt) {
-            // Columns already handle the locked state per-row (d._locked), so just swap the data.
-            employeesTable.setData(pendingEmployeesData);
+    const regionTableState = {
+        india: { table: null, built: false, el: '#employeesTable', placeholder: 'No employees — sync from Team Management.', get pending() { return pendingEmployeesData; }, setPending(v) { pendingEmployeesData = v; }, setTable(t) { employeesTable = t; }, getTable() { return employeesTable; }, setBuilt(b) { employeesTableBuilt = b; }, getBuilt() { return employeesTableBuilt; } },
+        china: { table: null, built: false, el: '#chinaEmployeesTable', placeholder: 'No China candidates for this month.', get pending() { return pendingChinaEmployeesData; }, setPending(v) { pendingChinaEmployeesData = v; }, setTable(t) { chinaEmployeesTable = t; }, getTable() { return chinaEmployeesTable; }, setBuilt(b) { chinaEmployeesTableBuilt = b; }, getBuilt() { return chinaEmployeesTableBuilt; } },
+        usa: { table: null, built: false, el: '#usaEmployeesTable', placeholder: 'No USA candidates for this month.', get pending() { return pendingUsaEmployeesData; }, setPending(v) { pendingUsaEmployeesData = v; }, setTable(t) { usaEmployeesTable = t; }, getTable() { return usaEmployeesTable; }, setBuilt(b) { usaEmployeesTableBuilt = b; }, getBuilt() { return usaEmployeesTableBuilt; } },
+    };
+
+    function ensureEmployeeTable(kind) {
+        const state = regionTableState[kind];
+        if (!state) return null;
+        if (state.getTable()) return state.getTable();
+
+        const table = new Tabulator(state.el, {
+            layout: 'fitColumns',
+            placeholder: state.placeholder,
+            pagination: true,
+            paginationSize: 100,
+            paginationSizeSelector: [25, 50, 100, 200],
+            columns: buildEmployeeColumns(),
+            data: [],
+        });
+        table.on('tableBuilt', () => {
+            state.setBuilt(true);
+            state.getTable().setData(state.pending);
+            applyPayrollFilters();
+        });
+        state.setTable(table);
+        return table;
+    }
+
+    function redistributeEmployeeRows() {
+        const data = Object.values(employeeRowsById);
+        allEmployeesData = data;
+        pendingEmployeesData = data.filter((e) => regionForEmployee(e) === 'india');
+        pendingChinaEmployeesData = data.filter((e) => regionForEmployee(e) === 'china');
+        pendingUsaEmployeesData = data.filter((e) => regionForEmployee(e) === 'usa');
+
+        if (employeesTableBuilt) employeesTable.setData(pendingEmployeesData);
+        if (chinaEmployeesTableBuilt) chinaEmployeesTable.setData(pendingChinaEmployeesData);
+        if (usaEmployeesTableBuilt) usaEmployeesTable.setData(pendingUsaEmployeesData);
+    }
+
+    function renderEmployeesTable(emps, locked) {
+        const data = (emps || []).map(e => Object.assign({}, e, {
+            _locked: locked,
+            salary_region: normalizeRegion(e.salary_region),
+        }));
+        Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
+        data.forEach(e => { employeeRowsById[e.id] = e; });
+
+        ensureEmployeeTable('india');
+        ensureEmployeeTable('china');
+        ensureEmployeeTable('usa');
+        redistributeEmployeeRows();
+    }
+
+    function updateRegionUi() {
+        const region = normalizeRegion(activeSalaryRegion);
+        const meta = REGION_META[region] || REGION_META.india;
+        const title = document.getElementById('payrollRegionTitle');
+        if (title) {
+            title.innerHTML = '<span class="me-1">' + meta.flag + '</span>' + meta.title;
         }
-        // If not yet built, the tableBuilt handler will load the latest pendingEmployeesData.
+        const id = currentMonthId();
+        if (id) {
+            document.getElementById('btnDownloadPayoutSheet')?.setAttribute(
+                'href',
+                `${base}/month/${id}/payout-sheet?region=${region}`
+            );
+        }
     }
 
     function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -507,6 +677,8 @@
         }
     }
 
+    let monthFxRates = { inr_usd_rate: null, inr_cny_rate: null };
+
     async function loadMonth() {
         const id = currentMonthId();
         if (!id) return;
@@ -515,6 +687,11 @@
         const m = data.month;
         const emps = data.employees || [];
 
+        monthFxRates = {
+            inr_usd_rate: m?.inr_usd_rate != null ? parseFloat(m.inr_usd_rate) : null,
+            inr_cny_rate: m?.inr_cny_rate != null ? parseFloat(m.inr_cny_rate) : null,
+        };
+
         Object.keys(employeeRowsById).forEach(k => delete employeeRowsById[k]);
         emps.forEach(e => { employeeRowsById[e.id] = e; });
 
@@ -522,14 +699,42 @@
         applyPayrollFilters();
         renderStatusSection(m);
         updateMonthSelectOption(m);
-
-        document.getElementById('btnDownloadPayoutSheet')?.setAttribute('href', `${base}/month/${id}/payout-sheet`);
+        updateRegionUi();
     }
 
     function updateEmployeeStats(rows) {
         const list = rows || [];
+        const netInr = list.reduce((s, e) => s + parseFloat(e.net_amount || 0), 0);
         document.getElementById('statEmployees').textContent = list.length;
-        document.getElementById('statNet').textContent = fmt(list.reduce((s, e) => s + parseFloat(e.net_amount || 0), 0));
+        document.getElementById('statNet').textContent = fmt(netInr, activeSalaryRegion);
+
+        const region = normalizeRegion(activeSalaryRegion);
+        const fxWrap = document.getElementById('payrollFxBadges');
+        const rateEl = document.getElementById('statInrRate');
+        const fxLabel = document.getElementById('statFxLabel');
+        const fxAmount = document.getElementById('statFxAmount');
+
+        if (!fxWrap || !rateEl || !fxLabel || !fxAmount) return;
+
+        if (region !== 'usa' && region !== 'china') {
+            fxWrap.classList.remove('is-visible');
+            return;
+        }
+
+        fxWrap.classList.add('is-visible');
+        const rate = region === 'usa' ? monthFxRates.inr_usd_rate : monthFxRates.inr_cny_rate;
+        rateEl.textContent = (rate && rate > 0)
+            ? Number(rate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+            : '—';
+        fxLabel.textContent = region === 'usa' ? 'USD Amount' : 'RMB Amount';
+        if (rate && rate > 0) {
+            const converted = netInr / rate;
+            fxAmount.textContent = region === 'usa'
+                ? ('US $' + converted.toLocaleString('en-US', { maximumFractionDigits: 2 }))
+                : ('RMB ' + converted.toLocaleString('en-US', { maximumFractionDigits: 2 }));
+        } else {
+            fxAmount.textContent = '—';
+        }
     }
 
     document.getElementById('payrollMonthSelect')?.addEventListener('change', () => { loadMonth(); });
@@ -687,7 +892,18 @@
         if (employeesTable && employeesTableBuilt) {
             try { employeesTable.setFilter(empFilter); } catch (e) {}
         }
-        updateEmployeeStats((pendingEmployeesData || []).filter(empFilter));
+        if (chinaEmployeesTable && chinaEmployeesTableBuilt) {
+            try { chinaEmployeesTable.setFilter(empFilter); } catch (e) {}
+        }
+        if (usaEmployeesTable && usaEmployeesTableBuilt) {
+            try { usaEmployeesTable.setFilter(empFilter); } catch (e) {}
+        }
+
+        const region = normalizeRegion(activeSalaryRegion);
+        const activeRows = region === 'china'
+            ? (pendingChinaEmployeesData || [])
+            : (region === 'usa' ? (pendingUsaEmployeesData || []) : (pendingEmployeesData || []));
+        updateEmployeeStats(activeRows.filter(empFilter));
 
         Object.values(tableInstances).forEach((t) => {
             try { t.setFilter(userFilter); } catch (e) {}
@@ -742,14 +958,42 @@
     document.getElementById('payrollSearch')?.addEventListener('keyup', applyPayrollFilters);
     updatePayrollStatusButtonLabel();
 
+    // Country flag dropdown — save to DB and move row to the matching tab.
+    document.getElementById('payrollApp')?.addEventListener('change', async (e) => {
+        const select = e.target.closest('.payroll-country-select');
+        if (!select) return;
+        const rowId = select.dataset.rowId;
+        const row = employeeRowsById[rowId];
+        if (!row) return;
+        const previous = normalizeRegion(row.salary_region);
+        const value = normalizeRegion(select.value);
+        if (value === previous) return;
+        select.disabled = true;
+        try {
+            const res = await api(`${base}/employee-salary/${rowId}`, 'PUT', { salary_region: value });
+            applyEmployeeRowUpdate(Object.assign({}, row, res.row || {}, { salary_region: value }));
+        } catch (err) {
+            select.value = previous;
+            alert((err && err.message) ? err.message : 'Failed to save country.');
+        } finally {
+            select.disabled = false;
+        }
+    });
+
     // Tables built inside hidden tabs need a redraw once their tab becomes visible.
-    document.querySelectorAll('[data-bs-toggle="tab"]').forEach((btn) => {
+    document.querySelectorAll('#payrollRegionTabs [data-bs-toggle="tab"]').forEach((btn) => {
         btn.addEventListener('shown.bs.tab', () => {
+            activeSalaryRegion = normalizeRegion(btn.dataset.region || 'india');
+            updateRegionUi();
+            applyPayrollFilters();
             if (employeesTable) employeesTable.redraw(true);
+            if (chinaEmployeesTable) chinaEmployeesTable.redraw(true);
+            if (usaEmployeesTable) usaEmployeesTable.redraw(true);
             Object.values(tableInstances).forEach((t) => { try { t.redraw(true); } catch (e) {} });
         });
     });
 
+    updateRegionUi();
     if (currentMonthId()) loadMonth();
 })();
 </script>

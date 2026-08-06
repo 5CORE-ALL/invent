@@ -182,6 +182,12 @@ class Kernel extends ConsoleKernel
 
     protected function schedule(Schedule $schedule)
     {
+        // Payroll: Current INR Rate (USD + CNY) for the month sheet — 1st of every month.
+        $schedule->command('payroll:fetch-fx-rates')
+            ->monthlyOn(1, '00:15')
+            ->withoutOverlapping()
+            ->name('payroll-fetch-fx-rates');
+
         $log = $this->schedulerLog;
         $ist = fn ($event) => $this->istBusinessWindow($event);
 

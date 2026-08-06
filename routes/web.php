@@ -6715,6 +6715,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         ->middleware('auth')
         ->name('users.update');
 
+    Route::post('/users/{user}/avatar', [UserController::class, 'uploadAvatar'])
+        ->middleware('auth')
+        ->name('users.avatar.upload');
+
     Route::delete('/users/{user}', [UserController::class, 'destroy'])
         ->middleware('auth')
         ->name('users.destroy');
