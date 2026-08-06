@@ -115,10 +115,11 @@
                 <input type="text" id="payrollSearch" class="form-control border-0 bg-light form-control-sm" placeholder="Name">
             </div>
             <div class="payroll-status-multi" id="payrollStatusMulti" title="Filter by one or more statuses">
-                <button type="button" id="payrollStatusMultiBtn">Active</button>
+                <button type="button" id="payrollStatusMultiBtn">2 selected</button>
                 <div class="payroll-status-menu" id="payrollStatusMenu">
+                    {{-- Active + Inactive both on by default so leavers with login hours still appear --}}
                     <label><input type="checkbox" name="payroll_status" value="active" checked> Active</label>
-                    <label><input type="checkbox" name="payroll_status" value="inactive"> Inactive</label>
+                    <label><input type="checkbox" name="payroll_status" value="inactive" checked> Inactive</label>
                     <label><input type="checkbox" name="payroll_status" value="deleted"> Deleted</label>
                     <label><input type="checkbox" name="payroll_status" value="na"> N/A</label>
                 </div>
