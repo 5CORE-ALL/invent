@@ -1906,7 +1906,7 @@ class PurchaseOrderController extends Controller
     public function saveCustomTermOption(Request $request)
     {
         $validated = $request->validate([
-            'value' => 'required|string|min:1|max:1000',
+            'value' => 'required|string|min:1|max:768',
         ]);
 
         if (! Schema::hasTable('po_custom_term_options')) {
