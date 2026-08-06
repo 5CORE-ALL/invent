@@ -2225,19 +2225,42 @@ class PurchaseOrderController extends Controller
     }
 
     /**
+     * Collapse NBSP / multi-space and trim for SKU compare.
+     */
+    private function normalizeSkuSpacing(string $sku): string
+    {
+        $sku = str_replace("\u{00a0}", ' ', $sku);
+        $sku = preg_replace('/\s+/u', ' ', trim($sku)) ?? '';
+
+        return $sku;
+    }
+
+    /**
+     * Case + space insensitive SKU key (e.g. "Dm  20" → "dm20").
+     * Used to match PO lines to Masters Barcode / CP Master rows.
+     */
+    private function normalizeSkuMatchKey(string $sku): string
+    {
+        $sku = $this->normalizeSkuSpacing($sku);
+        $sku = preg_replace('/\s+/u', '', $sku) ?? '';
+
+        return mb_strtolower($sku);
+    }
+
+    /**
      * Alternate spellings for PO SKUs that differ from CP Master naming
-     * (e.g. "DM 9EC" → "DM E9").
+     * (e.g. "DM 9EC" → "DM E9"). Includes case / spacing variants.
      *
      * @return array<int, string>
      */
     private function skuSearchVariants(string $sku): array
     {
-        $sku = trim($sku);
+        $sku = $this->normalizeSkuSpacing($sku);
         if ($sku === '') {
             return [];
         }
 
-        $out = [$sku];
+        $out = [$sku, mb_strtoupper($sku), mb_strtolower($sku)];
 
         // DM 9EC → DM E9 (letter cluster after digits often means series letter + count)
         if (preg_match('/^([A-Za-z]+)\s+(\d+)([A-Za-z]{1,4})$/', $sku, $m)) {
@@ -2245,10 +2268,12 @@ class PurchaseOrderController extends Controller
             $out[] = $m[1].$m[2].$m[3];
         }
 
-        // Compact / spaced forms
-        $compact = preg_replace('/\s+/', '', $sku) ?? '';
-        if ($compact !== '' && $compact !== $sku) {
+        // Compact / spaced forms (no spaces)
+        $compact = preg_replace('/\s+/u', '', $sku) ?? '';
+        if ($compact !== '') {
             $out[] = $compact;
+            $out[] = mb_strtoupper($compact);
+            $out[] = mb_strtolower($compact);
         }
 
         return array_values(array_unique(array_filter($out, fn ($s) => trim((string) $s) !== '')));
@@ -2305,20 +2330,27 @@ class PurchaseOrderController extends Controller
 
     /**
      * True when PO SKU and CP Master SKU refer to the same family
-     * (exact, PO is sized variant of CP, or CP is color/size variant of PO).
+     * (exact ignoring case/spaces, PO is sized variant of CP, or CP is color/size variant of PO).
      */
     private function poSkuMatchesCpSku(string $poSku, string $cpSku): bool
     {
-        $poSku = trim($poSku);
-        $cpSku = trim($cpSku);
+        $poSku = $this->normalizeSkuSpacing($poSku);
+        $cpSku = $this->normalizeSkuSpacing($cpSku);
         if ($poSku === '' || $cpSku === '') {
             return false;
         }
-        if (strcasecmp($poSku, $cpSku) === 0) {
+
+        // Exact: ignore uppercase / lowercase / spaces ("Dm 20" == "DM20" == "dm  20").
+        $poKey = $this->normalizeSkuMatchKey($poSku);
+        $cpKey = $this->normalizeSkuMatchKey($cpSku);
+        if ($poKey === $cpKey) {
             return true;
         }
 
-        foreach ([[$poSku, $cpSku], [$cpSku, $poSku]] as [$shorter, $longer]) {
+        $poNorm = mb_strtolower($poSku);
+        $cpNorm = mb_strtolower($cpSku);
+
+        foreach ([[$poNorm, $cpNorm], [$cpNorm, $poNorm]] as [$shorter, $longer]) {
             if (strlen($shorter) >= strlen($longer)) {
                 continue;
             }
@@ -2332,20 +2364,34 @@ class PurchaseOrderController extends Controller
             }
         }
 
+        // Compact family: "DM20" ↔ "DM 20 BLK" / "DM20BLK" (letter suffix OK; digit suffix not).
+        foreach ([[$poKey, $cpKey], [$cpKey, $poKey]] as [$shorter, $longer]) {
+            if (strlen($shorter) >= strlen($longer)) {
+                continue;
+            }
+            if (!str_starts_with($longer, $shorter)) {
+                continue;
+            }
+            $next = $longer[strlen($shorter)] ?? '';
+            if ($next === '' || ctype_alpha($next)) {
+                return true;
+            }
+        }
+
         return false;
     }
 
     private function scorePoSkuMatch(string $poSku, string $cpSku, ?string $colorCode): int
     {
-        if (strcasecmp($poSku, $cpSku) === 0) {
+        if ($this->normalizeSkuMatchKey($poSku) === $this->normalizeSkuMatchKey($cpSku)) {
             return 100000;
         }
 
         // Prefer the closest family member (smallest length delta) over a long distant SKU.
-        $delta = abs(strlen($cpSku) - strlen($poSku));
+        $delta = abs(strlen($this->normalizeSkuSpacing($cpSku)) - strlen($this->normalizeSkuSpacing($poSku)));
         $score = 5000 - min(4000, $delta * 20);
         if ($colorCode) {
-            $cpUpper = strtoupper($cpSku);
+            $cpUpper = strtoupper($this->normalizeSkuSpacing($cpSku));
             if (preg_match('/(?:^|\s)'.preg_quote(strtoupper($colorCode), '/').'(?:\s|$)/', $cpUpper)) {
                 $score += 8000;
             } else {
@@ -2358,6 +2404,7 @@ class PurchaseOrderController extends Controller
 
     /**
      * Resolve CP Master row for a PO line (photo / barcode / packaging).
+     * Matches Masters Barcode SKUs ignoring uppercase / lowercase / spaces.
      */
     private function findProductMasterForPoSku(string $poSku, ?string $hintText = null): ?ProductMaster
     {
@@ -2372,11 +2419,23 @@ class PurchaseOrderController extends Controller
             $select[] = 'barcode';
         }
 
-        // Exact SKU hit (no color hint, or the exact row already is that color).
+        $matchKeys = [];
         foreach ($variants as $variant) {
+            $key = $this->normalizeSkuMatchKey($variant);
+            if ($key !== '') {
+                $matchKeys[$key] = true;
+            }
+        }
+        $matchKeys = array_keys($matchKeys);
+
+        // Exact SKU hit — case/space insensitive (same source as /masters-barcode).
+        foreach ($matchKeys as $matchKey) {
             $exact = ProductMaster::query()
-                ->where('sku', $variant)
                 ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->whereRaw(
+                    "LOWER(REPLACE(REPLACE(REPLACE(TRIM(sku), UNHEX('C2A0'), ''), ' ', ''), '\t', '')) = ?",
+                    [$matchKey]
+                )
                 ->first($select);
             if (!$exact) {
                 continue;
@@ -2384,27 +2443,38 @@ class PurchaseOrderController extends Controller
             if (!$colorCode) {
                 return $exact;
             }
-            if ($this->scorePoSkuMatch($variant, (string) $exact->sku, $colorCode) >= 5000) {
+            if ($this->scorePoSkuMatch($poSku, (string) $exact->sku, $colorCode) >= 5000) {
                 return $exact;
             }
         }
 
         $candidates = ProductMaster::query()
             ->where('sku', 'NOT LIKE', 'PARENT %')
-            ->where(function ($q) use ($variants) {
+            ->where(function ($q) use ($variants, $matchKeys) {
                 foreach ($variants as $variant) {
                     $q->orWhere('sku', $variant)
+                        ->orWhereRaw('LOWER(TRIM(sku)) = ?', [mb_strtolower(trim($variant))])
                         ->orWhere('sku', 'like', $variant.' %')
                         ->orWhere('sku', 'like', $variant.'"%')
-                        ->orWhere('sku', 'like', $variant.'-%');
+                        ->orWhere('sku', 'like', $variant.'-%')
+                        ->orWhereRaw('LOWER(sku) LIKE ?', [mb_strtolower($variant).' %'])
+                        ->orWhereRaw('LOWER(sku) LIKE ?', [mb_strtolower($variant).'"%'])
+                        ->orWhereRaw('LOWER(sku) LIKE ?', [mb_strtolower($variant).'-%']);
 
                     $parts = preg_split('/\s+/', $variant) ?: [];
                     if (count($parts) >= 2) {
                         $prefix = implode(' ', array_slice($parts, 0, min(3, count($parts) - 1)));
                         if ($prefix !== '') {
-                            $q->orWhere('sku', 'like', $prefix.'%');
+                            $q->orWhere('sku', 'like', $prefix.'%')
+                                ->orWhereRaw('LOWER(sku) LIKE ?', [mb_strtolower($prefix).'%']);
                         }
                     }
+                }
+                foreach ($matchKeys as $matchKey) {
+                    $q->orWhereRaw(
+                        "LOWER(REPLACE(REPLACE(REPLACE(TRIM(sku), UNHEX('C2A0'), ''), ' ', ''), '\t', '')) LIKE ?",
+                        [$matchKey.'%']
+                    );
                 }
             })
             ->limit(120)
@@ -2837,7 +2907,8 @@ class PurchaseOrderController extends Controller
     {
         $values = $this->productValuesArray($product);
         $image = $this->normalizeImageUrl($values['barcode_image'] ?? null);
-        $code = trim((string) ($product->barcode ?? ''));
+        // Same barcode column / Values as /masters-barcode (strip spaces for display).
+        $code = preg_replace('/\s+/', '', trim((string) ($product->barcode ?? ''))) ?? '';
         if ($code === '') {
             foreach (['upc', 'UPC', 'gtin', 'ean'] as $key) {
                 $raw = trim((string) ($values[$key] ?? ''));

@@ -104,9 +104,14 @@ class MastersBarcodeController extends Controller
 
             $code = trim((string) ($validated['barcode'] ?? ''));
             if ($code !== '') {
-                $exists = ProductMaster::withTrashed()
-                    ->where('barcode', $code)
+                $normalizedCode = mb_strtolower(preg_replace('/\s+/', '', $code) ?? '');
+                $exists = $normalizedCode !== '' && ProductMaster::withTrashed()
                     ->where('id', '!=', $product->id)
+                    ->whereNotNull('barcode')
+                    ->whereRaw(
+                        "LOWER(REPLACE(REPLACE(REPLACE(TRIM(barcode), UNHEX('C2A0'), ''), ' ', ''), '\t', '')) = ?",
+                        [$normalizedCode]
+                    )
                     ->exists();
                 if ($exists) {
                     return response()->json([
