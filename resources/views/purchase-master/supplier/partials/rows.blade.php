@@ -275,6 +275,24 @@
         </button>
     </td>
 
+    <td class="text-center align-middle">
+        @php
+            $adv = $supplier->latestAdvance;
+            $advPct = $adv && $adv->advance_percent !== null ? (float) $adv->advance_percent : null;
+            $advAmt = $adv && $adv->advance_amount !== null ? (float) $adv->advance_amount : null;
+            $advCurr = $adv ? strtoupper((string) ($adv->currency ?? 'USD')) : 'USD';
+            $advSym = $advCurr === 'RMB' || $advCurr === 'CNY' ? '¥' : '$';
+        @endphp
+        @if($advPct !== null)
+            <span class="fw-semibold text-primary"
+                  title="{{ $advAmt !== null ? 'Advance: '.$advSym.number_format($advAmt, 2) : 'Advance %' }}">
+                {{ rtrim(rtrim(number_format($advPct, 2, '.', ''), '0'), '.') }}%
+            </span>
+        @else
+            <span class="text-muted">—</span>
+        @endif
+    </td>
+
     <td>
         @if(!empty($supplier->wechat))
             <span class="supplier-data-dot supplier-data-dot--ok" title="WeChat ID: {{ $supplier->wechat }}"></span>

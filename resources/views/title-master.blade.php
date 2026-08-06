@@ -994,6 +994,13 @@
                                             <option value="missing">Missing</option>
                                         </select>
                                     </th>
+                                    <th rowspan="2" class="title-master-title-dot-th" title="Short name">
+                                        <div style="font-size: 9px;">Short name <span id="shortNamePresentCount" class="text-success" style="font-weight: bold;">(0)</span> <span id="shortNameMissingCount" class="text-warning" style="font-weight: bold;">(0)</span></div>
+                                        <select id="filterShortName" class="form-control form-control-sm mt-1">
+                                            <option value="all">All</option>
+                                            <option value="missing">Missing</option>
+                                        </select>
+                                    </th>
                                     <th rowspan="2" class="title-master-action-th" scope="col" title="View title details">
                                         <i class="fas fa-eye" aria-hidden="true"></i>
                                         <span class="visually-hidden">View</span>
@@ -1135,6 +1142,13 @@
                             <textarea class="form-control" id="title60" name="title60" rows="2" maxlength="60"></textarea>
                         </div>
 
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="shortName" class="form-label mb-0">Short name <span class="char-counter" id="counterShortName">0 chars</span></label>
+                            </div>
+                            <textarea class="form-control" id="shortName" name="short_name" rows="2" placeholder="Short name…"></textarea>
+                        </div>
+
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -1189,6 +1203,10 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">Title 60</label>
                         <div class="form-control-plaintext border rounded p-2" id="viewTitle60" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Short name</label>
+                        <div class="form-control-plaintext border rounded p-2" id="viewShortName" style="min-height: 50px; white-space: pre-wrap; word-wrap: break-word;"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -2458,6 +2476,13 @@
             if (pushSelectedBtn) pushSelectedBtn.style.display = count > 0 ? 'inline-flex' : 'none';
         }
 
+        function updateShortNameCounter() {
+            const input = document.getElementById('shortName');
+            const counter = document.getElementById('counterShortName');
+            if (!input || !counter) return;
+            counter.textContent = (input.value || '').length + ' chars';
+        }
+
         function updateModalCounter(fieldId) {
             const input = document.getElementById(fieldId);
             const maxLen = titleMasterTitleMaxLen(fieldId);
@@ -2517,6 +2542,11 @@
                 }
                 updateModalCounter(field);
             });
+            const shortEl = document.getElementById('shortName');
+            if (shortEl) {
+                shortEl.value = item ? val(item.short_name) : '';
+                updateShortNameCounter();
+            }
         }
 
         /** Apply an AI-generated title into a field (bullet-style): remember the prior value and reveal Revert. */
@@ -2607,6 +2637,8 @@
                     titleMasterMarkFieldOverLimit(field);
                 });
             });
+
+            document.getElementById('shortName')?.addEventListener('input', updateShortNameCounter);
 
             // Save button
             document.getElementById('saveTitleBtn').addEventListener('click', function() {
@@ -3268,6 +3300,8 @@
             if (f100 && f100 !== 'all') params.set('filter_title100', f100);
             if (f80 && f80 !== 'all') params.set('filter_title80', f80);
             if (f60 && f60 !== 'all') params.set('filter_title60', f60);
+            const fShort = document.getElementById('filterShortName')?.value;
+            if (fShort && fShort !== 'all') params.set('filter_short_name', fShort);
             const fInv = document.getElementById('filterTitleInv')?.value || 'gt_zero';
             params.set('filter_inv', fInv);
             return params;
@@ -3289,6 +3323,7 @@
             setPresentMissing('title100PresentCount', 'title100MissingCount', stats.title100_present, stats.title100_missing);
             setPresentMissing('title80PresentCount', 'title80MissingCount', stats.title80_present, stats.title80_missing);
             setPresentMissing('title60PresentCount', 'title60MissingCount', stats.title60_present, stats.title60_missing);
+            setPresentMissing('shortNamePresentCount', 'shortNameMissingCount', stats.short_name_present, stats.short_name_missing);
         }
 
         function renderPagination() {
@@ -3653,7 +3688,7 @@
             const frag = document.createDocumentFragment();
 
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="20" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3663,7 +3698,7 @@
             });
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="19" class="text-center">No products found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="20" class="text-center">No products found</td></tr>';
                 return;
             }
 
@@ -3740,6 +3775,11 @@
                 const title60Cell = document.createElement('td');
                 titleMasterFillTitleDotCell(title60Cell, t60.trim() !== '', 'No Title 60', t60);
                 row.appendChild(title60Cell);
+
+                const shortName = item.short_name != null ? String(item.short_name) : '';
+                const shortNameCell = document.createElement('td');
+                titleMasterFillTitleDotCell(shortNameCell, shortName.trim() !== '', 'No Short name', shortName);
+                row.appendChild(shortNameCell);
 
                 // View column (header: eye icon)
                 const actionCell = document.createElement('td');
@@ -3937,7 +3977,7 @@
         function patchTitleMasterGridRowTitlesFromTableData(sku) {
             var item = (typeof tableData !== 'undefined' && tableData) ? tableData.find(function(x) { return x.SKU === sku; }) : null;
             var row = document.querySelector('#title-master-table tbody tr[data-sku="' + titleMasterEscapeSkuForSelector(sku) + '"]');
-            if (!item || !row || !row.cells || row.cells.length < 18) return;
+            if (!item || !row || !row.cells || row.cells.length < 19) return;
             var tds = row.cells;
             var t170p = titleMasterGetTitle170Text(item);
             var c170 = tds[9];
@@ -3951,8 +3991,11 @@
             var t60p = item.title60 != null ? String(item.title60) : '';
             var c60 = tds[12];
             if (c60) titleMasterFillTitleDotCell(c60, t60p.trim() !== '', 'No Title 60', t60p);
+            var shortNameP = item.short_name != null ? String(item.short_name) : '';
+            var cShort = tds[13];
+            if (cShort) titleMasterFillTitleDotCell(cShort, shortNameP.trim() !== '', 'No Short name', shortNameP);
             TM_TIER_GROUPS.forEach(function (tier, idx) {
-                var mpCell = tds[14 + idx];
+                var mpCell = tds[15 + idx];
                 if (mpCell) {
                     mpCell.className = 'tm-mp-tier-col-td marketplaces-cell';
                     mpCell.setAttribute('data-title-tier', tier.type);
@@ -4376,6 +4419,7 @@
             document.getElementById('viewTitle100').textContent = item.title100 || '-';
             document.getElementById('viewTitle80').textContent = item.title80 || '-';
             document.getElementById('viewTitle60').textContent = item.title60 || '-';
+            document.getElementById('viewShortName').textContent = item.short_name || '-';
 
             const viewModal = new bootstrap.Modal(document.getElementById('viewTitleModal'));
             viewModal.show();
@@ -4413,7 +4457,9 @@
             document.getElementById('title100').value = v(item.title100);
             document.getElementById('title80').value = v(item.title80);
             document.getElementById('title60').value = v(item.title60);
+            document.getElementById('shortName').value = v(item.short_name);
             ['title150', 'title100', 'title80', 'title60'].forEach(updateModalCounter);
+            updateShortNameCounter();
 
             // Reset the per-edit AI helpers (keywords box + revert state) for this SKU.
             titleMasterResetEditAiState();
@@ -4448,6 +4494,7 @@
                 const el = document.getElementById(field);
                 if (el) el.classList.remove('tm-title-field-over');
             });
+            updateShortNameCounter();
 
             modalTitle.textContent = 'Add Title';
             // Restore the SKU dropdown (it may have been hidden by edit mode) and hide the edit label.
@@ -4534,6 +4581,7 @@
                 const el = document.getElementById(field);
                 if (el) el.classList.remove('tm-title-field-over');
             });
+            updateShortNameCounter();
         }
 
         function saveTitleFromModal() {
@@ -4561,6 +4609,7 @@
             const title100 = document.getElementById('title100').value;
             const title80 = document.getElementById('title80').value;
             const title60 = document.getElementById('title60').value;
+            const shortName = document.getElementById('shortName').value;
 
             const saveBtn = document.getElementById('saveTitleBtn');
             saveBtn.disabled = true;
@@ -4577,7 +4626,8 @@
                     title150: title150,
                     title100: title100,
                     title80: title80,
-                    title60: title60
+                    title60: title60,
+                    short_name: shortName
                 })
             })
             .then(response => response.json())
@@ -4589,6 +4639,7 @@
                         tableData[index].title100 = title100;
                         tableData[index].title80 = title80;
                         tableData[index].title60 = title60;
+                        tableData[index].short_name = shortName;
                     }
                     titleModal.hide();
                     resetTitleModalForm();
@@ -4651,7 +4702,8 @@
                                 'Title 170': titleMasterGetTitle170Text(item),
                                 'Title 100': item.title100 || '',
                                 'Title 80': item.title80 || '',
-                                'Title 60': item.title60 || ''
+                                'Title 60': item.title60 || '',
+                                'Short name': item.short_name || ''
                             };
                         });
 
@@ -5012,6 +5064,10 @@
             });
 
             document.getElementById('filterTitle60').addEventListener('change', function() {
+                loadTitleData(1);
+            });
+
+            document.getElementById('filterShortName')?.addEventListener('change', function() {
                 loadTitleData(1);
             });
 

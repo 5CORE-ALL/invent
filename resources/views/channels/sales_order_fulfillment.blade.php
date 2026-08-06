@@ -106,6 +106,60 @@
         .sof-oc-dot.disconnected { background: #f06548; }
         .sof-oc-missing { color: #adb5bd; }
 
+        .sof-hist-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            margin-left: 6px;
+            vertical-align: middle;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
+        }
+        .sof-hist-dot:hover {
+            transform: scale(1.25);
+        }
+        .sof-summary-badge {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sof-summary-badge:hover {
+            filter: brightness(0.97);
+        }
+        #sofHistoryChartModal .modal-dialog {
+            max-width: 920px;
+        }
+        #sofHistoryChartContainer {
+            height: 28vh;
+            min-height: 180px;
+            display: flex;
+            align-items: stretch;
+        }
+
+        .sof-carrier-badge {
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 600;
+            line-height: 1.2;
+            padding: 0.2rem 0.45rem;
+            border-radius: 0.35rem;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: middle;
+        }
+        .sof-carrier-usps { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
+        .sof-carrier-ups { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+        .sof-carrier-fedex { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+        .sof-carrier-dhl { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
+        .sof-carrier-amazon { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .sof-carrier-gofo { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+        .sof-carrier-ontrac { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+        .sof-carrier-veeqo { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
+        .sof-carrier-other { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+
         .sof-pending-badge {
             display: inline-block;
             background: #fff3cd;
@@ -745,32 +799,32 @@
                     <div id="sof-summary-stats" class="p-3 bg-light rounded">
                         <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between">
                             <div class="d-flex flex-wrap gap-2" role="group" aria-label="Summary metrics">
-                                <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="Active channels from channel_master (same as /all-marketplace-master)">
-                                    Channels: <span id="sof-channel-count">0</span>
+                                <span class="badge bg-primary fs-6 p-2 sof-summary-badge" data-sof-metric="channel_count" style="color: white; font-weight: bold;" title="Active channels — click for history graph">
+                                    Channels: <span id="sof-channel-count">0</span><i class="sof-hist-dot" data-sof-metric="channel_count" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-pending-total-badge" style="background:#fff3cd; color:#856404; font-weight:600; border:1px solid #ffe69c;" title="Pending / unfulfilled orders from the last 30 days across Marketplace Manager channels">
-                                    Pending: <span id="sof-pending-total">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-pending-total-badge" data-sof-metric="pending_total" style="background:#fff3cd; color:#856404; font-weight:600; border:1px solid #ffe69c;" title="Pending — click for history graph">
+                                    Pending: <span id="sof-pending-total">0</span><i class="sof-hist-dot" data-sof-metric="pending_total" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-fulfilled-24h-badge" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / No Scan orders from the last 30 days across Marketplace Manager channels">
-                                    Label Created / No Scan: <span id="sof-fulfilled-24h">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-fulfilled-24h-badge" data-sof-metric="fulfilled_24h" style="background:#d1e7dd; color:#0f5132; font-weight:600; border:1px solid #a3cfbb;" title="Label Created / No Scan — click for history graph">
+                                    Label Created / No Scan: <span id="sof-fulfilled-24h">0</span><i class="sof-hist-dot" data-sof-metric="fulfilled_24h" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-scan-done-24h-badge" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Shipped/Received orders from the last 30 days">
-                                    Shipped/Received: <span id="sof-scan-done-24h">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-scan-done-24h-badge" data-sof-metric="scan_done_24h" style="background:#cfe2ff; color:#084298; font-weight:600; border:1px solid #9ec5fe;" title="Shipped/Received — click for history graph">
+                                    Shipped/Received: <span id="sof-scan-done-24h">0</span><i class="sof-hist-dot" data-sof-metric="scan_done_24h" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-in-transit-badge" style="background:#ffe5d0; color:#9a3412; font-weight:600; border:1px solid #fdba74;" title="In Transit orders from the last 30 days">
-                                    In Transit: <span id="sof-in-transit-total">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-in-transit-badge" data-sof-metric="in_transit_total" style="background:#ffe5d0; color:#9a3412; font-weight:600; border:1px solid #fdba74;" title="In Transit — click for history graph">
+                                    In Transit: <span id="sof-in-transit-total">0</span><i class="sof-hist-dot" data-sof-metric="in_transit_total" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-in-received-badge" style="background:#d1fae5; color:#065f46; font-weight:600; border:1px solid #6ee7b7;" title="In Received orders from the last 30 days">
-                                    In Received: <span id="sof-in-received-total">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-in-received-badge" data-sof-metric="in_received_total" style="background:#d1fae5; color:#065f46; font-weight:600; border:1px solid #6ee7b7;" title="In Received — click for history graph">
+                                    In Received: <span id="sof-in-received-total">0</span><i class="sof-hist-dot" data-sof-metric="in_received_total" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-invoiced-badge" style="background:#e2d9f3; color:#432874; font-weight:600; border:1px solid #c5b3e6;" title="Invoiced orders from the last 30 days">
-                                    Invoiced: <span id="sof-invoiced-total">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-invoiced-badge" data-sof-metric="invoiced_total" style="background:#e2d9f3; color:#432874; font-weight:600; border:1px solid #c5b3e6;" title="Invoiced — click for history graph">
+                                    Invoiced: <span id="sof-invoiced-total">0</span><i class="sof-hist-dot" data-sof-metric="invoiced_total" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-delivered-badge" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered orders from the last 30 days">
-                                    Delivered: <span id="sof-delivered-total">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-delivered-badge" data-sof-metric="delivered_total" style="background:#cff4fc; color:#055160; font-weight:600; border:1px solid #9eeaf9;" title="Delivered — click for history graph">
+                                    Delivered: <span id="sof-delivered-total">0</span><i class="sof-hist-dot" data-sof-metric="delivered_total" style="background:#6c757d;" title="History trend"></i>
                                 </span>
-                                <span class="badge fs-6 p-2" id="sof-all-order-badge" style="background:#e9ecef; color:#343a40; font-weight:600; border:1px solid #ced4da;" title="All marketplace orders from the last 30 days (original status)">
-                                    All Order: <span id="sof-all-order-total">0</span>
+                                <span class="badge fs-6 p-2 sof-summary-badge" id="sof-all-order-badge" data-sof-metric="all_order_total" style="background:#e9ecef; color:#343a40; font-weight:600; border:1px solid #ced4da;" title="All Order — click for history graph">
+                                    All Order: <span id="sof-all-order-total">0</span><i class="sof-hist-dot" data-sof-metric="all_order_total" style="background:#6c757d;" title="History trend"></i>
                                 </span>
                             </div>
                             <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end ms-auto" role="group" aria-label="Carrier / platform badges">
@@ -1150,11 +1204,64 @@
             </div>
         </div>
     </div>
+
+    {{-- History graph (same idea as Active Channel Master) --}}
+    <div class="modal fade" id="sofHistoryChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="overflow: hidden;">
+                <div class="modal-header bg-info text-white py-2 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="sofHistoryChartTitle">SOF History</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="sofHistoryChartRange" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">All</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="sofHistoryChartContainer">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="sofHistoryChart"></canvas>
+                        </div>
+                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; color: #dc3545;">Highest</div>
+                                <div id="sofHistoryHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; color: #6c757d;">Median</div>
+                                <div id="sofHistoryMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; color: #198754;">Lowest</div>
+                                <div id="sofHistoryLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="sofHistoryChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading history…</p>
+                    </div>
+                    <div id="sofHistoryChartNoData" class="text-center py-3" style="display: none;">
+                        <p class="text-muted small mb-0">No daily history yet. Snapshots save automatically at 00:00 PST.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
     let table = null;
@@ -1203,10 +1310,9 @@
     function formatTrackingCell(cell) {
         const row = cell.getRow().getData() || {};
         const tracking = (cell.getValue() || row.tracking_number || '').toString().trim();
-        const company = (row.tracking_company || '').toString().trim();
         const shipStatus = (row.shipment_status || '').toString().trim();
         const detail = (row.shipment_status_detail || '').toString().trim();
-        if (!tracking && !company && !shipStatus) {
+        if (!tracking && !shipStatus) {
             return '<span class="sof-oc-missing">—</span>';
         }
         let html = '';
@@ -1215,16 +1321,38 @@
         } else {
             html += '<span class="sof-oc-missing">No #</span>';
         }
-        const meta = [];
-        if (company) meta.push(escapeHtml(company));
-        if (shipStatus) meta.push(escapeHtml(shipStatus));
-        if (meta.length) {
-            html += `<div style="font-size:0.7rem;color:#64748b;line-height:1.2;margin-top:2px;">${meta.join(' · ')}</div>`;
+        if (shipStatus) {
+            html += `<div style="font-size:0.7rem;color:#64748b;line-height:1.2;margin-top:2px;">${escapeHtml(shipStatus)}</div>`;
         }
         if (detail && shipStatus) {
             html += `<div style="font-size:0.68rem;color:#94a3b8;line-height:1.2;" title="${escapeHtml(detail)}">${escapeHtml(detail.length > 42 ? detail.slice(0, 42) + '…' : detail)}</div>`;
         }
         return html;
+    }
+
+    function carrierBadgeClass(name) {
+        const n = String(name || '').toLowerCase();
+        if (!n) return 'sof-carrier-other';
+        if (n.includes('usps') || n.includes('united states postal')) return 'sof-carrier-usps';
+        if (n.includes('ups') || n.includes('united parcel')) return 'sof-carrier-ups';
+        if (n.includes('fedex') || n.includes('federal express')) return 'sof-carrier-fedex';
+        if (n.includes('dhl')) return 'sof-carrier-dhl';
+        if (n.includes('amazon') || n.includes('amzl')) return 'sof-carrier-amazon';
+        if (n.includes('gofo')) return 'sof-carrier-gofo';
+        if (n.includes('ontrac') || n.includes('on trac')) return 'sof-carrier-ontrac';
+        if (n.includes('veeqo')) return 'sof-carrier-veeqo';
+        return 'sof-carrier-other';
+    }
+
+    function formatCarrierBadgeHtml(name) {
+        const v = String(name || '').trim();
+        if (!v) return '<span class="sof-oc-missing">—</span>';
+        const cls = carrierBadgeClass(v);
+        return `<span class="sof-carrier-badge ${cls}" title="${escapeHtml(v)}">${escapeHtml(v)}</span>`;
+    }
+
+    function formatCarrierCell(cell) {
+        return formatCarrierBadgeHtml(cell.getValue());
     }
 
     function buildPulledTrackingTableHtml(rows) {
@@ -1237,7 +1365,7 @@
             body += '<tr>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;white-space:nowrap;">' + escapeHtml(r.order_number || r.shopify_order_id || '—') + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;"><code style="font-size:0.75rem;">' + escapeHtml(r.tracking_number || '—') + '</code></td>'
-                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.tracking_company || '—') + '</td>'
+                + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + formatCarrierBadgeHtml(r.tracking_company) + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.fulfillment_status || '—') + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;">' + escapeHtml(r.shipment_status || '—') + '</td>'
                 + '<td style="padding:4px 6px;border-bottom:1px solid #e5e7eb;font-size:0.75rem;color:#64748b;">' + escapeHtml(r.note || '') + '</td>'
@@ -2048,6 +2176,7 @@
             if (invoicedEl) invoicedEl.textContent = invoicedTotal.toLocaleString();
             if (deliveredEl) deliveredEl.textContent = deliveredTotal.toLocaleString();
             if (allOrderEl) allOrderEl.textContent = allOrderTotal.toLocaleString();
+            loadSofHistoryDots();
             const fulfilledTabCount = document.getElementById('sof-fulfilled-tab-count');
             if (fulfilledTabCount && !fulfilledTableLoaded) {
                 fulfilledTabCount.textContent = fulfilled24h.toLocaleString();
@@ -2637,8 +2766,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -2749,8 +2886,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -2861,8 +3006,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -2973,8 +3126,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -3085,8 +3246,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -3215,8 +3384,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -3327,8 +3504,16 @@
                         field: 'tracking_number',
                         minWidth: 170,
                         headerHozAlign: 'center',
-                        headerTooltip: 'Tracking from Shopify / marketplace (number, carrier, shipment status)',
+                        headerTooltip: 'Tracking number and shipment status from Shopify / marketplace',
                         formatter: formatTrackingCell,
+                    },
+                    {
+                        title: 'Carrier',
+                        field: 'tracking_company',
+                        minWidth: 110,
+                        headerHozAlign: 'center',
+                        headerTooltip: 'Carrier / tracking company for this tracking number',
+                        formatter: formatCarrierCell,
                     }
                 );
                 return cols;
@@ -3564,6 +3749,155 @@
             });
     });
 
+    const sofHistoryLabels = {
+        channel_count: 'Channels',
+        pending_total: 'Pending',
+        fulfilled_24h: 'Label Created / No Scan',
+        scan_done_24h: 'Shipped/Received',
+        in_transit_total: 'In Transit',
+        in_received_total: 'In Received',
+        invoiced_total: 'Invoiced',
+        delivered_total: 'Delivered',
+        all_order_total: 'All Order',
+    };
+    const sofDotTrendsUrl = @json(route('sales.order.fulfillment.history.dot.trends'));
+    const sofChartDataUrl = @json(route('sales.order.fulfillment.history.chart.data'));
+    let sofHistoryChartInstance = null;
+    let sofHistoryMetric = 'pending_total';
+    let sofHistoryDays = 30;
+
+    function loadSofHistoryDots() {
+        fetch(sofDotTrendsUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                const metrics = (res && res.success && res.metrics) ? res.metrics : {};
+                Object.keys(sofHistoryLabels).forEach(function (key) {
+                    const pair = metrics[key] || [null, null];
+                    const v1 = pair[0] != null ? Number(pair[0]) : null;
+                    const v2 = pair[1] != null ? Number(pair[1]) : null;
+                    let color = '#6c757d';
+                    if (v1 != null && v2 != null && !isNaN(v1) && !isNaN(v2)) {
+                        if (v2 > v1) color = '#28a745';
+                        else if (v2 < v1) color = '#dc3545';
+                    }
+                    document.querySelectorAll('.sof-hist-dot[data-sof-metric="' + key + '"]').forEach(function (el) {
+                        el.style.background = color;
+                        el.title = (v1 != null && v2 != null)
+                            ? ('Was ' + Number(v1).toLocaleString() + ' → ' + Number(v2).toLocaleString() + ' (click for graph)')
+                            : 'History trend (click for graph)';
+                    });
+                });
+            })
+            .catch(function () { /* keep gray dots */ });
+    }
+
+    function showSofHistoryChart(metric) {
+        sofHistoryMetric = metric || 'pending_total';
+        const label = sofHistoryLabels[sofHistoryMetric] || sofHistoryMetric;
+        const rangeLabel = sofHistoryDays > 0 ? (sofHistoryDays + ' Days') : 'All';
+        $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Pacific day)');
+        $('#sofHistoryChartRange').val(String(sofHistoryDays));
+        const modalEl = document.getElementById('sofHistoryChartModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        loadSofHistoryChart();
+    }
+
+    function loadSofHistoryChart() {
+        $('#sofHistoryChartContainer').hide();
+        $('#sofHistoryChartNoData').hide();
+        $('#sofHistoryChartLoading').show();
+        const qs = new URLSearchParams({ metric: sofHistoryMetric, days: String(sofHistoryDays) });
+        fetch(sofChartDataUrl + '?' + qs.toString(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                $('#sofHistoryChartLoading').hide();
+                const data = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+                if (!data.length) {
+                    $('#sofHistoryChartNoData').show();
+                    if (sofHistoryChartInstance) {
+                        sofHistoryChartInstance.destroy();
+                        sofHistoryChartInstance = null;
+                    }
+                    return;
+                }
+                $('#sofHistoryChartContainer').show();
+                const labels = data.map(function (d) { return d.date; });
+                const values = data.map(function (d) { return Number(d.value) || 0; });
+                const dataMin = Math.min.apply(null, values);
+                const dataMax = Math.max.apply(null, values);
+                const sorted = values.slice().sort(function (a, b) { return a - b; });
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+                const fmt = function (v) { return Math.round(v).toLocaleString('en-US'); };
+                $('#sofHistoryHighest').text(fmt(dataMax));
+                $('#sofHistoryMedian').text(fmt(median));
+                $('#sofHistoryLowest').text(fmt(dataMin));
+                const ctx = document.getElementById('sofHistoryChart').getContext('2d');
+                if (sofHistoryChartInstance) sofHistoryChartInstance.destroy();
+                const range = (dataMax - dataMin) || 1;
+                sofHistoryChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: sofHistoryLabels[sofHistoryMetric] || sofHistoryMetric,
+                            data: values,
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13,110,253,0.12)',
+                            fill: true,
+                            tension: 0.25,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (ctx) { return fmt(ctx.parsed.y); },
+                                },
+                            },
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: dataMin === 0,
+                                suggestedMin: Math.max(0, dataMin - range * 0.1),
+                                suggestedMax: dataMax + range * 0.1,
+                                ticks: { callback: function (v) { return fmt(v); } },
+                            },
+                        },
+                    },
+                });
+            })
+            .catch(function () {
+                $('#sofHistoryChartLoading').hide();
+                $('#sofHistoryChartNoData').show();
+            });
+    }
+
+    $(document).on('click', '.sof-summary-badge, .sof-hist-dot', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const metric = $(this).data('sof-metric') || $(this).closest('[data-sof-metric]').data('sof-metric');
+        if (metric) showSofHistoryChart(metric);
+    });
+
+    $('#sofHistoryChartRange').on('change', function () {
+        sofHistoryDays = parseInt($(this).val(), 10);
+        if (isNaN(sofHistoryDays)) sofHistoryDays = 30;
+        const label = sofHistoryLabels[sofHistoryMetric] || sofHistoryMetric;
+        const rangeLabel = sofHistoryDays > 0 ? (sofHistoryDays + ' Days') : 'All';
+        $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Pacific day)');
+        loadSofHistoryChart();
+    });
+
     $('#sof-refresh-shipment-btn').on('click', function () {
         const $btn = $(this);
         if ($btn.prop('disabled')) return;
@@ -3580,8 +3914,8 @@
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 'X-Requested-With': 'XMLHttpRequest',
             },
-            // Prefer Label Created-linked packages (server-side); also sync open UPS/USPS broadly.
-            body: JSON.stringify({ limit: 200, stale: 0 }),
+            // Modest batch + repair quota-poisoned rows; full open set is paced by cron (~1–2×/day).
+            body: JSON.stringify({ limit: 80, stale: 30, repair_quota: true }),
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {

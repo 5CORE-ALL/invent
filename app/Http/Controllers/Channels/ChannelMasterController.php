@@ -10877,6 +10877,10 @@ class ChannelMasterController extends Controller
         $gProfitPct = 0.0;
         $gRoi = 0.0;
 
+        // Same margin + ship as /price-increase and /tiktok-pricing (TikTok 1):
+        // marketplace_percentages.marketplace = TiktokShop; product_master ship (not tt_ship).
+        $tiktokMargin = TikTokSalesController::marginFactorFromMarketplace(['TiktokShop']);
+
         // L30 = last 30 California calendar days; L60 = prior contiguous 30 days
         [$l30StartDate, $l30EndDate] = TiktokOrder::californiaDaysWindow(30);
         $l60EndDate = $l30StartDate->copy()->subSecond();
@@ -10916,16 +10920,15 @@ class ChannelMasterController extends Controller
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                     if (is_array($values)) {
                         foreach ($values as $k => $v) {
-                            if (strtolower((string) $k) === 'lp') {
+                            $key = strtolower((string) $k);
+                            if ($key === 'lp') {
                                 $lp = floatval($v);
-                                break;
+                            } elseif ($key === 'ship') {
+                                // Normal ship — same as /price-increase /tiktok-pricing (not tt_ship)
+                                $ship = floatval($v);
+                            } elseif ($key === 'wt_act') {
+                                $weightAct = floatval($v);
                             }
-                        }
-                        if (isset($values['ship'])) {
-                            $ship = floatval($values['ship']);
-                        }
-                        if (isset($values['wt_act'])) {
-                            $weightAct = floatval($values['wt_act']);
                         }
                     }
                     if ($lp === 0.0 && isset($pm->lp)) {
@@ -10946,7 +10949,7 @@ class ChannelMasterController extends Controller
                 }
 
                 $cogs = $lp * $quantity;
-                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
+                $pftEach = ($unitPrice * $tiktokMargin) - $lp - $shipCost;
                 $totalCogs += $cogs;
                 $totalProfit += $pftEach * $quantity;
             }

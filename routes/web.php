@@ -254,7 +254,6 @@ use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
 use App\Http\Controllers\ProductMaster\MastersBarcodeController;
-use App\Http\Controllers\ProductMaster\ShortTitleMasterController;
 use App\Http\Controllers\ProductMaster\VideoMasterController;
 use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\PrAnalysisController;
@@ -547,6 +546,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/sales-order-fulfillment/badge-link', [SalesOrderFulfillmentController::class, 'saveBadgeLink'])->name('sales.order.fulfillment.badge.link');
     Route::post('/sales-order-fulfillment/refresh-shipment-status', [SalesOrderFulfillmentController::class, 'refreshShipmentStatus'])->name('sales.order.fulfillment.refresh.shipment.status');
     Route::post('/sales-order-fulfillment/pull-tracking-numbers', [SalesOrderFulfillmentController::class, 'pullTrackingNumbers'])->name('sales.order.fulfillment.pull.tracking.numbers');
+    Route::get('/sales-order-fulfillment/history/dot-trends', [SalesOrderFulfillmentController::class, 'historyDotTrends'])->name('sales.order.fulfillment.history.dot.trends');
+    Route::get('/sales-order-fulfillment/history/chart-data', [SalesOrderFulfillmentController::class, 'historyChartData'])->name('sales.order.fulfillment.history.chart.data');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');
 
     // Listing Master > Amz Data (Amazon Listings raw from SP-API)
@@ -3267,6 +3268,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/purchase-order/by-po/{poNumber}/generate-pdf', 'generatePdfByPoNumber')->name('generate-pdf-by-po');
         Route::get('/purchase-order/{id}/generate-pdf', 'generatePdf')->name('generate-pdf');
         Route::post('/purchase-order/{id}/update-item-supplier-sku', 'updateItemSupplierSku')->name('purchase-order.update-item-supplier-sku');
+        Route::post('/purchase-order/{id}/add-item', 'addItem')->name('purchase-order.add-item');
+        Route::post('/purchase-order/{id}/add-from-to-order', 'addItemsFromToOrder')->name('purchase-order.add-from-to-order');
+        Route::post('/purchase-order/{id}/delete-item', 'deleteItem')->name('purchase-order.delete-item');
+        Route::get('/purchase-order/short-name-by-sku', 'shortNameBySku')->name('purchase-order.short-name-by-sku');
+        Route::get('/purchase-order/qc-issues', 'qcIssuesForSkuWithSiblings')->name('purchase-order.qc-issues');
+        Route::post('/purchase-order/{id}/toggle-approval', 'toggleApproval')->name('purchase-order.toggle-approval');
+        Route::post('/purchase-order/{id}/advance', 'updateAdvance')->name('purchase-order.update-advance');
         Route::post('/purchase-order/item-pkg-cover', 'saveItemPkgCover')->name('purchase-order.item-pkg-cover');
         Route::post('/purchase-order/design-file', 'saveDesignFile')->name('purchase-order.design-file');
         Route::post('/purchase-order/ctn-print-file', 'saveCtnPrintFile')->name('purchase-order.ctn-print-file');
@@ -3713,12 +3721,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Per-SKU Price chart history (same role as /ebay-metrics-history)
     Route::get('/tiktok-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokMetricsHistory'])->name('tiktok.metrics.history');
     Route::get('/tiktok-2-metrics-history', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktok2MetricsHistory'])->name('tiktok2.metrics.history');
-    // TikTok 1 products come from API (sync:tiktok-api-data) — no CSV/sheet upload.
-    Route::post('/tiktok-2-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTok2Csv'])->name('tiktok2.upload.csv');
+    // TikTok 1 & 2 products come from Shop API (sync:tiktok-api-data) — no CSV/sheet upload.
     Route::post('/tiktok-2-sync-from-api', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'syncTikTok2FromApi'])->name('tiktok2.sync.from.api');
-    Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
     Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');
     Route::post('/tiktok-2-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceTiktokTwoUpdates'])->name('tiktok2.save.sprice');
+    Route::post('/tiktok-update-sprice-status', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'updateSpriceStatus'])->name('tiktok.update.sprice.status');
+    Route::post('/tiktok-2-update-sprice-status', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'updateSpriceTiktokTwoStatus'])->name('tiktok2.update.sprice.status');
     Route::post('/tiktok-save-nrp', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveTiktokShopNrp'])->name('tiktok.save.nrp');
     Route::post('/tiktok-save-links', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveLinks'])->name('tiktok.save.links');
     // LMP modal endpoints for /tiktok-pricing — talks to tiktok_sku_competitors
@@ -3912,11 +3920,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/masters-barcode-data', [MastersBarcodeController::class, 'getData'])->name('masters.barcode.data');
     Route::post('/masters-barcode/save', [MastersBarcodeController::class, 'save'])->name('masters.barcode.save');
     Route::post('/masters-barcode/autogenerate', [MastersBarcodeController::class, 'autogenerate'])->name('masters.barcode.autogenerate');
-
-    Route::get('/short-title-master', [ShortTitleMasterController::class, 'index'])->name('short.title.master');
-    Route::get('/short-title-master-data', [ShortTitleMasterController::class, 'getData'])->name('short.title.master.data');
-    Route::post('/short-title-master/save', [ShortTitleMasterController::class, 'save'])->name('short.title.master.save');
-    Route::post('/short-title-master/autopopulate', [ShortTitleMasterController::class, 'autopopulate'])->name('short.title.master.autopopulate');
 
     Route::get('/image-master', [ImageMasterController::class, 'index'])->name('image.master');
     Route::get('/image-master-data', [ImageMasterController::class, 'getData'])->name('image.master.data');

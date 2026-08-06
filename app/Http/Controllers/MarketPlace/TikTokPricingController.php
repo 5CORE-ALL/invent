@@ -25,8 +25,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use App\Services\TikTok2ShopService;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonChannelSummary;
 
 class TikTokPricingController extends Controller
@@ -39,11 +37,9 @@ class TikTokPricingController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        // Use TiktokShop marketplace key (fallback to TikTok for legacy rows)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')
-            ->orWhere('marketplace', 'TikTok')
-            ->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 85;
+        // marketplace_percentages.marketplace = TiktokShop
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 0;
 
         return view("market-places.tiktok_tabulator_view", [
             "mode" => $mode,
@@ -85,28 +81,27 @@ class TikTokPricingController extends Controller
         $mode = $request->query('mode');
         $demo = $request->query('demo');
 
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')
-            ->orWhere('marketplace', 'TikTok')
-            ->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 85;
+        // Same margin as TikTok 1: marketplace_percentages.marketplace = TiktokShop
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 0;
 
         return view('market-places.tiktok_tabulator_view', [
             'mode' => $mode,
             'demo' => $demo,
             'tiktokPercentage' => $percentage,
             'tiktokPageTitle' => 'TikTok 2 Shop - Analytics',
-            'tiktokUploadPath' => '/tiktok-2-upload-csv',
-            'tiktokDownloadSamplePath' => '/tiktok-download-sample-csv',
+            // API-only (no CSV/sheet upload) — same model as TikTok 1.
             'tiktokPricingClientConfig' => [
                 'dataJson' => '/tiktok-2-data-json',
                 'badgeChart' => route('tiktok2.badge.chart.data'),
                 'metricsHistory' => route('tiktok2.metrics.history'),
                 'saveSprice' => '/tiktok-2-save-sprice',
+                'updateSpriceStatus' => '/tiktok-2-update-sprice-status',
                 'saveNrp' => route('tiktok2.save.nrp'),
                 'saveLinks' => '/tiktok-2-save-links',
                 'syncFromApi' => route('tiktok2.sync.from.api'),
                 'connectUrl' => url('/tiktok2/connect'),
-                // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
+                
                 'columnGet' => '/tabulator-column-visibility',
                 'columnSet' => '/tabulator-column-visibility',
                 'columnChannel' => 'tiktok2_pricing',
@@ -347,49 +342,15 @@ class TikTokPricingController extends Controller
     }
 
     /**
-     * L30 sold for TikTok 2: prefer API tiktok2_orders, else uploaded tiktok_sales_two.
+     * L30 sold for TikTok 2 — API only (tiktok2_orders). No sheet/CSV fallback.
      */
     private function getTiktokTwoL30SoldDataBySku(): array
     {
-        if (\App\Models\Tiktok2Order::tableReady()) {
-            $apiSold = \App\Models\Tiktok2Order::soldQtyL30(null, 30);
-            if ($apiSold !== []) {
-                return $apiSold;
-            }
-        }
-
-        if (! Schema::hasTable('tiktok_sales_two')) {
+        if (! \App\Models\Tiktok2Order::tableReady()) {
             return [];
         }
 
-        $latestRaw = DB::table('tiktok_sales_two')->whereNotNull('order_date')->max('order_date');
-        if (! $latestRaw) {
-            return [];
-        }
-
-        $latestDateCarbon = \Carbon\Carbon::parse($latestRaw, 'America/Los_Angeles');
-        $startDate = $latestDateCarbon->copy()->subDays(29);
-
-        $rows = DB::table('tiktok_sales_two')
-            ->whereBetween('order_date', [$startDate, $latestDateCarbon->copy()->endOfDay()])
-            ->whereNotNull('seller_sku')
-            ->where('seller_sku', '!=', '')
-            ->where(function ($q) {
-                $q->whereNotIn('order_status', ['Canceled', 'Cancelled', 'canceled', 'cancelled'])
-                    ->orWhereNull('order_status');
-            })
-            ->selectRaw('UPPER(TRIM(seller_sku)) as u_sku, SUM(quantity) as total_sold')
-            ->groupByRaw('UPPER(TRIM(seller_sku))')
-            ->get();
-
-        $soldData = [];
-        foreach ($rows as $row) {
-            if (! empty($row->u_sku)) {
-                $soldData[$row->u_sku] = (int) $row->total_sold;
-            }
-        }
-
-        return $soldData;
+        return \App\Models\Tiktok2Order::soldQtyL30(null, 30);
     }
 
     /**
@@ -398,11 +359,9 @@ class TikTokPricingController extends Controller
     public function getViewTikTokTabularData(Request $request, string $variant = 'v1')
     {
         $isTiktokTwo = $variant === 'v2';
-        // Use TiktokShop marketplace key (fallback to TikTok for legacy rows)
-        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')
-            ->orWhere('marketplace', 'TikTok')
-            ->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        // TikTok 1 & TikTok 2 → same margin: marketplace_percentages.marketplace = TiktokShop
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+        $percentage = $marketplaceData ? (float) $marketplaceData->percentage : 0;
         $percentageValue = $percentage / 100;
 
         // Fetch all product master records (excluding parent rows)
@@ -477,7 +436,7 @@ class TikTokPricingController extends Controller
             }
         }
 
-        // L30: tiktok_orders API (TikTok 1) or uploaded orders in tiktok_sales_two (TikTok 2)
+        // L30: TikTok 1 → tiktok_orders API; TikTok 2 → tiktok2_orders API (no sheet)
         $soldData = $isTiktokTwo
             ? $this->getTiktokTwoL30SoldDataBySku()
             : $this->getTiktokL30SoldDataBySku();
@@ -638,10 +597,10 @@ class TikTokPricingController extends Controller
             // Add values from product_master
             $values = $productMaster->Values ?: [];
             $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
-            // TikTok 1 → tt_ship only (no fallback). TikTok 2 → Ship BB (Values ship_bb) only.
+            // TikTok 1 → normal product_master ship (same as /price-increase). TikTok 2 → Ship BB (Values ship_bb) only.
             $ttShip = $isTiktokTwo
                 ? (isset($values["ship_bb"]) ? floatval($values["ship_bb"]) : (isset($productMaster->ship_bb) ? floatval($productMaster->ship_bb) : 0))
-                : ($values["tt_ship"] ?? 0);
+                : floatval($values["ship"] ?? 0);
             $processedItem["Ship_productmaster"] = $ttShip;
             $processedItem["TT Ship"] = $ttShip;
             $processedItem["COGS"] = $values["cogs"] ?? 0;
@@ -703,6 +662,11 @@ class TikTokPricingController extends Controller
             $processedItem["SGPFT"] = 0;
             $processedItem["SPFT"] = 0;
             $processedItem["SROI"] = 0;
+            $processedItem["has_custom_sprice"] = false;
+            $processedItem["SPRICE_STATUS"] = null;
+            $processedItem["SPRICE_STATUS_UPDATED_AT"] = null;
+            $processedItem["SPRICE_PUSHED_VALUE"] = null;
+            $processedItem["SPRICE_PUSHED_BY"] = null;
             $tiktokValArr = [];
 
             $skuNorm = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
@@ -754,6 +718,13 @@ class TikTokPricingController extends Controller
                     $v = $tiktokValArr['video_uploaded'];
                     $processedItem["video_uploaded"] = ($v === true || $v === 1 || $v === '1') ? 1 : 0;
                 }
+                $processedItem["SPRICE_STATUS"] = $tiktokValArr["SPRICE_STATUS"] ?? null;
+                $processedItem["SPRICE_STATUS_UPDATED_AT"] = $tiktokValArr["SPRICE_STATUS_UPDATED_AT"] ?? null;
+                $processedItem["SPRICE_PUSHED_VALUE"] = isset($tiktokValArr["SPRICE_PUSHED_VALUE"])
+                    ? floatval($tiktokValArr["SPRICE_PUSHED_VALUE"])
+                    : null;
+                $processedItem["SPRICE_PUSHED_BY"] = $tiktokValArr["SPRICE_PUSHED_BY"] ?? null;
+                $processedItem["has_custom_sprice"] = floatval($processedItem["SPRICE"] ?? 0) > 0;
             }
             if (!isset($processedItem["NR"]) && isset($reverbViewData[$sku])) {
                 $valuesArr = $reverbViewData[$sku]->values ?: [];
@@ -774,6 +745,13 @@ class TikTokPricingController extends Controller
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
+                $processedItem["SPRICE_STATUS"] = $valuesArr["SPRICE_STATUS"] ?? null;
+                $processedItem["SPRICE_STATUS_UPDATED_AT"] = $valuesArr["SPRICE_STATUS_UPDATED_AT"] ?? null;
+                $processedItem["SPRICE_PUSHED_VALUE"] = isset($valuesArr["SPRICE_PUSHED_VALUE"])
+                    ? floatval($valuesArr["SPRICE_PUSHED_VALUE"])
+                    : null;
+                $processedItem["SPRICE_PUSHED_BY"] = $valuesArr["SPRICE_PUSHED_BY"] ?? null;
+                $processedItem["has_custom_sprice"] = floatval($processedItem["SPRICE"] ?? 0) > 0;
             }
 
             // Calculate profit metrics
@@ -1144,176 +1122,6 @@ class TikTokPricingController extends Controller
     }
 
     /**
-     * Upload CSV for TikTok 2 — stores rows in tiktok_products_two.
-     */
-    public function uploadTikTok2Csv(Request $request)
-    {
-        $request->validate([
-            'csv_file' => 'required|file|mimes:csv,txt',
-        ]);
-
-        try {
-            $file = $request->file('csv_file');
-            $handle = fopen($file->getPathname(), 'r');
-
-            $header = fgetcsv($handle);
-            $headerMap = [];
-            if (is_array($header)) {
-                foreach ($header as $idx => $col) {
-                    $key = strtolower(trim((string) $col));
-                    $key = str_replace([' ', '-'], '_', $key);
-                    $headerMap[$key] = $idx;
-                }
-            }
-            $skuIndex = $headerMap['sku'] ?? 0;
-            $priceIndex = $headerMap['price'] ?? 1;
-            $stockIndex = $headerMap['inv'] ?? ($headerMap['stock'] ?? 2);
-            $videoViewsIndex = $headerMap['video_views'] ?? ($headerMap['views'] ?? null);
-            $adsViewsIndex = $headerMap['ads_views'] ?? null;
-            $afflViewsIndex = $headerMap['affl_views'] ?? ($headerMap['affiliate_views'] ?? null);
-
-            $imported = 0;
-            $updated = 0;
-            $skipped = 0;
-            $processedSkus = [];
-
-            while (($row = fgetcsv($handle)) !== false) {
-                $rawSku = $row[$skuIndex] ?? null;
-                if ($rawSku !== null && trim((string) $rawSku) !== '') {
-                    $sku = $rawSku;
-                    $sku = str_replace("\xA0", ' ', $sku);
-                    $sku = str_replace("\xC2\xA0", ' ', $sku);
-                    $sku = preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $sku);
-                    $sku = preg_replace('/\s+/', ' ', trim($sku));
-                    $sku = strtoupper($sku);
-
-                    $price = isset($row[$priceIndex]) ? floatval($row[$priceIndex]) : 0;
-                    $stock = isset($row[$stockIndex]) ? intval($row[$stockIndex]) : 0;
-                    $videoViews = ($videoViewsIndex !== null && isset($row[$videoViewsIndex])) ? intval($row[$videoViewsIndex]) : null;
-                    $adsViews = ($adsViewsIndex !== null && isset($row[$adsViewsIndex])) ? intval($row[$adsViewsIndex]) : null;
-                    $afflViews = ($afflViewsIndex !== null && isset($row[$afflViewsIndex])) ? intval($row[$afflViewsIndex]) : null;
-
-                    if (isset($processedSkus[$sku])) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    $existingRecord = TikTokProductTwo::where('sku', $sku)->first();
-
-                    $productUpdateData = [
-                        'price' => $price,
-                        'stock' => $stock,
-                        'sold' => 0,
-                    ];
-                    if ($videoViews !== null) {
-                        $productUpdateData['views'] = $videoViews;
-                        $productUpdateData['video_views'] = $videoViews;
-                    }
-                    if ($adsViews !== null) {
-                        $productUpdateData['ads_views'] = $adsViews;
-                    }
-                    if ($afflViews !== null) {
-                        $productUpdateData['affl_views'] = $afflViews;
-                    }
-                    TikTokProductTwo::updateOrCreate(
-                        ['sku' => $sku],
-                        $productUpdateData
-                    );
-
-                    $view = TiktokTwoShopDataView::firstOrNew(['sku' => $sku]);
-                    $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
-                    if ($videoViews !== null) {
-                        $values['video_views'] = $videoViews;
-                    }
-                    if ($adsViews !== null) {
-                        $values['ads_views'] = $adsViews;
-                    }
-                    if ($afflViews !== null) {
-                        $values['affl_views'] = $afflViews;
-                    }
-                    $view->value = $values;
-                    $view->save();
-                    
-                    $processedSkus[$sku] = true;
-                    
-                    if ($existingRecord) {
-                        $updated++;
-                    } else {
-                        $imported++;
-                    }
-                }
-            }
-
-            fclose($handle);
-
-            $total = $imported + $updated;
-            $message = "TikTok 2: successfully processed $total product rows!";
-            $details = [];
-            if ($imported > 0) {
-                $details[] = "$imported new";
-            }
-            if ($updated > 0) {
-                $details[] = "$updated updated";
-            }
-            if ($skipped > 0) {
-                $details[] = "$skipped duplicates skipped";
-            }
-            if (! empty($details)) {
-                $message .= ' ('.implode(', ', $details).')';
-            }
-
-            return back()->with('success', $message);
-        } catch (\Exception $e) {
-            Log::error('TikTok 2 CSV Upload Error: '.$e->getMessage());
-
-            return back()->with('error', 'Error uploading CSV: '.$e->getMessage());
-        }
-    }
-
-    /**
-     * Download Sample CSV
-     */
-    public function downloadSampleCsv()
-    {
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        // Header Row
-        $headers = ['sku', 'price', 'Inv', 'Video Views', 'Ads Views', 'Affl Views'];
-        $sheet->fromArray($headers, NULL, 'A1');
-
-        // Sample Data (from tiktok file)
-        $sampleData = [
-            ['20R WoB', '25.99', '6', '1250', '420', '95'],
-            ['6R', '16.99', '10', '980', '310', '60'],
-            ['HW 1 SKY BLU', '14.47', '1', '340', '110', '15'],
-            ['SUH-400 1Pc', '50.19', '99', '2100', '760', '180'],
-            ['HW 1', '14.24', '0', '560', '190', '25'],
-        ];
-
-        $sheet->fromArray($sampleData, NULL, 'A2');
-
-        // Set column widths
-        $sheet->getColumnDimension('A')->setWidth(20);
-        $sheet->getColumnDimension('B')->setWidth(15);
-        $sheet->getColumnDimension('C')->setWidth(10);
-        $sheet->getColumnDimension('D')->setWidth(14);
-        $sheet->getColumnDimension('E')->setWidth(12);
-        $sheet->getColumnDimension('F')->setWidth(12);
-
-        // Output Download
-        $fileName = 'TikTok_Sample.csv';
-
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment;filename="' . $fileName . '"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Csv($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
-
-    /**
      * Save SPRICE to tiktok_shop_data_views (TikTok Shop 1)
      */
     public function saveSpriceUpdates(Request $request)
@@ -1327,6 +1135,52 @@ class TikTokPricingController extends Controller
     public function saveSpriceTiktokTwoUpdates(Request $request)
     {
         return $this->saveSpriceUpdatesToModel($request, TiktokTwoShopDataView::class, 'TikTok 2', true);
+    }
+
+    /**
+     * Mark SPRICE push status as applied (double-click ✓✓) — TikTok Shop 1.
+     */
+    public function updateSpriceStatus(Request $request)
+    {
+        return $this->updateSpriceStatusToModel($request, TiktokShopDataView::class);
+    }
+
+    /**
+     * Mark SPRICE push status as applied (double-click ✓✓) — TikTok Shop 2.
+     */
+    public function updateSpriceTiktokTwoStatus(Request $request)
+    {
+        return $this->updateSpriceStatusToModel($request, TiktokTwoShopDataView::class);
+    }
+
+    private function updateSpriceStatusToModel(Request $request, string $viewModel)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku')));
+        $status = (string) $request->input('status');
+
+        if ($sku === '' || ! in_array($status, ['pushed', 'applied', 'error'], true)) {
+            return response()->json(['success' => false, 'error' => 'Invalid SKU or status'], 400);
+        }
+
+        $view = $viewModel::whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first()
+            ?: $viewModel::firstOrNew(['sku' => $sku]);
+        $values = is_array($view->value) ? $view->value : (json_decode($view->value ?? '{}', true) ?: []);
+        if (! is_array($values)) {
+            $values = [];
+        }
+
+        $values['SPRICE_STATUS'] = $status;
+        $values['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+        if (auth()->check()) {
+            $values['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+            $values['SPRICE_PUSHED_BY_ID'] = auth()->id();
+        }
+
+        $view->sku = $view->sku ?: $sku;
+        $view->value = $values;
+        $view->save();
+
+        return response()->json(['success' => true, 'message' => 'Status updated successfully']);
     }
 
     /**
@@ -1521,10 +1375,9 @@ class TikTokPricingController extends Controller
                 ];
             }
 
-            $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')
-                ->orWhere('marketplace', 'TikTok')
-                ->first();
-            $marginPct = $marketplaceData ? (float) $marketplaceData->percentage : 80.0;
+            // TikTok 1 & TikTok 2 SPRICE save → same margin: TiktokShop
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+            $marginPct = $marketplaceData ? (float) $marketplaceData->percentage : 0.0;
             $marginFactor = $marginPct / 100.0;
 
             $updatedCount = 0;
@@ -1548,10 +1401,10 @@ class TikTokPricingController extends Controller
                 if ($productMaster) {
                     $pmValues = $productMaster->Values ?: [];
                     $lp = $pmValues['lp'] ?? 0;
-                    // TikTok 1 → tt_ship only (no fallback). TikTok 2 → Ship BB (Values ship_bb) only.
+                    // TikTok 1 → normal product_master ship (same as /price-increase). TikTok 2 → Ship BB (Values ship_bb) only.
                     $ttShip = $isTiktokTwo
                         ? (isset($pmValues['ship_bb']) ? floatval($pmValues['ship_bb']) : (isset($productMaster->ship_bb) ? floatval($productMaster->ship_bb) : 0))
-                        : ($pmValues['tt_ship'] ?? 0);
+                        : floatval($pmValues['ship'] ?? 0);
                     $ship = $ttShip;
                     if ($sprice > 0) {
                         $sgpft = (($sprice * $marginFactor - $lp - $ship) / $sprice) * 100;

@@ -413,7 +413,7 @@
                     </button>
                     @endif
 
-                    {{-- Export always; Upload/Sample only when upload path is set (TikTok 2). TikTok 1 is API-only. --}}
+                    {{-- Export only — TikTok 1 & 2 are API-only (no sheet upload). --}}
                     <div class="btn-group">
                         <button type="button" class="btn btn-sm btn-info dropdown-toggle" data-bs-toggle="dropdown"
                             aria-expanded="false" title="CSV actions">
@@ -425,18 +425,6 @@
                                     <i class="fas fa-file-excel text-success"></i> Export CSV
                                 </a>
                             </li>
-                            @if (!empty($tiktokUploadPath))
-                            <li>
-                                <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#ttCsvUploadModal">
-                                    <i class="fas fa-upload text-primary"></i> Upload CSV
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="{{ url($tiktokDownloadSamplePath ?? '/tiktok-download-sample-csv') }}">
-                                    <i class="fas fa-download text-info"></i> Download Sample
-                                </a>
-                            </li>
-                            @endif
                         </ul>
                     </div>
 
@@ -484,6 +472,32 @@
                         title="Number of rows currently shown after filters">Rows: 0</span>
                     <span class="badge bg-primary fs-6 p-2 text-nowrap" id="tt-selected-row-badge"
                         title="Number of selected rows">Sel: 0</span>
+
+                    {{-- Bulk push SPRICE to TikTok Shop (visible when SKUs selected) --}}
+                    <div class="dropdown d-inline-block flex-shrink-0" id="tt-bulk-actions-container" style="display: none;">
+                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
+                            id="ttBulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+                            title="Bulk push SPRICE to TikTok">
+                            <i class="fas fa-upload"></i> Bulk Push
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="ttBulkActionsDropdown" style="min-width: 220px;">
+                            <li class="px-3 py-2">
+                                <div style="font-weight: 600; margin-bottom: 8px; color: #495057;">
+                                    <i class="fas fa-upload"></i> Bulk Push Prices
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="tiktok" id="bulkPushTiktok" checked disabled>
+                                    <label class="form-check-label" for="bulkPushTiktok" id="bulkPushTiktokLabel"
+                                        style="color: #fe2c55; font-weight: 500;">
+                                        TikTok
+                                    </label>
+                                </div>
+                                <button class="btn btn-sm btn-primary w-100" id="execute-bulk-push-tiktok" type="button">
+                                    <i class="fas fa-paper-plane"></i> Push Selected
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
 
                 </div>
 
@@ -616,6 +630,10 @@
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
+                        <button id="bulk-push-tiktok-btn" class="btn btn-warning btn-sm" type="button"
+                            title="Push SPRICE for selected SKUs to TikTok Shop">
+                            <i class="fas fa-paper-plane"></i> Push Selected
                         </button>
                     </div>
                 </div>
@@ -882,37 +900,6 @@
         </div>
     </div>
 
-    @if (!empty($tiktokUploadPath))
-    {{-- CSV Upload Modal — TikTok 2 only (TikTok 1 uses API sync) --}}
-    <div class="modal fade" id="ttCsvUploadModal" tabindex="-1" aria-labelledby="ttCsvUploadModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form action="{{ url($tiktokUploadPath) }}" method="POST" enctype="multipart/form-data">
-                    @csrf
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="ttCsvUploadModalLabel">
-                            <i class="fas fa-upload"></i> Upload CSV
-                        </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="tt-csv-file-input" class="form-label">Choose CSV file</label>
-                            <input type="file" name="csv_file" id="tt-csv-file-input" class="form-control" accept=".csv" required>
-                        </div>
-                        <small class="text-muted">Columns: sku, price, Inv/stock, Video Views, Ads Views, Affl Views (updates existing SKUs or adds new ones)</small>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-upload"></i> Upload CSV
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    @endif
 @endsection
 
 @php
@@ -922,6 +909,7 @@
             'badgeChart' => '/tiktok-badge-chart-data',
             'metricsHistory' => '/tiktok-metrics-history',
             'saveSprice' => '/tiktok-save-sprice',
+            'updateSpriceStatus' => '/tiktok-update-sprice-status',
             'saveNrp' => route('tiktok.save.nrp'),
             'saveLinks' => '/tiktok-save-links',
             // Shared DB-backed column visibility (same endpoint ebay-tabulator-view uses).
@@ -2308,6 +2296,9 @@
                 $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
                 $('#tt-selected-row-badge').text(`Sel: ${count}`);
                 $('#discount-input-container').toggle(count > 0);
+                $('#tt-bulk-actions-container').toggle(count > 0);
+                const channelLabel = (TTP_CFG.summaryChannel === 'tiktok2') ? 'TikTok 2' : 'TikTok';
+                $('#bulkPushTiktokLabel').text(channelLabel);
             }
 
             // Visible (filtered) SKU row count — same as eBay / Amazon rows-count badge
@@ -3417,8 +3408,8 @@
                         width: 60
                     },
                     {
-                        // TikTok 1 → tt_ship. TikTok 2 → ship_bb. Visible + Columns checkbox on both pages.
-                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "TT Ship",
+                        // TikTok 1 → normal product_master ship (same as /price-increase). TikTok 2 → ship_bb.
+                        title: (TTP_CFG.summaryChannel === 'tiktok2') ? "BB Ship" : "Ship",
                         field: "Ship_productmaster",
                         hozAlign: "center",
                         sorter: "number",
@@ -3462,6 +3453,68 @@
                             return `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">$${value.toFixed(2)}</span>`;
                         },
                         width: 80
+                    },
+                    {
+                        title: "Push",
+                        field: "push_price",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 55,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                            if (isParent) return '<span style="color:#6c757d;">-</span>';
+
+                            const sku = rowData['(Child) sku'];
+                            const sprice = parseFloat(rowData.SPRICE || 0);
+                            const status = rowData.SPRICE_STATUS || null;
+                            const pushedValue = rowData.SPRICE_PUSHED_VALUE;
+                            const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
+                            const pushedBy = rowData.SPRICE_PUSHED_BY;
+                            const channelLabel = (TTP_CFG.summaryChannel === 'tiktok2') ? 'TikTok 2' : 'TikTok';
+
+                            if (!sku || !sprice || sprice <= 0) {
+                                return '<span style="color:#999;">N/A</span>';
+                            }
+
+                            let icon = '<i class="fas fa-check"></i>';
+                            let iconColor = '#28a745';
+                            let titleText = `Push $${sprice.toFixed(2)} to ${channelLabel}`;
+
+                            if (status === 'processing') {
+                                icon = '<i class="fas fa-spinner fa-spin"></i>';
+                                iconColor = '#ffc107';
+                                titleText = 'Price pushing in progress...';
+                            } else if (status === 'pushed') {
+                                icon = '<i class="fa-solid fa-check-double"></i>';
+                                iconColor = '#28a745';
+                                titleText = `Price pushed to ${channelLabel} (Double-click to mark as Applied)`;
+                            } else if (status === 'applied') {
+                                icon = '<i class="fa-solid fa-check-double"></i>';
+                                iconColor = '#28a745';
+                                titleText = `Price applied on ${channelLabel}`;
+                            } else if (status === 'error') {
+                                icon = '<i class="fa-solid fa-x"></i>';
+                                iconColor = '#dc3545';
+                                titleText = `Error pushing price to ${channelLabel} — click to retry`;
+                            }
+
+                            const tipParts = [titleText];
+                            if (pushedValue !== null && pushedValue !== undefined) {
+                                tipParts.push(`Last: $${parseFloat(pushedValue).toFixed(2)}`);
+                            }
+                            if (updatedAt) tipParts.push(updatedAt);
+                            if (pushedBy) tipParts.push(`by ${pushedBy}`);
+
+                            return `<button type="button" class="btn btn-sm tiktok-push-price-btn btn-circle"
+                                data-sku="${String(sku).replace(/"/g, '&quot;')}"
+                                data-price="${sprice}"
+                                data-status="${status || ''}"
+                                title="${tipParts.join(' | ').replace(/"/g, '&quot;')}"
+                                style="border:none;background:none;color:${iconColor};padding:0;cursor:pointer;font-size:16px;">
+                                ${icon}
+                            </button>`;
+                        }
                     },
                     {
                         title: "SGPFT%",
@@ -3929,6 +3982,200 @@
                         showToast(msg, 'error');
                     }
                 });
+            });
+
+            // ========== TikTok price push (Reverb/Amazon pattern) ==========
+            function ttPushMarketplace() {
+                return (TTP_CFG.summaryChannel === 'tiktok2') ? 'tiktok2' : 'tiktok';
+            }
+
+            function ttChannelLabel() {
+                return (TTP_CFG.summaryChannel === 'tiktok2') ? 'TikTok 2' : 'TikTok';
+            }
+
+            function pushTikTokPriceForRow(row, sku, price) {
+                return new Promise(function(resolve) {
+                    row.update({ SPRICE_STATUS: 'processing' })
+                        .then(function() { return row.reformat(); })
+                        .catch(function() { try { row.reformat(); } catch (e) {} });
+
+                    $.ajax({
+                        url: '/cvr-master-push-price',
+                        method: 'POST',
+                        data: {
+                            sku: sku,
+                            price: price,
+                            marketplace: ttPushMarketplace(),
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(response) {
+                            if (response && response.success) {
+                                row.update({
+                                    SPRICE_STATUS: 'pushed',
+                                    SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
+                                    SPRICE_PUSHED_VALUE: price,
+                                    has_custom_sprice: true
+                                }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                                resolve({ ok: true, sku: sku, message: response.message || 'Pushed' });
+                            } else {
+                                row.update({
+                                    SPRICE_STATUS: 'error',
+                                    SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
+                                }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                                resolve({
+                                    ok: false,
+                                    sku: sku,
+                                    message: (response && response.message) ? response.message : 'Failed'
+                                });
+                            }
+                        },
+                        error: function(xhr) {
+                            const msg = (xhr.responseJSON && xhr.responseJSON.message)
+                                ? xhr.responseJSON.message
+                                : ('Failed to push price to ' + ttChannelLabel());
+                            row.update({
+                                SPRICE_STATUS: 'error',
+                                SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
+                            }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                            resolve({ ok: false, sku: sku, message: msg });
+                        }
+                    });
+                });
+            }
+
+            let tiktokPushClickTimer = null;
+            $(document).on('click', '.tiktok-push-price-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const $btn = $(this);
+                const currentStatus = $btn.attr('data-status') || '';
+                const sku = $btn.attr('data-sku') || $btn.data('sku');
+
+                // Double-click → mark Applied
+                if (e.originalEvent && e.originalEvent.detail === 2) {
+                    if (tiktokPushClickTimer) {
+                        clearTimeout(tiktokPushClickTimer);
+                        tiktokPushClickTimer = null;
+                    }
+                    if (currentStatus !== 'pushed' || !sku) return;
+
+                    const statusUrl = TTP_CFG.updateSpriceStatus || '/tiktok-update-sprice-status';
+                    $.ajax({
+                        url: statusUrl,
+                        method: 'POST',
+                        data: { sku: sku, status: 'applied', _token: $('meta[name="csrf-token"]').attr('content') },
+                        success: function(response) {
+                            if (response && response.success) {
+                                const $rowEl = $btn.closest('.tabulator-row');
+                                const row = table.getRow($rowEl[0]);
+                                if (row) {
+                                    row.update({
+                                        SPRICE_STATUS: 'applied',
+                                        SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
+                                    }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
+                                }
+                                showToast('Status updated to Applied', 'success');
+                            }
+                        },
+                        error: function() {
+                            showToast('Failed to update status', 'error');
+                        }
+                    });
+                    return;
+                }
+
+                if (currentStatus === 'processing' || $btn.prop('disabled')) return;
+
+                if (tiktokPushClickTimer) clearTimeout(tiktokPushClickTimer);
+                tiktokPushClickTimer = setTimeout(function() {
+                    tiktokPushClickTimer = null;
+                    const $rowEl = $btn.closest('.tabulator-row');
+                    const row = table.getRow($rowEl[0]);
+                    if (!row) return;
+                    const price = parseFloat(row.getData().SPRICE || $btn.attr('data-price') || 0);
+
+                    if (!sku || !price || price <= 0) {
+                        showToast('Set a valid SPRICE (> 0) before pushing', 'error');
+                        return;
+                    }
+
+                    $btn.prop('disabled', true);
+                    pushTikTokPriceForRow(row, sku, price).then(function(result) {
+                        $btn.prop('disabled', false);
+                        if (result.ok) {
+                            showToast(result.message || `Price pushed to ${ttChannelLabel()} for ${sku}`, 'success');
+                        } else {
+                            showToast(result.message || `Failed to push ${sku}`, 'error');
+                        }
+                    });
+                }, 280);
+            });
+
+            async function executeBulkPushTikTok($triggerBtn) {
+                if (selectedSkus.size === 0) {
+                    showToast('Select at least one SKU first (turn on PRc / Bulk Mode)', 'error');
+                    return;
+                }
+
+                const jobs = [];
+                selectedSkus.forEach(function(sku) {
+                    const rows = table.searchRows('(Child) sku', '=', sku);
+                    if (!rows.length) return;
+                    const row = rows[0];
+                    const price = parseFloat(row.getData().SPRICE || 0);
+                    if (!price || price <= 0) return;
+                    jobs.push({ row: row, sku: sku, price: price });
+                });
+
+                if (jobs.length === 0) {
+                    showToast('No selected SKUs have SPRICE > 0 to push', 'warning');
+                    return;
+                }
+
+                if (!confirm('Push ' + jobs.length + ' price(s) to ' + ttChannelLabel() + '?')) {
+                    return;
+                }
+
+                const $btn = ($triggerBtn && $triggerBtn.length) ? $triggerBtn : $('#bulk-push-tiktok-btn');
+                const $dropdownBtn = $('#ttBulkActionsDropdown');
+                const originalBtnHtml = $btn.html();
+                const originalDropHtml = $dropdownBtn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+                $dropdownBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
+                $('#execute-bulk-push-tiktok').prop('disabled', true);
+
+                let okCount = 0;
+                let failCount = 0;
+                const concurrency = 5;
+                let idx = 0;
+                async function runNext() {
+                    if (idx >= jobs.length) return;
+                    const job = jobs[idx++];
+                    const result = await pushTikTokPriceForRow(job.row, job.sku, job.price);
+                    if (result.ok) okCount++; else failCount++;
+                    await runNext();
+                }
+                await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, function() { return runNext(); }));
+
+                $btn.prop('disabled', false).html(originalBtnHtml || '<i class="fas fa-paper-plane"></i> Push Selected');
+                $dropdownBtn.prop('disabled', false).html(originalDropHtml || '<i class="fas fa-upload"></i> Bulk Push');
+                $('#execute-bulk-push-tiktok').prop('disabled', false);
+
+                if (failCount === 0) {
+                    showToast('Pushed ' + okCount + ' price(s) to ' + ttChannelLabel(), 'success');
+                } else {
+                    showToast('Pushed ' + okCount + ', failed ' + failCount, failCount === jobs.length ? 'error' : 'warning');
+                }
+            }
+
+            $('#bulk-push-tiktok-btn').on('click', function() {
+                executeBulkPushTikTok($(this));
+            });
+            $(document).on('click', '#execute-bulk-push-tiktok', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                executeBulkPushTikTok($(this));
             });
 
             // L7 / L30 Upload: button triggers file input, then upload on file select

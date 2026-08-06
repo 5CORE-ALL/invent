@@ -1345,6 +1345,93 @@ class TikTokShopService
     }
 
     /**
+     * Update sale price for a single SKU on TikTok Shop.
+     * API: POST product/.../products/{product_id}/prices/update
+     *
+     * @param  string  $productId  TikTok product ID
+     * @param  string  $skuId      TikTok SKU ID (from product.skus[].id)
+     * @param  float   $price      Sale price to set
+     * @param  string  $currency   ISO currency (default USD)
+     * @return array{success: bool, message: string}
+     */
+    public function updateProductPrice(string $productId, string $skuId, float $price, string $currency = 'USD'): array
+    {
+        if (! $this->accessToken) {
+            return ['success' => false, 'message' => 'TikTok access token not available. Connect the shop first.'];
+        }
+
+        $productId = trim($productId);
+        $skuId = trim($skuId);
+        if ($productId === '' || $skuId === '') {
+            return ['success' => false, 'message' => 'TikTok product_id and sku_id are required. Run Sync products first.'];
+        }
+        if (! ($price > 0)) {
+            return ['success' => false, 'message' => 'Price must be greater than 0.'];
+        }
+
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $shopInfo = $this->getShopInfo();
+            if (is_array($shopInfo) && array_key_exists('code', $shopInfo) && (int) $shopInfo['code'] !== 0) {
+                return [
+                    'success' => false,
+                    'message' => (string) ($shopInfo['message'] ?? 'TikTok shop authorization failed.'),
+                ];
+            }
+            $this->ensureShopCipher();
+            if (! $this->shopCipher) {
+                return [
+                    'success' => false,
+                    'message' => 'TikTok shop cipher missing. Re-authorize the shop or add this server IP to the Partner Center IP allow list.',
+                ];
+            }
+
+            $params = [
+                'skus' => [
+                    [
+                        'id' => $skuId,
+                        'price' => [
+                            'amount' => number_format($price, 2, '.', ''),
+                            'currency' => strtoupper(trim($currency) ?: 'USD'),
+                        ],
+                    ],
+                ],
+            ];
+
+            $response = $this->client->Product->updatePrice($productId, $params);
+            $this->lastResponse = $response;
+
+            if (is_array($response) && array_key_exists('code', $response) && (int) $response['code'] !== 0) {
+                return [
+                    'success' => false,
+                    'message' => (string) ($response['message'] ?? 'TikTok price update failed.'),
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Price $'.number_format($price, 2).' pushed to TikTok Shop.',
+            ];
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                return $this->updateProductPrice($productId, $skuId, $price, $currency);
+            }
+
+            return ['success' => false, 'message' => 'Token expired and refresh failed: '.$e->getMessage()];
+        } catch (\Throwable $e) {
+            Log::error('TikTok updateProductPrice failed', [
+                'channel' => $this->configKey,
+                'product_id' => $productId,
+                'sku_id' => $skuId,
+                'price' => $price,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Update inventory for a single SKU on TikTok Shop.
      *
      * @param  string  $productId  TikTok product ID

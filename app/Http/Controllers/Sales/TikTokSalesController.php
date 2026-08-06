@@ -8,21 +8,45 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\TiktokOrder;
 use App\Models\TiktokSalesTwo;
 
 class TikTokSalesController extends Controller
 {
-    /** TikTok 2 margin (same as /tiktok-two/daily-sales). */
-    public const TWO_MARGIN = 0.80;
+    /**
+     * Margin factor from marketplace_percentages only (no hardcoded default).
+     *
+     * @param  list<string>  $marketplaceNames
+     */
+    public static function marginFactorFromMarketplace(array $marketplaceNames): float
+    {
+        $query = MarketplacePercentage::query();
+        foreach (array_values($marketplaceNames) as $i => $name) {
+            if ($i === 0) {
+                $query->where('marketplace', $name);
+            } else {
+                $query->orWhere('marketplace', $name);
+            }
+        }
+        $pct = $query->value('percentage');
+        if ($pct === null || $pct === '') {
+            Log::warning('marketplace_percentages margin missing', ['names' => $marketplaceNames]);
+
+            return 0.0;
+        }
+
+        return ((float) $pct) / 100.0;
+    }
 
     /**
      * Live L30 / L60 / GPFT / ROI from tiktok_sales_two — shared by
      * /tiktok-two/daily-sales and /all-marketplace-master (TikTok 2 row).
      *
      * Window: 30 days ending on the latest order_date (same as getTikTokTwoChannelData).
-     * Profit: (unit_price × 0.80) − LP − shipCost, × qty.
+     * Profit: (unit_price × margin) − LP − shipCost, × qty.
+     * Margin from marketplace_percentages.marketplace = TiktokShop (same as TikTok 1).
      *
      * @return array{
      *   l30_sales: float, l30_orders: int, qty: int,
@@ -68,7 +92,7 @@ class TikTokSalesController extends Controller
                 ->get(['sku', 'Values'])
                 ->keyBy(fn ($item) => strtoupper((string) $item->sku));
 
-            $margin = self::TWO_MARGIN;
+            $margin = self::marginFactorFromMarketplace(['TiktokShop']);
             $l30Sales = 0.0;
             $totalQuantity = 0.0;
             $totalProfit = 0.0;
@@ -159,6 +183,8 @@ class TikTokSalesController extends Controller
 
     /**
      * Get TikTok sales data from tiktok_orders — last 30 California calendar days.
+     * Profit same as /price-increase & /tiktok-pricing (TikTok 1):
+     * margin from marketplace_percentages.marketplace = TiktokShop; product_master ship (not tt_ship).
      */
     public function getData(Request $request)
     {
@@ -175,7 +201,7 @@ class TikTokSalesController extends Controller
                 ->get()
                 ->keyBy(fn ($item) => strtoupper($item->sku));
 
-            $margin = 0.80;
+            $margin = self::marginFactorFromMarketplace(['TiktokShop']);
             $data = [];
 
             foreach ($orderItems as $item) {
@@ -198,22 +224,24 @@ class TikTokSalesController extends Controller
                     $values = is_array($pm->Values) ? $pm->Values :
                             (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                    foreach ($values as $k => $v) {
-                        if (strtolower($k) === 'lp') {
-                            $lp = floatval($v);
-                            break;
+                    if (is_array($values)) {
+                        foreach ($values as $k => $v) {
+                            $key = strtolower((string) $k);
+                            if ($key === 'lp') {
+                                $lp = floatval($v);
+                            } elseif ($key === 'ship') {
+                                // Normal ship — same as /price-increase /tiktok-pricing (not tt_ship)
+                                $ship = floatval($v);
+                            } elseif ($key === 'wt_act') {
+                                $weightAct = floatval($v);
+                            }
                         }
                     }
                     if ($lp === 0 && isset($pm->lp)) {
                         $lp = floatval($pm->lp);
                     }
-                    if (isset($values['ship'])) {
-                        $ship = floatval($values['ship']);
-                    } elseif (isset($pm->ship)) {
+                    if ($ship === 0 && isset($pm->ship)) {
                         $ship = floatval($pm->ship);
-                    }
-                    if (isset($values['wt_act'])) {
-                        $weightAct = floatval($values['wt_act']);
                     }
                 }
 
@@ -280,7 +308,7 @@ class TikTokSalesController extends Controller
         return response()->json(['success' => true]);
     }
 
-    // ---- TikTok Sales Two (upload-based, margin 0.80) ----
+    // ---- TikTok Sales Two (upload-based) ----
 
     /**
      * Display TikTok 2 daily sales page (upload-based data)
@@ -294,7 +322,8 @@ class TikTokSalesController extends Controller
     }
 
     /**
-     * Get TikTok 2 sales data from tiktok_sales_two table (margin 0.80, same as TikTok)
+     * Get TikTok 2 sales data from tiktok_sales_two.
+     * Margin from marketplace_percentages.marketplace = TiktokShop (same as TikTok 1).
      */
     public function getDataTwo(Request $request)
     {
@@ -304,7 +333,7 @@ class TikTokSalesController extends Controller
                 return response()->json([]);
             }
 
-            $margin = self::TWO_MARGIN; // 80% margin (same as TikTok)
+            $margin = self::marginFactorFromMarketplace(['TiktokShop']);
             $skus = $rows->pluck('seller_sku')->filter()->unique()->map(function ($s) {
                 return strtoupper($s);
             })->values()->toArray();

@@ -198,6 +198,9 @@
                         <span class="badge text-bg-danger" id="pef-missing-badge"
                             title="Shortcut: INV &gt; 0 + Price Null">Missing: 0</span>
 
+                        <span class="badge text-bg-danger" id="pef-sku-groi-badge"
+                            title="Unique SKUs with GROI &lt; 40% — click to filter">SKU: 0</span>
+
                         <div class="dropdown">
                             <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
                                 id="pef-dil-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
@@ -860,6 +863,16 @@
         $('#pef-missing-badge').text('Missing: ' + n);
     }
 
+    /** Unique SKUs with GROI% &lt; 40 */
+    function updateSkuGroiBadge() {
+        const skus = new Set();
+        pulledRows.forEach(function(d) {
+            if (!d.sku) return;
+            if (matchesGroiFilter(d, 'lt-40')) skus.add(String(d.sku));
+        });
+        $('#pef-sku-groi-badge').text('SKU: ' + skus.size);
+    }
+
     /** Snapshot current column sort so filters can re-apply across ALL pages. */
     function snapshotTableSort() {
         if (!table) return [];
@@ -1417,6 +1430,7 @@
             requestAnimationFrame(function() {
                 rebuildParentDatalist();
                 updateMissingBadge();
+                updateSkuGroiBadge();
                 applyStatusFilter();
                 updatePushBtn();
             });
@@ -1736,6 +1750,12 @@
         applyStatusFilter();
     }).css('cursor', 'pointer');
 
+    $('#pef-sku-groi-badge').on('click', function() {
+        if (!dataLoaded) return;
+        setGroiFilterUI('lt-40');
+        applyStatusFilter();
+    }).css('cursor', 'pointer');
+
     // Data already in HTML from DB — paint immediately (no Ajax load)
     initTable(pulledRows);
     if (dataLoaded) {
@@ -1746,6 +1766,7 @@
         requestAnimationFrame(function() {
             rebuildParentDatalist();
             updateMissingBadge();
+            updateSkuGroiBadge();
             applyStatusFilter();
             updatePushBtn();
         });

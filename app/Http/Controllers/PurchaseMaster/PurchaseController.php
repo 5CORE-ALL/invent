@@ -185,33 +185,44 @@ class PurchaseController extends Controller
 
     public function searchSku(Request $request)
     {
-        $search = $request->get('q', '');
-        $page = $request->get('page', 1);
+        $search = trim((string) $request->get('q', ''));
+        $page = max(1, (int) $request->get('page', 1));
         $perPage = 30;
 
-        $query = ProductMaster::select('sku', 'parent');
+        $query = ProductMaster::query()
+            ->select('sku', 'parent')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->where('sku', 'NOT LIKE', 'PARENT %');
 
-        if (!empty($search)) {
-            $query->where('sku', 'like', "%{$search}%")
-                  ->orWhere('parent', 'like', "%{$search}%");
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('sku', 'like', "%{$search}%")
+                    ->orWhere('parent', 'like', "%{$search}%");
+            });
         }
 
-        $total = $query->count();
-        $products = $query->skip(($page - 1) * $perPage)
-                          ->take($perPage)
-                          ->get();
+        $total = (clone $query)->count();
+        $products = $query->orderBy('sku')
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get()
+            ->unique('sku')
+            ->values();
 
         $items = $products->map(function ($product) {
             return [
                 'id' => $product->sku,
-                'text' => $product->sku . ($product->parent ? ' - ' . $product->parent : ''),
-                'parent' => $product->parent
+                'text' => $product->sku,
+                'parent' => $product->parent,
             ];
         });
 
         return response()->json([
             'items' => $items,
-            'has_more' => ($page * $perPage) < $total
+            'results' => $items, // Select2 ajax default key
+            'has_more' => ($page * $perPage) < $total,
+            'pagination' => ['more' => ($page * $perPage) < $total],
         ]);
     }
 

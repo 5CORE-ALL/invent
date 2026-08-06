@@ -250,7 +250,6 @@ return [
     // CP Master
     ['value' => 'cp_master', 'text' => 'CP Master', 'group' => 'CP Master'],
     ['value' => 'masters_barcode', 'text' => 'Masters Barcode', 'group' => 'CP Master'],
-    ['value' => 'short_title_master', 'text' => 'Short Title Master', 'group' => 'CP Master'],
     ['value' => 'title_master', 'text' => 'Title Master', 'group' => 'CP Master'],
     ['value' => 'bullet_points', 'text' => 'Bullet Points', 'group' => 'CP Master'],
     ['value' => 'product_description', 'text' => 'Product Description', 'group' => 'CP Master'],

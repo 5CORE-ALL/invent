@@ -10,6 +10,8 @@ use App\Services\PricingErrorsFixCvrCacheBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -22,11 +24,49 @@ use Illuminate\View\View;
  */
 class PricingErrorsFixController extends Controller
 {
+    private const LOW_GROI_SKU_SIDEBAR_CACHE_KEY = 'pef_low_groi_sku_sidebar_count';
+
     /** @var array<string, float> */
     private array $adsPctCache = [];
 
     /** @var array<string, float> */
     private array $takeHomeCache = [];
+
+    /**
+     * Unique listed SKUs with GROI% &lt; 40 (same as page SKU badge, Listed default).
+     */
+    public static function lowGroiSkuCountForSidebar(): int
+    {
+        try {
+            return (int) Cache::remember(self::LOW_GROI_SKU_SIDEBAR_CACHE_KEY, 300, function () {
+                if (! Schema::hasTable('pricing_errors_fix_calculated_data')) {
+                    return 0;
+                }
+
+                return (int) DB::table('pricing_errors_fix_calculated_data')
+                    ->whereNotNull('groi')
+                    ->where('groi', '<', 40)
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->where(function ($w) {
+                        $w->where('price', '>', 0)->orWhere('sprice', '>', 0);
+                    })
+                    ->selectRaw('COUNT(DISTINCT sku) as c')
+                    ->value('c');
+            });
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    public static function forgetLowGroiSkuSidebarCountCache(): void
+    {
+        try {
+            Cache::forget(self::LOW_GROI_SKU_SIDEBAR_CACHE_KEY);
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
 
     public function index(Request $request): View
     {

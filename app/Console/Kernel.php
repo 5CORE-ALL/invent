@@ -105,6 +105,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SyncFbaShipmentStatus::class,
         \App\Console\Commands\SyncShipmentTrackingStatus::class,
         \App\Console\Commands\RefreshFulfillmentShipmentStatus::class,
+        \App\Console\Commands\SnapshotSalesOrderFulfillmentDaily::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
         \App\Console\Commands\StoreEbayUtilizationCounts::class,
@@ -2372,27 +2373,56 @@ class Kernel extends ConsoleKernel
    
         /*
         |--------------------------------------------------------------------------
-        | Sales Order Fulfillment — shipment status refresh
-        | Every 30 min, 09:00–19:00 America/Los_Angeles (PST/PDT), until Delivered.
-        | Carrier tracking (--only-open) + marketplace order re-fetch for open labels.
+        | Sales Order Fulfillment — full-day max allowed tracking refresh
+        |
+        | Use nearly all USPS hourly quota 24/7 (~55/hr → ~1,300/day) on open trackings.
+        | 30-day backlog (null status) is prioritized; Delivered/Expired never re-pulled.
+        | As packages deliver, open qty drops and the same schedule sustains ~500 new/day.
         |--------------------------------------------------------------------------
         */
-        $schedule->command('fulfillment:refresh-shipment-status --stale=25 --days=30')
-            ->everyThirtyMinutes()
+        // Carrier sync every 15 min, all day — each tick spends remaining hourly USPS budget.
+        $schedule->command('tracking:sync-status --only-open --repair-quota')
+            ->cron('*/15 * * * *')
             ->timezone('America/Los_Angeles')
-            ->between('09:00', '19:00')
-            ->name('fulfillment-refresh-shipment-status-pst')
-            ->withoutOverlapping(25)
+            ->name('shipment-tracking-sync-status-fullday')
+            ->withoutOverlapping(14)
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Off-hours / overnight catch-up for carrier tracking only (open shipments).
-        $schedule->command('tracking:sync-status --only-open --stale=150')
-            ->everyThreeHours()
+        // Marketplace order refresh (Label Created can advance) — daytime only, no extra USPS burn.
+        $schedule->command('fulfillment:refresh-shipment-status --skip-tracking --days=30')
+            ->hourly()
             ->timezone('America/Los_Angeles')
-            ->unlessBetween('09:00', '19:00')
-            ->name('shipment-tracking-sync-status-offhours')
-            ->withoutOverlapping(170)
+            ->between('07:00', '21:00')
+            ->name('fulfillment-refresh-marketplace-orders-pst')
+            ->withoutOverlapping(50)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // SOF summary history — always one row per Pacific day (even if metrics unchanged).
+        // Primary write at 00:00 PST (stores the day that just ended).
+        $schedule->command('sof:snapshot-daily')
+            ->dailyAt('00:00')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-snapshot-daily-pst')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Catch-up: if 00:00 was missed, create any missing recent Pacific-day rows (never skip unchanged).
+        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
+            ->dailyAt('00:30')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-snapshot-daily-catchup-0030')
+            ->withoutOverlapping(30)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('sof:snapshot-daily --catch-up --backfill=3')
+            ->dailyAt('06:00')
+            ->timezone('America/Los_Angeles')
+            ->name('sof-snapshot-daily-catchup-0600')
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo($log);
 

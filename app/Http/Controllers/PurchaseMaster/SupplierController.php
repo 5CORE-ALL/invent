@@ -95,7 +95,7 @@ class SupplierController extends Controller
         // Get total count of all suppliers (unfiltered)
         $totalCount = Supplier::count();
         
-        $suppliers = $query->with(['ratings', 'latestRemark'])
+        $suppliers = $query->with(['ratings', 'latestRemark', 'latestAdvance'])
             ->withCount('bankAccounts')
             ->paginate(20)
             ->appends($request->query());

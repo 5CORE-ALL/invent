@@ -1574,16 +1574,16 @@
                         <h4 class="header-title mb-0">Verification & Adjustment</h4>
                         <div class="d-flex flex-wrap align-items-center gap-2">
                             <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
-                                <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                <button type="button" id="play-backward" class="btn btn-sm btn-light" title="Previous parent">
                                     <i class="fas fa-step-backward"></i>
                                 </button>
-                                <button id="play-pause" class="btn btn-light rounded-circle" title="Pause" style="display: none;">
+                                <button type="button" id="play-pause" class="btn btn-sm btn-light" title="Show all products" style="display: none;">
                                     <i class="fas fa-pause"></i>
                                 </button>
-                                <button id="play-auto" class="btn btn-light rounded-circle" title="Play">
+                                <button type="button" id="play-auto" class="btn btn-sm btn-light" title="Start parent navigation">
                                     <i class="fas fa-play"></i>
                                 </button>
-                                <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                <button type="button" id="play-forward" class="btn btn-sm btn-light" title="Next parent">
                                     <i class="fas fa-step-forward"></i>
                                 </button>
                             </div>
@@ -2423,59 +2423,60 @@
                 ModalSystem.closeAllModals();
             });
 
+            function rebuildUniqueParents() {
+                // Same approach as CP Master: unique Parent values from loaded table data
+                uniqueParents = [...new Set(
+                    tableData
+                        .map(item => item.Parent)
+                        .filter(parent => parent !== undefined && parent !== null && String(parent).trim() !== '')
+                )];
+            }
+
             function initPlaybackControls() {
-                // Get all unique parent ASINs
-                uniqueParents = [...new Set(tableData.map(item => item.Parent))];
+                rebuildUniqueParents();
 
-                // Set up event handlers
-                $('#play-forward').click(nextParent);
-                $('#play-backward').click(previousParent);
-                $('#play-pause').click(stopNavigation);
-                $('#play-auto').click(startNavigation);
+                // Bind once (avoid stacked handlers if init runs again)
+                $('#play-forward').off('click').on('click', nextParent);
+                $('#play-backward').off('click').on('click', previousParent);
+                $('#play-pause').off('click').on('click', stopNavigation);
+                $('#play-auto').off('click').on('click', startNavigation);
 
-                // Initialize button states
                 updateButtonStates();
             }
 
+            // Start navigation (Play) — same behavior as CP Master
             function startNavigation() {
-                
+                rebuildUniqueParents();
                 if (uniqueParents.length === 0) return;
 
                 isNavigationActive = true;
                 currentParentIndex = 0;
 
-                // Show R&A column
-                $('th[data-field="r&a"], td.ra-cell').removeClass('hide-column');
-
                 showCurrentParent();
 
-                // Update button visibility
+                // Use flex (not jQuery .show()) so it matches .time-navigation-group button layout
                 $('#play-auto').hide();
-                $('#play-pause').show()
-                    .removeClass('btn-light'); // Ensure default color is removed
+                $('#play-pause').css('display', 'flex').removeClass('btn-light');
 
-                // Set initial color
-                checkParentRAStatus();
+                updateButtonStates();
             }
 
+            // Stop navigation (Pause) — show all products again
             function stopNavigation() {
                 isNavigationActive = false;
                 currentParentIndex = -1;
 
-                // Hide R&A column
-                $('th[data-field="r&a"], td.ra-cell').addClass('hide-column');
-
-                // Update button visibility and reset color
                 $('#play-pause').hide();
-                $('#play-auto').show()
+                $('#play-auto')
+                    .css('display', 'flex')
                     .removeClass('btn-success btn-warning btn-danger')
                     .addClass('btn-light');
 
-                // Show all products
                 filteredData = [...tableData];
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
+                updateButtonStates();
             }
 
             function nextParent() {
@@ -2497,81 +2498,81 @@
             function showCurrentParent() {
                 if (!isNavigationActive || currentParentIndex === -1) return;
 
-                // Filter data to show only current parent's products
-                filteredData = tableData.filter(item => item.Parent === uniqueParents[currentParentIndex]);
+                const currentParent = uniqueParents[currentParentIndex];
+                filteredData = tableData.filter(item => item.Parent === currentParent);
 
-                // Update UI
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
                 updateButtonStates();
-                checkParentRAStatus(); // Add this line
             }
 
             function updateButtonStates() {
-                // Enable/disable navigation buttons based on position
-                $('#play-backward').prop('disabled', !isNavigationActive || currentParentIndex <= 0);
-                $('#play-forward').prop('disabled', !isNavigationActive || currentParentIndex >= uniqueParents
-                    .length - 1);
+                $('#play-backward').prop(
+                    'disabled',
+                    !isNavigationActive || currentParentIndex <= 0
+                );
 
-                // Update button tooltips
-                $('#play-auto').attr('title', isNavigationActive ? 'Show all products' : 'Start parent navigation');
+                $('#play-forward').prop(
+                    'disabled',
+                    !isNavigationActive || currentParentIndex >= uniqueParents.length - 1
+                );
+
+                $('#play-auto').attr(
+                    'title',
+                    isNavigationActive ? 'Show all products' : 'Start parent navigation'
+                );
                 $('#play-pause').attr('title', 'Stop navigation and show all');
-                $('#play-forward').attr('title', isNavigationActive ? 'Next parent' : 'Start navigation first');
-                $('#play-backward').attr('title', isNavigationActive ? 'Previous parent' :
-                    'Start navigation first');
+                $('#play-forward').attr('title', 'Next parent');
+                $('#play-backward').attr('title', 'Previous parent');
 
-                // Update button colors based on state
                 if (isNavigationActive) {
-                    $('#play-forward, #play-backward').removeClass('btn-light').addClass('btn-primary');
+                    $('#play-forward, #play-backward')
+                        .removeClass('btn-light')
+                        .addClass('btn-primary');
                 } else {
-                    $('#play-forward, #play-backward').removeClass('btn-primary').addClass('btn-light');
+                    $('#play-forward, #play-backward')
+                        .removeClass('btn-primary')
+                        .addClass('btn-light');
                 }
             }
 
             function checkParentRAStatus() {
+                // Kept for R&A edit handlers; play/pause no longer depends on R&A coloring (CP Master style)
                 if (!isNavigationActive || currentParentIndex === -1) return;
 
                 const currentParent = uniqueParents[currentParentIndex];
                 const parentRows = tableData.filter(item => item.Parent === currentParent);
-
                 if (parentRows.length === 0) return;
 
                 let checkedCount = 0;
                 let totalRows = 0;
 
                 parentRows.forEach(row => {
-                    // Only count rows that have R&A data (not undefined/null/empty)
                     const ra = row['R&A'];
-
-                    totalRows++; // Include every row regardless of blank/checked
-
+                    totalRows++;
                     if (ra === true || ra === 'true' || ra === 1 || ra === '1') {
                         checkedCount++;
                     }
                 });
 
-                // Determine which button is currently visible
                 const $activeButton = $('#play-pause').is(':visible') ? $('#play-pause') : $('#play-auto');
-
-                // Remove all state classes first
                 $activeButton.removeClass('btn-success btn-warning btn-danger btn-light');
 
                 if (checkedCount === 0) {
-                    $activeButton.addClass('btn-danger'); // All unchecked or blank — red
+                    $activeButton.addClass('btn-danger');
                 } else if (checkedCount === totalRows) {
-                    $activeButton.addClass('btn-success'); // All checked — green
+                    $activeButton.addClass('btn-success');
                 } else {
-                    $activeButton.addClass('btn-warning'); // Some checked — yellow
+                    $activeButton.addClass('btn-warning');
                 }
-                // console.log(`Checked: ${checkedCount}, Total: ${totalRows}`);
             }
 
             // Initialize everything
             function initTable() {
                 loadData().then(() => {
-                    // Hide R&A column initially
-                    $('th[data-field="r&a"], td.ra-cell').addClass('hide-column');
+                    // Keep R&A column hidden (not used by play/pause — CP Master style parent navigation)
+                    $('th[data-field="r&a"]').addClass('hide-column');
                     renderTable();
                     initResizableColumns();
                     initSorting();
@@ -2583,7 +2584,7 @@
                     initManualDropdowns();
                     initModalTriggers();
                     initPlaybackControls();
-                    initRAEditHandlers(); // Add this line
+                    initRAEditHandlers();
 
                 });
             }
@@ -3082,29 +3083,7 @@
                     }
                     $row.append($skuCell);
 
-                    if (isNavigationActive) {
-                        const $raCell = $('<td>').addClass('ra-cell');
-                        if (item.hasOwnProperty('R&A')) {
-                            const $container = $('<div>').addClass('ra-edit-container d-flex align-items-center');
-                            const isChecked = item['R&A'] === true || item['R&A'] === '1' || item['R&A'] === 1;
-                            const $checkbox = $('<input>', {
-                                type: 'checkbox',
-                                checked: isChecked,
-                                class: 'ra-checkbox',
-                                'data-sku': item['SKU'],
-                                disabled: isChecked
-                            }).data('original-value', item['R&A']).data('sku', item.SKU);
-                            const $editIcon = $('<i>').addClass('fas fa-pen edit-icon ml-2 text-primary')
-                                .css('cursor', 'pointer')
-                                .attr('title', 'Edit R&A');
-                            $container.append($checkbox, $editIcon);
-                            $raCell.append($container);
-                        } else {
-                            $raCell.html('&nbsp;');
-                        }
-                        $row.append($raCell);
-                    }
-
+                    // R&A column stays hidden (header has hide-column); play mode matches CP Master and does not inject an extra cell
                     $row.append($('<td>').addClass('va-inv-col').text(item.INV || 0));
 
                     const refreshColumnHtml = isParentRow
@@ -3862,6 +3841,12 @@
 
             // Unified filter function that applies all filters together (AND logic)
             function applyAllFilters() {
+                // While Play navigation is active, keep focusing the current parent (same idea as marketplace play mode)
+                if (isNavigationActive) {
+                    showCurrentParent();
+                    return;
+                }
+
                 currentPage = 1; // Reset to first page when filters change
                 let tempData = [...tableData];
                 
@@ -4359,6 +4344,10 @@
 
             // P column: dot click – filter main table to show only rows with the same parent
             $(document).on('click', '.p-dot-btn', function () {
+                // Exit play mode if active so parent-dot filter owns the view
+                if (isNavigationActive) {
+                    stopNavigation();
+                }
                 const parentName = $(this).data('parent');
                 filteredData = tableData.filter(item => (item.Parent || '(No Parent)') === parentName);
                 $('#parentSearch').val(parentName);
@@ -5928,6 +5917,11 @@
 
             // Apply column filters
             function applyColumnFilters() {
+                if (isNavigationActive) {
+                    showCurrentParent();
+                    return;
+                }
+
                 console.log('Applying column filters...');
                 filteredData = [...tableData]; // start fresh
 

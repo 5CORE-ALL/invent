@@ -17,10 +17,12 @@ use Illuminate\Support\Facades\Log;
 class RefreshFulfillmentShipmentStatus extends Command
 {
     protected $signature = 'fulfillment:refresh-shipment-status
-                            {--stale=25 : Skip tracking numbers checked within the last N minutes}
-                            {--limit= : Max tracking numbers this run (defaults to config)}
+                            {--stale= : Skip tracking numbers checked within the last N minutes (omit for auto)}
+                            {--limit= : Max tracking numbers this run (defaults to paced config)}
                             {--skip-tracking : Do not call tracking:sync-status}
                             {--skip-orders : Do not re-fetch marketplace orders}
+                            {--prefer-native : Prefer native USPS/UPS/FedEx over 17TRACK}
+                            {--repair-quota : Clear quota-poisoned NotFound statuses before sync}
                             {--days=30 : Marketplace order lookback days}';
 
     protected $description = 'Refresh open shipment statuses (carrier + marketplace) until delivered — used by Sales Order Fulfillment.';
@@ -60,11 +62,23 @@ class RefreshFulfillmentShipmentStatus extends Command
 
         $params = [
             '--only-open' => true,
-            '--stale' => max(0, (int) $this->option('stale')),
         ];
+
+        $stale = $this->option('stale');
+        if ($stale !== null && $stale !== '') {
+            $params['--stale'] = max(0, (int) $stale);
+        }
+
         $limit = $this->option('limit');
         if ($limit !== null && $limit !== '') {
             $params['--limit'] = (int) $limit;
+        }
+
+        if ($this->option('prefer-native')) {
+            $params['--prefer-native'] = true;
+        }
+        if ($this->option('repair-quota')) {
+            $params['--repair-quota'] = true;
         }
 
         $this->info('Refreshing open carrier shipment statuses…');

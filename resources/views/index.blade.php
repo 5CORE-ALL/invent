@@ -241,6 +241,7 @@
     $lcUpdatedAt = now('America/Los_Angeles');
 
     $amzAdsMissingCount = \App\Http\Controllers\AmazonAdsMissingController::missingTotalCount();
+    $pefLowGroiSkuCount = \App\Http\Controllers\MarketPlace\PricingErrorsFixController::lowGroiSkuCountForSidebar();
     $adm = \App\Http\Controllers\AdvertisementMaster\AdvertisementMasterController::dashboardBadgeTotals();
     $fmtAdmDollar = static fn ($value): string => '$'.number_format((int) round((float) $value));
     $fmtAdmInt = static fn ($value): string => number_format((int) round((float) $value));
@@ -456,6 +457,13 @@
                 role="button"
                 title="N ROI"
             >NROI: {{ number_format((int) round((float) ($amm['n_roi'] ?? 0))) }}%</span>
+            <span
+                class="badge fs-6 p-2"
+                style="background-color:#a71d2a;color:#fff;font-weight:bold;cursor:pointer;"
+                onclick="window.location.href='{{ route('pricing.errors.fix') }}'"
+                role="button"
+                title="Unique SKUs with GROI &lt; 40% — Pricing Errors Fix"
+            >SKU: {{ number_format((int) $pefLowGroiSkuCount) }}</span>
         </div>
     </div>
 </div>

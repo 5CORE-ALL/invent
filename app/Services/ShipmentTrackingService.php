@@ -35,6 +35,9 @@ class ShipmentTrackingService
 
     public const STATUS_NOT_FOUND = 'NotFound';
 
+    /** Transient API failure — callers must NOT overwrite a real shipment_status with this. */
+    public const STATUS_RATE_LIMITED = 'RateLimited';
+
     private string $provider;
 
     private string $apiKey;
@@ -81,15 +84,59 @@ class ShipmentTrackingService
     }
 
     /**
+     * Whether a track() result is safe to persist as shipment_status.
+     * Quota / rate-limit / empty results must not overwrite real carrier status.
+     */
+    public static function isPersistableResult(?array $result): bool
+    {
+        if ($result === null || empty($result['status'])) {
+            return false;
+        }
+        if (! empty($result['transient'])) {
+            return false;
+        }
+        if (($result['status'] ?? '') === self::STATUS_RATE_LIMITED) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Fetch normalized statuses for a batch of shipments.
      *
      * @param  array  $shipments  list of ['number' => string, 'carrier' => string|null]
-     * @return array  map: trackingNumber => ['status' => string, 'detail' => string|null, 'provider' => string]
+     * @param  array  $options    prefer_native=true forces USPS/UPS/FedEx over 17TRACK
+     * @return array  map: trackingNumber => ['status' => string, 'detail' => string|null, 'provider' => string, ...]
      */
-    public function track(array $shipments): array
+    public function track(array $shipments, array $options = []): array
     {
         if (! $this->isConfigured() || empty($shipments)) {
             return [];
+        }
+
+        $normalized = [];
+        foreach ($shipments as $s) {
+            $number = trim((string) ($s['number'] ?? ''));
+            if ($number === '') {
+                continue;
+            }
+            $carrier = trim((string) ($s['carrier'] ?? ''));
+            $normalized[] = [
+                'number' => $number,
+                'carrier' => $carrier !== '' ? $carrier : null,
+            ];
+        }
+        if ($normalized === []) {
+            return [];
+        }
+
+        $preferNative = (bool) ($options['prefer_native'] ?? false);
+        $preferAggregator = (bool) config('services.tracking.prefer_aggregator', true);
+
+        // Bulk / scheduled path: 17TRACK batches up to 40 and avoids burning USPS hourly quota.
+        if ($this->has17Track() && $preferAggregator && ! $preferNative) {
+            return $this->track17Track($normalized);
         }
 
         $byProvider = [
@@ -99,44 +146,51 @@ class ShipmentTrackingService
             '17track' => [],
         ];
 
-        foreach ($shipments as $s) {
-            $number = trim((string) ($s['number'] ?? ''));
-            if ($number === '') {
-                continue;
-            }
-            $carrier = trim((string) ($s['carrier'] ?? ''));
-            $provider = $this->resolveProvider($number, $carrier);
-            $byProvider[$provider][] = [
-                'number' => $number,
-                'carrier' => $carrier !== '' ? $carrier : null,
-            ];
+        foreach ($normalized as $s) {
+            $provider = $this->resolveProvider($s['number'], (string) ($s['carrier'] ?? ''));
+            $byProvider[$provider][] = $s;
         }
 
         $out = [];
 
-        if (! empty($byProvider['usps']) && $this->hasUsps()) {
-            $out += $this->trackUsps($byProvider['usps']);
-        } elseif (! empty($byProvider['usps']) && $this->has17Track()) {
-            $out += $this->track17Track($byProvider['usps']);
+        if (! empty($byProvider['usps'])) {
+            if ($this->hasUsps() && $this->uspsCanRequest()) {
+                $uspsOut = $this->trackUsps($byProvider['usps']);
+                $out += $uspsOut;
+                $retry = $this->numbersNeedingAggregatorFallback($byProvider['usps'], $uspsOut);
+                if ($retry !== [] && $this->has17Track()) {
+                    $out = array_replace($out, $this->track17Track($retry));
+                }
+            } elseif ($this->has17Track()) {
+                $out += $this->track17Track($byProvider['usps']);
+            }
         }
 
-        if (! empty($byProvider['ups']) && $this->hasUps()) {
-            $out += $this->trackUps($byProvider['ups']);
-        } elseif (! empty($byProvider['ups']) && $this->has17Track()) {
-            $out += $this->track17Track($byProvider['ups']);
+        if (! empty($byProvider['ups'])) {
+            if ($this->hasUps()) {
+                $upsOut = $this->trackUps($byProvider['ups']);
+                $out += $upsOut;
+                $retry = $this->numbersNeedingAggregatorFallback($byProvider['ups'], $upsOut);
+                if ($retry !== [] && $this->has17Track()) {
+                    $out = array_replace($out, $this->track17Track($retry));
+                }
+            } elseif ($this->has17Track()) {
+                $out += $this->track17Track($byProvider['ups']);
+            }
         }
 
-        if (! empty($byProvider['fedex']) && $this->hasFedex()) {
-            $out += $this->trackFedex($byProvider['fedex']);
-        } elseif (! empty($byProvider['fedex']) && $this->has17Track()) {
-            $out += $this->track17Track($byProvider['fedex']);
+        if (! empty($byProvider['fedex'])) {
+            if ($this->hasFedex()) {
+                $out += $this->trackFedex($byProvider['fedex']);
+            } elseif ($this->has17Track()) {
+                $out += $this->track17Track($byProvider['fedex']);
+            }
         }
 
         if (! empty($byProvider['17track'])) {
             if ($this->has17Track()) {
                 $out += $this->track17Track($byProvider['17track']);
             } else {
-                // No 17TRACK — try native carriers by number/carrier pattern as last resort.
                 foreach ($byProvider['17track'] as $s) {
                     $guess = $this->guessCarrierFromNumber($s['number']);
                     if ($guess === 'usps' && $this->hasUsps()) {
@@ -157,6 +211,87 @@ class ShipmentTrackingService
         }
 
         return $out;
+    }
+
+    /**
+     * @param  list<array{number: string, carrier: ?string}>  $requested
+     * @param  array<string, array<string, mixed>>  $results
+     * @return list<array{number: string, carrier: ?string}>
+     */
+    protected function numbersNeedingAggregatorFallback(array $requested, array $results): array
+    {
+        $retry = [];
+        foreach ($requested as $s) {
+            $res = $results[$s['number']] ?? null;
+            if ($res === null || ! empty($res['transient']) || ($res['status'] ?? '') === self::STATUS_RATE_LIMITED) {
+                $retry[] = $s;
+            }
+        }
+
+        return $retry;
+    }
+
+    public function uspsCanRequest(): bool
+    {
+        return $this->uspsRemainingThisHour() > 0;
+    }
+
+    /** How many native USPS tracking calls remain in the current hour budget. */
+    public function uspsRemainingThisHour(): int
+    {
+        $blockedUntil = Cache::get('usps_tracking_quota_exhausted_until');
+        if ($blockedUntil && now()->lt($blockedUntil)) {
+            return 0;
+        }
+
+        $max = max(1, (int) config('services.usps.max_per_hour', 55));
+        $key = 'usps_tracking_requests_'.now()->format('YmdH');
+        $used = (int) Cache::get($key, 0);
+
+        return max(0, $max - $used);
+    }
+
+    protected function uspsRecordRequest(): void
+    {
+        $key = 'usps_tracking_requests_'.now()->format('YmdH');
+        if (! Cache::has($key)) {
+            Cache::put($key, 0, now()->copy()->endOfHour()->addMinute());
+        }
+        Cache::increment($key);
+    }
+
+    protected function uspsMarkQuotaExhausted(?string $detail = null): void
+    {
+        $until = now()->addMinutes(55);
+        Cache::put('usps_tracking_quota_exhausted_until', $until, $until);
+        Log::warning('ShipmentTracking: USPS quota exhausted — pausing native USPS calls', [
+            'until' => $until->toIso8601String(),
+            'detail' => $detail,
+        ]);
+    }
+
+    protected function isQuotaOrRateLimitError(int $httpStatus, string $message): bool
+    {
+        if (in_array($httpStatus, [429, 503], true)) {
+            return true;
+        }
+        $hay = strtolower($message);
+
+        return str_contains($hay, 'quota')
+            || str_contains($hay, 'rate limit')
+            || str_contains($hay, 'too many requests')
+            || str_contains($hay, 'throttl');
+    }
+
+    protected function transientResult(string $provider, string $detail, string $error = 'quota_exceeded'): array
+    {
+        return [
+            'status' => self::STATUS_RATE_LIMITED,
+            'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : 'Provider rate/quota limit reached',
+            'provider' => $provider,
+            'transient' => true,
+            'error' => $error,
+        ];
     }
 
     protected function resolveProvider(string $number, string $carrier): string
@@ -220,11 +355,20 @@ class ShipmentTrackingService
         }
 
         $base = rtrim((string) config('services.usps.api_base', 'https://apis.usps.com'), '/');
+        $minIntervalMs = max(0, (int) config('services.usps.min_interval_ms', 1200));
         $out = [];
+        $quotaHit = false;
 
         foreach ($shipments as $s) {
             $number = $s['number'];
+
+            if ($quotaHit || ! $this->uspsCanRequest()) {
+                $out[$number] = $this->transientResult('usps', 'USPS hourly quota reserved — skipped this run');
+                continue;
+            }
+
             try {
+                $this->uspsRecordRequest();
                 $resp = Http::withToken($token)
                     ->acceptJson()
                     ->timeout($this->timeout)
@@ -238,6 +382,9 @@ class ShipmentTrackingService
                         'detail' => null,
                         'provider' => 'usps',
                     ];
+                    if ($minIntervalMs > 0) {
+                        usleep($minIntervalMs * 1000);
+                    }
 
                     continue;
                 }
@@ -249,12 +396,24 @@ class ShipmentTrackingService
                         'status' => $resp->status(),
                         'body' => mb_substr($resp->body(), 0, 400),
                     ]);
+
+                    if ($this->isQuotaOrRateLimitError($resp->status(), $errMsg)) {
+                        $this->uspsMarkQuotaExhausted($errMsg);
+                        $quotaHit = true;
+                        $out[$number] = $this->transientResult('usps', $errMsg);
+
+                        continue;
+                    }
+
                     // 403 = MID not authorized for Tracking API Access Controls (not a missing package).
                     $out[$number] = [
                         'status' => $resp->status() === 403 ? self::STATUS_EXCEPTION : self::STATUS_NOT_FOUND,
                         'detail' => $errMsg !== '' ? mb_substr($errMsg, 0, 480) : ('USPS HTTP '.$resp->status()),
                         'provider' => 'usps',
                     ];
+                    if ($minIntervalMs > 0) {
+                        usleep($minIntervalMs * 1000);
+                    }
 
                     continue;
                 }
@@ -280,6 +439,9 @@ class ShipmentTrackingService
                     'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
                     'provider' => 'usps',
                 ];
+                if ($minIntervalMs > 0) {
+                    usleep($minIntervalMs * 1000);
+                }
             } catch (\Throwable $e) {
                 Log::error('ShipmentTracking: USPS request failed', [
                     'number' => $number,
@@ -289,6 +451,8 @@ class ShipmentTrackingService
                     'status' => self::STATUS_NOT_FOUND,
                     'detail' => $e->getMessage(),
                     'provider' => 'usps',
+                    'transient' => true,
+                    'error' => 'request_failed',
                 ];
             }
         }
@@ -407,14 +571,21 @@ class ShipmentTrackingService
                 }
 
                 if (! $resp->successful()) {
+                    $errMsg = (string) (data_get($resp->json(), 'response.errors.0.message')
+                        ?: ('UPS HTTP '.$resp->status()));
                     Log::warning('ShipmentTracking: UPS HTTP error', [
                         'number' => $number,
                         'status' => $resp->status(),
                         'body' => mb_substr($resp->body(), 0, 400),
                     ]);
+                    if ($this->isQuotaOrRateLimitError($resp->status(), $errMsg)) {
+                        $out[$number] = $this->transientResult('ups', $errMsg);
+
+                        continue;
+                    }
                     $out[$number] = [
                         'status' => self::STATUS_NOT_FOUND,
-                        'detail' => 'UPS HTTP '.$resp->status(),
+                        'detail' => mb_substr($errMsg, 0, 480),
                         'provider' => 'ups',
                     ];
 
@@ -788,13 +959,25 @@ class ShipmentTrackingService
         $rejected = data_get($resp, 'data.rejected', []);
         foreach ($rejected as $row) {
             $number = (string) data_get($row, 'number', '');
-            if ($number !== '' && ! isset($out[$number])) {
-                $out[$number] = [
-                    'status' => self::STATUS_NOT_FOUND,
-                    'detail' => null,
-                    'provider' => '17track',
-                ];
+            if ($number === '' || isset($out[$number])) {
+                continue;
             }
+            $errMsg = (string) (
+                data_get($row, 'error.message')
+                ?? data_get($row, 'message')
+                ?? data_get($row, 'error')
+                ?? ''
+            );
+            if ($this->isQuotaOrRateLimitError(0, $errMsg) || str_contains(strtolower($errMsg), 'ran out')) {
+                $out[$number] = $this->transientResult('17track', $errMsg !== '' ? $errMsg : '17TRACK quota exhausted');
+
+                continue;
+            }
+            $out[$number] = [
+                'status' => self::STATUS_NOT_FOUND,
+                'detail' => $errMsg !== '' ? mb_substr($errMsg, 0, 480) : null,
+                'provider' => '17track',
+            ];
         }
 
         return $out;

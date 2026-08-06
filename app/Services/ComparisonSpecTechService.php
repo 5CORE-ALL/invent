@@ -529,4 +529,233 @@ class ComparisonSpecTechService
 
         return $text;
     }
+
+    /**
+     * Pull Supplier PRICE USD / Price RMB from comparison sheet-view for the relevant supplier.
+     * Prefer USD as-is; if only RMB is present, convert to USD.
+     *
+     * @return array{
+     *   price_usd: ?float,
+     *   source: ?string,
+     *   supplier_col: ?int,
+     *   supplier_matched: string,
+     *   is_lowest: bool,
+     *   lowest_usd: ?float,
+     *   found: bool
+     * }
+     */
+    public function priceForRelevantSupplier(string $sku, string $supplierName, ?float $rmbToUsd = null): array
+    {
+        $empty = [
+            'price_usd' => null,
+            'source' => null,
+            'supplier_col' => null,
+            'supplier_matched' => '',
+            'is_lowest' => true,
+            'lowest_usd' => null,
+            'found' => false,
+        ];
+
+        $sku = trim($sku);
+        $supplierName = trim($supplierName);
+        if ($sku === '' || $supplierName === '') {
+            return $empty;
+        }
+
+        $cells = $this->loadComparisonCellsForSku($sku);
+        if ($cells === null) {
+            return $empty;
+        }
+
+        $cells = $this->sheetService->ensureLeadColumns($cells);
+        $specCol = $this->sheetService->detectSpecColumnIndex($cells);
+        $firstSupplierCol = $this->sheetService->getFirstSupplierColumnIndex($cells, $specCol);
+
+        $maxCols = 0;
+        foreach ($cells as $row) {
+            if (is_array($row)) {
+                $maxCols = max($maxCols, count($row));
+            }
+        }
+        if ($firstSupplierCol >= $maxCols) {
+            return $empty;
+        }
+
+        $usdRow = $this->sheetService->findRowIndexByLabels($cells, [
+            'supplier price (usd)',
+            'supplier price usd',
+            'supplier price',
+            'price usd',
+            'usd',
+        ], $specCol);
+        $rmbRow = $this->sheetService->findRowIndexByLabels($cells, [
+            'price rmb',
+            'supplier price rmb',
+            'rmb',
+        ], $specCol);
+
+        if ($usdRow === null && $rmbRow === null) {
+            return $empty;
+        }
+
+        $fx = ($rmbToUsd !== null && $rmbToUsd > 0) ? $rmbToUsd : (1 / 7.2);
+
+        $usdPriceAtCol = function (int $col) use ($cells, $usdRow, $rmbRow, $fx): ?float {
+            if ($usdRow !== null) {
+                $usd = $this->sheetService->parseSheetNumber((string) ($cells[$usdRow][$col] ?? ''));
+                if ($usd !== null && $usd > 0) {
+                    return round($usd, 2);
+                }
+            }
+            if ($rmbRow !== null) {
+                $rmb = $this->sheetService->parseSheetNumber((string) ($cells[$rmbRow][$col] ?? ''));
+                if ($rmb !== null && $rmb > 0) {
+                    return round($rmb * $fx, 2);
+                }
+            }
+
+            return null;
+        };
+
+        $sourceAtCol = function (int $col) use ($cells, $usdRow, $rmbRow): ?string {
+            if ($usdRow !== null) {
+                $usd = $this->sheetService->parseSheetNumber((string) ($cells[$usdRow][$col] ?? ''));
+                if ($usd !== null && $usd > 0) {
+                    return 'usd';
+                }
+            }
+            if ($rmbRow !== null) {
+                $rmb = $this->sheetService->parseSheetNumber((string) ($cells[$rmbRow][$col] ?? ''));
+                if ($rmb !== null && $rmb > 0) {
+                    return 'rmb';
+                }
+            }
+
+            return null;
+        };
+
+        $supplierCol = $this->resolveSupplierColumn($cells, $specCol, $firstSupplierCol, $maxCols, $supplierName);
+        if ($supplierCol === null) {
+            return $empty;
+        }
+
+        $priceUsd = $usdPriceAtCol($supplierCol);
+        if ($priceUsd === null) {
+            return $empty;
+        }
+
+        $lowestUsd = null;
+        $lowestCol = null;
+        for ($col = $firstSupplierCol; $col < $maxCols; $col++) {
+            $p = $usdPriceAtCol($col);
+            if ($p === null) {
+                continue;
+            }
+            if ($lowestUsd === null || $p < $lowestUsd) {
+                $lowestUsd = $p;
+                $lowestCol = $col;
+            }
+        }
+
+        $matchedName = $this->supplierNameAtColumn($cells, $specCol, $supplierCol);
+        $isLowest = $lowestCol === null || $supplierCol === $lowestCol
+            || ($lowestUsd !== null && abs($priceUsd - $lowestUsd) < 0.005);
+
+        return [
+            'price_usd' => $priceUsd,
+            'source' => $sourceAtCol($supplierCol),
+            'supplier_col' => $supplierCol,
+            'supplier_matched' => $matchedName,
+            'is_lowest' => $isLowest,
+            'lowest_usd' => $lowestUsd,
+            'found' => true,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, array{
+     *   price_usd: ?float,
+     *   source: ?string,
+     *   supplier_col: ?int,
+     *   supplier_matched: string,
+     *   is_lowest: bool,
+     *   lowest_usd: ?float,
+     *   found: bool
+     * }>
+     */
+    public function pricesForRelevantSupplierBySkus(array $skus, string $supplierName, ?float $rmbToUsd = null): array
+    {
+        $map = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || array_key_exists($sku, $map)) {
+                continue;
+            }
+            $map[$sku] = $this->priceForRelevantSupplier($sku, $supplierName, $rmbToUsd);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    private function resolveSupplierColumn(
+        array $cells,
+        int $specCol,
+        int $firstSupplierCol,
+        int $maxCols,
+        string $supplierName
+    ): ?int {
+        $target = strtoupper(trim($supplierName));
+        if ($target === '') {
+            return null;
+        }
+
+        $supplierRow = null;
+        foreach ($cells as $rowIndex => $row) {
+            if ($this->sheetService->isSupplierNameRow($cells, (int) $rowIndex, $specCol)) {
+                $supplierRow = (int) $rowIndex;
+                break;
+            }
+        }
+
+        if ($supplierRow === null) {
+            return null;
+        }
+
+        $row = $cells[$supplierRow] ?? [];
+        $contains = null;
+        for ($col = $firstSupplierCol; $col < $maxCols; $col++) {
+            $name = strtoupper(trim((string) ($row[$col] ?? '')));
+            if ($name === '') {
+                continue;
+            }
+            if ($name === $target) {
+                return $col;
+            }
+            if ($contains === null && (str_contains($name, $target) || str_contains($target, $name))) {
+                $contains = $col;
+            }
+        }
+
+        return $contains;
+    }
+
+    /**
+     * @param  array<int, array<int, string>>  $cells
+     */
+    private function supplierNameAtColumn(array $cells, int $specCol, int $col): string
+    {
+        foreach ($cells as $rowIndex => $row) {
+            if (! $this->sheetService->isSupplierNameRow($cells, (int) $rowIndex, $specCol)) {
+                continue;
+            }
+
+            return trim((string) ($row[$col] ?? ''));
+        }
+
+        return '';
+    }
 }

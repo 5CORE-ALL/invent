@@ -202,6 +202,9 @@ class TitleMasterDataService
                 $join->on('alr.seller_sku', '=', 'skus.sku');
             })
             ->leftJoin('amazon_datsheets as ads', 'ads.sku', '=', 'skus.sku');
+        if (Schema::hasTable('short_titles')) {
+            $base->leftJoin('short_titles as st', 'st.sku', '=', 'skus.sku');
+        }
         $this->joinShopifySkusForTitleMaster($base);
 
         // NOTE: amazon_data_view (adv) and junglescout_product_data (js_sku/js_parent) are
@@ -511,6 +514,9 @@ class TitleMasterDataService
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title100', 'all'), 'pm.title100');
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title80', 'all'), 'pm.title80');
         $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_title60', 'all'), 'pm.title60');
+        if (Schema::hasTable('short_titles')) {
+            $this->applyPmTitleMissingFilter($query, (string) $request->query('filter_short_name', 'all'), 'st.short_title');
+        }
 
         $fInv = strtolower(trim((string) $request->query('filter_inv', 'gt_zero')));
         if ($fInv === '') {
@@ -552,6 +558,7 @@ class TitleMasterDataService
         $m100 = 0;
         $m80 = 0;
         $m60 = 0;
+        $mShort = 0;
 
         foreach ($rows as $r) {
             $total++;
@@ -585,12 +592,16 @@ class TitleMasterDataService
             if (trim((string) ($r->title60 ?? '')) === '') {
                 $m60++;
             }
+            if (trim((string) ($r->short_name ?? '')) === '') {
+                $mShort++;
+            }
         }
 
         $present150 = max(0, $total - $m150);
         $present100 = max(0, $total - $m100);
         $present80 = max(0, $total - $m80);
         $present60 = max(0, $total - $m60);
+        $presentShort = max(0, $total - $mShort);
 
         return [
             'total_rows' => $total,
@@ -604,6 +615,8 @@ class TitleMasterDataService
             'title80_missing' => $m80,
             'title60_present' => $present60,
             'title60_missing' => $m60,
+            'short_name_present' => $presentShort,
+            'short_name_missing' => $mShort,
         ];
     }
 
@@ -622,6 +635,11 @@ class TitleMasterDataService
             ->selectRaw('SUM(CASE WHEN (pm.title100 IS NULL OR TRIM(IFNULL(pm.title100, "")) = "") THEN 1 ELSE 0 END) as m100')
             ->selectRaw('SUM(CASE WHEN (pm.title80 IS NULL OR TRIM(IFNULL(pm.title80, "")) = "") THEN 1 ELSE 0 END) as m80')
             ->selectRaw('SUM(CASE WHEN (pm.title60 IS NULL OR TRIM(IFNULL(pm.title60, "")) = "") THEN 1 ELSE 0 END) as m60')
+            ->selectRaw(
+                Schema::hasTable('short_titles')
+                    ? 'SUM(CASE WHEN (st.short_title IS NULL OR TRIM(IFNULL(st.short_title, "")) = "") THEN 1 ELSE 0 END) as m_short'
+                    : 'SUM(1) as m_short'
+            )
             ->first();
 
         $total = (int) ($row->total ?? 0);
@@ -629,6 +647,7 @@ class TitleMasterDataService
         $m100 = (int) ($row->m100 ?? 0);
         $m80 = (int) ($row->m80 ?? 0);
         $m60 = (int) ($row->m60 ?? 0);
+        $mShort = (int) ($row->m_short ?? 0);
 
         return [
             'total_rows' => $total,
@@ -642,6 +661,8 @@ class TitleMasterDataService
             'title80_missing' => $m80,
             'title60_present' => max(0, $total - $m60),
             'title60_missing' => $m60,
+            'short_name_present' => max(0, $total - $mShort),
+            'short_name_missing' => $mShort,
         ];
     }
 
@@ -664,6 +685,9 @@ class TitleMasterDataService
             'pm.title100',
             'pm.title80',
             'pm.title60',
+            Schema::hasTable('short_titles')
+                ? DB::raw('st.short_title as short_name')
+                : DB::raw('NULL as short_name'),
             'pm.bullet1',
             'pm.bullet2',
             'pm.bullet3',
@@ -852,6 +876,7 @@ class TitleMasterDataService
                 'title100' => $listing->title100,
                 'title80' => $listing->title80,
                 'title60' => $listing->title60,
+                'short_name' => $listing->short_name ?? null,
                 'bullet1' => $listing->bullet1,
                 'bullet2' => $listing->bullet2,
                 'bullet3' => $listing->bullet3,

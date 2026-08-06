@@ -2144,7 +2144,7 @@ class ComparisonSheetService
         return $cells;
     }
 
-    protected function parseSheetNumber(string $value): ?float
+    public function parseSheetNumber(string $value): ?float
     {
         $value = trim($value);
         if ($value === '') {
@@ -2170,12 +2170,34 @@ class ComparisonSheetService
     /**
      * @param  array<int, array<int, string>>  $cells
      */
-    protected function findRowIndexByLabel(array $cells, string $labelNeedle, int $labelCol): ?int
+    public function findRowIndexByLabel(array $cells, string $labelNeedle, int $labelCol): ?int
     {
         foreach ($cells as $rowIndex => $row) {
             $label = strtolower(trim((string) ($row[$labelCol] ?? '')));
             if (str_contains($label, strtolower($labelNeedle))) {
                 return $rowIndex;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Prefer a more specific Spec-row label before falling back.
+     *
+     * @param  array<int, array<int, string>>  $cells
+     * @param  list<string>  $needles
+     */
+    public function findRowIndexByLabels(array $cells, array $needles, int $labelCol): ?int
+    {
+        foreach ($needles as $needle) {
+            $needle = trim((string) $needle);
+            if ($needle === '') {
+                continue;
+            }
+            $idx = $this->findRowIndexByLabel($cells, $needle, $labelCol);
+            if ($idx !== null) {
+                return $idx;
             }
         }
 

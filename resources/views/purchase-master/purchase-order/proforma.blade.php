@@ -106,6 +106,53 @@
             font-weight: 600;
         }
 
+        .totals-box .po-advance-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .totals-box .po-advance-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .totals-box .po-advance-percent-input {
+            width: 64px;
+            border: 1px solid #ce93d8;
+            border-radius: 4px;
+            padding: 2px 6px;
+            background: #fffde7;
+            color: #6a1b9a;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .totals-box .po-advance-amount,
+        .totals-box .po-balance-due {
+            background: #fffde7;
+            border-radius: 4px;
+            padding: 2px 10px;
+            min-width: 72px;
+            text-align: right;
+            display: inline-block;
+        }
+
+        .totals-box .po-advance-save-hint {
+            font-size: 11px;
+            font-weight: 500;
+            color: #8e24aa;
+            min-height: 14px;
+        }
+
+        .po-advance-percent-print {
+            display: none;
+        }
+
         .footer {
             margin-top: 40px;
             text-align: center;
@@ -132,12 +179,33 @@
             [type="button"],
             .no-print,
             .col-edit,
+            .col-qc,
             .po-edit-btn,
+            .po-delete-btn,
+            .po-qc-btn,
             .po-line-actions,
             .po-supplier-sku-edit,
             .po-copy-col-btn,
-            .po-copy-toolbar {
+            .po-copy-toolbar,
+            .po-approvals.no-print,
+            .po-rate-cp-icon,
+            .po-advance-percent-input,
+            .po-advance-percent-suffix,
+            .po-advance-save-hint,
+            .po-missing-badge {
                 display: none !important;
+            }
+
+            .po-missing-print-dash {
+                display: inline !important;
+            }
+
+            .po-approvals-print.only-print {
+                display: block !important;
+            }
+
+            .po-advance-percent-print {
+                display: inline !important;
             }
 
             @page {
@@ -189,6 +257,14 @@
             background: #fff;
             box-sizing: border-box;
             padding: 4px;
+        }
+
+        .po-product-photo--empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-size: 11px;
         }
 
         .po-product-meta {
@@ -292,22 +368,118 @@
         }
 
         .col-edit {
-            width: 70px;
-            min-width: 70px;
+            width: 40px;
+            min-width: 40px;
         }
 
         .po-edit-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
             border: 1px solid #3949ab;
             color: #3949ab;
             background: #fff;
             border-radius: 6px;
-            padding: 4px 10px;
-            font-size: 12px;
+            font-size: 14px;
+            line-height: 1;
             cursor: pointer;
         }
 
         .po-edit-btn:hover {
             background: #3949ab;
+            color: #fff;
+        }
+
+        .po-rate-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .po-rate-cp-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+
+        /* Pure CSS icons — proforma page has no MDI stylesheet */
+        .po-rate-cp-icon--high::before,
+        .po-rate-cp-icon--same::before {
+            content: '';
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 13px solid currentColor;
+            display: block;
+        }
+
+        .po-rate-cp-icon--high {
+            color: #dc2626;
+        }
+
+        .po-rate-cp-icon--same {
+            color: #f59e0b;
+        }
+
+        .po-rate-cp-icon--low::before {
+            content: '✓';
+            display: block;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1;
+            color: #16a34a;
+        }
+
+        .po-rate-cp-icon--low {
+            color: #16a34a;
+        }
+
+        .col-price-usd.po-rate-not-lowest,
+        .col-price-usd.po-rate-not-lowest .po-rate-cell,
+        .col-price-usd.po-rate-not-lowest .po-field-text {
+            background-color: #fecaca !important;
+        }
+
+        .col-price-usd.po-rate-not-lowest {
+            box-shadow: inset 0 0 0 1px #ef4444;
+        }
+
+        .po-line-actions {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .po-delete-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid #c62828;
+            border-radius: 6px;
+            background: #fff;
+            color: #c62828;
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .po-delete-btn:hover {
+            background: #c62828;
             color: #fff;
         }
 
@@ -377,6 +549,38 @@
             display: block;
         }
 
+        .po-add-row-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 26px;
+            height: 28px;
+            padding: 0 8px;
+            border: 1px solid #3949ab;
+            border-radius: 6px;
+            background: #fff;
+            color: #3949ab;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .po-add-row-btn:hover {
+            background: #3949ab;
+            color: #fff;
+        }
+
+        #poAddRowModal .form-label {
+            font-size: 12px;
+            margin-bottom: 2px;
+        }
+
+        #poAddRowModal .modal-body {
+            max-height: min(70vh, 640px);
+            overflow-y: auto;
+        }
+
         .po-line-input,
         .po-supplier-sku-input {
             width: 100%;
@@ -435,6 +639,19 @@
             white-space: normal;
             font-size: 12px;
             text-align: left;
+            vertical-align: top !important;
+        }
+
+        .po-tech-block {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            text-align: left;
+        }
+
+        .po-tech-text {
+            word-wrap: break-word;
+            white-space: normal;
         }
 
         .col-pkg {
@@ -533,6 +750,236 @@
             text-align: left;
         }
 
+        .col-claim {
+            min-width: 150px;
+            max-width: 220px;
+            font-size: 10px;
+            vertical-align: top !important;
+            text-align: left;
+            line-height: 1.3;
+        }
+
+        .po-claim-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .po-claim-card {
+            border: 1px solid #fde68a;
+            background: #fffbeb;
+            border-radius: 6px;
+            padding: 5px 7px;
+        }
+
+        .po-claim-num {
+            font-weight: 700;
+            color: #92400e;
+            text-decoration: none;
+        }
+
+        .po-claim-num:hover {
+            text-decoration: underline;
+        }
+
+        .po-claim-meta {
+            color: #78350f;
+            font-weight: 600;
+        }
+
+        .po-claim-reason {
+            color: #44403c;
+            margin-top: 2px;
+            word-break: break-word;
+        }
+
+        .col-qc {
+            width: 48px;
+            min-width: 48px;
+            text-align: center;
+            vertical-align: middle !important;
+        }
+
+        .po-qc-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: 2px solid currentColor;
+            border-radius: 8px;
+            background: #fff;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .po-qc-btn .po-qc-icon {
+            width: 18px;
+            height: 18px;
+            display: block;
+        }
+
+        /* No QC data → red */
+        .po-qc-btn.po-qc-btn--empty {
+            color: #dc2626;
+            border-color: #dc2626;
+            background: #fff5f5;
+        }
+
+        .po-qc-btn.po-qc-btn--empty:hover {
+            background: #dc2626;
+            color: #fff;
+        }
+
+        /* Has QC data → dark yellow */
+        .po-qc-btn.po-qc-btn--has-data {
+            color: #a16207;
+            border-color: #a16207;
+            background: #fffbeb;
+        }
+
+        .po-qc-btn.po-qc-btn--has-data:hover {
+            background: #a16207;
+            color: #fff;
+        }
+
+        .po-approvals-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .po-approval-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 140px;
+            padding: 10px 14px;
+            border: 1px solid #c7d2fe;
+            border-radius: 10px;
+            background: #fff;
+            color: #1e293b;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .po-approval-btn.is-approved {
+            border-color: #86efac;
+            background: #f0fdf4;
+        }
+
+        .po-approval-btn.is-locked {
+            opacity: 0.75;
+            cursor: not-allowed;
+        }
+
+        .po-approval-btn:not(.is-locked):hover {
+            border-color: #6366f1;
+            background: #eef2ff;
+        }
+
+        .po-approval-status {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+
+        .po-approval-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #dc2626;
+            display: inline-block;
+            box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+        }
+
+        .po-approval-tick {
+            color: #16a34a;
+            font-size: 22px;
+            line-height: 1;
+        }
+
+        .po-approval-label {
+            font-size: 14px;
+        }
+
+        .po-approval-meta {
+            font-size: 11px;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        .po-approvals-print.only-print {
+            display: none;
+        }
+
+        .po-approvals-print-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+        }
+
+        .po-approvals-print-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+        }
+
+        .po-bank-block {
+            border: 1px solid #e3e6ea;
+            border-radius: 10px;
+            padding: 12px 14px;
+            background: #f8fafc;
+        }
+
+        .po-bank-empty {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .po-bank-accounts {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .po-bank-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .po-bank-card-title {
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .po-bank-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 4px 12px;
+            font-size: 12px;
+            color: #334155;
+        }
+
+        .po-bank-label {
+            font-weight: 700;
+            color: #64748b;
+            margin-right: 4px;
+        }
+
         .po-special-qc-cell {
             cursor: pointer;
             min-height: 48px;
@@ -563,6 +1010,24 @@
             font-size: 10px;
         }
 
+        .po-missing-badge {
+            display: inline-block;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: #fde8e8;
+            color: #b42318;
+            border: 1px solid #f5c2c7;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.35;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+
+        .po-missing-print-dash {
+            display: none;
+        }
+
         .po-special-qc-point-row {
             display: flex;
             align-items: center;
@@ -589,20 +1054,13 @@
             }
         }
 
-        .col-dims {
-            width: 130px;
-            min-width: 120px;
-            font-size: 11px;
-            vertical-align: middle !important;
-            text-align: left;
-            white-space: nowrap;
-        }
-
         .po-dims-cell {
             display: flex;
             flex-direction: column;
             gap: 4px;
             line-height: 1.25;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 6px;
         }
 
         .po-dims-row {
@@ -616,7 +1074,7 @@
             font-weight: 700;
             color: #6b7280;
             text-transform: uppercase;
-            min-width: 28px;
+            min-width: 52px;
         }
 
         .po-dims-value {
@@ -624,6 +1082,11 @@
             font-weight: 600;
             color: #1a237e;
             min-width: 40px;
+        }
+
+        .po-dims-value .po-line-input {
+            min-width: 70px;
+            width: 80px;
         }
     </style>
 </head>
@@ -649,7 +1112,7 @@
                 </div>
                 <div>
                     <span class="fw-bold text-secondary">PO Date:</span>
-                    <span class="ms-1">{{ $order->po_date ?? \Carbon\Carbon::now()->format('d-m-Y') }}</span>
+                    <span class="ms-1">{{ strtoupper(\Carbon\Carbon::parse($order->po_date ?? now())->format('j M y')) }}</span>
                 </div>
             </div>
         </div>
@@ -657,24 +1120,122 @@
         {{-- Invoice Header --}}
         <div class="row invoice-header">
             <div class="col-md-6">
-                <h6>From:</h6>
                 <p>
-                    {{ $from['name'] ?? '5 CORE INC' }}<br>
+                    <strong>From:</strong> {{ $from['name'] ?? '5 CORE INC' }}<br>
                     {!! $from['address'] ?? '1221 W.SANDUSKY AVE,<br>BELLEFONTAINE OH43311, USA' !!}<br>
                     {{-- Email: {{ $from['email'] ?? 'president@5core.com' }}<br>
                     Phone: {{ $from['phone'] ?? '+1(714)249-0848' }} --}}
                 </p>
             </div>
             <div class="col-md-6 text-end">
-                <h6>To:</h6>
                 <p>
-                    {{ $supplier->name ?? 'John Doe' }}<br>
+                    <strong>To:</strong> {{ $supplier->name ?? 'John Doe' }}<br>
                     {{ $supplier->company ?? 'ABC Imports Ltd.' }}<br>
-                    {{ $supplier->country ?? 'China' }}<br>
                     Email: {{ $supplier->email ?? 'john@abcimports.com' }}
                 </p>
             </div>
         </div>
+
+        @php
+            $bankAccounts = $bankAccounts ?? collect();
+            $canEditPoBank = (bool) ($canEditPoBank ?? false);
+            $hasBankAccounts = $bankAccounts instanceof \Illuminate\Support\Collection
+                ? $bankAccounts->isNotEmpty()
+                : (is_array($bankAccounts) && count($bankAccounts) > 0);
+            $poSupplierId = (int) ($order->supplier_id ?? ($supplier->id ?? 0));
+            $poMissing = '<span class="po-missing-badge no-print">Missing</span><span class="po-missing-print-dash">—</span>';
+            $poMissingEdit = '<span class="badge bg-danger-subtle text-danger po-missing-badge no-print">Missing — edit: purchase@5core.com</span>';
+            $bankFieldLabels = [
+                'Supplier', 'Beneficiary', 'Nick', 'SWIFT', 'Account',
+                'Address', 'City', 'Province', 'Country',
+            ];
+            $bankHasBlankField = false;
+            if ($hasBankAccounts) {
+                foreach ($bankAccounts as $__acct) {
+                    foreach ([
+                        $__acct->supplier_name ?? null,
+                        $__acct->company_name ?? null,
+                        $__acct->nick_name ?? null,
+                        $__acct->swift ?? null,
+                        $__acct->account_number ?? null,
+                        $__acct->address ?? null,
+                        $__acct->city ?? null,
+                        $__acct->province ?? null,
+                        $__acct->country ?? null,
+                    ] as $__val) {
+                        if (trim((string) $__val) === '') {
+                            $bankHasBlankField = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+        @endphp
+        <div class="po-bank-block mb-3">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                <h6 class="mb-0 fw-bold text-primary">Bank Details</h6>
+                @if(!$hasBankAccounts && $canEditPoBank && $poSupplierId > 0)
+                    <button type="button" class="btn btn-sm btn-outline-primary no-print" id="poBankEditBtn">
+                        Edit Bank Details
+                    </button>
+                @elseif(!$hasBankAccounts && !$canEditPoBank)
+                    {!! $poMissingEdit !!}
+                @elseif($hasBankAccounts && $bankHasBlankField && !$canEditPoBank)
+                    {!! $poMissingEdit !!}
+                @elseif($hasBankAccounts && $bankHasBlankField && $canEditPoBank && $poSupplierId > 0)
+                    <button type="button" class="btn btn-sm btn-outline-primary no-print" id="poBankEditBtn">
+                        Edit Bank Details
+                    </button>
+                @endif
+            </div>
+            @if($hasBankAccounts)
+                <div class="po-bank-accounts">
+                    @foreach($bankAccounts as $acct)
+                        <div class="po-bank-card">
+                            <div class="po-bank-card-title">
+                                {{ $acct->nick_name ?: ($acct->company_name ?: ('Account #'.$acct->id)) }}
+                            </div>
+                            <div class="po-bank-grid">
+                                @foreach([
+                                    'Supplier' => $acct->supplier_name,
+                                    'Beneficiary' => $acct->company_name,
+                                    'Nick' => $acct->nick_name,
+                                    'SWIFT' => $acct->swift,
+                                    'Account' => $acct->account_number,
+                                    'Address' => $acct->address,
+                                    'City' => $acct->city,
+                                    'Province' => $acct->province,
+                                    'Country' => $acct->country,
+                                ] as $label => $val)
+                                    <div>
+                                        <span class="po-bank-label">{{ $label }}:</span>
+                                        @if(trim((string) $val) !== '')
+                                            {{ $val }}
+                                        @else
+                                            {!! $poMissing !!}
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <div class="po-bank-empty mb-2">
+                    <span class="po-approval-dot" aria-hidden="true"></span>
+                    <span>No bank details on supplier list for this supplier.</span>
+                </div>
+                <div class="po-bank-grid">
+                    @foreach($bankFieldLabels as $label)
+                        <div>
+                            <span class="po-bank-label">{{ $label }}:</span>
+                            {!! $poMissing !!}
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
         @php
             $grandTotals = [];
             // Show ¥ columns only when at least one line was entered in RMB.
@@ -691,6 +1252,8 @@
             $poCopyIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/></svg>';
         @endphp
         <div class="po-copy-toolbar no-print">
+            <button type="button" class="po-add-row-btn" id="poAddRowBtn" title="Add row">+</button>
+            <button type="button" class="po-add-row-btn" id="poAddFromToOrderBtn" title="Add SKUs from Order page for this supplier (Order qty &gt; 0 only)">++</button>
             <button type="button" class="po-copy-all-btn" id="poCopyAllBtn" title="Copy all columns">
                 {!! $poCopyIcon !!}
                 <span>For all</span>
@@ -708,8 +1271,8 @@
                     </th>
                     <th class="col-short-name" data-copy-key="short_name">
                         <span class="po-th-wrap">
-                            <span>Short Name</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="short_name" title="Copy Short Name column">{!! $poCopyIcon !!}</button>
+                            <span>Name</span>
+                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="short_name" title="Copy Name column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
                     <th class="col-tech" data-copy-key="tech">
@@ -724,18 +1287,19 @@
                             <button type="button" class="po-copy-col-btn no-print" data-copy-col="packaging" title="Copy Packaging column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
-                    <th class="col-dims" data-copy-key="dims">
-                        <span class="po-th-wrap">
-                            <span>NW (kg) / GW (kg) / CBM</span>
-                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="dims" title="Copy NW/GW/CBM column">{!! $poCopyIcon !!}</button>
-                        </span>
-                    </th>
                     <th class="col-special-qc" data-copy-key="special_qc">
                         <span class="po-th-wrap">
                             <span>Special Instruction QC</span>
                             <button type="button" class="po-copy-col-btn no-print" data-copy-col="special_qc" title="Copy Special Instruction QC column">{!! $poCopyIcon !!}</button>
                         </span>
                     </th>
+                    <th class="col-claim" data-copy-key="claim" title="From /claim-reimbursement (this supplier)">
+                        <span class="po-th-wrap">
+                            <span>Claim &amp; Reimb.</span>
+                            <button type="button" class="po-copy-col-btn no-print" data-copy-col="claim" title="Copy Claim column">{!! $poCopyIcon !!}</button>
+                        </span>
+                    </th>
+                    <th class="col-qc no-print" title="QC &amp; Packing issues (SKU + siblings)">QC</th>
                     <th data-copy-key="qty">
                         <span class="po-th-wrap">
                             <span>QTY</span>
@@ -770,7 +1334,7 @@
                             </span>
                         </th>
                     @endif
-                    <th class="col-edit no-print">Edit</th>
+                    <th class="col-edit no-print" title="Edit"></th>
                 </tr>
             </thead>
             <tbody>
@@ -823,40 +1387,124 @@
                     @endphp
                     <tr>
                         <td class="col-product">
+                            @php
+                                $displaySku = $item->product_master_sku ?? $item->sku ?? '';
+                            @endphp
                             <div class="po-product-cell">
                                 @if(!empty($item->photo_url))
                                     <img src="{{ $item->photo_url }}"
-                                         alt="{{ $item->sku ?? '' }}"
-                                         class="po-product-photo" />
+                                         alt="{{ $displaySku }}"
+                                         class="po-product-photo"
+                                         loading="lazy"
+                                         referrerpolicy="no-referrer"
+                                         @if(!empty($item->photo_fallback_url)) data-fallback="{{ $item->photo_fallback_url }}" @endif
+                                         onerror="if(this.dataset.fallback){this.src=this.dataset.fallback;delete this.dataset.fallback;}else{this.outerHTML='<div class=&quot;po-product-photo po-product-photo--empty&quot;><span class=&quot;po-missing-badge no-print&quot;>Missing</span><span class=&quot;po-missing-print-dash&quot;—</span></div>';}" />
                                 @else
-                                    <span class="text-muted">—</span>
+                                    <div class="po-product-photo po-product-photo--empty">{!! $poMissing !!}</div>
                                 @endif
-                                @if(!empty($item->barcode_url) || !empty($item->barcode_code))
-                                    <div class="po-barcode-wrap">
-                                        <div class="po-barcode-sku">{{ $item->sku ?? '—' }}</div>
-                                        @if(!empty($item->barcode_url))
-                                            <img src="{{ $item->barcode_url }}"
-                                                 alt="Barcode {{ $item->barcode_code ?? $item->sku ?? '' }}"
-                                                 class="po-barcode-img" />
+                                <div class="po-product-meta" style="text-align:center;">
+                                    <span class="po-product-label">5Core SKU</span>
+                                    <span class="po-product-sku po-barcode-sku">
+                                        @if($displaySku !== '')
+                                            {{ $displaySku }}
+                                        @else
+                                            {!! $poMissing !!}
                                         @endif
-                                        <div class="po-barcode-code">{{ $item->barcode_code ?? '—' }}</div>
+                                    </span>
+                                </div>
+                                <div class="po-barcode-wrap">
+                                    @if(!empty($item->barcode_url))
+                                        <img src="{{ $item->barcode_url }}"
+                                             alt="Barcode {{ $item->barcode_code ?? $displaySku }}"
+                                             class="po-barcode-img"
+                                             loading="lazy"
+                                             referrerpolicy="no-referrer" />
+                                    @else
+                                        <div class="no-print">{!! $poMissing !!}</div>
+                                    @endif
+                                    <div class="po-barcode-code">
+                                        @if(trim((string) ($item->barcode_code ?? '')) !== '')
+                                            {{ $item->barcode_code }}
+                                        @else
+                                            {!! $poMissing !!}
+                                        @endif
                                     </div>
-                                @endif
+                                </div>
                                 <div class="po-product-meta">
                                     <span class="po-product-label">Supplier SKU</span>
                                     <span class="po-product-supplier po-editable"
                                           data-field="supplier_sku"
                                           data-item-index="{{ $i }}">
-                                        <span class="po-field-text">{{ $item->supplier_sku ?? '' }}</span>
+                                        <span class="po-field-text">
+                                            @if(trim((string) ($item->supplier_sku ?? '')) !== '')
+                                                {{ $item->supplier_sku }}
+                                            @else
+                                                {!! $poMissing !!}
+                                            @endif
+                                        </span>
                                     </span>
                                 </div>
                             </div>
                         </td>
                         <td class="col-short-name po-editable" data-field="short_name">
-                            <span class="po-field-text">{{ $item->short_name ?? '' }}</span>
+                            <span class="po-field-text">
+                                @if(trim((string) ($item->short_name ?? '')) !== '')
+                                    {{ $item->short_name }}
+                                @else
+                                    {!! $poMissing !!}
+                                @endif
+                            </span>
                         </td>
-                        <td class="wrap-text col-tech po-editable" data-field="tech" data-raw="{{ base64_encode((string) ($item->tech ?? '')) }}">
-                            <span class="po-field-text">{!! nl2br(e($item->tech ?? '')) !!}</span>
+                        <td class="wrap-text col-tech">
+                            <div class="po-tech-block">
+                                <div class="po-tech-text po-editable" data-field="tech" data-raw="{{ base64_encode((string) ($item->tech ?? '')) }}">
+                                    <span class="po-field-text">
+                                        @if(trim((string) ($item->tech ?? '')) !== '')
+                                            {!! nl2br(e($item->tech)) !!}
+                                        @else
+                                            {!! $poMissing !!}
+                                        @endif
+                                    </span>
+                                </div>
+                                <div class="po-dims-cell">
+                                    <div class="po-dims-row">
+                                        <span class="po-dims-label">NW (kg)</span>
+                                        <span class="po-dims-value po-editable" data-field="nw">
+                                            <span class="po-field-text">
+                                                @if(trim((string) ($item->nw ?? '')) !== '')
+                                                    {{ $item->nw }}
+                                                @else
+                                                    {!! $poMissing !!}
+                                                @endif
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div class="po-dims-row">
+                                        <span class="po-dims-label">GW (kg)</span>
+                                        <span class="po-dims-value po-editable" data-field="gw">
+                                            <span class="po-field-text">
+                                                @if(trim((string) ($item->gw ?? '')) !== '')
+                                                    {{ $item->gw }}
+                                                @else
+                                                    {!! $poMissing !!}
+                                                @endif
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div class="po-dims-row">
+                                        <span class="po-dims-label">CBM</span>
+                                        <span class="po-dims-value po-editable" data-field="cbm">
+                                            <span class="po-field-text">
+                                                @if(trim((string) ($item->cbm ?? '')) !== '')
+                                                    {{ $item->cbm }}
+                                                @else
+                                                    {!! $poMissing !!}
+                                                @endif
+                                            </span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
                         </td>
                         @php
                             $itemPkg = trim((string) ($item->item_pkg ?? ''));
@@ -890,7 +1538,7 @@
                                         @if($itemPkg !== '')
                                             {!! nl2br(e($itemPkg)) !!}
                                         @else
-                                            <span class="text-muted">—</span>
+                                            {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
@@ -904,7 +1552,7 @@
                                                 <span class="po-pkg-combined-link">{{ basename(parse_url($itemPkgCover, PHP_URL_PATH) ?: $itemPkgCover) }}</span>
                                             @endif
                                         @else
-                                            <span class="text-muted">—</span>
+                                            {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
@@ -918,7 +1566,7 @@
                                                 <span class="po-pkg-combined-link">{{ $designFileName !== '' ? $designFileName : 'File' }}</span>
                                             @endif
                                         @else
-                                            <span class="text-muted">—</span>
+                                            {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
@@ -928,7 +1576,7 @@
                                         @if($ctnPkg !== '')
                                             {!! nl2br(e($ctnPkg)) !!}
                                         @else
-                                            <span class="text-muted">—</span>
+                                            {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
@@ -938,7 +1586,7 @@
                                         @if($ctnQty !== '' && $ctnQty !== null)
                                             {{ $ctnQty }}
                                         @else
-                                            <span class="text-muted">—</span>
+                                            {!! $poMissing !!}
                                         @endif
                                     </span>
                                 </div>
@@ -948,30 +1596,8 @@
                                         @if($ctnPrintFile !== '')
                                             <span class="po-pkg-combined-link">{{ basename(parse_url($ctnPrintFile, PHP_URL_PATH) ?: $ctnPrintFile) }}</span>
                                         @else
-                                            <span class="text-muted">—</span>
+                                            {!! $poMissing !!}
                                         @endif
-                                    </span>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="col-dims">
-                            <div class="po-dims-cell">
-                                <div class="po-dims-row">
-                                    <span class="po-dims-label">NW (kg)</span>
-                                    <span class="po-dims-value po-editable" data-field="nw">
-                                        <span class="po-field-text">{{ $item->nw ?? '' }}</span>
-                                    </span>
-                                </div>
-                                <div class="po-dims-row">
-                                    <span class="po-dims-label">GW (kg)</span>
-                                    <span class="po-dims-value po-editable" data-field="gw">
-                                        <span class="po-field-text">{{ $item->gw ?? '' }}</span>
-                                    </span>
-                                </div>
-                                <div class="po-dims-row">
-                                    <span class="po-dims-label">CBM</span>
-                                    <span class="po-dims-value po-editable" data-field="cbm">
-                                        <span class="po-field-text">{{ $item->cbm ?? '' }}</span>
                                     </span>
                                 </div>
                             </div>
@@ -1000,39 +1626,169 @@
                                         @endforeach
                                     </ol>
                                 @else
-                                    <span class="po-special-qc-empty">—</span>
+                                    <span class="po-special-qc-empty">{!! $poMissing !!}</span>
                                 @endif
                             </div>
                         </td>
-                        <td class="col-qty po-editable" data-field="qty">
-                            <span class="po-field-text">{{ $item->qty }}</span>
+                        <td class="col-claim">
+                            @php
+                                $claimLines = is_array($item->claim_lines ?? null) ? $item->claim_lines : [];
+                            @endphp
+                            @if(count($claimLines) > 0)
+                                <div class="po-claim-list">
+                                    @foreach($claimLines as $cl)
+                                        <div class="po-claim-card">
+                                            <div>
+                                                <a class="po-claim-num"
+                                                   href="{{ url('/claim-reimbursement') }}"
+                                                   target="_blank"
+                                                   rel="noopener"
+                                                   title="Open Claim &amp; Reimbursement">{{ $cl['claim_number'] ?? 'Claim' }}</a>
+                                                @if(!empty($cl['claim_date']))
+                                                    <span class="po-claim-meta"> · {{ $cl['claim_date'] }}</span>
+                                                @endif
+                                            </div>
+                                            <div class="po-claim-meta">
+                                                Qty {{ $cl['qty'] !== '' && $cl['qty'] !== null ? $cl['qty'] : '—' }}
+                                                · Amt {{ $cl['amount'] !== '' && $cl['amount'] !== null ? $cl['amount'] : '—' }}
+                                            </div>
+                                            @if(trim((string) ($cl['reason'] ?? '')) !== '')
+                                                <div class="po-claim-reason">{{ $cl['reason'] }}</div>
+                                            @endif
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @else
+                                {!! $poMissing !!}
+                            @endif
                         </td>
-                        <td class="col-price-usd po-editable"
+                        <td class="col-qc no-print">
+                            @php
+                                $qcSku = $item->product_master_sku ?? $item->sku ?? '';
+                                $qcHasData = !empty($item->qc_has_issues);
+                            @endphp
+                            <button type="button"
+                                    class="po-qc-btn {{ $qcHasData ? 'po-qc-btn--has-data' : 'po-qc-btn--empty' }}"
+                                    data-sku="{{ $qcSku }}"
+                                    data-has-qc="{{ $qcHasData ? '1' : '0' }}"
+                                    title="{{ $qcHasData ? 'QC issues found — click to view' : 'No QC data — click to view' }}"
+                                    aria-label="{{ $qcHasData ? 'QC issues found' : 'No QC data' }}">
+                                <svg class="po-qc-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+                                    <path d="M15.5 15.5 L21 21" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+                                </svg>
+                            </button>
+                        </td>
+                        <td class="col-qty po-editable" data-field="qty">
+                            <span class="po-field-text">
+                                @if(trim((string) ($item->qty ?? '')) !== '')
+                                    {{ $item->qty }}
+                                @else
+                                    {!! $poMissing !!}
+                                @endif
+                            </span>
+                        </td>
+                        @php
+                            $rateNotLowest = !empty($item->rate_not_lowest);
+                            $cmpSource = strtolower((string) ($item->comparison_price_source ?? ''));
+                            $rateTitleParts = [];
+                            if ($item->cp !== null) {
+                                $rateTitleParts[] = 'CP$ (product-master): '.$item->cp;
+                            }
+                            if ($rateNotLowest) {
+                                $lowestHint = $item->comparison_lowest_usd !== null
+                                    ? ' (lowest ~$'.$item->comparison_lowest_usd.')'
+                                    : '';
+                                $rateTitleParts[] = 'Relevant supplier is not lowest on comparison sheet'.$lowestHint;
+                            } elseif ($cmpSource !== '') {
+                                $rateTitleParts[] = 'Rate from comparison ('.strtoupper($cmpSource).')';
+                            }
+                            $rateTitle = $rateTitleParts !== [] ? implode(' · ', $rateTitleParts) : '';
+                        @endphp
+                        <td class="col-price-usd po-editable{{ $rateNotLowest ? ' po-rate-not-lowest' : '' }}"
                             data-field="price_usd"
                             data-currency-source="{{ $curr }}"
-                            data-raw="{{ $curr === 'USD' ? $price : ($priceUsd !== null ? $priceUsd : '') }}">
-                            <span class="po-field-text">{{ $priceUsd !== null ? rtrim(rtrim(number_format($priceUsd, 2, '.', ''), '0'), '.') . '$' : '—' }}</span>
+                            data-raw="{{ $curr === 'USD' ? $price : ($priceUsd !== null ? $priceUsd : '') }}"
+                            data-cp="{{ $item->cp !== null ? $item->cp : '' }}"
+                            data-rate-not-lowest="{{ $rateNotLowest ? '1' : '0' }}"
+                            @if($rateTitle !== '') title="{{ $rateTitle }}" @endif>
+                            <span class="po-rate-cell">
+                                <span class="po-field-text">
+                                    @if($priceUsd !== null)
+                                        {{ rtrim(rtrim(number_format($priceUsd, 2, '.', ''), '0'), '.') . '$' }}
+                                    @else
+                                        {!! $poMissing !!}
+                                    @endif
+                                </span>
+                                @if($priceUsd !== null && $item->cp !== null)
+                                    @php
+                                        $rateCmp = round((float) $priceUsd, 2);
+                                        $cpCmp = round((float) $item->cp, 2);
+                                    @endphp
+                                    @if($rateCmp > $cpCmp)
+                                        <span class="po-rate-cp-icon po-rate-cp-icon--high no-print"
+                                              title="Rate {{ $rateCmp }} > CP {{ $cpCmp }}"
+                                              aria-label="Rate higher than CP"></span>
+                                    @elseif(abs($rateCmp - $cpCmp) < 0.005)
+                                        <span class="po-rate-cp-icon po-rate-cp-icon--same no-print"
+                                              title="Rate {{ $rateCmp }} = CP {{ $cpCmp }}"
+                                              aria-label="Rate same as CP"></span>
+                                    @else
+                                        <span class="po-rate-cp-icon po-rate-cp-icon--low no-print"
+                                              title="Rate {{ $rateCmp }} &lt; CP {{ $cpCmp }}"
+                                              aria-label="Rate lower than CP"></span>
+                                    @endif
+                                @endif
+                            </span>
                         </td>
                         @if($showRmbColumns)
                             <td class="col-price-rmb po-editable"
                                 data-field="price_rmb"
                                 data-currency-source="{{ $curr }}"
                                 data-raw="{{ $curr === 'RMB' ? $price : '' }}">
-                                <span class="po-field-text">{{ $priceRmb !== null ? rtrim(rtrim(number_format($priceRmb, 2, '.', ''), '0'), '.') . '¥' : '—' }}</span>
+                                <span class="po-field-text">
+                                    @if($priceRmb !== null)
+                                        {{ rtrim(rtrim(number_format($priceRmb, 2, '.', ''), '0'), '.') . '¥' }}
+                                    @else
+                                        {!! $poMissing !!}
+                                    @endif
+                                </span>
                             </td>
                         @endif
-                        <td class="col-total-usd">{{ $totalUsd !== null ? number_format($totalUsd, 2) . '$' : '—' }}</td>
+                        <td class="col-total-usd">
+                            @if($totalUsd !== null)
+                                {{ number_format(round($totalUsd), 0) . '$' }}
+                            @else
+                                {!! $poMissing !!}
+                            @endif
+                        </td>
                         @if($showRmbColumns)
-                            <td class="col-total-rmb">{{ $totalRmb !== null ? number_format($totalRmb, 2) . '¥' : '—' }}</td>
+                            <td class="col-total-rmb">
+                                @if($totalRmb !== null)
+                                    {{ number_format(round($totalRmb), 0) . '¥' }}
+                                @else
+                                    {!! $poMissing !!}
+                                @endif
+                            </td>
                         @endif
                         <td class="col-edit no-print">
-                            <button type="button"
-                                    class="po-edit-btn"
-                                    data-item-index="{{ $i }}"
-                                    data-currency="{{ strtoupper($item->currency ?? 'USD') }}"
-                                    title="Edit line item">
-                                Edit
-                            </button>
+                            <div class="po-line-actions">
+                                <button type="button"
+                                        class="po-edit-btn"
+                                        data-item-index="{{ $i }}"
+                                        data-currency="{{ strtoupper($item->currency ?? 'USD') }}"
+                                        title="Edit line item"
+                                        aria-label="Edit line item">
+                                    <i class="mdi mdi-pencil" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="po-delete-btn"
+                                        data-item-index="{{ $i }}"
+                                        title="Delete row"
+                                        aria-label="Delete row">
+                                    ×
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 @endforeach
@@ -1040,9 +1796,9 @@
             <tfoot>
                 <tr>
                     <td colspan="{{ $showRmbColumns ? 10 : 9 }}" class="text-end">Grand Total</td>
-                    <td>{{ $hasUsdTotal ? number_format($subtotalUsd, 2) . '$' : '—' }}</td>
+                    <td>{{ $hasUsdTotal ? number_format(round($subtotalUsd), 0) . '$' : '—' }}</td>
                     @if($showRmbColumns)
-                        <td>{{ $hasRmbTotal ? number_format($subtotalRmb, 2) . '¥' : '—' }}</td>
+                        <td>{{ $hasRmbTotal ? number_format(round($subtotalRmb), 0) . '¥' : '—' }}</td>
                     @endif
                     <td class="col-edit no-print"></td>
                 </tr>
@@ -1080,14 +1836,62 @@
                 </script>
             </div>
             <div class="col-md-6">
-                <div class="totals-box">
+                <div class="totals-box" id="po-totals-box">
+                    @php
+                        $primaryCurr = isset($grandTotals['USD']) ? 'USD' : (array_key_first($grandTotals) ?: 'USD');
+                        $primaryTotal = (float) ($grandTotals[$primaryCurr] ?? 0);
+                        $poAdvancePercent = null;
+                        if (isset($order->advance_percent) && $order->advance_percent !== null && $order->advance_percent !== '') {
+                            $poAdvancePercent = (float) $order->advance_percent;
+                        } elseif (isset($supplierDefaultAdvancePercent) && $supplierDefaultAdvancePercent !== null) {
+                            $poAdvancePercent = (float) $supplierDefaultAdvancePercent;
+                        }
+                        $poAdvanceAmount = (float) ($order->advance_amount ?? 0);
+                        if ($poAdvancePercent !== null && $primaryTotal > 0) {
+                            $poAdvanceAmount = round($primaryTotal * ($poAdvancePercent / 100));
+                        }
+                        $primarySymbol = ($primaryCurr === 'RMB' || $primaryCurr === 'CNY') ? '¥' : '$';
+                    @endphp
                     @foreach($grandTotals as $curr => $total)
                         @php
-                            $currencySymbol = $curr === 'RMB' ? '¥' : '$';
+                            $currencySymbol = ($curr === 'RMB' || $curr === 'CNY') ? '¥' : '$';
+                            $isPrimary = $curr === $primaryCurr;
                         @endphp
-                        <div>Subtotal: <span class="float-end">{{ $currencySymbol }}{{ number_format($total, 2) }}</span></div>
-                        <div>Advance: <span class="float-end">{{ $currencySymbol }}{{ number_format($order->advance_amount ?? 0, 2) }}</span></div>
-                        <div>Balance Due: <span class="float-end">{{ $currencySymbol }}{{ number_format(round($total - ($order->advance_amount ?? 0), 0), 0) }}</span></div>
+                        <div>Subtotal: <span class="float-end" @if($isPrimary) data-po-subtotal="1" data-currency="{{ $curr }}" data-amount="{{ round($total) }}" @endif>{{ $currencySymbol }}{{ number_format(round($total), 0) }}</span></div>
+                        @if($isPrimary)
+                            <div class="po-advance-row mt-1">
+                                <span class="po-advance-label">
+                                    Advance:
+                                    <input type="number"
+                                           id="po-advance-percent"
+                                           class="po-advance-percent-input no-print"
+                                           min="0"
+                                           max="100"
+                                           step="0.01"
+                                           value="{{ $poAdvancePercent !== null ? rtrim(rtrim(number_format($poAdvancePercent, 2, '.', ''), '0'), '.') : '' }}"
+                                           placeholder="%"
+                                           title="Advance % of Grand Total"
+                                           aria-label="Advance percent">
+                                    <span class="po-advance-percent-suffix no-print">%</span>
+                                    <span class="po-advance-percent-print" id="po-advance-percent-print">
+                                        @if($poAdvancePercent !== null)
+                                            {{ rtrim(rtrim(number_format($poAdvancePercent, 2, '.', ''), '0'), '.') }}%
+                                        @else
+                                            —
+                                        @endif
+                                    </span>
+                                    <span class="no-print" id="po-advance-percent-missing" @if($poAdvancePercent !== null) style="display:none" @endif>{!! $poMissing !!}</span>
+                                </span>
+                                <span class="po-advance-amount float-end"
+                                      id="po-advance-amount"
+                                      data-currency-symbol="{{ $primarySymbol }}">{{ $primarySymbol }}{{ number_format(round($poAdvanceAmount), 0) }}</span>
+                            </div>
+                            <div class="po-advance-save-hint no-print" id="po-advance-save-hint"></div>
+                            <div>Balance Due: <span class="float-end po-balance-due" id="po-balance-due">{{ $primarySymbol }}{{ number_format(round($total - $poAdvanceAmount), 0) }}</span></div>
+                        @else
+                            <div>Advance: <span class="float-end">{{ $currencySymbol }}{{ number_format(round($order->advance_amount ?? 0), 0) }}</span></div>
+                            <div>Balance Due: <span class="float-end">{{ $currencySymbol }}{{ number_format(round($total - ($order->advance_amount ?? 0), 0), 0) }}</span></div>
+                        @endif
                     @endforeach
                     <div class="mt-2 pt-2" style="border-top: 1px solid rgba(106,27,154,0.3);">CBM Total: <span class="float-end">{{ number_format($cbmTotal, 2) }}</span></div>
                 </div>
@@ -1166,6 +1970,53 @@
             <div id="customPoints"></div>
 
         </form>
+
+        @php
+            $approvalButtons = $approvalButtons ?? [];
+        @endphp
+        <div class="po-approvals no-print mt-4">
+            <h5 class="fw-bold text-primary mb-3">Approved BY</h5>
+            <div class="po-approvals-row">
+                @foreach ($approvalButtons as $btn)
+                    <button type="button"
+                            class="po-approval-btn{{ !empty($btn['approved']) ? ' is-approved' : '' }}{{ empty($btn['can_toggle']) ? ' is-locked' : '' }}"
+                            data-approval-key="{{ $btn['key'] }}"
+                            data-can-toggle="{{ !empty($btn['can_toggle']) ? '1' : '0' }}"
+                            data-approved="{{ !empty($btn['approved']) ? '1' : '0' }}"
+                            title="{{ !empty($btn['can_toggle'])
+                                ? (!empty($btn['approved']) ? 'Click to clear your approval' : 'Click to approve as '.$btn['label'])
+                                : 'Only '.$btn['label'].' can approve this' }}">
+                        <span class="po-approval-status" aria-hidden="true">
+                            @if(!empty($btn['approved']))
+                                <i class="mdi mdi-check-circle po-approval-tick"></i>
+                            @else
+                                <span class="po-approval-dot"></span>
+                            @endif
+                        </span>
+                        <span class="po-approval-label">{{ $btn['label'] }}</span>
+                        @if(!empty($btn['approved_at']))
+                            <span class="po-approval-meta">{{ \Carbon\Carbon::parse($btn['approved_at'])->format('j M y H:i') }}</span>
+                        @endif
+                    </button>
+                @endforeach
+            </div>
+        </div>
+        {{-- Print-visible approval summary --}}
+        <div class="po-approvals-print only-print mt-4">
+            <h5 class="fw-bold text-primary mb-2">Approved BY</h5>
+            <div class="po-approvals-print-row">
+                @foreach ($approvalButtons as $btn)
+                    <div class="po-approvals-print-item">
+                        @if(!empty($btn['approved']))
+                            <i class="mdi mdi-check-circle po-approval-tick"></i>
+                        @else
+                            <span class="po-approval-dot"></span>
+                        @endif
+                        <span>{{ $btn['label'] }}</span>
+                    </div>
+                @endforeach
+            </div>
+        </div>
     </div>
 
     {{-- Item Pkg / Itm pkg Cover / Ctn Pkg edit modal (Dim Wt Master data source) --}}
@@ -1239,6 +2090,188 @@
         </div>
     </div>
 
+    {{-- Add Row modal — all proforma columns --}}
+    <div class="modal fade" id="poAddRowModal" tabindex="-1" aria-labelledby="poAddRowModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="poAddRowModalLabel">Add Row</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label for="poAddSku" class="form-label fw-semibold">5Core SKU <span class="text-danger">*</span></label>
+                            <select id="poAddSku" class="form-select" style="width:100%"></select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddSupplierSku" class="form-label fw-semibold">Supplier SKU</label>
+                            <input type="text" class="form-control" id="poAddSupplierSku" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddShortName" class="form-label fw-semibold">Name</label>
+                            <input type="text" class="form-control" id="poAddShortName" maxlength="40" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddQty" class="form-label fw-semibold">QTY</label>
+                            <input type="number" step="any" min="0" class="form-control" id="poAddQty" autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <label for="poAddTech" class="form-label fw-semibold">Tech</label>
+                            <textarea class="form-control" id="poAddTech" rows="3" autocomplete="off"></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="poAddNw" class="form-label fw-semibold">NW (kg)</label>
+                            <input type="number" step="any" class="form-control" id="poAddNw" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="poAddGw" class="form-label fw-semibold">GW (kg)</label>
+                            <input type="number" step="any" class="form-control" id="poAddGw" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="poAddCbm" class="form-label fw-semibold">CBM</label>
+                            <input type="number" step="any" class="form-control" id="poAddCbm" autocomplete="off">
+                        </div>
+                        <div class="col-12"><hr class="my-1"></div>
+                        <div class="col-md-6">
+                            <label for="poAddItemPkg" class="form-label fw-semibold">Item Pkg</label>
+                            <input type="text" class="form-control" id="poAddItemPkg" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddCover" class="form-label fw-semibold">Itm pkg Cover</label>
+                            <input type="text" class="form-control" id="poAddCover" placeholder="Image URL or path" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddDesign" class="form-label fw-semibold">Design File</label>
+                            <input type="text" class="form-control" id="poAddDesign" placeholder="File URL or path" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddCtnPkg" class="form-label fw-semibold">Ctn Pkg</label>
+                            <input type="text" class="form-control" id="poAddCtnPkg" maxlength="100" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddCtnQty" class="form-label fw-semibold">Ctn Qty</label>
+                            <input type="text" class="form-control" id="poAddCtnQty" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddCtnPrint" class="form-label fw-semibold">Ctn Print File</label>
+                            <input type="text" class="form-control" id="poAddCtnPrint" placeholder="File URL or path" autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <label for="poAddSpecialQc" class="form-label fw-semibold">Special Instruction QC</label>
+                            <textarea class="form-control" id="poAddSpecialQc" rows="3" placeholder="One point per line" autocomplete="off"></textarea>
+                        </div>
+                        <div class="col-12"><hr class="my-1"></div>
+                        <div class="col-md-6">
+                            <label for="poAddPriceUsd" class="form-label fw-semibold">Rate $</label>
+                            <input type="number" step="any" min="0" class="form-control" id="poAddPriceUsd" autocomplete="off">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="poAddPriceRmb" class="form-label fw-semibold">Rate ¥</label>
+                            <input type="number" step="any" min="0" class="form-control" id="poAddPriceRmb" autocomplete="off">
+                            <div class="form-text">If Rate ¥ is entered, the line is stored as RMB.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="poAddRowSaveBtn">Add Row</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Bank details edit (saves to supplier.list / supplier_bank_accounts) --}}
+    <div class="modal fade" id="poBankModal" tabindex="-1" aria-labelledby="poBankModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="poBankModalLabel">Add Bank Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-text mb-2">Saved to the same supplier bank data as /supplier.list (max 30 chars per field).</div>
+                    <form id="poBankForm" class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Supplier name</label>
+                            <input type="text" name="supplier_name" maxlength="30" class="form-control form-control-sm"
+                                   value="{{ $supplier->name ?? '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Nick name</label>
+                            <input type="text" name="nick_name" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Beneficiary</label>
+                            <input type="text" name="company_name" maxlength="30" class="form-control form-control-sm"
+                                   value="{{ $supplier->company ?? '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Swift</label>
+                            <input type="text" name="swift" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Account number</label>
+                            <input type="text" name="account_number" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Address</label>
+                            <input type="text" name="address" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">City</label>
+                            <input type="text" name="city" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Province</label>
+                            <input type="text" name="province" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold mb-0">Country</label>
+                            <input type="text" name="country" maxlength="30" class="form-control form-control-sm">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="poBankSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- QC & Packing issues (SKU + siblings) — from /customer-care/qc-and-packing --}}
+    <div class="modal fade" id="poQcIssuesModal" tabindex="-1" aria-labelledby="poQcIssuesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="poQcIssuesModalLabel">
+                        <i class="mdi mdi-magnify me-1"></i> QC &amp; Packing Issues
+                        <span id="poQcIssuesModalSku" class="ms-2 fw-normal text-muted"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+                        <span class="text-muted">Parent:</span>
+                        <strong id="poQcIssuesModalParent">—</strong>
+                        <span class="text-muted ms-2">Siblings:</span>
+                        <span id="poQcIssuesModalSiblings" class="text-break">—</span>
+                        <a id="poQcIssuesPageLink" href="{{ url('/customer-care/qc-and-packing') }}" target="_blank" rel="noopener" class="ms-auto btn btn-sm btn-outline-primary">
+                            Open QC &amp; Packing page
+                        </a>
+                    </div>
+                    <div id="poQcIssuesModalBody">
+                        <div class="text-center py-4 text-muted">Loading…</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Special Instruction QC — numbered points modal --}}
     <div class="modal fade" id="poSpecialQcModal" tabindex="-1" aria-labelledby="poSpecialQcModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1263,6 +2296,9 @@
         </div>
     </div>
 
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -1341,6 +2377,11 @@
         (function () {
             const saveUrl = @json(!empty($order->id) ? route('purchase-order.update-item-supplier-sku', $order->id) : '');
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            const poMissingHtml = '<span class="po-missing-badge no-print">Missing</span><span class="po-missing-print-dash">—</span>';
+            const displayOrMissing = (v) => {
+                const s = String(v ?? '').trim();
+                return s ? s : poMissingHtml;
+            };
             const usdToCny = @json($usdToCny ?? null);
             const showRmbColumns = @json($showRmbColumns ?? false);
             let editingRow = null;
@@ -1374,6 +2415,9 @@
                     }
                 }
                 const textEl = cell.querySelector('.po-field-text');
+                if (textEl?.querySelector('.po-missing-badge, .po-missing-print-dash')) {
+                    return '';
+                }
                 return (textEl?.textContent || '').trim();
             }
 
@@ -1386,8 +2430,36 @@
             }
 
             function formatMoneyDisplay(n, suffix) {
-                if (!isFinite(n)) return '—';
-                return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + suffix;
+                if (!isFinite(n)) return poMissingHtml;
+                // Totals are rounded whole numbers on the proforma PDF.
+                return Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 }) + suffix;
+            }
+
+            function parseCpAttr(cell) {
+                const raw = cell?.getAttribute('data-cp');
+                if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+                const n = parseFloat(raw);
+                return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+            }
+
+            function rateCpIndicatorHtml(rate, cp) {
+                if (!Number.isFinite(rate) || cp === null || !Number.isFinite(cp)) return '';
+                const r = Math.round(rate * 100) / 100;
+                const c = Math.round(cp * 100) / 100;
+                let cls = 'po-rate-cp-icon--low';
+                let label = 'Rate lower than CP';
+                let tip = 'Rate ' + r + ' < CP ' + c;
+                if (r > c) {
+                    cls = 'po-rate-cp-icon--high';
+                    label = 'Rate higher than CP';
+                    tip = 'Rate ' + r + ' > CP ' + c;
+                } else if (Math.abs(r - c) < 0.005) {
+                    cls = 'po-rate-cp-icon--same';
+                    label = 'Rate same as CP';
+                    tip = 'Rate ' + r + ' = CP ' + c;
+                }
+                return '<span class="po-rate-cp-icon ' + cls + ' no-print" title="' + tip.replace(/"/g, '&quot;')
+                    + '" aria-label="' + label + '"></span>';
             }
 
             function updateRowTotalsFromInputs(row) {
@@ -1413,10 +2485,15 @@
                 const setText = (field, text, asHtml) => {
                     const cell = row.querySelector('.po-editable[data-field="' + field + '"]');
                     if (!cell) return;
+                    const t = String(text ?? '').trim();
+                    if (!t) {
+                        cell.innerHTML = '<span class="po-field-text">' + poMissingHtml + '</span>';
+                        return;
+                    }
                     if (asHtml) {
-                        cell.innerHTML = '<span class="po-field-text">' + (text ? escapeHtml(text).replace(/\n/g, '<br>') : '') + '</span>';
+                        cell.innerHTML = '<span class="po-field-text">' + escapeHtml(t).replace(/\n/g, '<br>') + '</span>';
                     } else {
-                        cell.innerHTML = '<span class="po-field-text">' + escapeHtml(text) + '</span>';
+                        cell.innerHTML = '<span class="po-field-text">' + escapeHtml(t) + '</span>';
                     }
                 };
 
@@ -1439,26 +2516,35 @@
                 if (usdCell) {
                     usdCell.setAttribute('data-raw', usdVal);
                     usdCell.setAttribute('data-currency-source', currency || 'USD');
-                    usdCell.innerHTML = '<span class="po-field-text">'
-                        + (isFinite(usdN) ? (usdN.toFixed(2).replace(/\.?0+$/, '') + '$') : '—')
+                    const cp = parseCpAttr(usdCell);
+                    const rateText = isFinite(usdN) ? (usdN.toFixed(2).replace(/\.?0+$/, '') + '$') : poMissingHtml;
+                    usdCell.innerHTML = '<span class="po-rate-cell"><span class="po-field-text">'
+                        + rateText
+                        + '</span>'
+                        + (isFinite(usdN) ? rateCpIndicatorHtml(usdN, cp) : '')
                         + '</span>';
+                    if (usdCell.getAttribute('data-rate-not-lowest') === '1') {
+                        usdCell.classList.add('po-rate-not-lowest');
+                    } else {
+                        usdCell.classList.remove('po-rate-not-lowest');
+                    }
                 }
                 const rmbCell = row.querySelector('.po-editable[data-field="price_rmb"]');
                 if (rmbCell) {
                     rmbCell.setAttribute('data-raw', rmbVal);
                     rmbCell.setAttribute('data-currency-source', currency || 'USD');
                     rmbCell.innerHTML = '<span class="po-field-text">'
-                        + (isFinite(rmbN) ? (rmbN.toFixed(2).replace(/\.?0+$/, '') + '¥') : '—')
+                        + (isFinite(rmbN) ? (rmbN.toFixed(2).replace(/\.?0+$/, '') + '¥') : poMissingHtml)
                         + '</span>';
                 }
 
                 const totalUsdCell = row.querySelector('.col-total-usd');
                 const totalRmbCell = row.querySelector('.col-total-rmb');
                 if (totalUsdCell) {
-                    totalUsdCell.textContent = isFinite(usdN) ? formatMoneyDisplay(qtyN * usdN, '$') : '—';
+                    totalUsdCell.innerHTML = isFinite(usdN) ? formatMoneyDisplay(qtyN * usdN, '$') : poMissingHtml;
                 }
                 if (totalRmbCell) {
-                    totalRmbCell.textContent = isFinite(rmbN) ? formatMoneyDisplay(qtyN * rmbN, '¥') : '—';
+                    totalRmbCell.innerHTML = isFinite(rmbN) ? formatMoneyDisplay(qtyN * rmbN, '¥') : poMissingHtml;
                 }
 
                 const editCell = row.querySelector('.col-edit');
@@ -1493,7 +2579,7 @@
 
                 const fields = [
                     { field: 'supplier_sku', type: 'text' },
-                    { field: 'short_name', type: 'text', max: 40 },
+                    { field: 'short_name', type: 'text' },
                     { field: 'tech', type: 'textarea' },
                     { field: 'nw', type: 'number' },
                     { field: 'gw', type: 'number' },
@@ -1678,6 +2764,537 @@
 
             document.querySelectorAll('.po-edit-btn').forEach(bindEditButton);
 
+            // Add Row (+) / ++ / delete
+            const addItemUrl = @json(!empty($order->id) ? route('purchase-order.add-item', $order->id) : '');
+            const addFromToOrderUrl = @json(!empty($order->id) ? route('purchase-order.add-from-to-order', $order->id) : '');
+            const deleteItemUrl = @json(!empty($order->id) ? route('purchase-order.delete-item', $order->id) : '');
+            const qcIssuesUrl = @json(route('purchase-order.qc-issues'));
+            const toggleApprovalUrl = @json(!empty($order->id) ? route('purchase-order.toggle-approval', $order->id) : '');
+            const updateAdvanceUrl = @json(!empty($order->id) ? route('purchase-order.update-advance', $order->id) : '');
+            const shortNameBySkuUrl = @json(route('purchase-order.short-name-by-sku'));
+            const skuSearchUrl = @json(url('/purchase/search-sku'));
+            const poSupplierId = @json((int) ($order->supplier_id ?? ($supplier->id ?? 0)));
+            const canEditPoBank = @json((bool) ($canEditPoBank ?? false));
+            const poBankStoreUrl = poSupplierId > 0
+                ? @json(url('/supplier')) + '/' + poSupplierId + '/bank-accounts'
+                : '';
+
+            document.getElementById('poBankEditBtn')?.addEventListener('click', () => {
+                if (!canEditPoBank) {
+                    alert('Only purchase@5core.com can add bank details.');
+                    return;
+                }
+                if (!poBankStoreUrl) {
+                    alert('Supplier missing on this purchase contract.');
+                    return;
+                }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('poBankModal')).show();
+            });
+
+            document.getElementById('poBankSaveBtn')?.addEventListener('click', async () => {
+                if (!canEditPoBank || !poBankStoreUrl) {
+                    alert('Only purchase@5core.com can save bank details.');
+                    return;
+                }
+                const form = document.getElementById('poBankForm');
+                if (!form) return;
+                const payload = {};
+                form.querySelectorAll('input[name]').forEach((el) => {
+                    payload[el.name] = String(el.value || '').trim();
+                });
+                const btn = document.getElementById('poBankSaveBtn');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Saving…';
+                }
+                try {
+                    const res = await fetch(poBankStoreUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to save bank details');
+                    }
+                    window.location.reload();
+                } catch (err) {
+                    alert(err.message || 'Failed to save bank details');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Save';
+                    }
+                }
+            });
+
+            // Advance % → amount = Grand Total * %; save to PO + supplier_advances
+            (function initPoAdvance() {
+                const percentInput = document.getElementById('po-advance-percent');
+                const amountEl = document.getElementById('po-advance-amount');
+                const balanceEl = document.getElementById('po-balance-due');
+                const hintEl = document.getElementById('po-advance-save-hint');
+                const printEl = document.getElementById('po-advance-percent-print');
+                const missingEl = document.getElementById('po-advance-percent-missing');
+                const subtotalEl = document.querySelector('[data-po-subtotal="1"]');
+                if (!percentInput || !amountEl || !subtotalEl) return;
+
+                const symbol = amountEl.getAttribute('data-currency-symbol') || '$';
+                const currency = subtotalEl.getAttribute('data-currency') || 'USD';
+                let saveTimer = null;
+                let lastSavedKey = '';
+
+                function formatMoney(n) {
+                    return symbol + Math.round(Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+                }
+
+                function grandTotal() {
+                    const raw = parseFloat(subtotalEl.getAttribute('data-amount') || '0');
+                    return Number.isFinite(raw) ? raw : 0;
+                }
+
+                function recalc() {
+                    const pctRaw = String(percentInput.value || '').trim();
+                    const pct = pctRaw === '' ? null : parseFloat(pctRaw);
+                    const total = grandTotal();
+                    const amount = (pct !== null && Number.isFinite(pct))
+                        ? Math.round(total * (pct / 100))
+                        : 0;
+                    amountEl.textContent = formatMoney(amount);
+                    if (balanceEl) {
+                        balanceEl.textContent = formatMoney(total - amount);
+                    }
+                    if (printEl) {
+                        printEl.textContent = (pct !== null && Number.isFinite(pct))
+                            ? (String(pct).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1') + '%')
+                            : '—';
+                    }
+                    if (missingEl) {
+                        missingEl.style.display = (pct !== null && Number.isFinite(pct)) ? 'none' : '';
+                    }
+                    return { percent: (pct !== null && Number.isFinite(pct)) ? pct : null, amount, total };
+                }
+
+                async function saveAdvance() {
+                    if (!updateAdvanceUrl) return;
+                    const { percent, amount, total } = recalc();
+                    const key = String(percent) + '|' + String(amount) + '|' + String(total);
+                    if (key === lastSavedKey) return;
+                    if (hintEl) hintEl.textContent = 'Saving…';
+                    try {
+                        const res = await fetch(updateAdvanceUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                            },
+                            body: JSON.stringify({
+                                advance_percent: percent,
+                                grand_total: total,
+                                currency: currency,
+                            }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.success === false) {
+                            throw new Error(data.message || 'Failed to save advance');
+                        }
+                        lastSavedKey = key;
+                        if (data.advance_amount != null) {
+                            amountEl.textContent = formatMoney(data.advance_amount);
+                        }
+                        if (balanceEl && data.balance_due != null) {
+                            balanceEl.textContent = formatMoney(data.balance_due);
+                        }
+                        if (hintEl) hintEl.textContent = 'Saved';
+                        setTimeout(() => { if (hintEl) hintEl.textContent = ''; }, 1500);
+                    } catch (err) {
+                        if (hintEl) hintEl.textContent = err.message || 'Save failed';
+                    }
+                }
+
+                function scheduleSave() {
+                    recalc();
+                    if (saveTimer) clearTimeout(saveTimer);
+                    saveTimer = setTimeout(saveAdvance, 450);
+                }
+
+                percentInput.addEventListener('input', scheduleSave);
+                percentInput.addEventListener('change', scheduleSave);
+                recalc();
+            })();
+
+            document.querySelectorAll('.po-approval-btn').forEach((btn) => {
+                if (!btn || btn.dataset.bound === '1') return;
+                btn.dataset.bound = '1';
+                btn.addEventListener('click', async () => {
+                    if (!toggleApprovalUrl) {
+                        alert('Purchase order id missing.');
+                        return;
+                    }
+                    if (btn.getAttribute('data-can-toggle') !== '1') {
+                        alert(btn.title || 'Only the named user can approve this button.');
+                        return;
+                    }
+                    const key = btn.getAttribute('data-approval-key') || '';
+                    if (!key) return;
+                    btn.disabled = true;
+                    try {
+                        const res = await fetch(toggleApprovalUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                            },
+                            body: JSON.stringify({ key }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.success === false) {
+                            throw new Error(data.message || 'Failed to update approval');
+                        }
+                        const approved = !!data.approved;
+                        btn.dataset.approved = approved ? '1' : '0';
+                        btn.classList.toggle('is-approved', approved);
+                        const status = btn.querySelector('.po-approval-status');
+                        if (status) {
+                            status.innerHTML = approved
+                                ? '<i class="mdi mdi-check-circle po-approval-tick"></i>'
+                                : '<span class="po-approval-dot"></span>';
+                        }
+                        let meta = btn.querySelector('.po-approval-meta');
+                        if (approved && data.approved_at) {
+                            if (!meta) {
+                                meta = document.createElement('span');
+                                meta.className = 'po-approval-meta';
+                                btn.appendChild(meta);
+                            }
+                            const d = new Date(String(data.approved_at).replace(' ', 'T'));
+                            meta.textContent = Number.isNaN(d.getTime())
+                                ? String(data.approved_at)
+                                : (d.getDate() + ' ' + d.toLocaleString('en', { month: 'short' }).toUpperCase()
+                                    + ' ' + String(d.getFullYear()).slice(-2)
+                                    + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+                        } else if (meta) {
+                            meta.remove();
+                        }
+                        btn.title = approved
+                            ? 'Click to clear your approval'
+                            : ('Click to approve as ' + (btn.querySelector('.po-approval-label')?.textContent || key));
+                    } catch (err) {
+                        alert(err.message || 'Failed to update approval');
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+            });
+
+            function openPoQcIssuesModal(sku) {
+                const skuEl = document.getElementById('poQcIssuesModalSku');
+                const parentEl = document.getElementById('poQcIssuesModalParent');
+                const sibsEl = document.getElementById('poQcIssuesModalSiblings');
+                const bodyEl = document.getElementById('poQcIssuesModalBody');
+                const linkEl = document.getElementById('poQcIssuesPageLink');
+                const modalEl = document.getElementById('poQcIssuesModal');
+                if (!modalEl || !bodyEl) return;
+
+                sku = String(sku || '').trim();
+                if (skuEl) skuEl.textContent = sku ? '( ' + sku + ' )' : '';
+                if (parentEl) parentEl.textContent = '—';
+                if (sibsEl) sibsEl.textContent = '—';
+                bodyEl.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i></div>';
+                if (linkEl) {
+                    linkEl.href = @json(url('/customer-care/qc-and-packing'))
+                        + (sku ? ('?sku=' + encodeURIComponent(sku)) : '');
+                }
+                bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+                if (!sku) {
+                    bodyEl.innerHTML = '<div class="text-muted p-2">SKU missing.</div>';
+                    return;
+                }
+
+                const esc = (s) => String(s ?? '')
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+                const cell = (v) => {
+                    const s = String(v ?? '').trim();
+                    return s ? esc(s) : poMissingHtml;
+                };
+
+                fetch(qcIssuesUrl + '?sku=' + encodeURIComponent(sku), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        if (parentEl) parentEl.textContent = data.parent || '—';
+                        const siblings = Array.isArray(data.siblings) ? data.siblings : [];
+                        if (sibsEl) {
+                            sibsEl.textContent = siblings.length ? siblings.join(', ') : sku;
+                        }
+                        const issues = Array.isArray(data.issues) ? data.issues : [];
+                        if (!issues.length) {
+                            bodyEl.innerHTML = '<div class="text-muted fst-italic p-2">No QC / packing issues for this SKU or its siblings.</div>';
+                            return;
+                        }
+                        const rows = issues.map((it) => {
+                            const isFocus = String(it.sku || '').trim().toUpperCase() === sku.toUpperCase();
+                            return '<tr' + (isFocus ? ' class="table-warning"' : '') + '>'
+                                + '<td>' + cell(it.sku) + '</td>'
+                                + '<td>' + cell(it.parent) + '</td>'
+                                + '<td class="text-center">' + cell(it.qty) + '</td>'
+                                + '<td class="text-center">' + cell(it.order_qty) + '</td>'
+                                + '<td>' + cell(it.marketplace_1) + '</td>'
+                                + '<td>' + cell(it.what_happened) + '</td>'
+                                + '<td>' + cell(it.issue) + '</td>'
+                                + '<td>' + cell(it.issue_remark) + '</td>'
+                                + '<td>' + cell(it.action_1) + '</td>'
+                                + '<td>' + cell(it.action_1_remark) + '</td>'
+                                + '<td>' + cell(it.c_action_1) + '</td>'
+                                + '<td>' + cell(it.c_action_1_remark) + '</td>'
+                                + '<td>' + cell(it.replacement_tracking) + '</td>'
+                                + '<td>' + cell(it.department) + '</td>'
+                                + '<td>' + cell(it.created_by) + '</td>'
+                                + '<td>' + cell(it.created_at_display || it.created_at) + '</td>'
+                                + '</tr>';
+                        }).join('');
+                        bodyEl.innerHTML = '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;">'
+                            + '<thead class="table-light"><tr>'
+                            + '<th>SKU</th><th>Parent</th><th>Qty</th><th>Order Qty</th><th>Mkt</th>'
+                            + '<th>What happened</th><th>Issue</th><th>Issue remark</th>'
+                            + '<th>Action</th><th>Action remark</th>'
+                            + '<th>RC Fixed</th><th>RC Fixed remark</th>'
+                            + '<th>Replacement</th><th>Dept</th><th>By</th><th>Created</th>'
+                            + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+                            + '<div class="form-text mt-2">Highlighted row = current PO SKU. Data from /customer-care/qc-and-packing (SKU + siblings).</div>';
+                    })
+                    .catch(() => {
+                        bodyEl.innerHTML = '<div class="text-danger p-2">Failed to load QC issues.</div>';
+                    });
+            }
+
+            document.querySelectorAll('.po-qc-btn').forEach((btn) => {
+                if (!btn || btn.dataset.bound === '1') return;
+                btn.dataset.bound = '1';
+                btn.addEventListener('click', () => openPoQcIssuesModal(btn.getAttribute('data-sku') || ''));
+            });
+
+            function bindDeleteButton(btn) {
+                if (!btn || btn.dataset.bound === '1') return;
+                btn.dataset.bound = '1';
+                btn.addEventListener('click', async () => {
+                    if (!deleteItemUrl) {
+                        alert('Purchase order id missing.');
+                        return;
+                    }
+                    const index = btn.getAttribute('data-item-index');
+                    if (index === null || index === '') return;
+                    if (!confirm('Delete this row?')) return;
+                    btn.disabled = true;
+                    try {
+                        const res = await fetch(deleteItemUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrf,
+                            },
+                            body: JSON.stringify({ item_index: parseInt(index, 10) }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || data.success === false) {
+                            throw new Error(data.message || 'Failed to delete row');
+                        }
+                        window.location.reload();
+                    } catch (err) {
+                        alert(err.message || 'Failed to delete row');
+                        btn.disabled = false;
+                    }
+                });
+            }
+
+            document.querySelectorAll('.po-delete-btn').forEach(bindDeleteButton);
+            const addRowModalEl = document.getElementById('poAddRowModal');
+            const addRowModal = addRowModalEl ? bootstrap.Modal.getOrCreateInstance(addRowModalEl) : null;
+            let addSkuSelect2Ready = false;
+
+            function resetAddRowForm() {
+                const ids = [
+                    'poAddSupplierSku', 'poAddShortName', 'poAddQty', 'poAddTech',
+                    'poAddNw', 'poAddGw', 'poAddCbm', 'poAddItemPkg', 'poAddCover',
+                    'poAddDesign', 'poAddCtnPkg', 'poAddCtnQty', 'poAddCtnPrint',
+                    'poAddSpecialQc', 'poAddPriceUsd', 'poAddPriceRmb',
+                ];
+                ids.forEach((id) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = '';
+                });
+                if (window.jQuery && $('#poAddSku').length) {
+                    $('#poAddSku').val(null).trigger('change');
+                }
+            }
+
+            function initAddSkuSelect2() {
+                if (!window.jQuery || addSkuSelect2Ready) return;
+                const $sku = $('#poAddSku');
+                if (!$sku.length) return;
+                $sku.select2({
+                    dropdownParent: $('#poAddRowModal'),
+                    width: '100%',
+                    placeholder: 'Search 5Core SKU…',
+                    allowClear: true,
+                    ajax: {
+                        url: skuSearchUrl,
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return { q: params.term || '', page: params.page || 1 };
+                        },
+                        processResults: function (data, params) {
+                            params.page = params.page || 1;
+                            const results = data.results || data.items || [];
+                            return {
+                                results: results,
+                                pagination: { more: !!(data.pagination && data.pagination.more) },
+                            };
+                        },
+                    },
+                });
+                $sku.off('select2:select.poShortName').on('select2:select.poShortName', async function (e) {
+                    const selectedSku = (e.params?.data?.id || '').toString().trim();
+                    const shortInput = document.getElementById('poAddShortName');
+                    if (!selectedSku || !shortInput || !shortNameBySkuUrl) return;
+                    // Only autofill when the field is empty so manual edits are kept.
+                    if ((shortInput.value || '').trim() !== '') return;
+                    try {
+                        const res = await fetch(shortNameBySkuUrl + '?sku=' + encodeURIComponent(selectedSku), {
+                            headers: { 'Accept': 'application/json' },
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok && data.short_name) {
+                            shortInput.value = String(data.short_name);
+                        }
+                    } catch (err) {
+                        // ignore autofill errors
+                    }
+                });
+                addSkuSelect2Ready = true;
+            }
+
+            document.getElementById('poAddRowBtn')?.addEventListener('click', () => {
+                if (!addItemUrl) {
+                    alert('Purchase order id missing.');
+                    return;
+                }
+                resetAddRowForm();
+                initAddSkuSelect2();
+                addRowModal?.show();
+            });
+
+            document.getElementById('poAddFromToOrderBtn')?.addEventListener('click', async () => {
+                if (!addFromToOrderUrl) {
+                    alert('Purchase order id missing.');
+                    return;
+                }
+                if (!confirm('Add SKUs currently shown on the Order page for this contract’s supplier?\nOnly rows with Order qty > 0.\nQuantity = Order column qty.\nExisting SKUs on this PO are skipped.')) {
+                    return;
+                }
+                const btn = document.getElementById('poAddFromToOrderBtn');
+                const prev = btn ? btn.textContent : '++';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '…';
+                }
+                try {
+                    const res = await fetch(addFromToOrderUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify({}),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to add SKUs from to-order-analysis');
+                    }
+                    alert(data.message || 'SKUs added.');
+                    window.location.reload();
+                } catch (err) {
+                    alert(err.message || 'Failed to add SKUs from to-order-analysis');
+                } finally {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = prev || '++';
+                    }
+                }
+            });
+
+            document.getElementById('poAddRowSaveBtn')?.addEventListener('click', async () => {
+                if (!addItemUrl) return;
+                const sku = (window.jQuery ? ($('#poAddSku').val() || '') : '').toString().trim();
+                if (!sku) {
+                    alert('Please select a 5Core SKU.');
+                    return;
+                }
+
+                const numOrNull = (id) => {
+                    const v = (document.getElementById(id)?.value || '').trim();
+                    return v === '' ? null : v;
+                };
+                const textVal = (id) => (document.getElementById(id)?.value || '').trim();
+
+                const payload = {
+                    sku: sku,
+                    supplier_sku: textVal('poAddSupplierSku'),
+                    short_name: textVal('poAddShortName'),
+                    tech: textVal('poAddTech'),
+                    nw: numOrNull('poAddNw'),
+                    gw: numOrNull('poAddGw'),
+                    cbm: numOrNull('poAddCbm'),
+                    qty: numOrNull('poAddQty') ?? 0,
+                    price_usd: numOrNull('poAddPriceUsd'),
+                    price_rmb: numOrNull('poAddPriceRmb'),
+                    item_pkg: textVal('poAddItemPkg'),
+                    ctn_pkg: textVal('poAddCtnPkg').slice(0, 100),
+                    item_pkg_cover: textVal('poAddCover'),
+                    design_file: textVal('poAddDesign'),
+                    ctn_qty: textVal('poAddCtnQty'),
+                    ctn_print_file: textVal('poAddCtnPrint'),
+                    special_instruction_qc: textVal('poAddSpecialQc'),
+                };
+
+                const saveBtn = document.getElementById('poAddRowSaveBtn');
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Adding…';
+                try {
+                    const res = await fetch(addItemUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrf,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || data.success === false) {
+                        throw new Error(data.message || 'Failed to add row');
+                    }
+                    addRowModal?.hide();
+                    window.location.reload();
+                } catch (err) {
+                    alert(err.message || 'Failed to add row');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Add Row';
+                }
+            });
+
             // Special Instruction QC — numbered points modal
             const specialQcUrl = @json(route('qc.improvement.req.before.item.pkg.update'));
             const specialQcModalEl = document.getElementById('poSpecialQcModal');
@@ -1704,7 +3321,7 @@
                 const points = parseSpecialQcPoints(text);
                 cell.setAttribute('data-special-qc', text || '');
                 if (!points.length) {
-                    cell.innerHTML = '<span class="po-special-qc-empty">—</span>';
+                    cell.innerHTML = '<span class="po-special-qc-empty">' + poMissingHtml + '</span>';
                     return;
                 }
                 cell.innerHTML = '<ol class="po-special-qc-list">'
@@ -1880,12 +3497,12 @@
             function renderPkgText(el, text) {
                 const t = (text || '').trim();
                 if (!el) return;
-                el.innerHTML = t ? escapeHtml(t).replace(/\n/g, '<br>') : '<span class="text-muted">—</span>';
+                el.innerHTML = t ? escapeHtml(t).replace(/\n/g, '<br>') : poMissingHtml;
             }
 
             function renderFileValueHtml(url) {
                 const u = (url || '').trim();
-                if (!u) return '<span class="text-muted">—</span>';
+                if (!u) return poMissingHtml;
                 if (isImagePath(u)) {
                     return `<img src="${escapeHtml(u)}" alt="" class="po-pkg-combined-thumb">`;
                 }
@@ -1915,7 +3532,7 @@
                 const qtyEl = cell.querySelector('.po-ctn-qty-text');
                 if (qtyEl && ctnQty !== undefined) {
                     const q = ctnQty == null ? '' : String(ctnQty).trim();
-                    qtyEl.innerHTML = q !== '' ? escapeHtml(q) : '<span class="text-muted">—</span>';
+                    qtyEl.innerHTML = q !== '' ? escapeHtml(q) : poMissingHtml;
                 }
 
                 const printEl = cell.querySelector('.po-ctn-print-text');
@@ -2200,8 +3817,8 @@
                 short_name: '.col-short-name',
                 tech: '.col-tech',
                 packaging: '.col-pkg',
-                dims: '.col-dims',
                 special_qc: '.col-special-qc',
+                claim: '.col-claim',
                 qty: '.col-qty',
                 price_usd: '.col-price-usd',
                 price_rmb: '.col-price-rmb',
@@ -2210,11 +3827,11 @@
             };
             const copyColLabels = {
                 product: 'Product',
-                short_name: 'Short Name',
+                short_name: 'Name',
                 tech: 'Tech',
                 packaging: 'Packaging',
-                dims: 'NW (kg) / GW (kg) / CBM',
                 special_qc: 'Special Instruction QC',
+                claim: 'Claim & Reimb.',
                 qty: 'QTY',
                 price_usd: 'Rate $',
                 price_rmb: 'Rate ¥',
@@ -2234,10 +3851,14 @@
             function cellCopyText(cell) {
                 if (!cell) return '';
                 const clone = cell.cloneNode(true);
-                clone.querySelectorAll('button, .po-copy-col-btn, .po-edit-btn, .po-line-actions, input, textarea, img').forEach((el) => el.remove());
+                clone.querySelectorAll('button, .po-copy-col-btn, .po-edit-btn, .po-delete-btn, .po-line-actions, .po-rate-cp-icon, input, textarea, img').forEach((el) => el.remove());
                 const input = cell.querySelector('.po-line-input, .po-supplier-sku-input');
                 if (input) {
                     return normalizeCopyText(input.value);
+                }
+                const fieldText = cell.querySelector('.po-field-text');
+                if (fieldText && cell.classList.contains('col-price-usd')) {
+                    return normalizeCopyText(fieldText.textContent);
                 }
                 const pkg = cell.querySelector('.po-pkg-combined');
                 if (pkg) {
@@ -2258,15 +3879,23 @@
                     });
                     return parts.filter(Boolean).join('\n');
                 }
-                const dims = cell.querySelector('.po-dims-cell');
-                if (dims) {
-                    const parts = [];
-                    dims.querySelectorAll('.po-dims-row').forEach((rowEl) => {
+                if (cell.classList.contains('col-tech') || cell.querySelector('.po-tech-block')) {
+                    const techEl = cell.querySelector('.po-editable[data-field="tech"]');
+                    const techInput = techEl?.querySelector('.po-line-input');
+                    const techText = techInput
+                        ? normalizeCopyText(techInput.value)
+                        : normalizeCopyText(techEl?.textContent || '');
+                    const dimsParts = [];
+                    cell.querySelectorAll('.po-dims-row').forEach((rowEl) => {
                         const label = normalizeCopyText(rowEl.querySelector('.po-dims-label')?.textContent || '');
-                        const value = normalizeCopyText(rowEl.querySelector('.po-dims-value')?.textContent || '');
-                        parts.push(label ? (label + ': ' + value) : value);
+                        const valueEl = rowEl.querySelector('.po-dims-value');
+                        const valueInput = valueEl?.querySelector('.po-line-input');
+                        const value = valueInput
+                            ? normalizeCopyText(valueInput.value)
+                            : normalizeCopyText(valueEl?.textContent || '');
+                        dimsParts.push(label ? (label + ': ' + value) : value);
                     });
-                    return parts.filter(Boolean).join('\n');
+                    return [techText, dimsParts.filter(Boolean).join('\n')].filter(Boolean).join('\n');
                 }
                 const product = cell.querySelector('.po-product-cell');
                 if (product) {

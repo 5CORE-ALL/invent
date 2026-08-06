@@ -101,7 +101,6 @@ return [
     'group.master' => 'sidebar_product',
     'seo.keywords.master' => 'sidebar_product',
     'title.master' => 'sidebar_product',
-    'short.title.master' => 'sidebar_product',
     'image.master' => 'sidebar_product',
     'bullet.points' => 'sidebar_product',
     'videos.master' => 'sidebar_product',

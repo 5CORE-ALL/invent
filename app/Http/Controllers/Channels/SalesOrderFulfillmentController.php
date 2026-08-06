@@ -20,6 +20,7 @@ use App\Models\ProductMaster;
 use App\Models\PurchasingPowerSale;
 use App\Models\ReverbOrderMetric;
 use App\Models\SalesOrderFulfillmentBadgeLink;
+use App\Models\SalesOrderFulfillmentDailySummary;
 use App\Models\SheinOrderMetric;
 use App\Models\ShopifySku;
 use App\Models\TemuOrder;
@@ -28,6 +29,7 @@ use App\Models\WayfairDailyData;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -129,31 +131,13 @@ class SalesOrderFulfillmentController extends Controller
                 ];
             })->values();
 
-            $pendingTotal = (int) $data->sum(function ($row) {
-                return $row['pending_count'] !== null ? (int) $row['pending_count'] : 0;
-            });
-            $fulfilled24h = $this->fulfilledLast24HoursCount();
-            $scanDone24h = $this->scanDoneLast24HoursCount();
-            $inTransitTotal = $this->inTransitOrdersCount();
-            $inReceivedTotal = $this->inReceivedOrdersCount();
-            $invoicedTotal = $this->invoicedOrdersCount();
-            $deliveredTotal = $this->deliveredOrdersCount();
-            $allOrderTotal = $this->allOrdersCount();
+            $totals = $this->collectSummaryTotals($data->count(), $data);
 
-            return response()->json([
+            return response()->json(array_merge([
                 'success' => true,
                 'data' => $data,
                 'count' => $data->count(),
-                'channel_count' => $data->count(),
-                'pending_total' => $pendingTotal,
-                'fulfilled_24h' => $fulfilled24h,
-                'scan_done_24h' => $scanDone24h,
-                'in_transit_total' => $inTransitTotal,
-                'in_received_total' => $inReceivedTotal,
-                'invoiced_total' => $invoicedTotal,
-                'delivered_total' => $deliveredTotal,
-                'all_order_total' => $allOrderTotal,
-            ]);
+            ], $totals));
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -1333,9 +1317,11 @@ class SalesOrderFulfillmentController extends Controller
             ], 422);
         }
 
-        $limit = max(1, min(500, (int) $request->input('limit', 100)));
-        $stale = max(0, (int) $request->input('stale', 0));
+        // Keep manual refresh modest so it cannot burn the whole USPS hourly quota.
+        $limit = max(1, min(120, (int) $request->input('limit', 80)));
+        $stale = max(0, (int) $request->input('stale', 30));
         $carrier = strtoupper(trim((string) $request->input('carrier', '')));
+        $repairQuota = filter_var($request->input('repair_quota', true), FILTER_VALIDATE_BOOL);
 
         try {
             $backfill = $this->backfillShopifyTrackingForLabelCreated($limit);
@@ -1349,6 +1335,9 @@ class SalesOrderFulfillmentController extends Controller
             if ($carrier !== '') {
                 $params['--carrier'] = $carrier;
             }
+            if ($repairQuota) {
+                $params['--repair-quota'] = true;
+            }
 
             $exit = Artisan::call('tracking:sync-status', $params);
             $output = trim(Artisan::output());
@@ -1357,6 +1346,7 @@ class SalesOrderFulfillmentController extends Controller
             $message = $exit === 0
                 ? "Shipment status updated. Label Created packages synced: {$movedHint}."
                     .' Shopify tracking backfilled: '.(int) ($backfill['updated'] ?? 0).'.'
+                    .' Open trackings continue on the paced schedule (~1–2×/day until Delivered).'
                 : 'Shipment status refresh finished with errors.';
 
             if ($exit === 0 && $movedHint === 0 && (int) ($backfill['with_tracking'] ?? 0) === 0) {
@@ -1635,10 +1625,14 @@ class SalesOrderFulfillmentController extends Controller
         foreach ($rows as $r) {
             $num = $r->tracking_number;
             $res = $results[$num] ?? null;
+            // Never persist quota/rate-limit noise as NotFound over a real status.
+            if (! ShipmentTrackingService::isPersistableResult($res)) {
+                continue;
+            }
             $affected = DB::table('shopify_raw_orders')
                 ->where('tracking_number', $num)
                 ->update([
-                    'shipment_status' => $res['status'] ?? ShipmentTrackingService::STATUS_NOT_FOUND,
+                    'shipment_status' => $res['status'],
                     'shipment_status_detail' => $res['detail'] ?? null,
                     'shipment_checked_at' => $now,
                     'updated_at' => $now,
@@ -2571,5 +2565,212 @@ class SalesOrderFulfillmentController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Summary-bar metrics (same keys shown on the SOF page badges).
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>|null  $channelRows
+     * @return array<string, int|string>
+     */
+    public function collectSummaryTotals(?int $channelCount = null, $channelRows = null): array
+    {
+        if ($channelCount === null) {
+            $channelCount = Schema::hasTable('channel_master')
+                ? (int) ChannelMaster::query()
+                    ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                    ->whereNotNull('channel')
+                    ->where('channel', '!=', '')
+                    ->count()
+                : 0;
+        }
+
+        $pendingTotal = 0;
+        if ($channelRows !== null) {
+            $pendingTotal = (int) collect($channelRows)->sum(function ($row) {
+                return ($row['pending_count'] ?? null) !== null ? (int) $row['pending_count'] : 0;
+            });
+        } else {
+            $pendingTotal = (int) array_sum($this->pendingOrderCountsBySlug());
+        }
+
+        return [
+            'channel_count' => (int) $channelCount,
+            'pending_total' => $pendingTotal,
+            'fulfilled_24h' => $this->fulfilledLast24HoursCount(),
+            'scan_done_24h' => $this->scanDoneLast24HoursCount(),
+            'in_transit_total' => $this->inTransitOrdersCount(),
+            'in_received_total' => $this->inReceivedOrdersCount(),
+            'invoiced_total' => $this->invoicedOrdersCount(),
+            'delivered_total' => $this->deliveredOrdersCount(),
+            'all_order_total' => $this->allOrdersCount(),
+            'calculated_at' => now('America/Los_Angeles')->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * Upsert one Pacific-day history row (used by sof:snapshot-daily at 00:00 PST).
+     * Always writes a row for that date — even when every metric is unchanged vs the prior day.
+     *
+     * @param  bool  $onlyIfMissing  When true, skip update if the day already has a row (catch-up safe).
+     */
+    public function saveDailySnapshot(?string $snapshotDate = null, bool $onlyIfMissing = false): SalesOrderFulfillmentDailySummary
+    {
+        if (! Schema::hasTable('sales_order_fulfillment_daily_data')) {
+            throw new \RuntimeException('sales_order_fulfillment_daily_data table missing — run migrations.');
+        }
+
+        $date = $snapshotDate ?: now('America/Los_Angeles')->subDay()->toDateString();
+
+        $existing = SalesOrderFulfillmentDailySummary::query()
+            ->whereDate('snapshot_date', $date)
+            ->first();
+
+        if ($onlyIfMissing && $existing) {
+            return $existing;
+        }
+
+        $summary = $this->collectSummaryTotals();
+        // Stamp every write so identical counts still produce a fresh daily record.
+        $summary['recorded_at'] = now('America/Los_Angeles')->toIso8601String();
+        $summary['unchanged_ok'] = true;
+
+        $prev = SalesOrderFulfillmentDailySummary::query()
+            ->whereDate('snapshot_date', '<', $date)
+            ->orderByDesc('snapshot_date')
+            ->first();
+        $prevData = $prev?->summary_data ?? [];
+        $metricKeys = array_keys(self::historyMetricKeys());
+        $sameAsPrev = $prev !== null;
+        foreach ($metricKeys as $key) {
+            if ((int) ($summary[$key] ?? 0) !== (int) ($prevData[$key] ?? -1)) {
+                $sameAsPrev = false;
+                break;
+            }
+        }
+        $summary['same_as_previous_day'] = $sameAsPrev;
+
+        $row = $existing ?? new SalesOrderFulfillmentDailySummary(['snapshot_date' => $date]);
+        $row->snapshot_date = $date;
+        $row->summary_data = $summary;
+        $row->notes = $sameAsPrev
+            ? 'Daily SOF snapshot (no metric change vs prior day — still recorded)'
+            : 'Daily SOF snapshot (Pacific day)';
+        $row->updated_at = now();
+        $row->save();
+
+        return $row->fresh();
+    }
+
+    /** Metric keys used by history dots / charts (badge → summary_data key). */
+    public static function historyMetricKeys(): array
+    {
+        return [
+            'channel_count' => 'Channels',
+            'pending_total' => 'Pending',
+            'fulfilled_24h' => 'Label Created / No Scan',
+            'scan_done_24h' => 'Shipped/Received',
+            'in_transit_total' => 'In Transit',
+            'in_received_total' => 'In Received',
+            'invoiced_total' => 'Invoiced',
+            'delivered_total' => 'Delivered',
+            'all_order_total' => 'All Order',
+        ];
+    }
+
+    /**
+     * Trend dots for summary badges — same idea as Active Channel Master.
+     * Returns [older, newer] per metric for green/red/gray coloring.
+     */
+    public function historyDotTrends(): JsonResponse
+    {
+        try {
+            if (! Schema::hasTable('sales_order_fulfillment_daily_data')) {
+                return response()->json(['success' => true, 'metrics' => (object) []]);
+            }
+
+            $rows = SalesOrderFulfillmentDailySummary::query()
+                ->orderBy('snapshot_date', 'desc')
+                ->take(30)
+                ->get();
+
+            $metrics = [];
+            foreach (array_keys(self::historyMetricKeys()) as $key) {
+                $metrics[$key] = [null, null];
+            }
+
+            // Compare latest day vs the immediately previous recorded day (even if values match → gray).
+            if ($rows->count() >= 2) {
+                $newer = $rows->get(0)->summary_data ?? [];
+                $older = $rows->get(1)->summary_data ?? [];
+                foreach (array_keys(self::historyMetricKeys()) as $key) {
+                    $v2 = array_key_exists($key, $newer) ? (float) $newer[$key] : null;
+                    $v1 = array_key_exists($key, $older) ? (float) $older[$key] : null;
+                    $metrics[$key] = [$v1, $v2];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'metrics' => $metrics,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'metrics' => (object) [],
+            ], 500);
+        }
+    }
+
+    /**
+     * Chart.js series for one summary metric (Active Channel Master style).
+     */
+    public function historyChartData(Request $request): JsonResponse
+    {
+        try {
+            $metric = trim((string) $request->input('metric', 'pending_total'));
+            $days = (int) $request->input('days', 30);
+            $labels = self::historyMetricKeys();
+            if (! array_key_exists($metric, $labels)) {
+                return response()->json(['success' => false, 'message' => 'Unknown metric'], 400);
+            }
+
+            if (! Schema::hasTable('sales_order_fulfillment_daily_data')) {
+                return response()->json(['success' => true, 'data' => [], 'label' => $labels[$metric]]);
+            }
+
+            $query = SalesOrderFulfillmentDailySummary::query()->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                $start = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $start);
+            }
+
+            $chartData = [];
+            foreach ($query->get() as $row) {
+                $sd = $row->summary_data ?? [];
+                if (! array_key_exists($metric, $sd)) {
+                    continue;
+                }
+                $chartData[] = [
+                    'date' => Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->format('M d'),
+                    'value' => (float) $sd[$metric],
+                    'snapshot_date' => Carbon::parse($row->snapshot_date)->toDateString(),
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'label' => $labels[$metric],
+                'metric' => $metric,
+                'data' => $chartData,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => [],
+            ], 500);
+        }
     }
 }

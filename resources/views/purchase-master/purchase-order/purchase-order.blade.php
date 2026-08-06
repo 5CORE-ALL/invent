@@ -2,7 +2,120 @@
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
 <style>
+    #createPurchaseOrderModal .select2-container--bootstrap-5 .select2-selection,
+    #editPurchaseOrderModal .select2-container--bootstrap-5 .select2-selection {
+        min-height: 38px;
+    }
+    #createPurchaseOrderModal .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field,
+    #editPurchaseOrderModal .select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+        padding: 6px 10px;
+    }
+    #createPurchaseOrderModal .po-sku-select2 + .select2-container,
+    #editPurchaseOrderModal .po-sku-select2 + .select2-container {
+        width: 100% !important;
+        flex: 1 1 auto;
+    }
+    .po-summary-cell {
+        max-width: 320px;
+        vertical-align: middle !important;
+    }
+    .po-summary-sku-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+        justify-content: flex-start;
+    }
+    .po-summary-sku-tag {
+        display: inline-block;
+        max-width: 140px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #e8eaf6;
+        border: 1px solid #c5cae9;
+        color: #283593;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1.35;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .po-summary-sku-more {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: #eceff1;
+        color: #546e7a;
+        font-size: 0.7rem;
+        font-weight: 700;
+        cursor: default;
+    }
+    .po-supplier-badge {
+        display: inline-block;
+        max-width: 96px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+    }
+    .po-sku-field-wrap {
+        display: flex;
+        align-items: stretch;
+        gap: 6px;
+    }
+    .po-sku-field-wrap .po-sku-select-wrap {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .po-add-sku-btn {
+        flex: 0 0 38px;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #75c0c1;
+        border: 1px solid #75c0c1;
+        color: #fff;
+        border-radius: 6px;
+    }
+    .po-add-sku-btn:hover {
+        background: #5aa9aa;
+        border-color: #5aa9aa;
+        color: #fff;
+    }
+    /*
+     * Modal stacking — keep above layout chrome (floating task z-index 1050).
+     * Do NOT put zoom on body; it breaks Bootstrap backdrop size/z-index.
+     */
+    #createPurchaseOrderModal,
+    #editPurchaseOrderModal,
+    #poItemsModal {
+        z-index: 2100 !important;
+    }
+    #addProductModal {
+        z-index: 2200 !important;
+    }
+    body.modal-open > .modal-backdrop {
+        z-index: 2090 !important;
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+    }
+    body.po-nested-product-modal > .modal-backdrop:last-of-type {
+        z-index: 2190 !important;
+    }
     .tabulator .tabulator-header {
         background: linear-gradient(90deg, #e0e7ff 0%, #f4f7fa 100%);
         border-bottom: 2px solid #1a2942;
@@ -339,8 +452,8 @@
                         <thead class="table-light text-center align-middle">
                             <tr>
                                 <th style="width: 40px;"><input type="checkbox" id="select-all-po" title="Select all"></th>
-                                <th class="po-sortable" data-sort="po_number" style="cursor: pointer; user-select: none;">PO Number <i class="fas fa-sort ms-1 sort-icon"></i></th>
-                                <th class="po-sortable" data-sort="po_date" style="cursor: pointer; user-select: none;">PO Date <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="po_number" style="cursor: pointer; user-select: none;">PO <i class="fas fa-sort ms-1 sort-icon"></i></th>
+                                <th class="po-sortable" data-sort="po_date" style="cursor: pointer; user-select: none;">Date <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="supplier_name" style="cursor: pointer; user-select: none;">Supplier <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="sku_list" style="cursor: pointer; user-select: none;">Summary <i class="fas fa-sort ms-1 sort-icon"></i></th>
                                 <th class="po-sortable" data-sort="total_amount" style="cursor: pointer; user-select: none;">O Amount <i class="fas fa-sort ms-1 sort-icon"></i></th>
@@ -381,7 +494,7 @@
 
 {{-- add purchase modal --}}
 <div class="modal fade" id="createPurchaseOrderModal" tabindex="-1" aria-labelledby="createPurchaseOrderModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+    <div class="modal-dialog modal-md modal-dialog-centered shadow-none">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title fw-bold" id="createPurchaseOrderModalLabel">
@@ -390,111 +503,37 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <form id="purchaseOrderForm" method="POST" action="{{ route('purchase-orders.store') }}" enctype="multipart/form-data" autocomplete="off">
+            <form id="purchaseOrderForm" method="POST" action="{{ route('purchase-orders.store') }}" autocomplete="off">
                 @csrf
                 <div class="modal-body">
-                    {{-- PO Header Section --}}
                     <div class="row g-2">
-                        <div class="col-md-3 d-none">
+                        <div class="col-12 d-none">
                             <label class="form-label fw-semibold">PO Number</label>
                             <input type="text" class="form-control" name="po_number" value="{{ $poNumber }}" readonly>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-12">
                             <label class="form-label fw-semibold">Supplier <span class="text-danger">*</span></label>
-                            <select class="form-select" name="supplier" required>
-                                <option value="" disabled selected>Select Supplier</option>
+                            <select class="form-select po-supplier-select2" name="supplier" required data-placeholder="Search supplier…">
+                                <option value=""></option>
                                 @foreach($suppliers as $supplier)
                                     <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Advance Amount <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" name="advance_amount" placeholder="enter supplier advance amount" step="any">
+                        <div class="col-12 d-none">
+                            <label class="form-label fw-semibold">Advance Amount</label>
+                            <input type="number" class="form-control" name="advance_amount" value="0" step="any">
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">PO Date <span class="text-danger">*</span></label>
-                            <input type="date" class="form-control" name="po_date" required>
-                        </div>
-                    </div>
-
-                    <hr class="my-3">
-
-                    {{-- Product Section --}}
-                    <div>
-                        <h5 class="fw-semibold mb-2 text-primary">
-                            <i class="fas fa-boxes-stacked me-1"></i> Product Details
-                        </h5>
-                        <div id="productRowsWrapper">
-                            <div class="row g-2 product-row border rounded p-2 mt-2 position-relative">
-                                <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2 ">
-                                    <i class="fas fa-trash-alt text-danger delete-product-row-btn" style="cursor: pointer; font-size: 1.2rem; margin-top:-10px;"></i>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">5Core SKU <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" name="sku[]" required>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Supplier SKU</label>
-                                    <input type="text" class="form-control" name="supplier_sku[]">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Product Photo</label>
-                                    <input type="file" class="form-control" name="photo[]" accept="image/*">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Tech</label>
-                                    <textarea class="form-control" name="tech[]"></textarea>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Qty</label>
-                                    <input type="number" class="form-control" name="qty[]" step="any">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Currency</label>
-                                    <select class="form-select po-currency-select" name="currency[]">
-                                        <option value="USD">USD</option>
-                                        <option value="RMB">RMB</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Price</label>
-                                    <input type="number" class="form-control po-price-input" name="price[]" step="any">
-                                    <small class="text-muted po-usd-equiv d-none"></small>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">Price Type</label>
-                                    <select class="form-select" name="price_type[]">
-                                        <option value="EXW">EXW</option>
-                                        <option value="FOB">FOB</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">NW /per pcs (KG)</label>
-                                    <input type="number" class="form-control" name="nw[]" step="any">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">GW /per pcs (KG)</label>
-                                    <input type="number" class="form-control" name="gw[]" step="any">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label fw-semibold">CBM</label>
-                                    <input type="number" class="form-control" name="cbm[]" step="any">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mt-3">
-                            <button type="button" class="btn btn-outline-primary btn-sm" id="addProductRowBtn">
-                                <i class="fas fa-plus-circle me-1"></i> Add Product Row
-                            </button>
+                        <div class="col-12 d-none">
+                            <label class="form-label fw-semibold">PO Date</label>
+                            <input type="date" class="form-control" name="po_date" id="createPoDate" value="{{ now()->toDateString() }}">
                         </div>
                     </div>
                 </div>
 
                 <div class="modal-footer bg-white">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i> Close
+                        <i class="fas fa-times me-1"></i> Cancel
                     </button>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save me-1"></i> Save
@@ -507,7 +546,7 @@
 
 {{-- Edit Purchase Order Modal --}}
 <div class="modal fade" id="editPurchaseOrderModal" tabindex="-1" aria-labelledby="editPurchaseOrderModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+    <div class="modal-dialog modal-md modal-dialog-centered shadow-none">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title fw-bold" id="editPurchaseOrderModalLabel">
@@ -516,54 +555,33 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <form id="editPurchaseOrderForm" method="POST" action="" enctype="multipart/form-data" autocomplete="off">
+            <form id="editPurchaseOrderForm" method="POST" action="" autocomplete="off">
                 @csrf
                 <div class="modal-body">
-                    {{-- PO Header Section --}}
                     <div class="row g-2">
-                        <div class="col-md-3 d-none">
+                        <div class="col-12 d-none">
                             <label class="form-label fw-semibold">PO Number</label>
                             <input type="text" class="form-control" name="po_number" readonly>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-12">
                             <label class="form-label fw-semibold">Supplier</label>
-                            <select class="form-select" name="supplier" required>
-                                <option value="" disabled>Select Supplier</option>
+                            <select class="form-select po-supplier-select2" name="supplier" required data-placeholder="Search supplier…">
+                                <option value=""></option>
                                 @foreach($suppliers as $supplier)
                                     <option value="{{ $supplier->id }}">{{ $supplier->name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold">Advance Amount</label>
-                            <input type="number" class="form-control" name="advance_amount" step="any">
-                        </div>
-                        <div class="col-md-3">
+                        <div class="col-12">
                             <label class="form-label fw-semibold">PO Date</label>
                             <input type="date" class="form-control" name="po_date">
-                        </div>
-                    </div>
-
-                    <hr class="my-3">
-
-                    {{-- Product Section --}}
-                    <div>
-                        <h5 class="fw-semibold mb-2 text-warning">
-                            <i class="fas fa-boxes-stacked me-1"></i> Product Details
-                        </h5>
-                        <div id="editProductRowsWrapper"></div>
-
-                        <div class="mt-3">
-                            <button type="button" class="btn btn-outline-warning btn-sm" id="addEditProductRowBtn">
-                                <i class="fas fa-plus-circle me-1"></i> Add Product Row
-                            </button>
                         </div>
                     </div>
                 </div>
 
                 <div class="modal-footer bg-white">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times me-1"></i> Close
+                        <i class="fas fa-times me-1"></i> Cancel
                     </button>
                     <button type="submit" class="btn btn-warning">
                         <i class="fas fa-save me-1"></i> Update
@@ -576,6 +594,307 @@
 
 @endsection
 @section('script')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+    const poSkuSearchUrl = @json(url('/purchase/search-sku'));
+
+    function initPoSupplierSelect2($modal) {
+        if (!$modal || !$modal.length) return;
+        $modal.find('select.po-supplier-select2').each(function () {
+            const $sel = $(this);
+            if ($sel.hasClass('select2-hidden-accessible')) {
+                return;
+            }
+            $sel.select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $modal,
+                placeholder: $sel.data('placeholder') || 'Search supplier…',
+                allowClear: true,
+                minimumResultsForSearch: 0,
+            });
+        });
+    }
+
+    function fillTechFromSkuSelect($sel) {
+        const sku = String($sel.val() || '').trim();
+        const row = $sel.closest('.product-row')[0];
+        if (!row || !sku) return;
+        const techField = row.querySelector('textarea[name="tech[]"]');
+        if (!techField) return;
+        // Only auto-fill when Tech is empty (do not overwrite manual edits).
+        if ((techField.value || '').trim() !== '') return;
+        fetch('/purchase-orders/tech-from-comparison?sku=' + encodeURIComponent(sku))
+            .then(res => res.json())
+            .then(data => {
+                if (!data || !data.success || !(data.tech || '').trim()) return;
+                if ((techField.value || '').trim() !== '') return;
+                techField.value = data.tech;
+            })
+            .catch(() => {});
+    }
+
+    function initPoSkuSelect2($modal, $scope) {
+        if (!$modal || !$modal.length) return;
+        const $root = $scope && $scope.length ? $scope : $modal;
+        $root.find('select.po-sku-select2').each(function () {
+            const $sel = $(this);
+            if ($sel.hasClass('select2-hidden-accessible')) {
+                return;
+            }
+            $sel.select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                dropdownParent: $modal,
+                placeholder: $sel.data('placeholder') || 'Search 5Core SKU…',
+                allowClear: true,
+                // No free typing of custom SKUs — select from Product Master only.
+                tags: false,
+                minimumInputLength: 1,
+                ajax: {
+                    url: poSkuSearchUrl,
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (params) {
+                        return {
+                            q: params.term || '',
+                            page: params.page || 1,
+                        };
+                    },
+                    processResults: function (data, params) {
+                        params.page = params.page || 1;
+                        const results = data.results || data.items || [];
+                        return {
+                            results: results,
+                            pagination: {
+                                more: !!(data.pagination && data.pagination.more) || !!data.has_more,
+                            },
+                        };
+                    },
+                    cache: true,
+                },
+            });
+            $sel.off('select2:select.poSkuTech').on('select2:select.poSkuTech', function () {
+                fillTechFromSkuSelect($sel);
+            });
+        });
+    }
+
+    function poSkuSelectHtml(selectedSku) {
+        const sku = String(selectedSku || '').trim();
+        const selectedOpt = sku
+            ? `<option value="${sku.replace(/"/g, '&quot;')}" selected>${sku.replace(/</g, '&lt;')}</option>`
+            : '<option value=""></option>';
+        return `
+            <div class="po-sku-field-wrap">
+                <div class="po-sku-select-wrap">
+                    <select class="form-select po-sku-select2" name="sku[]" data-placeholder="Search 5Core SKU…">
+                        ${selectedOpt}
+                    </select>
+                </div>
+                <button type="button" class="btn po-add-sku-btn" title="Add product (Product Master)" aria-label="Add product">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    $(function () {
+        ['#createPurchaseOrderModal', '#editPurchaseOrderModal'].forEach(function (id) {
+            const $modal = $(id);
+            $modal.on('shown.bs.modal', function () {
+                setTimeout(function () {
+                    initPoSupplierSelect2($modal);
+                    initPoSkuSelect2($modal);
+                }, 50);
+            });
+        });
+
+        // Autogenerate PO date (today) whenever Create modal opens.
+        $('#createPurchaseOrderModal').on('show.bs.modal', function () {
+            const el = document.getElementById('createPoDate');
+            if (!el) return;
+            const d = new Date();
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            el.value = yyyy + '-' + mm + '-' + dd;
+        });
+
+        // Product Master "+" next to 5Core SKU — same modal / store as Product Master page.
+        let poAddSkuTargetSelect = null;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+        function resetPoAddProductForm() {
+            const form = document.getElementById('addProductForm');
+            if (form) form.reset();
+            document.getElementById('imagePreview') && (document.getElementById('imagePreview').innerHTML = '');
+            document.getElementById('form-errors') && (document.getElementById('form-errors').innerHTML = '');
+            document.querySelectorAll('#addProductForm .is-invalid').forEach((el) => el.classList.remove('is-invalid'));
+            document.querySelectorAll('#addProductForm .invalid-feedback').forEach((el) => { el.textContent = ''; });
+            const saveBtn = document.getElementById('saveProductBtn');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.removeAttribute('data-original-sku');
+            }
+        }
+
+        function showPoAddFieldError(field, message) {
+            if (!field) return;
+            field.classList.add('is-invalid');
+            let feedback = field.parentNode.querySelector('.invalid-feedback');
+            if (!feedback) {
+                feedback = document.createElement('div');
+                feedback.className = 'invalid-feedback';
+                field.parentNode.appendChild(feedback);
+            }
+            feedback.textContent = message || 'Invalid';
+        }
+
+        function validatePoAddProductForm() {
+            let ok = true;
+            const skuEl = document.getElementById('sku');
+            const unitEl = document.getElementById('unit');
+            [skuEl, unitEl].forEach((field) => {
+                if (!field) return;
+                const val = (field.value || '').trim();
+                if (!val) {
+                    showPoAddFieldError(field, field.id === 'unit' ? 'Please select a unit' : 'This field is required');
+                    ok = false;
+                } else {
+                    field.classList.remove('is-invalid');
+                }
+            });
+            return ok;
+        }
+
+        function buildPoAddProductFormData() {
+            const formElement = document.getElementById('addProductForm');
+            const formData = new FormData(formElement);
+            formData.append('parent', document.getElementById('parent')?.value || '');
+            formData.append('sku', document.getElementById('sku')?.value || '');
+            formData.append('unit', document.getElementById('unit')?.value || '');
+            formData.append('operation', 'create');
+
+            const values = {
+                lp: document.getElementById('lp')?.value || null,
+                cp: document.getElementById('cp')?.value || null,
+                lps: document.getElementById('lps')?.value || null,
+                wt_act: document.getElementById('wtAct')?.value || null,
+                dc: document.getElementById('dc')?.value || null,
+                l2_url: document.getElementById('l2Url')?.value || null,
+                b: document.getElementById('b')?.value || null,
+                h1: document.getElementById('h1')?.value || null,
+                weight: document.getElementById('weight')?.value || null,
+                msrp: document.getElementById('msrp')?.value || null,
+                map: document.getElementById('map')?.value || null,
+                status: document.getElementById('status')?.value || null,
+                unit: document.getElementById('unit')?.value || null,
+                upc: document.getElementById('upc')?.value || null,
+            };
+            formData.append('Values', JSON.stringify(values));
+            return formData;
+        }
+
+        function applySkuToPoSelect($sel, sku) {
+            if (!$sel || !$sel.length || !sku) return;
+            const exists = $sel.find('option').filter(function () { return this.value === sku; }).length > 0;
+            if (!exists) {
+                $sel.append(new Option(sku, sku, true, true));
+            }
+            $sel.val(sku).trigger('change');
+            fillTechFromSkuSelect($sel);
+        }
+
+        $(document).on('click', '.po-add-sku-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const row = $(this).closest('.product-row');
+            poAddSkuTargetSelect = row.find('select.po-sku-select2').first();
+            resetPoAddProductForm();
+            const modalEl = document.getElementById('addProductModal');
+            if (!modalEl) return;
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        });
+
+        document.getElementById('productImage')?.addEventListener('change', function () {
+            const preview = document.getElementById('imagePreview');
+            if (!preview) return;
+            preview.innerHTML = '';
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (ev) {
+                    preview.innerHTML = `<img src="${ev.target.result}" alt="Preview" style="max-width:120px;max-height:120px;border-radius:8px;">`;
+                };
+                reader.readAsDataURL(this.files[0]);
+            }
+        });
+
+        document.getElementById('saveProductBtn')?.addEventListener('click', async function () {
+            if (!validatePoAddProductForm()) return;
+            const saveBtn = this;
+            saveBtn.disabled = true;
+            try {
+                const response = await fetch(@json(route('product_master.store')), {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                    body: buildPoAddProductFormData(),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    if (response.status === 409 || (data.message && String(data.message).includes('already exists'))) {
+                        showPoAddFieldError(document.getElementById('sku'), 'This SKU already exists. Please use a different SKU.');
+                        alert(data.message || 'This SKU already exists in the database!');
+                        return;
+                    }
+                    throw new Error(data.message || ('Server returned status ' + response.status));
+                }
+
+                const newSku = (data?.data?.SKU || data?.data?.sku || document.getElementById('sku')?.value || '').trim();
+                const modalEl = document.getElementById('addProductModal');
+                bootstrap.Modal.getInstance(modalEl)?.hide();
+                if (poAddSkuTargetSelect && poAddSkuTargetSelect.length && newSku) {
+                    applySkuToPoSelect(poAddSkuTargetSelect, newSku);
+                }
+                resetPoAddProductForm();
+                poAddSkuTargetSelect = null;
+                alert(data.message || 'Product successfully added!');
+            } catch (err) {
+                alert(err.message || 'Failed to save product');
+            } finally {
+                saveBtn.disabled = false;
+            }
+        });
+
+        document.getElementById('addProductModal')?.addEventListener('show.bs.modal', function () {
+            document.body.classList.add('po-nested-product-modal');
+        });
+
+        document.getElementById('addProductModal')?.addEventListener('shown.bs.modal', function () {
+            this.style.zIndex = 2200;
+            const backs = document.querySelectorAll('body > .modal-backdrop');
+            if (backs.length > 1) {
+                backs[backs.length - 1].style.zIndex = 2190;
+            }
+            document.getElementById('sku')?.focus();
+        });
+
+        document.getElementById('addProductModal')?.addEventListener('hidden.bs.modal', function () {
+            document.body.classList.remove('po-nested-product-modal');
+            resetPoAddProductForm();
+            // Keep Create/Edit PO modal above its backdrop after nested close
+            const openPo = document.querySelector('#createPurchaseOrderModal.show, #editPurchaseOrderModal.show');
+            if (openPo) {
+                openPo.style.zIndex = 2100;
+                const backs = document.querySelectorAll('body > .modal-backdrop');
+                backs.forEach((b) => { b.style.zIndex = 2090; });
+            }
+        });
+    });
+</script>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -587,38 +906,22 @@
     let sortColumn = 'po_date';
     let sortDir = 'desc';
 
-    document.body.style.zoom = "90%";
-
-    function fillTechFromComparison(skuInput) {
-        if (!skuInput) return;
-        const row = skuInput.closest('.product-row');
-        if (!row) return;
-        const techField = row.querySelector('textarea[name="tech[]"]');
-        if (!techField) return;
-
-        const sku = (skuInput.value || '').trim();
-        if (!sku) return;
-
-        // Only auto-fill when Tech is empty (do not overwrite manual edits).
-        if ((techField.value || '').trim() !== '') return;
-
-        fetch('/purchase-orders/tech-from-comparison?sku=' + encodeURIComponent(sku))
-            .then(res => res.json())
-            .then(data => {
-                if (!data || !data.success || !(data.tech || '').trim()) return;
-                if ((techField.value || '').trim() !== '') return;
-                techField.value = data.tech;
-            })
-            .catch(() => {});
-    }
+    // Zoom page content only — never body (breaks modal backdrop / z-index).
+    (function () {
+        const page = document.querySelector('.content-page');
+        if (page) page.style.zoom = '90%';
+    })();
 
     document.addEventListener("DOMContentLoaded", function () {
-        getPurchaseOrderData();
-
-        document.addEventListener('focusout', function (e) {
-            const input = e.target.closest('input[name="sku[]"]');
-            if (input) fillTechFromComparison(input);
+        // Host modals on <body> so they sit above backdrops correctly.
+        ['createPurchaseOrderModal', 'editPurchaseOrderModal', 'poItemsModal'].forEach(function (id) {
+            const el = document.getElementById(id);
+            if (el && el.parentElement !== document.body) {
+                document.body.appendChild(el);
+            }
         });
+
+        getPurchaseOrderData();
 
         document.getElementById("purchase-order-search").addEventListener("input", applyFilters);
         document.getElementById("search-items").addEventListener("input", applyFilters);
@@ -668,174 +971,31 @@
 
                 form.querySelector("[name='po_number']").value = order.po_number ?? "";
                 
-                // Supplier
+                // Supplier (Select2 quick search)
                 let supplierSelect = form.querySelector("[name='supplier']");
                 if (supplierSelect) {
-                    Array.from(supplierSelect.options).forEach(opt => {
-                        opt.selected = (String(opt.value) === String(order.supplier_id));
-                    });
+                    const supplierId = order.supplier_id != null ? String(order.supplier_id) : '';
+                    if (window.jQuery && $(supplierSelect).hasClass('select2-hidden-accessible')) {
+                        $(supplierSelect).val(supplierId).trigger('change');
+                    } else {
+                        Array.from(supplierSelect.options).forEach(opt => {
+                            opt.selected = (String(opt.value) === supplierId);
+                        });
+                        if (window.jQuery) {
+                            $(supplierSelect).val(supplierId);
+                        }
+                    }
                 }
-
-
-                // Advance Amount
-                form.querySelector("[name='advance_amount']").value = order.advance_amount ?? 0;
 
 
                 // PO Date
                 form.querySelector("[name='po_date']").value = order.po_date ?? "";
-
-                //Clear old product rows
-                let wrapper = document.getElementById("editProductRowsWrapper");
-                wrapper.innerHTML = "";
-
-                //Render each item row
-                items.forEach(item => {
-                    wrapper.insertAdjacentHTML("beforeend", `
-                        <div class="row g-2 product-row border rounded p-2 mt-2 position-relative">
-                            <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2">
-                                <i class="fas fa-trash-alt text-danger delete-product-row-btn" 
-                                style="cursor:pointer; font-size:1.2rem; margin-top:-10px;"></i>
-                            </div>
-
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">5Core SKU</label>
-                                <input type="text" class="form-control" name="sku[]" value="${item.sku ?? ''}">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Supplier SKU</label>
-                                <input type="text" class="form-control" name="supplier_sku[]" value="${item.supplier_sku ?? ''}">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Product Photo</label>
-                                <input type="file" class="form-control" name="photo[]" accept="image/*">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Tech</label>
-                                <textarea class="form-control" name="tech[]">${item.tech ?? ''}</textarea>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Qty</label>
-                                <input type="number" class="form-control" name="qty[]" value="${item.qty ?? 0}" step="any">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Currency</label>
-                                <select class="form-select po-currency-select" name="currency[]">
-                                    <option value="USD" ${item.currency=="USD"?"selected":""}>USD</option>
-                                    <option value="RMB" ${item.currency=="RMB"?"selected":""}>RMB</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Price</label>
-                                <input type="number" class="form-control po-price-input" name="price[]" value="${item.price ?? 0}" step="any">
-                                <small class="text-muted po-usd-equiv d-none"></small>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">Price Type</label>
-                                <select class="form-select" name="price_type[]">
-                                    <option value="EXW" ${item.price_type=="EXW"?"selected":""}>EXW</option>
-                                    <option value="FOB" ${item.price_type=="FOB"?"selected":""}>FOB</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">NW /per pcs (KG)</label>
-                                <input type="number" class="form-control" name="nw[]" value="${item.nw ?? 0}" step="any">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">GW /per pcs (KG)</label>
-                                <input type="number" class="form-control" name="gw[]" value="${item.gw ?? 0}" step="any">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-semibold">CBM</label>
-                                <input type="number" class="form-control" name="cbm[]" value="${item.cbm ?? 0}" step="any">
-                            </div>
-                        </div>
-                    `);
-                });
 
                 //Finally show modal
                 let editModal = new bootstrap.Modal(document.getElementById("editPurchaseOrderModal"));
                 editModal.show();
             }
         });
-
-        document.getElementById("addEditProductRowBtn").addEventListener("click", function() {
-            let wrapper = document.getElementById("editProductRowsWrapper");
-
-            wrapper.insertAdjacentHTML("beforeend", `
-                <div class="row g-2 product-row border rounded p-2 mt-2 position-relative">
-                    <div class="d-flex justify-content-end position-absolute top-0 end-0 p-2">
-                        <i class="fas fa-trash-alt text-danger delete-product-row-btn" 
-                        style="cursor:pointer; font-size:1.2rem; margin-top:-10px;"></i>
-                    </div>
-
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">5Core SKU</label>
-                        <input type="text" class="form-control" name="sku[]">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Supplier SKU</label>
-                        <input type="text" class="form-control" name="supplier_sku[]">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Product Photo</label>
-                        <input type="file" class="form-control" name="photo[]" accept="image/*">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Tech</label>
-                        <textarea class="form-control" name="tech[]"></textarea>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Qty</label>
-                        <input type="number" class="form-control" name="qty[]" value="0" step="any">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Currency</label>
-                        <select class="form-select po-currency-select" name="currency[]">
-                            <option value="USD" selected>USD</option>
-                            <option value="RMB">RMB</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Price</label>
-                        <input type="number" class="form-control po-price-input" name="price[]" value="0" step="any">
-                        <small class="text-muted po-usd-equiv d-none"></small>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Price Type</label>
-                        <select class="form-select" name="price_type[]">
-                            <option value="EXW" selected>EXW</option>
-                            <option value="FOB">FOB</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">NW /per pcs (KG)</label>
-                        <input type="number" class="form-control" name="nw[]" value="0" step="any">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">GW /per pcs (KG)</label>
-                        <input type="number" class="form-control" name="gw[]" value="0" step="any">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">CBM</label>
-                        <input type="number" class="form-control" name="cbm[]" value="0" step="any">
-                    </div>
-                </div>
-            `);
-        });
-
-        document.addEventListener("click", function(e) {
-            if (e.target.classList.contains("delete-product-row-btn")) {
-                const row = e.target.closest(".product-row");
-                const rows = document.querySelectorAll(".product-row");
-                if (rows.length > 1) {
-                    row.remove();
-                } else {
-                    row.querySelectorAll("input, select, textarea").forEach(input => input.value = "");
-                    alert("At least one row must remain.");
-                }
-            }
-        });
-
 
     });
 
@@ -866,6 +1026,31 @@
         return n % 1 === 0 ? n : n.toFixed(2);
     }
 
+    /** Display like "1 Apr"; hover title shows full date (e.g. 2026-06-22 / 22 June 2026). */
+    function formatPoDateCell(raw) {
+        const s = String(raw ?? '').trim();
+        if (!s) return '-';
+        const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        let d = null;
+        if (m) {
+            d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        } else {
+            const parsed = new Date(s);
+            if (!isNaN(parsed.getTime())) d = parsed;
+        }
+        if (!d || isNaN(d.getTime())) return escapeHtml(s);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const short = d.getDate() + ' ' + months[d.getMonth()];
+        const fullMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const iso = yyyy + '-' + mm + '-' + dd;
+        const full = d.getDate() + ' ' + fullMonths[d.getMonth()] + ' ' + yyyy;
+        const title = iso + ' — ' + full;
+        return `<span class="po-date-short" title="${escapeHtml(title)}" style="cursor:default;">${escapeHtml(short)}</span>`;
+    }
+
     function getFilteredData() {
         const searchValue = document.getElementById("purchase-order-search").value.toLowerCase();
         const searchItemsValue = document.getElementById("search-items").value.toLowerCase();
@@ -884,6 +1069,75 @@
             .replace(/"/g, "&quot;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
+    }
+
+    const PO_SUPPLIER_PALETTE = [
+        { bg: '#dbeafe', text: '#1e3a8a' },
+        { bg: '#dcfce7', text: '#14532d' },
+        { bg: '#fce7f3', text: '#831843' },
+        { bg: '#e0e7ff', text: '#3730a3' },
+        { bg: '#ffedd5', text: '#9a3412' },
+        { bg: '#ccfbf1', text: '#115e59' },
+        { bg: '#f3e8ff', text: '#581c87' },
+        { bg: '#fee2e2', text: '#991b1b' },
+        { bg: '#fef3c7', text: '#92400e' },
+        { bg: '#cffafe', text: '#155e75' },
+    ];
+
+    function poSupplierColors(name) {
+        const key = String(name || '').trim().toUpperCase();
+        if (!key) return null;
+        if (key === 'FIND') return { bg: '#ffc107', text: '#111827' };
+        let hash = 0;
+        for (let i = 0; i < key.length; i++) {
+            hash = ((hash << 5) - hash) + key.charCodeAt(i);
+            hash |= 0;
+        }
+        return PO_SUPPLIER_PALETTE[Math.abs(hash) % PO_SUPPLIER_PALETTE.length];
+    }
+
+    function renderSupplierCell(name) {
+        const full = String(name || '').trim();
+        if (!full) return '<span class="text-muted">-</span>';
+        const display = full.split(/\s+/).filter(Boolean)[0] || full;
+        const colors = poSupplierColors(full);
+        if (!colors) {
+            return `<span title="${escapeHtml(full)}" style="font-weight:700;font-size:0.72rem;">${escapeHtml(display)}</span>`;
+        }
+        return `<span class="po-supplier-badge" style="background:${colors.bg};color:${colors.text};" title="${escapeHtml(full)}">${escapeHtml(display)}</span>`;
+    }
+
+    function renderSummarySkuTags(order) {
+        let skus = Array.isArray(order.skus)
+            ? order.skus.map(s => String(s ?? '').trim()).filter(Boolean)
+            : [];
+        if (!skus.length && order.items_json) {
+            try {
+                const items = typeof order.items_json === 'string'
+                    ? JSON.parse(order.items_json || '[]')
+                    : (order.items_json || []);
+                skus = (Array.isArray(items) ? items : [])
+                    .map(it => String(it?.sku ?? '').trim())
+                    .filter(Boolean);
+            } catch (e) { /* ignore */ }
+        }
+        if (!skus.length && order.sku_list) {
+            skus = String(order.sku_list).split(',').map(s => s.trim()).filter(Boolean)
+                .filter(s => s !== '...');
+        }
+        if (!skus.length) {
+            return '<span class="text-muted">-</span>';
+        }
+        const maxVisible = 8;
+        const visible = skus.slice(0, maxVisible);
+        const extra = skus.length - visible.length;
+        const tags = visible.map(sku =>
+            `<span class="po-summary-sku-tag" title="${escapeHtml(sku)}">${escapeHtml(sku)}</span>`
+        ).join('');
+        const more = extra > 0
+            ? `<span class="po-summary-sku-more" title="${escapeHtml(skus.slice(maxVisible).join(', '))}">+${extra}</span>`
+            : '';
+        return `<div class="po-summary-sku-tags">${tags}${more}</div>`;
     }
 
     function renderPoNumberCell(poNumber) {
@@ -1054,7 +1308,7 @@
                 ? `<button type="button" class="btn btn-sm btn-success restore-order-btn" data-order-id="${order.id}" title="Restore">
                         <i class="fas fa-undo"></i>
                    </button>`
-                : `<button type="button" class="btn btn-sm btn-secondary archive-order-btn" data-order-id="${order.id}" title="Archive">
+                : `<button type="button" class="btn btn-sm btn-danger archive-order-btn" data-order-id="${order.id}" title="Archive">
                         <i class="fas fa-archive"></i>
                    </button>`;
 
@@ -1062,26 +1316,23 @@
             tr.innerHTML = `
                 <td class="text-center"><input type="checkbox" class="order-checkbox" data-order-id="${order.id}"/></td>
                 <td class="text-center">${renderPoNumberCell(order.po_number)}</td>
-                <td class="text-center">${order.po_date || '-'}</td>
-                <td class="text-center" title="${(order.supplier_name || '').replace(/"/g, '&quot;')}" style="max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:0.72rem;">${(order.supplier_name || '-').toString().trim().split(/\s+/).filter(Boolean)[0] || '-'}</td>
-                <td class="small">${order.sku_list || '-'}</td>
+                <td class="text-center">${formatPoDateCell(order.po_date)}</td>
+                <td class="text-center">${renderSupplierCell(order.supplier_name)}</td>
+                <td class="po-summary-cell">${renderSummarySkuTags(order)}</td>
                 <td class="text-center">${formatNum(order.total_amount)}</td>
                 <td class="text-center">${formatNum(order.advance_amount)}</td>
                 <td class="text-center">${formatNum(order.balance)}</td>
                 <td class="text-center">${formatNum(order.total_cbm)}</td>
                 <td class="text-center">
                     <div class="btn-group btn-group-actions flex-wrap gap-1 justify-content-center">
-                        <button type="button" class="btn btn-sm btn-warning edit-order-btn" data-order='${orderEsc}' data-items='${itemsEsc}' title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
                         <button type="button" class="btn btn-sm btn-primary view-items-btn" data-items='${itemsEsc}' title="View Items">
-                            <i class="fas fa-box-open"></i>
+                            <i class="fas fa-eye"></i>
                         </button>
                         <button type="button" class="btn btn-sm btn-info export-items-btn" data-order='${orderEsc}' data-items='${itemsEsc}' title="Export">
                             <i class="fas fa-file-excel"></i>
                         </button>
                         <button type="button" class="btn btn-sm btn-success generate-pdf-btn" data-order-id="${order.id}" title="PDF">
-                            <i class="fas fa-file-pdf"></i>
+                            <i class="fas fa-search"></i>
                         </button>
                         ${archiveBtn}
                     </div>
@@ -1285,36 +1536,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        const addBtn = document.getElementById('addProductRowBtn');
-        const wrapper = document.getElementById('productRowsWrapper');
-
-        addBtn.addEventListener('click', function () {
-            const firstRow = wrapper.querySelector('.product-row');
-            const clone = firstRow.cloneNode(true);
-
-            // Clear all inputs and selects
-            clone.querySelectorAll('input, select').forEach(input => {
-                if (input.type === 'file') {
-                    input.value = null;
-                } else {
-                    input.value = '';
-                }
-            });
-
-            wrapper.appendChild(clone);
-        });
-
-        wrapper.addEventListener('click', function (e) {
-            if (e.target.classList.contains('delete-product-row-btn')) {
-                const row = e.target.closest('.product-row');
-                if (wrapper.querySelectorAll('.product-row').length > 1) {
-                    row.remove();
-                } else {
-                    alert("At least one row is required.");
-                }
-            }
-        });
-
         // Listen for checkbox changes
         document.addEventListener("change", function (e) {
             if (e.target.classList.contains("order-checkbox")) {

@@ -324,11 +324,9 @@ class CvrMasterController extends Controller
             ]);
 
             // TikTok — same sources/formulas as /tiktok-pricing
-            // Margin: TiktokShop first, fallback TikTok (legacy); default 80%
-            $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')
-                ->orWhere('marketplace', 'TikTok')
-                ->first();
-            $tiktokPercentage = $tiktokMarketplace ? ($tiktokMarketplace->percentage / 100) : 0.80;
+            // Margin: marketplace_percentages.marketplace = TiktokShop only
+            $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+            $tiktokPercentage = $tiktokMarketplace ? ((float) $tiktokMarketplace->percentage / 100) : 0;
 
             $skusUpperTt = array_values(array_unique(array_map(
                 static fn ($s) => strtoupper((string) $s),
@@ -398,12 +396,9 @@ class CvrMasterController extends Controller
                 'tiktok_percentage' => $tiktokPercentage * 100 . '%'
             ]);
 
-            // TikTok 2 — OV/CVR uses Amazon profit formula (product-master ship + Ads%)
-            $tiktok2Marketplace = MarketplacePercentage::where('marketplace', 'TiktokShop2')
-                ->orWhere('marketplace', 'TikTok 2')
-                ->orWhere('marketplace', 'TiktokShop')
-                ->first();
-            $tiktok2Percentage = $tiktok2Marketplace ? ((float) $tiktok2Marketplace->percentage / 100) : 0.80;
+            // TikTok 2 — same margin as TikTok 1: marketplace_percentages.marketplace = TiktokShop
+            $tiktok2Marketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+            $tiktok2Percentage = $tiktok2Marketplace ? ((float) $tiktok2Marketplace->percentage / 100) : 0;
             $tiktok2Products = collect();
             $tiktok2L30BySku = [];
             $tiktok2ShopByNormSku = [];
@@ -3511,11 +3506,9 @@ class CvrMasterController extends Controller
             $tiktokData = TikTokProduct::where('sku', strtoupper($fullSku))->first();
             $skuNormTt = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $fullSku)));
 
-            // Margin: TiktokShop first, fallback TikTok (legacy)
-            $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')
-                ->orWhere('marketplace', 'TikTok')
-                ->first();
-            $tiktokPercentage = $tiktokMarketplace ? ($tiktokMarketplace->percentage / 100) : 0.80;
+            // Margin: marketplace_percentages.marketplace = TiktokShop only
+            $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+            $tiktokPercentage = $tiktokMarketplace ? ((float) $tiktokMarketplace->percentage / 100) : 0;
 
             // L30 from tiktok_orders — last 30 California calendar days
             $soldMap = \App\Models\TiktokOrder::soldQtyL30([strtoupper($fullSku)], 30);
@@ -3644,12 +3637,9 @@ class CvrMasterController extends Controller
                 'seller_link' => $ttSellerLink,
             ];
 
-            // TikTok 2 — same profit formula as Amazon: (Price × Margin − LP − Ship) / Price
-            $tiktok2MarketplacePerc = MarketplacePercentage::where('marketplace', 'TiktokShop2')
-                ->orWhere('marketplace', 'TikTok 2')
-                ->orWhere('marketplace', 'TiktokShop')
-                ->first();
-            $tiktok2MarginBd = $tiktok2MarketplacePerc ? ((float) $tiktok2MarketplacePerc->percentage / 100) : 0.80;
+            // TikTok 2 — same margin as TikTok 1: marketplace_percentages.marketplace = TiktokShop
+            $tiktok2MarketplacePerc = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
+            $tiktok2MarginBd = $tiktok2MarketplacePerc ? ((float) $tiktok2MarketplacePerc->percentage / 100) : 0;
             $tt2ProductBd = null;
             $tiktok2L30Bd = 0;
             try {
@@ -6681,10 +6671,14 @@ class CvrMasterController extends Controller
                     $request->input('goods_id'),
                     $request->input('sku_id')
                 );
+            } elseif ($marketplace === 'tiktok' || $marketplace === 'tiktokshop') {
+                $response = $this->pushToTikTok($sku, $price);
+            } elseif ($marketplace === 'tiktok2' || $marketplace === 'tiktokshop2') {
+                $response = $this->pushToTikTok2($sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Reverb, TopDawg, Temu, Temu2, FBA."
+                    'message' => "Price push is not available for this channel ($marketplace). Supported: Amazon, eBay1/2/3, Doba, Walmart, Shopify, SB2B, BestBuy, Macy, PPower, Reverb, TopDawg, Temu, Temu2, TikTok, TikTok 2, FBA."
                 ], 400);
             }
 
@@ -7587,6 +7581,110 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push price to TikTok Shop 1 via Product prices/update API.
+     * Requires tiktok_products.product_id + sku_id (from Sync API).
+     */
+    private function pushToTikTok($sku, $price)
+    {
+        return $this->pushToTikTokChannel($sku, $price, 'tiktok');
+    }
+
+    /**
+     * Push price to TikTok Shop 2 via Product prices/update API.
+     * Requires tiktok_products_two.product_id + sku_id (from Sync API).
+     */
+    private function pushToTikTok2($sku, $price)
+    {
+        return $this->pushToTikTokChannel($sku, $price, 'tiktok2');
+    }
+
+    /**
+     * @param  'tiktok'|'tiktok2'  $channel
+     */
+    private function pushToTikTokChannel(string $sku, float $price, string $channel)
+    {
+        $label = $channel === 'tiktok2' ? 'TikTok 2' : 'TikTok';
+        $statusKey = $channel === 'tiktok2' ? 'tiktok2' : 'tiktok';
+
+        try {
+            if (! ($price > 0)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Invalid {$label} price (must be > 0)",
+                ], 400);
+            }
+
+            $skuUpper = strtoupper(trim($sku));
+            if ($channel === 'tiktok2') {
+                $product = TikTokProductTwo::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->first();
+                $service = app(\App\Services\TikTok2ShopService::class);
+            } else {
+                $product = TikTokProduct::whereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper])->first();
+                $service = app(\App\Services\TikTokShopService::class);
+            }
+
+            if (! $product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "{$label} listing not found for SKU {$sku}. Run Sync API first.",
+                ], 404);
+            }
+
+            $productId = trim((string) ($product->product_id ?? ''));
+            $skuId = trim((string) ($product->sku_id ?? ''));
+            if ($productId === '' || $skuId === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => "{$label} product_id/sku_id missing for SKU {$sku}. Run Sync API (products) first.",
+                ], 400);
+            }
+
+            if (! $service->isAuthenticated()) {
+                $cfgKey = $channel === 'tiktok2' ? 'tiktok2' : 'tiktok';
+                $access = config("services.{$cfgKey}.access_token");
+                $refresh = config("services.{$cfgKey}.refresh_token");
+                if ($access) {
+                    $service->setTokens((string) $access, $refresh ? (string) $refresh : null);
+                }
+            }
+
+            $result = $service->updateProductPrice($productId, $skuId, (float) $price, 'USD');
+
+            if (! empty($result['success'])) {
+                $product->price = round((float) $price, 2);
+                $product->save();
+                $this->savePricePushStatus($sku, $statusKey, 'pushed', $price);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $result['message'] ?? ("Price $".number_format($price, 2)." pushed to {$label} for SKU: {$sku}"),
+                    'result' => $result,
+                ]);
+            }
+
+            $this->savePricePushStatus($sku, $statusKey, 'error', $price);
+
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? "Failed to push price to {$label}",
+                'errors' => [['message' => $result['message'] ?? "Failed to push price to {$label}"]],
+            ], 400);
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, $statusKey, 'error', $price);
+            Log::error("CVR Master - {$label} push exception", [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => "{$label} API error: ".$e->getMessage(),
+                'errors' => [['message' => $e->getMessage()]],
+            ], 500);
+        }
+    }
+
+    /**
      * Push price to Reverb via ReverbApiService (uses reverb_products.reverb_listing_id when available).
      */
     private function pushToReverb($sku, $price)
@@ -8120,8 +8218,12 @@ class CvrMasterController extends Controller
                 $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'temu2' && Schema::hasTable('temu2_data_view')) {
                 $dataView = Temu2DataView::firstOrNew(['sku' => $sku]);
-            } elseif ($marketplace === 'tiktok') {
+            } elseif ($marketplace === 'tiktok' || $marketplace === 'tiktokshop') {
                 $dataView = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            } elseif (($marketplace === 'tiktok2' || $marketplace === 'tiktokshop2')
+                && Schema::hasTable('tiktok_two_shop_data_views')) {
+                $existingTt2 = TiktokTwoShopDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
+                $dataView = $existingTt2 ?: new TiktokTwoShopDataView(['sku' => $sku]);
             }
             
             if ($dataView) {

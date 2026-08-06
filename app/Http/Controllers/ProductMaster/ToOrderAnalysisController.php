@@ -925,6 +925,109 @@ class ToOrderAnalysisController extends Controller
     }
 
     /**
+     * SKUs visible on the Order page (to-order-analysis) for a supplier.
+     * Same cohort as getToOrderAnalysis(): Forecast "Order" column > 0, then supplier match.
+     * Only includes rows whose Order-column qty is > 0 (skips Order qty = 0).
+     *
+     * @return array<int, array{sku: string, order_qty: float, supplier: string}>
+     */
+    public function orderPageRowsForSupplier(string $supplierName): array
+    {
+        $supplierName = trim($supplierName);
+        if ($supplierName === '') {
+            return [];
+        }
+        $supplierKey = mb_strtolower($supplierName);
+
+        $snapshotRows = app(ForecastAnalysisController::class)->getForecastAnalysisSnapshotRows();
+
+        $toaByNorm = [];
+        foreach (DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get(['sku', 'supplier_name', 'parent']) as $row) {
+            $norm = strtoupper(trim((string) ($row->sku ?? '')));
+            if ($norm !== '') {
+                $toaByNorm[$norm] = $row;
+            }
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($snapshotRows as $faRow) {
+            $skuRaw = (string) ($faRow->SKU ?? '');
+            if ($skuRaw === '' || stripos($skuRaw, 'PARENT') !== false || ! empty($faRow->is_parent)) {
+                continue;
+            }
+            if (! $this->forecastRowHasPositiveOrderColumn($faRow)) {
+                continue;
+            }
+
+            $orderQty = $this->forecastRowOrderColumnQty($faRow);
+            if ($orderQty <= 0) {
+                continue;
+            }
+
+            $norm = strtoupper(trim($skuRaw));
+            $toa = $toaByNorm[$norm] ?? null;
+
+            $resolvedSupplier = '';
+            if ($toa !== null && $toa->supplier_name !== null) {
+                $resolvedSupplier = (string) $toa->supplier_name;
+            } else {
+                $parent = trim((string) ($faRow->Parent ?? ($toa->parent ?? '')));
+                foreach (explode(',', $parent) as $singleParent) {
+                    $singleParent = trim($singleParent);
+                    if ($singleParent === '') {
+                        continue;
+                    }
+                    $supplierRecord = DB::table('suppliers')
+                        ->whereRaw("FIND_IN_SET(?, REPLACE(REPLACE(parent, ' ', ''), '\n', ''))", [str_replace(' ', '', $singleParent)])
+                        ->first();
+                    if ($supplierRecord) {
+                        $resolvedSupplier = (string) ($supplierRecord->name ?? '');
+                        break;
+                    }
+                }
+            }
+
+            if (mb_strtolower(trim($resolvedSupplier)) !== $supplierKey) {
+                continue;
+            }
+            if (isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+
+            $out[] = [
+                'sku' => trim(preg_replace('/\s+/u', ' ', str_replace("\u{00a0}", ' ', $skuRaw)) ?? ''),
+                'order_qty' => $orderQty,
+                'supplier' => trim($resolvedSupplier),
+            ];
+        }
+
+        usort($out, static fn ($a, $b) => strcasecmp($a['sku'], $b['sku']));
+
+        return array_values(array_filter($out, static fn ($r) => ($r['sku'] ?? '') !== ''));
+    }
+
+    /**
+     * Forecast Analysis "Order" column display qty (mirrors forecastRowOrderQty in blade).
+     */
+    private function forecastRowOrderColumnQty(object $item): float
+    {
+        if (! $this->forecastRowHasPositiveOrderColumn($item)) {
+            return 0.0;
+        }
+
+        $approved = (float) ($item->two_order_qty ?? 0);
+        if (is_finite($approved) && $approved > 0) {
+            return $approved;
+        }
+
+        $moq = (float) ($item->MOQ ?? $item->{'Approved QTY'} ?? 0);
+
+        return (is_finite($moq) && $moq > 0) ? $moq : 0.0;
+    }
+
+    /**
      * True when /forecast.analysis "Order" column would display a value > 0.
      * Mirrors forecastRowOrderQty() in forecastAnalysis.blade.php:
      *   - non-parent, NRP not 2BDC/LATER

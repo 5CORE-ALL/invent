@@ -41,6 +41,16 @@ class Supplier extends Model
         return $this->hasMany(SupplierBankAccountHistory::class)->orderByDesc('id');
     }
 
+    public function advances()
+    {
+        return $this->hasMany(SupplierAdvance::class)->orderByDesc('id');
+    }
+
+    public function latestAdvance()
+    {
+        return $this->hasOne(SupplierAdvance::class)->latestOfMany();
+    }
+
     /**
      * Distinct non-empty supplier names, ordered by name — same catalog as /supplier.list with no type/category filters.
      */

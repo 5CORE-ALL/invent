@@ -432,6 +432,7 @@
                                 <th class="sortable" data-sort-key="email">Email <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="sortable" data-sort-key="whatsapp">WhatsApp <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="text-center">Bank</th>
+                                <th class="text-center" title="Latest Advance % from purchase contracts">Advance</th>
                                 <th class="sortable" data-sort-key="wechat">WeChat <span class="sort-icon"><i class="mdi mdi-unfold-more-horizontal"></i></span></th>
                                 <th class="text-end">Actions</th>
                             </tr>

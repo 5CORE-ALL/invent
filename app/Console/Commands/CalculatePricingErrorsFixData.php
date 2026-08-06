@@ -119,6 +119,7 @@ class CalculatePricingErrorsFixData extends Command
         }
 
         $this->info("Patched {$n} marketplace row(s) for {$sku}");
+        PricingErrorsFixController::forgetLowGroiSkuSidebarCountCache();
 
         return self::SUCCESS;
     }
@@ -238,6 +239,7 @@ class CalculatePricingErrorsFixData extends Command
         if ($errors) {
             $this->warn('SKU/errors: '.count($errors).' (see log)');
         }
+        PricingErrorsFixController::forgetLowGroiSkuSidebarCountCache();
 
         return self::SUCCESS;
     }

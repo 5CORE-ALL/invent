@@ -340,9 +340,14 @@ return [
         'api_base'      => env('TRACKING_API_BASE', 'https://api.17track.net/track/v2.2'),
         // Per-run safety limits so a sync can't blow the provider quota
         'batch_size'    => (int) env('TRACKING_BATCH_SIZE', 40),
-        'max_per_run'   => (int) env('TRACKING_MAX_PER_RUN', 2000),
+        // Upper bound per cron tick; native USPS also capped by remaining hourly budget.
+        'max_per_run'   => (int) env('TRACKING_MAX_PER_RUN', 200),
         'http_timeout'  => (int) env('TRACKING_HTTP_TIMEOUT', 30),
         'sleep_ms'      => (int) env('TRACKING_SLEEP_MS', 400),
+        // Prefer 17TRACK for scheduled/bulk sync (batch API). Native USPS/UPS are rate-limited.
+        'prefer_aggregator' => filter_var(env('TRACKING_PREFER_AGGREGATOR', true), FILTER_VALIDATE_BOOL),
+        // After backlog clears: refresh each open tracking about this often per day.
+        'target_passes_per_day' => (int) env('TRACKING_TARGET_PASSES_PER_DAY', 2),
     ],
 
     /*
@@ -352,6 +357,7 @@ return [
     |
     | Consumer Key / Secret from the USPS Developer Portal app.
     | Callback URL must match the value registered on the USPS app.
+    | Default product quota is often ~60 req/hour — use nearly all of it 24/7.
     |
     */
     'usps' => [
@@ -359,6 +365,8 @@ return [
         'consumer_secret' => env('USPS_CONSUMER_SECRET', ''),
         'callback_url'    => env('USPS_CALLBACK_URL', 'http://127.0.0.1:8000/admin'),
         'api_base'        => env('USPS_API_BASE', 'https://apis.usps.com'),
+        'max_per_hour'    => (int) env('USPS_MAX_PER_HOUR', 55),
+        'min_interval_ms' => (int) env('USPS_MIN_INTERVAL_MS', 1000),
     ],
 
     /*

@@ -439,7 +439,7 @@
                 const $btn = $(this);
                 if ($btn.prop('disabled')) return;
 
-                if (!confirm('Refresh TikTok 2 listings from tiktok_products_two cache?\n\nUpload CSV on TikTok 2 Shop - Analytics (/tiktok-2-pricing) if the cache is empty.')) {
+                if (!confirm('Refresh TikTok 2 listings from tiktok_products_two cache?\n\nUse Sync API on /tiktok-2-pricing if the cache is empty.')) {
                     return;
                 }
 

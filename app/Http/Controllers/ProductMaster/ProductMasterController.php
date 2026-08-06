@@ -13,6 +13,7 @@ use App\Models\EbayMetric;
 use App\Models\MarketplacePushLog;
 use App\Models\Permission;
 use App\Models\ProductMaster;
+use App\Models\ShortTitle;
 use App\Models\ShopifySku;
 use App\Models\User;
 use App\Services\AmazonSpApiService;
@@ -2060,6 +2061,7 @@ class ProductMasterController extends Controller
                 'title100' => 'nullable|string',
                 'title80' => 'nullable|string',
                 'title60' => 'nullable|string',
+                'short_name' => 'nullable|string|max:5000',
             ]);
 
             $sku = $this->normalizeTitleMasterSku($validated['sku']);
@@ -2091,35 +2093,68 @@ class ProductMasterController extends Controller
                 }
             }
 
-            if (count($payload) === 1) {
+            $hasShortName = $request->exists('short_name');
+            if (count($payload) === 1 && ! $hasShortName) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No title fields provided to update.',
                 ], 422);
             }
 
-            // Single indexed UPDATE — no Eloquent hydration of large JSON/text columns, no external APIs.
-            $updated = DB::table('product_master')
-                ->whereNull('deleted_at')
-                ->where('sku', $sku)
-                ->update($payload);
-
-            if ($updated === 0) {
-                // Fallback: case-insensitive + NBSP-normalized match (Excel often has regular spaces).
+            $updated = 0;
+            if (count($payload) > 1) {
+                // Single indexed UPDATE — no Eloquent hydration of large JSON/text columns, no external APIs.
                 $updated = DB::table('product_master')
                     ->whereNull('deleted_at')
-                    ->whereRaw(
-                        "LOWER(TRIM(REPLACE(REPLACE(sku, UNHEX('C2A0'), ' '), CHAR(160), ' '))) = ?",
-                        [mb_strtolower($sku)]
-                    )
+                    ->where('sku', $sku)
                     ->update($payload);
+
+                if ($updated === 0) {
+                    // Fallback: case-insensitive + NBSP-normalized match (Excel often has regular spaces).
+                    $updated = DB::table('product_master')
+                        ->whereNull('deleted_at')
+                        ->whereRaw(
+                            "LOWER(TRIM(REPLACE(REPLACE(sku, UNHEX('C2A0'), ' '), CHAR(160), ' '))) = ?",
+                            [mb_strtolower($sku)]
+                        )
+                        ->update($payload);
+                }
+
+                if ($updated === 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Product with SKU "'.$sku.'" not found in database.',
+                    ], 404);
+                }
+            } else {
+                // short_name-only save: still require the SKU to exist on product_master.
+                $exists = DB::table('product_master')
+                    ->whereNull('deleted_at')
+                    ->where('sku', $sku)
+                    ->exists();
+                if (! $exists) {
+                    $exists = DB::table('product_master')
+                        ->whereNull('deleted_at')
+                        ->whereRaw(
+                            "LOWER(TRIM(REPLACE(REPLACE(sku, UNHEX('C2A0'), ' '), CHAR(160), ' '))) = ?",
+                            [mb_strtolower($sku)]
+                        )
+                        ->exists();
+                }
+                if (! $exists) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Product with SKU "'.$sku.'" not found in database.',
+                    ], 404);
+                }
             }
 
-            if ($updated === 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Product with SKU "'.$sku.'" not found in database.',
-                ], 404);
+            if ($hasShortName) {
+                $shortName = trim(preg_replace('/\s{2,}/u', ' ', (string) ($validated['short_name'] ?? '')) ?? '');
+                ShortTitle::updateOrCreate(
+                    ['sku' => $sku],
+                    ['short_title' => $shortName]
+                );
             }
 
             return response()->json([
