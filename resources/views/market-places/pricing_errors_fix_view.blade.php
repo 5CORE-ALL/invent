@@ -124,27 +124,189 @@
             display: flex; align-items: center; justify-content: center; z-index: 20;
             font-weight: 600; color: #334155;
         }
-        /* Exactly 2 toolbar lines — nowrap + horizontal scroll if needed */
-        .pef-toolbar { display: flex; flex-direction: column; gap: 6px; }
+        /* Exactly 2 toolbar lines — overflow visible so dropdown menus are not clipped */
+        .pef-toolbar {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+            max-width: 100%;
+            overflow: visible;
+            position: relative;
+            z-index: 30;
+        }
         .pef-toolbar-row {
+            --pef-ctrl-h: 30px;
+            --pef-ctrl-fs: 12px;
+            --pef-ctrl-radius: 0.375rem;
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
-            gap: 6px;
-            min-height: 34px;
-            overflow-x: auto;
-            overflow-y: hidden;
+            gap: 4px;
+            min-height: var(--pef-ctrl-h);
+            width: 100%;
+            max-width: 100%;
+            overflow: visible;
             white-space: nowrap;
-            -webkit-overflow-scrolling: touch;
+            position: relative;
         }
+        /* Line 1 above line 2 so Dil%/GPFT%/GROI% menus paint over Prc Mode row */
+        .pef-toolbar-row:first-child { z-index: 40; }
+        .pef-toolbar-row:last-child { z-index: 20; }
+        .pef-toolbar-row:has(.dropdown.show) { z-index: 1080; }
         .pef-toolbar-row > * { flex-shrink: 0; }
+        /* Hidden filter values must not participate in flex / stacking */
+        .pef-toolbar-row > input[type="hidden"] { display: none !important; }
+
+        /* Unified control height across both toolbar rows */
         .pef-toolbar-row .form-select,
-        .pef-toolbar-row .form-control { height: 30px; padding-top: 2px; padding-bottom: 2px; }
-        .pef-toolbar-row .btn { white-space: nowrap; }
-        .pef-toolbar-row label.pef-lbl { font-size: 12px; color: #64748b; margin: 0; }
+        .pef-toolbar-row .form-control,
+        .pef-toolbar-row .btn,
+        .pef-toolbar-row .badge,
+        .pef-toolbar-row .input-group,
+        .pef-toolbar-row .input-group-text,
+        .pef-toolbar-row .pef-target-box,
+        .pef-toolbar-row .btn-group {
+            height: var(--pef-ctrl-h) !important;
+            min-height: var(--pef-ctrl-h) !important;
+            max-height: var(--pef-ctrl-h) !important;
+            font-size: var(--pef-ctrl-fs) !important;
+            line-height: 1.2 !important;
+            box-sizing: border-box;
+        }
+        .pef-toolbar-row .form-select,
+        .pef-toolbar-row .form-control {
+            padding: 0 0.5rem !important;
+            border-radius: var(--pef-ctrl-radius);
+        }
+        .pef-toolbar-row .btn {
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 0.55rem !important;
+            border-radius: var(--pef-ctrl-radius);
+            gap: 4px;
+        }
+        .pef-toolbar-row .btn-group > .btn {
+            border-radius: var(--pef-ctrl-radius);
+        }
+        .pef-toolbar-row .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 0.55rem !important;
+            border-radius: var(--pef-ctrl-radius);
+            font-weight: 600;
+        }
+        .pef-toolbar-row .input-group {
+            flex-shrink: 1;
+            min-width: 0;
+            width: auto;
+            display: inline-flex;
+            align-items: stretch;
+        }
+        .pef-toolbar-row .input-group > .form-control,
+        .pef-toolbar-row .input-group > .input-group-text,
+        .pef-toolbar-row .input-group > .btn {
+            height: 100% !important;
+            min-height: 0 !important;
+            max-height: none !important;
+        }
+        .pef-toolbar-row .input-group-text {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 0.45rem !important;
+        }
+        .pef-toolbar-row .dropdown {
+            position: relative;
+            z-index: 2;
+            height: var(--pef-ctrl-h);
+        }
+        .pef-toolbar-row .dropdown > .btn {
+            height: 100% !important;
+        }
+        .pef-toolbar-row .dropdown.show {
+            z-index: 1080;
+        }
+        .pef-toolbar-row .dropdown .dropdown-menu {
+            z-index: 1085;
+        }
+        .pef-toolbar-row label.pef-lbl {
+            font-size: var(--pef-ctrl-fs);
+            color: #64748b;
+            margin: 0;
+            line-height: var(--pef-ctrl-h);
+            height: var(--pef-ctrl-h);
+            display: inline-flex;
+            align-items: center;
+        }
+        .pef-toolbar-row .form-check {
+            position: relative;
+            z-index: 5;
+            margin-left: 6px;
+            padding-left: 0;
+            height: var(--pef-ctrl-h);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .pef-toolbar-row .form-check .form-check-input {
+            position: relative;
+            z-index: 6;
+            margin: 0;
+            float: none;
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+        }
+        .pef-toolbar-row .form-check-label {
+            font-size: var(--pef-ctrl-fs);
+            position: relative;
+            z-index: 6;
+            line-height: 1;
+        }
+        .pef-toolbar-spacer { flex: 1 1 auto; min-width: 4px; }
+        /* Parent bodies must not clip Dil%/GPFT%/GROI%/Prc Mode menus */
+        .card:has(.pef-toolbar) { overflow: visible; }
+        .card-body:has(.pef-toolbar) {
+            position: relative;
+            z-index: 40;
+            overflow: visible;
+        }
+        .card-body:has(#pef-table-wrapper) {
+            position: relative;
+            z-index: 1;
+        }
         .pef-target-box {
-            display: inline-flex; align-items: center; gap: 4px;
-            padding: 2px 6px; border: 1px solid #dee2e6; border-radius: 6px; background: #fff;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 0 6px !important;
+            border: 1px solid #dee2e6;
+            border-radius: var(--pef-ctrl-radius);
+            background: #fff;
+            box-sizing: border-box;
+        }
+        .pef-target-box label {
+            font-size: var(--pef-ctrl-fs);
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .pef-target-box .form-control {
+            height: 22px !important;
+            min-height: 22px !important;
+            max-height: 22px !important;
+            padding: 0 4px !important;
+            font-size: var(--pef-ctrl-fs) !important;
+        }
+        .pef-target-box .btn {
+            height: 22px !important;
+            min-height: 22px !important;
+            max-height: 22px !important;
+            width: 22px;
+            padding: 0 !important;
         }
     </style>
 @endsection
@@ -166,14 +328,14 @@
         <div class="card shadow-sm">
             <div class="card-body py-2">
                 <div class="pef-toolbar">
-                    {{-- Line 1: status + filters + pull/push --}}
+                    {{-- Line 1: status + filters --}}
                     <div class="pef-toolbar-row">
                         <span class="badge text-bg-dark" id="pef-rows-badge">Rows: 0</span>
                         <span class="badge text-bg-secondary" id="pef-channels-badge">Channels: 0</span>
                         <span class="badge text-bg-danger" id="pef-error-badge" style="display:none;">Channel errors: 0</span>
 
                         <label class="pef-lbl" for="pef-channel-filter">Channel</label>
-                        <select id="pef-channel-filter" class="form-select form-select-sm" style="width:140px;" title="Filter channel (client-side)">
+                        <select id="pef-channel-filter" class="form-select form-select-sm" style="width:118px;" title="Filter channel (client-side)">
                             <option value="">All channels</option>
                             @foreach(($channels ?? []) as $ch)
                                 <option value="{{ is_array($ch) ? ($ch['key'] ?? '') : $ch }}">{{ is_array($ch) ? ($ch['label'] ?? $ch['key'] ?? '') : $ch }}</option>
@@ -181,14 +343,14 @@
                         </select>
 
                         <label class="pef-lbl" for="pef-inv-filter">INV</label>
-                        <select id="pef-inv-filter" class="form-select form-select-sm" style="width:72px;" title="Filter by inventory">
+                        <select id="pef-inv-filter" class="form-select form-select-sm" style="width:64px;" title="Filter by inventory">
                             <option value="all">All</option>
                             <option value="eq_0">= 0</option>
                             <option value="gt_0">&gt; 0</option>
                         </select>
 
                         <label class="pef-lbl" for="pef-price-filter">Price</label>
-                        <select id="pef-price-filter" class="form-select form-select-sm" style="width:90px;"
+                        <select id="pef-price-filter" class="form-select form-select-sm" style="width:72px;"
                             title="Price filter — Exist = price &gt; 0">
                             <option value="all">All</option>
                             <option value="null">Null</option>
@@ -252,31 +414,16 @@
                         </div>
                         <input type="hidden" id="pef-groi-filter" value="all">
 
-                        <div class="form-check form-check-inline mb-0">
+                        <div class="form-check form-check-inline mb-0 me-0">
                             <input class="form-check-input" type="checkbox" id="pef-listed-only" checked>
-                            <label class="form-check-label small" for="pef-listed-only"
+                            <label class="form-check-label" for="pef-listed-only"
                                 title="Listed / has price or SPRICE (reloads from cache)">Listed</label>
                         </div>
-
-                        <span class="badge text-bg-info" id="pef-cache-badge"
-                            title="Data from pricing_errors_fix_calculated_data (marketplace-wise cache)">
-                            Cache: {{ $cache_calculated_at ? \Carbon\Carbon::parse($cache_calculated_at)->format('d M H:i') : 'empty — run command' }}
-                        </span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-reload-btn"
-                            title="Reload from pre-calculated table (instant)">
-                            <i class="fas fa-sync-alt"></i> Reload
-                        </button>
-                        <span class="small text-muted d-none" id="pef-pull-hint"></span>
-
-                        <button type="button" class="btn btn-sm btn-primary ms-auto" id="pef-bulk-push-btn" disabled
-                            title="Push SPRICE for selected rows">
-                            <i class="fas fa-upload"></i> Push Sprice (<span id="pef-push-count">0</span>)
-                        </button>
                     </div>
 
-                    {{-- Line 2: search + target ROI/GPFT + Prc Mode --}}
+                    {{-- Line 2: search + targets + cache/actions --}}
                     <div class="pef-toolbar-row">
-                        <div class="input-group input-group-sm" style="width:220px;">
+                        <div class="input-group input-group-sm" style="width:160px;">
                             <span class="input-group-text" title="Quick Search Parent"><i class="fas fa-search"></i></span>
                             <input type="text" id="pef-parent-search" class="form-control"
                                 list="pef-parent-datalist"
@@ -286,25 +433,25 @@
                             <datalist id="pef-parent-datalist"></datalist>
                         </div>
                         <input type="text" id="pef-sku-search" class="form-control form-control-sm"
-                            placeholder="SKU…" style="width:160px;" autocomplete="off">
+                            placeholder="SKU…" style="width:110px;" autocomplete="off">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-clear-search-btn"
                             title="Clear Parent / SKU search">Clear</button>
                         <span class="small text-muted" id="pef-parent-match-hint"></span>
 
                         <div class="pef-target-box" id="pef-target-roi-controls"
                             title="Target ROI% — sets SPrice so Sroi = target">
-                            <label for="pef-target-roi-input" class="mb-0 small fw-bold">🎯 ROI%:</label>
+                            <label for="pef-target-roi-input" class="mb-0 fw-bold">🎯 ROI%:</label>
                             <input type="number" id="pef-target-roi-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width:64px;">
+                                placeholder="30" step="0.1" style="width:52px;">
                             <button type="button" id="pef-apply-target-roi-btn" class="btn btn-sm btn-success" title="Apply Target ROI%">
                                 <i class="fas fa-calculator"></i>
                             </button>
                         </div>
                         <div class="pef-target-box" id="pef-target-gpft-controls"
                             title="Target GPFT% — sets SPrice so Sgpft = target">
-                            <label for="pef-target-gpft-input" class="mb-0 small fw-bold">🎯 GPFT%:</label>
+                            <label for="pef-target-gpft-input" class="mb-0 fw-bold">🎯 GPFT%:</label>
                             <input type="number" id="pef-target-gpft-input" class="form-control form-control-sm text-end"
-                                placeholder="30" step="0.1" style="width:64px;">
+                                placeholder="30" step="0.1" style="width:52px;">
                             <button type="button" id="pef-apply-target-gpft-btn" class="btn btn-sm btn-success" title="Apply Target GPFT%">
                                 <i class="fas fa-calculator"></i>
                             </button>
@@ -325,6 +472,18 @@
                                 <li><a class="dropdown-item" href="#" data-mode="cancel"><i class="fas fa-times"></i> Cancel</a></li>
                             </ul>
                         </div>
+
+                        <span class="pef-toolbar-spacer"></span>
+
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-reload-btn"
+                            title="Reload from pre-calculated table (instant)">
+                            <i class="fas fa-sync-alt"></i> Reload
+                        </button>
+                        <span class="small text-muted d-none" id="pef-pull-hint"></span>
+                        <button type="button" class="btn btn-sm btn-primary" id="pef-bulk-push-btn" disabled
+                            title="Push SPRICE for selected rows">
+                            <i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)
+                        </button>
                     </div>
                 </div>
             </div>
@@ -365,7 +524,6 @@
     const selectedIds = new Set();
     /** Pre-embedded from DB on page render — no Ajax needed on first open */
     const PEF_INITIAL_ROWS = @json($initial_rows ?? []);
-    const PEF_CACHE_AT = @json($cache_calculated_at ?? null);
     /** Full dataset — filters work client-side; Reload refreshes via Ajax */
     let pulledRows = Array.isArray(PEF_INITIAL_ROWS) ? PEF_INITIAL_ROWS.slice() : [];
     let dataLoaded = pulledRows.length > 0;
@@ -775,10 +933,10 @@
             }).always(function() {
                 if (ok + fail === total) {
                     $btn.prop('disabled', false).html(doneHtml);
-                    // Clear selection like amazon-tabulator-view
-                    selectedIds.clear();
+                    // Keep row checkboxes selected after apply
                     if (table) table.redraw(true);
                     updatePushBtn();
+                    syncSelectAllCheckbox();
                     toast(fail
                         ? ('Saved ' + ok + ' of ' + total + ' (' + fail + ' failed)')
                         : ('SPrice saved for ' + ok + ' row(s) — ' + label),
@@ -1199,7 +1357,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     titleFormatter: function() {
-                        return '<input type="checkbox" id="pef-select-all" title="Select all filtered">';
+                        return '<input type="checkbox" id="pef-select-all" title="Select current page only">';
                     },
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -1294,11 +1452,6 @@
                     cssClass: 'pef-sortable', formatter: pctFormatter,
                 },
                 {
-                    title: 'SGROI%', field: 'sroi', width: 66, hozAlign: 'center', vertAlign: 'middle',
-                    headerSort: true, sorter: 'number', sorterParams: { alignEmptyValues: 'bottom' },
-                    cssClass: 'pef-sortable', formatter: pctFormatter,
-                },
-                {
                     title: 'NROI%', field: 'nroi', width: 64, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number', sorterParams: { alignEmptyValues: 'bottom' },
                     cssClass: 'pef-sortable', formatter: pctFormatter,
@@ -1335,6 +1488,11 @@
                     cellEdited: function(cell) {
                         saveSprice(cell.getRow());
                     },
+                },
+                {
+                    title: 'SGROI%', field: 'sroi', width: 66, hozAlign: 'center', vertAlign: 'middle',
+                    headerSort: true, sorter: 'number', sorterParams: { alignEmptyValues: 'bottom' },
+                    cssClass: 'pef-sortable', formatter: pctFormatter,
                 },
                 {
                     title: 'SGPFT%', field: 'sgpft', width: 66, hozAlign: 'center', vertAlign: 'middle',
@@ -1382,6 +1540,7 @@
         table.on('dataFiltered', function() {
             $('#pef-rows-badge').text('Rows: ' + table.getDataCount('active'));
             updatePushBtn();
+            syncSelectAllCheckbox();
         });
         // Header sort uses full dataset; jump to page 1 so top of sorted list is visible
         table.on('dataSorted', function() {
@@ -1389,7 +1548,46 @@
                 if (table.getPage() !== 1) table.setPage(1);
             } catch (e) { /* ignore */ }
             $('#pef-rows-badge').text('Rows: ' + table.getDataCount('active'));
+            syncSelectAllCheckbox();
         });
+        table.on('pageLoaded', function() {
+            syncSelectAllCheckbox();
+        });
+    }
+
+    /** Rows on the current pagination page only (filtered + sorted active set). */
+    function pefCurrentPageData() {
+        if (!table) return [];
+        let page = 1;
+        let pageSize = 100;
+        try {
+            page = table.getPage() || 1;
+            pageSize = table.getPageSize();
+        } catch (e) { /* ignore */ }
+        if (page < 1) page = 1;
+        // Tabulator "ALL" can return true / boolean — treat as full active set
+        if (pageSize === true || pageSize === false || pageSize == null || pageSize <= 0) {
+            return table.getData('active') || [];
+        }
+        const activeData = table.getData('active') || [];
+        const start = (page - 1) * pageSize;
+        return activeData.slice(start, start + pageSize);
+    }
+
+    function syncSelectAllCheckbox() {
+        const $all = $('#pef-select-all');
+        if (!$all.length || !table) return;
+        const pageData = pefCurrentPageData();
+        if (!pageData.length) {
+            $all.prop({ checked: false, indeterminate: false });
+            return;
+        }
+        let selected = 0;
+        pageData.forEach(function(d) {
+            if (d && d.id && selectedIds.has(d.id)) selected++;
+        });
+        $all.prop('checked', selected === pageData.length);
+        $all.prop('indeterminate', selected > 0 && selected < pageData.length);
     }
 
     /**
@@ -1400,14 +1598,11 @@
         if (pullInProgress) return;
         pullInProgress = true;
         $('#pef-reload-btn').prop('disabled', true);
-        // Light status only — no full-page blocker for cache reads
-        $('#pef-cache-badge').text('Cache: loading…');
         selectedIds.clear();
         updatePushBtn();
         if (!table) initTable([]);
 
         try {
-            const t0 = performance.now();
             const resp = await $.ajax({
                 url: buildAjaxUrl(''), // all marketplaces from cache table
                 method: 'GET',
@@ -1436,13 +1631,6 @@
             });
 
             const src = meta.source || 'cache';
-            const calcAt = meta.calculated_at || '';
-            const ms = Math.round(performance.now() - t0);
-            $('#pef-cache-badge').text(
-                src === 'cache'
-                    ? ('Cache: ' + (calcAt ? String(calcAt).replace('T', ' ').slice(0, 16) : 'ready') + ' · ' + ms + 'ms')
-                    : ('Live: ' + rows.length + ' · ' + ms + 'ms')
-            );
             $('#pef-channels-badge').text('Channels: ' + allChannelKeys().length);
             $('#pef-rows-badge').text('Rows: ' + rows.length);
 
@@ -1460,7 +1648,6 @@
                 toast('No rows in cache (or Listed filter hid all)', 'error');
             }
         } catch (xhr) {
-            $('#pef-cache-badge').text('Cache: error');
             toast('Load failed: ' + ((xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error)) || 'error'), 'error');
         }
 
@@ -1562,7 +1749,7 @@
             }
         }
 
-        $btn.html('<i class="fas fa-upload"></i> Push Sprice (<span id="pef-push-count">0</span>)');
+        $btn.html('<i class="fas fa-upload"></i> Push (<span id="pef-push-count">0</span>)');
         updatePushBtn();
         toast(`Push done: ${ok} ok, ${fail} failed`, fail ? 'error' : 'success');
     }
@@ -1570,15 +1757,16 @@
     $(document).on('change', '#pef-select-all', function() {
         const checked = $(this).is(':checked');
         if (!table) return;
-        // Select across ALL filtered pages (not just the visible page)
-        const activeData = table.getData('active') || [];
-        activeData.forEach(function(d) {
+        $(this).prop('indeterminate', false);
+        // Select current pagination page only (not all filtered pages)
+        pefCurrentPageData().forEach(function(d) {
             if (!d || !d.id) return;
             if (checked) selectedIds.add(d.id);
             else selectedIds.delete(d.id);
         });
         table.redraw(true);
         updatePushBtn();
+        syncSelectAllCheckbox();
     });
 
     $(document).on('change', '.pef-row-cb', function() {
@@ -1586,6 +1774,7 @@
         if ($(this).is(':checked')) selectedIds.add(id);
         else selectedIds.delete(id);
         updatePushBtn();
+        syncSelectAllCheckbox();
     });
 
     $(document).on('click', '.pef-push-one', async function() {
@@ -1759,8 +1948,6 @@
     // Data already in HTML from DB — paint immediately (no Ajax load)
     initTable(pulledRows);
     if (dataLoaded) {
-        const calcAt = PEF_CACHE_AT ? String(PEF_CACHE_AT).replace('T', ' ').slice(0, 16) : 'ready';
-        $('#pef-cache-badge').text('Cache: ' + calcAt + ' · instant');
         $('#pef-channels-badge').text('Channels: ' + allChannelKeys().length);
         $('#pef-rows-badge').text('Rows: ' + pulledRows.length);
         requestAnimationFrame(function() {
@@ -1771,7 +1958,6 @@
             updatePushBtn();
         });
     } else {
-        $('#pef-cache-badge').text('Cache: empty');
         // Fallback only when table empty (command not run yet)
         loadFromCache();
     }
