@@ -2134,9 +2134,8 @@ class TemuController extends Controller
             return;
         }
 
-        $dataView = $isTemu2
-            ? Temu2DataView::firstOrNew(['sku' => $sku])
-            : TemuDataView::firstOrNew(['sku' => $sku]);
+        $modelClass = $isTemu2 ? Temu2DataView::class : TemuDataView::class;
+        $dataView = $modelClass::firstOrNew(['sku' => $sku]);
         $dataView->sku = $sku;
         $existingValue = is_array($dataView->value)
             ? $dataView->value
@@ -2162,6 +2161,16 @@ class TemuController extends Controller
         }
 
         $dataView->value = $existingValue;
+
+        // Some environments lost AUTO_INCREMENT on id — assign next id for new rows.
+        if (! $dataView->exists && empty($dataView->id)) {
+            $nextId = (int) ($modelClass::query()->max('id') ?? 0) + 1;
+            if ($nextId < 1) {
+                $nextId = 1;
+            }
+            $dataView->id = $nextId;
+        }
+
         $dataView->save();
     }
 
@@ -4059,8 +4068,17 @@ class TemuController extends Controller
             $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
 
             $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, false);
-            // Auto-apply same suggested price to Temu 2
-            $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, true);
+
+            // Auto-apply same suggested price to Temu 2 (non-fatal if Temu 2 write fails)
+            $temu2Applied = false;
+            try {
+                $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, true);
+                $temu2Applied = true;
+            } catch (\Throwable $e) {
+                Log::warning('Temu SPRICE saved but Temu 2 cross-apply failed: ' . $e->getMessage(), [
+                    'sku' => $sku,
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -4068,11 +4086,14 @@ class TemuController extends Controller
                 'sprice' => $sprice,
                 'sgprft_percent' => round($sgprftPercent, 2),
                 'sroi_percent' => round($sroiPercent, 2),
-                'temu_cross_applied' => true,
+                'temu_cross_applied' => $temu2Applied,
             ]);
         } catch (\Exception $e) {
             Log::error('Error saving Temu SPRICE: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to save SPRICE'], 500);
+            return response()->json([
+                'error' => 'Failed to save SPRICE',
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 

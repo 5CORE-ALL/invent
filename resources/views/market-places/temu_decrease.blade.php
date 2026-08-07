@@ -350,14 +350,18 @@
             overflow: hidden;
             max-width: 0;
         }
-        /* # | Price | Del | Price+D | Link | Ignore | Actions — widths must sum ~100% */
-        #lmpModal #lmpListTable col.lmp-col-num { width: 5%; }
-        #lmpModal #lmpListTable col.lmp-col-price { width: 14%; }
-        #lmpModal #lmpListTable col.lmp-col-delivery { width: 10%; }
-        #lmpModal #lmpListTable col.lmp-col-price-d { width: 12%; }
-        #lmpModal #lmpListTable col.lmp-col-link { width: 35%; }
-        #lmpModal #lmpListTable col.lmp-col-ignore { width: 12%; }
-        #lmpModal #lmpListTable col.lmp-col-actions { width: 12%; }
+        /* Select | # | Price | Del | Price+D | Link | Ignore | Actions — widths must sum ~100% */
+        #lmpModal #lmpListTable col.lmp-col-select { width: 4%; }
+        #lmpModal #lmpListTable col.lmp-col-num { width: 4%; }
+        #lmpModal #lmpListTable col.lmp-col-price { width: 13%; }
+        #lmpModal #lmpListTable col.lmp-col-delivery { width: 9%; }
+        #lmpModal #lmpListTable col.lmp-col-price-d { width: 11%; }
+        #lmpModal #lmpListTable col.lmp-col-link { width: 32%; }
+        #lmpModal #lmpListTable col.lmp-col-ignore { width: 10%; }
+        #lmpModal #lmpListTable col.lmp-col-actions { width: 17%; }
+        #lmpModal #lmpBulkDeleteBtn:disabled {
+            opacity: 0.55;
+        }
         #lmpModal .lmp-price-d {
             font-weight: 600;
             white-space: nowrap;
@@ -1215,7 +1219,13 @@
                         <div class="form-text mt-2 mb-0">Adds to the list below — click <strong>Save</strong> to write to <code>temu_lmp</code>.</div>
                     </div>
                     <div class="lmp-list-header">
-                        <h6 class="mb-0">LMP List <span class="badge bg-secondary" id="lmpListCountBadge">0</span></h6>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <h6 class="mb-0">LMP List <span class="badge bg-secondary" id="lmpListCountBadge">0</span></h6>
+                            <button type="button" class="btn btn-sm btn-danger" id="lmpBulkDeleteBtn" disabled
+                                title="Delete selected LMP rows (saved immediately)">
+                                <i class="fas fa-trash-alt me-1"></i>Delete Selected
+                            </button>
+                        </div>
                         <div class="lmp-l1-outside-badge" title="Lowest non-ignored competitor price (L1)">
                             <span class="lmp-l1-label">L1 Price</span>
                             <span class="lmp-l1-value" id="lmpModalL1Price">—</span>
@@ -1224,6 +1234,7 @@
                     <div class="lmp-list-scroll">
                         <table class="table table-sm table-bordered mb-0" id="lmpListTable">
                             <colgroup>
+                                <col class="lmp-col-select">
                                 <col class="lmp-col-num">
                                 <col class="lmp-col-price">
                                 <col class="lmp-col-delivery">
@@ -1234,6 +1245,9 @@
                             </colgroup>
                             <thead class="table-light">
                                 <tr>
+                                    <th class="text-center" title="Select for bulk delete">
+                                        <input type="checkbox" class="form-check-input m-0" id="lmpSelectAllCb" title="Select all">
+                                    </th>
                                     <th class="text-center">#</th>
                                     <th>Price</th>
                                     <th class="text-center" title="Added to Price for LMP / L1">Del</th>
@@ -6587,6 +6601,7 @@
             $('#lmpNewPrice').val('');
             $('#lmpNewDelivery').val('');
             $('#lmpNewLink').val('');
+            $('#lmpSelectAllCb').prop('checked', false).prop('indeterminate', false);
             const tbody = $('#lmpEntriesContainer');
             tbody.empty();
             let entries = Array.isArray(row.lmp_entries) ? row.lmp_entries.slice() : [];
@@ -6627,6 +6642,7 @@
         }
         function appendLmpTableRow(tbody, price, delivery, link, ignored, relayout, sourceSku) {
             const tr = $('<tr class="lmp-entry-row">' +
+                '<td class="text-center"><input type="checkbox" class="form-check-input lmp-row-cb m-0" title="Select for bulk delete"></td>' +
                 '<td class="lmp-num text-center"></td>' +
                 '<td><div class="lmp-price-cell">' +
                     '<input type="number" step="0.01" min="0" class="form-control form-control-sm lmp-price border-0 bg-transparent" placeholder="Price">' +
@@ -6639,7 +6655,10 @@
                     '<a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a>' +
                 '</div></td>' +
                 '<td class="text-center"><input type="checkbox" class="form-check-input lmp-ignore m-0" title="Ignore for L1"></td>' +
-                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+                '<td class="text-center text-nowrap">' +
+                    '<button type="button" class="btn btn-sm btn-danger lmp-remove-row" title="Delete this LMP row">' +
+                    '<i class="fas fa-trash-alt me-1"></i>Delete</button>' +
+                '</td></tr>');
             tr.attr('data-source-sku', sourceSku || lmpModalSku || '');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
@@ -6648,6 +6667,88 @@
             if (ignored) tr.addClass('lmp-ignored');
             tbody.append(tr);
             if (relayout !== false) updateLmpListLayout();
+            else updateLmpBulkDeleteUi();
+        }
+        function updateLmpBulkDeleteUi() {
+            const $rows = $('#lmpEntriesContainer .lmp-entry-row');
+            const $checked = $rows.find('.lmp-row-cb:checked');
+            const n = $checked.length;
+            const total = $rows.length;
+            $('#lmpBulkDeleteBtn').prop('disabled', n === 0)
+                .html(n > 0
+                    ? ('<i class="fas fa-trash-alt me-1"></i>Delete Selected (' + n + ')')
+                    : '<i class="fas fa-trash-alt me-1"></i>Delete Selected');
+            const $all = $('#lmpSelectAllCb');
+            if (!$all.length) return;
+            $all.prop('checked', total > 0 && n === total);
+            $all.prop('indeterminate', n > 0 && n < total);
+        }
+        function collectLmpEntriesFromModal() {
+            const entries = [];
+            $('#lmpEntriesContainer .lmp-entry-row').each(function() {
+                const $tr = $(this);
+                const price = $tr.find('.lmp-price').val();
+                const delivery = $tr.find('.lmp-delivery').val();
+                const link = $tr.find('.lmp-link').val();
+                const ignored = $tr.find('.lmp-ignore').is(':checked');
+                const sourceSku = ($tr.attr('data-source-sku') || lmpModalSku || '').trim();
+                if (price || link || delivery) {
+                    const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
+                    entries.push({
+                        price: price ? parseFloat(price) : null,
+                        delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
+                        link: link ? link.trim() : null,
+                        ignored: ignored,
+                        source_sku: sourceSku || lmpModalSku
+                    });
+                }
+            });
+            return entries;
+        }
+        function saveLmpEntries(opts) {
+            opts = opts || {};
+            const entries = collectLmpEntriesFromModal();
+            if (!lmpModalSku) {
+                showToast('Missing SKU — reopen the LMP modal', 'error');
+                return $.Deferred().reject().promise();
+            }
+            if (entries.length === 0 && !opts.allowEmpty && !confirm('Save empty LMP list? This deletes all Temu LMP entries for this SKU group.')) {
+                return $.Deferred().reject().promise();
+            }
+            const $btn = $('#lmpModalSaveBtn');
+            const $bulk = $('#lmpBulkDeleteBtn');
+            $btn.prop('disabled', true);
+            $bulk.prop('disabled', true);
+            return $.ajax({
+                url: '{{ route("temu.lmp.save") }}',
+                method: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                data: JSON.stringify({
+                    sku: lmpModalSku,
+                    lmp_entries: entries
+                })
+            }).done(function(response) {
+                if (response && response.success) {
+                    showToast(opts.successMsg || response.message || 'LMP saved successfully', 'success');
+                    if (opts.closeModal !== false) {
+                        $('#lmpModal').modal('hide');
+                    }
+                    if (table) table.replaceData();
+                } else {
+                    showToast((response && (response.message || response.error)) || 'Failed to save LMP', 'error');
+                }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                    || 'Failed to save LMP';
+                showToast(msg, 'error');
+            }).always(function() {
+                $btn.prop('disabled', false);
+                updateLmpBulkDeleteUi();
+            });
         }
         function updateLmpPriceDDisplay(tr) {
             const $el = $(tr).find('.lmp-price-d');
@@ -6670,9 +6771,16 @@
             .on('click.lmpActions', '.lmp-remove-row', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                if (!confirm('Delete this LMP row?')) return;
                 clearTimeout(lmpLayoutTimer);
                 $(this).closest('tr.lmp-entry-row').remove();
                 updateLmpListLayout();
+                // Persist immediately (empty list clears DB for this SKU group)
+                saveLmpEntries({
+                    allowEmpty: true,
+                    closeModal: false,
+                    successMsg: 'LMP row deleted'
+                });
             })
             .on('click.lmpActions', '.lmp-open-link', function(e) {
                 e.preventDefault();
@@ -6685,9 +6793,35 @@
                 tr.toggleClass('lmp-ignored', $(this).is(':checked'));
                 updateLmpLowestHighlight();
             })
+            .on('change.lmpActions', '.lmp-row-cb', function() {
+                updateLmpBulkDeleteUi();
+            })
             .on('input.lmpActions', '.lmp-price, .lmp-delivery, .lmp-link', function() {
                 scheduleLmpListLayout();
             });
+        $('#lmpSelectAllCb').off('change.lmpSelectAll').on('change.lmpSelectAll', function() {
+            const checked = $(this).is(':checked');
+            $('#lmpEntriesContainer .lmp-entry-row .lmp-row-cb').prop('checked', checked);
+            updateLmpBulkDeleteUi();
+        });
+        $('#lmpBulkDeleteBtn').off('click.lmpBulkDelete').on('click.lmpBulkDelete', function() {
+            const $selected = $('#lmpEntriesContainer .lmp-entry-row').has('.lmp-row-cb:checked');
+            const n = $selected.length;
+            if (!n) {
+                showToast('Select at least one LMP row to delete', 'warning');
+                return;
+            }
+            if (!confirm('Delete ' + n + ' selected LMP row' + (n === 1 ? '' : 's') + '?')) return;
+            clearTimeout(lmpLayoutTimer);
+            $selected.remove();
+            $('#lmpSelectAllCb').prop('checked', false).prop('indeterminate', false);
+            updateLmpListLayout();
+            saveLmpEntries({
+                allowEmpty: true,
+                closeModal: false,
+                successMsg: n + ' LMP row' + (n === 1 ? '' : 's') + ' deleted'
+            });
+        });
         /** Effective LMP for sorting / L1 = Price + Delivery (default Del $2.99 when Price < $27). */
         function getLmpEntryPrice(tr) {
             const val = $(tr).find('.lmp-price').val();
@@ -6735,6 +6869,7 @@
                        '</div>')
                     : '<span class="text-muted small"><i class="fas fa-store me-1"></i>No buyer link</span>';
                 const fiveCoreTr = $('<tr class="lmp-five-core-row">' +
+                    '<td class="text-center text-muted small">—</td>' +
                     '<td class="lmp-num text-center">—</td>' +
                     '<td><div class="lmp-price-cell">' +
                     '<span class="lmp-five-core-price">$' + lmpModalOurPrice.toFixed(2) + '</span>' +
@@ -6780,6 +6915,7 @@
                 $(this).find('.lmp-num').text(i + 1);
             });
             $('#lmpListCountBadge').text(String(n));
+            updateLmpBulkDeleteUi();
         }
         function updateLmpLowestHighlight() {
             let minVal = null;
@@ -6825,64 +6961,7 @@
             $('#lmpNewLink').val('');
         });
         $('#lmpModalSaveBtn').on('click', function() {
-            const entries = [];
-            $('#lmpEntriesContainer .lmp-entry-row').each(function() {
-                const $tr = $(this);
-                const price = $tr.find('.lmp-price').val();
-                const delivery = $tr.find('.lmp-delivery').val();
-                const link = $tr.find('.lmp-link').val();
-                const ignored = $tr.find('.lmp-ignore').is(':checked');
-                const sourceSku = ($tr.attr('data-source-sku') || lmpModalSku || '').trim();
-                if (price || link || delivery) {
-                    const deliveryNum = delivery !== '' && delivery != null ? parseFloat(delivery) : 0;
-                    entries.push({
-                        price: price ? parseFloat(price) : null,
-                        delivery: (!isNaN(deliveryNum) && deliveryNum > 0) ? deliveryNum : 0,
-                        link: link ? link.trim() : null,
-                        ignored: ignored,
-                        source_sku: sourceSku || lmpModalSku
-                    });
-                }
-            });
-            // Empty list is allowed — clears LMP on this SKU / linked sources that no longer have rows
-            if (!lmpModalSku) {
-                showToast('Missing SKU — reopen the LMP modal', 'error');
-                return;
-            }
-            if (entries.length === 0 && !confirm('Save empty LMP list? This deletes all Temu LMP entries for this SKU group.')) {
-                return;
-            }
-            $(this).prop('disabled', true);
-            $.ajax({
-                url: '{{ route("temu.lmp.save") }}',
-                method: 'POST',
-                contentType: 'application/json',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}',
-                    'Accept': 'application/json'
-                },
-                data: JSON.stringify({
-                    sku: lmpModalSku,
-                    lmp_entries: entries
-                }),
-                success: function(response) {
-                    if (response && response.success) {
-                        showToast(response.message || 'LMP saved successfully', 'success');
-                        $('#lmpModal').modal('hide');
-                        if (table) table.replaceData();
-                    } else {
-                        showToast((response && (response.message || response.error)) || 'Failed to save LMP', 'error');
-                    }
-                },
-                error: function(xhr) {
-                    const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
-                        || 'Failed to save LMP';
-                    showToast(msg, 'error');
-                },
-                complete: function() {
-                    $('#lmpModalSaveBtn').prop('disabled', false);
-                }
-            });
+            saveLmpEntries({ closeModal: true });
         });
 
         $('#parent-filter, #inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
