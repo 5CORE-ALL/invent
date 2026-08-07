@@ -1990,7 +1990,8 @@
                         title: "NROI %",
                         field: "N ROI",
                         hozAlign: "center",
-                        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
+                        // Most channels: (Gross Profit − Ad Spend) / COGS × 100.
+                        // Temu / Temu 2: GROI% − Ads% (same as /temu-decrease after Ads reduce).
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());

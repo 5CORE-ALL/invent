@@ -863,7 +863,8 @@ class ChannelMasterController extends Controller
                 $row['CVR'] = $mapMiss['cvr_pct'];
             }
 
-            // Temu 2: overlay live Spend from temu2_campaign_reports (same as /temu2/ads)
+            // Temu 2: overlay live Spend from temu2_campaign_reports (same as /temu2/ads).
+            // Temu 1 spend comes from the heavy decrease endpoint — skip here; cache/full rebuild covers it.
             if ($isTemu2) {
                 $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu2');
                 $l30ForAds = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L30 Sales'] ?? 0));
@@ -872,16 +873,18 @@ class ChannelMasterController extends Controller
                 }
                 $adsPct = $l30ForAds > 0 ? ($totalAdSpend / $l30ForAds) * 100 : 0;
                 $gProfitPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Gprofit%'] ?? 0));
-                $totalPft = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
-                $cogs = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
                 $row['Total Ad Spend'] = round($totalAdSpend, 2);
                 $row['KW Spent'] = round($totalAdSpend, 2);
                 $row['Ads%'] = round($adsPct, 2).'%';
                 $row['TACOS %'] = round($adsPct, 2).'%';
                 $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
-                $netProfit = $totalPft - $totalAdSpend;
-                $row['N ROI'] = $cogs > 0 ? round(($netProfit / $cogs) * 100, 2) : ($row['N ROI'] ?? 0);
             }
+
+            // Temu / Temu 2: NROI% = GROI% − Ads% (same as /temu-decrease after Ads reduce).
+            // Fixes stale cache rows that still store (PFT−Spend)/COGS.
+            $adsPctForNroi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? $row['TACOS %'] ?? 0));
+            $gRoi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['G Roi'] ?? 0));
+            $row['N ROI'] = round($gRoi - $adsPctForNroi, 2);
         }
         unset($row);
 
@@ -5217,12 +5220,18 @@ class ChannelMasterController extends Controller
                 $nPftRecalculated = $gpftPercent - $adsPercentage;
                 $row['N PFT'] = round($nPftRecalculated, 2) . '%';
 
-                // Recalculate N ROI based on Net Profit Amount (NROI% = (Gross Profit - Ad Spend) / COGS * 100)
-                $totalPft = (float) str_replace(['$', ',', '%'], '', $row['Total PFT'] ?? 0);
-                $cogs = (float) str_replace(['$', ',', '%'], '', $row['cogs'] ?? 0);
-                $netProfitAmount = $totalPft - $totalAdSpend;
-                $nRoiRecalculated = $cogs > 0 ? ($netProfitAmount / $cogs) * 100 : 0;
-                $row['N ROI'] = round($nRoiRecalculated, 2);
+                // Temu / Temu 2: NROI% = GROI% − Ads% (matches /temu-decrease & /temu2-decrease).
+                // Other channels: NROI% = (Gross Profit − Ad Spend) / COGS × 100.
+                if (in_array($key, ['temu', 'temu2'], true)) {
+                    $gRoi = (float) str_replace(['$', ',', '%'], '', $row['G Roi'] ?? 0);
+                    $row['N ROI'] = round($gRoi - $adsPercentage, 2);
+                } else {
+                    $totalPft = (float) str_replace(['$', ',', '%'], '', $row['Total PFT'] ?? 0);
+                    $cogs = (float) str_replace(['$', ',', '%'], '', $row['cogs'] ?? 0);
+                    $netProfitAmount = $totalPft - $totalAdSpend;
+                    $nRoiRecalculated = $cogs > 0 ? ($netProfitAmount / $cogs) * 100 : 0;
+                    $row['N ROI'] = round($nRoiRecalculated, 2);
+                }
             } else {
                 // Reverb: Ads%/TACOS stay as Bump%; N PFT/N ROI already Amazon-style from getReverbChannelData.
                 $row['TACOS %'] = $row['TACOS %'] ?? $row['Ads%'] ?? '0%';
@@ -8704,8 +8713,8 @@ class ChannelMasterController extends Controller
             ? (float) $temuAdMetrics['Ads%']
             : $tacosPercentage;
         $nPft = round($gProfitPct - $tacosPercentage, 2);
-        $netProfit = $totalProfit - $totalAdSpend;
-        $nRoi = $totalCogs > 0 ? round(($netProfit / $totalCogs) * 100, 2) : 0.0;
+        // Match /temu-decrease badge: NROI% = GROI% − Ads% (updates in lockstep when Ads% drops).
+        $nRoi = round($gRoi - $adsPercentage, 2);
 
         $growth = $l60SalesReported > 0 ? (($l30SalesReported - $l60SalesReported) / $l60SalesReported) * 100 : 0;
 
@@ -8835,7 +8844,8 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
         $adsPercentage = $tacosPercentage;
         $nPft = $gProfitPct - $tacosPercentage;
-        $nRoi = $totalCogs > 0 ? (($totalProfit - $totalAdSpend) / $totalCogs) * 100 : 0;
+        // Match /temu2-decrease: NROI% = GROI% − Ads%.
+        $nRoi = $gRoi - $adsPercentage;
 
         // Growth = ((L30 - L60) / L60) * 100.
         // Final fallback only if neither historical snapshot nor static file gave us a value.
