@@ -854,11 +854,12 @@ class EbayThreeController extends Controller
                 // Calculate SPFT = SGPFT - AD%
                 $row['SPFT'] = round($parentSgpft - $row['AD%'], 2);
                 
-                // Calculate SROI
-                $row['SROI'] = round(
+                // SGROI = same formula as GROI%/ROI% using SPRICE; SROI (SNROI) netted later
+                $row['SGROI'] = round(
                     $parentLp > 0 ? (($parentPrice * $percentage - $parentLp - $parentShip) / $parentLp) * 100 : 0,
                     2
                 );
+                $row['SROI'] = $row['SGROI'];
                 
                 // Set defaults for PARENT rows
                 $row['NR'] = null;
@@ -1297,14 +1298,18 @@ class EbayThreeController extends Controller
                     );
                     $row['SGPFT'] = $sgpft;
                     $row['SPFT'] = $sgpft;
-                    $row['SROI'] = round(
+                    // SGROI = same formula as GROI%/ROI% but using SPRICE (S PRC) instead of eBay Price
+                    $row['SGROI'] = round(
                         $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
                         2
                     );
+                    // SROI (SNROI) overwritten to net-of-ads in applyEbay3NetSroiToRow
+                    $row['SROI'] = $row['SGROI'];
                 } else {
                     $row['SPRICE'] = null;
                     $row['SPFT'] = null;
                     $row['SROI'] = null;
+                    $row['SGROI'] = null;
                     $row['SGPFT'] = null;
                     $row['has_custom_sprice'] = false;
                     $row['SPRICE_STATUS'] = null;
@@ -1469,12 +1474,13 @@ class EbayThreeController extends Controller
                 // Calculate PFT %
                 $syntheticParent['PFT %'] = round($gpft - $syntheticParent['AD%'], 2);
                 
-                // SPRICE calculations
+                // SPRICE calculations — SGROI uses same formula as GROI%/ROI% on SPRICE
                 $syntheticParent['SPRICE'] = $avgPrice;
                 $syntheticParent['has_custom_sprice'] = false;
                 $syntheticParent['SGPFT'] = round($gpft, 2);
                 $syntheticParent['SPFT'] = round($gpft - $syntheticParent['AD%'], 2);
-                $syntheticParent['SROI'] = $avgLp > 0 ? round((($avgPrice * $percentage - $avgLp - $avgShip) / $avgLp) * 100, 2) : 0;
+                $syntheticParent['SGROI'] = $avgLp > 0 ? round((($avgPrice * $percentage - $avgLp - $avgShip) / $avgLp) * 100, 2) : 0;
+                $syntheticParent['SROI'] = $syntheticParent['SGROI'];
                 
                 // Set defaults
                 $syntheticParent['NR'] = null;
@@ -2517,9 +2523,9 @@ class EbayThreeController extends Controller
             ? $ebayThreeDataView->value
             : (json_decode($ebayThreeDataView->value, true) ?: []);
 
-        // Clear SPRICE: when 0, remove SPRICE/SPFT/SROI/SGPFT and set flag so API returns null (not eBay Price)
+        // Clear SPRICE: when 0, remove SPRICE/SPFT/SROI/SGROI/SGPFT and set flag so API returns null (not eBay Price)
         if ($spriceFloat <= 0) {
-            unset($existing['SPRICE'], $existing['SPFT'], $existing['SROI'], $existing['SGPFT']);
+            unset($existing['SPRICE'], $existing['SPFT'], $existing['SROI'], $existing['SGROI'], $existing['SGPFT']);
             $existing['SPRICE_CLEARED'] = true;
             $ebayThreeDataView->value = $existing;
             $ebayThreeDataView->save();
@@ -2527,7 +2533,7 @@ class EbayThreeController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'SPRICE cleared for Ebay3',
-                'data' => ['sku' => $sku, 'sprice' => 0, 'spft' => null, 'sroi' => null, 'sgpft' => null]
+                'data' => ['sku' => $sku, 'sprice' => 0, 'spft' => null, 'sroi' => null, 'sgroi' => null, 'sgpft' => null]
             ]);
         }
 
@@ -2607,7 +2613,7 @@ class EbayThreeController extends Controller
 
     /**
      * Clear SPRICE-related fields from EbayThreeDataView table
-     * Only removes: SPRICE, SPFT, SROI, SGPFT
+     * Only removes: SPRICE, SPFT, SROI, SGROI, SGPFT
      * Keeps other data: NR, Listed, Live, Hide, NRL, etc.
      */
     public function clearAllSprice(Request $request)
@@ -2627,13 +2633,14 @@ class EbayThreeController extends Controller
                 
                 // Check if any SPRICE-related fields exist
                 $hasSprice = isset($value['SPRICE']) || isset($value['SPFT']) || 
-                             isset($value['SROI']) || isset($value['SGPFT']);
+                             isset($value['SROI']) || isset($value['SGROI']) || isset($value['SGPFT']);
                 
                 if ($hasSprice) {
                     // Remove only SPRICE-related fields and set flag so API returns null (not eBay Price)
                     unset($value['SPRICE']);
                     unset($value['SPFT']);
                     unset($value['SROI']);
+                    unset($value['SGROI']);
                     unset($value['SGPFT']);
                     $value['SPRICE_CLEARED'] = true;
                     

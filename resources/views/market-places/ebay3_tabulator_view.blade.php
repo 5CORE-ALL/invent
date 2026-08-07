@@ -1506,6 +1506,23 @@
     const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
 
     /**
+     * Gross ROI — same formula as GROI% (ROI%) column:
+     *   ((price × margin − Ship − LP) / LP) × 100
+     * @param {object} rowData
+     * @param {string} priceKey  'eBay Price' for GROI%, 'SPRICE' for S GROI
+     */
+    function ebay3ComputeGrossRoi(rowData, priceKey) {
+        if (!rowData) return null;
+        const price = parseFloat(rowData[priceKey]);
+        const lp = parseFloat(rowData.LP_productmaster);
+        if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+        const marginRaw = parseFloat(rowData.percentage);
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
+        return ((price * margin - lp - ship) / lp) * 100;
+    }
+
+    /**
      * Net ROI — same shape as Amazon NROI / SNROI badge:
      *   (gross profit $ − ad spend $) / COGS × 100
      * where ad spend $ = price × Ads%/100 and COGS = LP.
@@ -1524,6 +1541,16 @@
         const grossPft = (price * margin) - ship - lp;
         const adSpend = price * adsFrac;
         return ((grossPft - adSpend) / lp) * 100;
+    }
+
+    /** True when S PRC would show a distinct dollar amount (not blank / not "-"). */
+    function ebay3HasDistinctSprice(rowData) {
+        if (!rowData) return false;
+        const sprice = parseFloat(rowData.SPRICE);
+        if (!isFinite(sprice) || sprice <= 0) return false;
+        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+        if (ebayPrice > 0 && ebayPrice.toFixed(2) === sprice.toFixed(2)) return false;
+        return true;
     }
     const ebay3BadgeDollarMetrics = ['total_pft_amt', 'total_sales_amt', 'total_spend_l30', 'avg_price'];
     const ebay3BadgePctMetrics = ['gpft_percent', 'npft_percent', 'groi_percent', 'nroi_percent', 'tcos_percent', 'cvr_percent'];
@@ -1950,14 +1977,17 @@
                                     SPRICE: null,
                                     SPFT: null,
                                     SROI: null,
+                                    SGROI: null,
                                     SGPFT: null,
-                                    SPRICE_STATUS: 'saved'
+                                    SPRICE_STATUS: 'saved',
+                                    has_custom_sprice: false
                                 });
                             } else {
                                 targetRow.update({
                                     SPRICE: numSprice,
                                     SPFT: response.data?.spft || response.spft_percent,
                                     SROI: response.data?.sroi || response.sroi_percent,
+                                    SGROI: response.data?.sgroi ?? response.sgroi_percent ?? null,
                                     SGPFT: response.data?.sgpft || response.sgpft_percent,
                                     SPRICE_STATUS: 'saved',
                                     has_custom_sprice: true
@@ -5771,6 +5801,45 @@
                     }
                 },
                 {
+                    title: "S GROI",
+                    field: "SGROI",
+                    hozAlign: "center",
+                    // Always derive from S PRC (SPRICE) with the same formula as GROI% from Prc.
+                    sorter: function(a, b, aRow, bRow) {
+                        const aVal = ebay3HasDistinctSprice(aRow.getData())
+                            ? ebay3ComputeGrossRoi(aRow.getData(), 'SPRICE') : null;
+                        const bVal = ebay3HasDistinctSprice(bRow.getData())
+                            ? ebay3ComputeGrossRoi(bRow.getData(), 'SPRICE') : null;
+                        return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                             - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                    },
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData.SPRICE);
+                        const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+
+                        // Match S PRC column: blank when no SPRICE, "-" when same as eBay Price
+                        if (!isFinite(sprice) || sprice <= 0) return '';
+                        if (ebayPrice > 0 && ebayPrice.toFixed(2) === sprice.toFixed(2)) {
+                            return '<span style="color:#adb5bd;" title="Same as eBay Price">-</span>';
+                        }
+
+                        // Same formula as GROI% (ROI%) but price = S PRC / SPRICE:
+                        // ((SPRICE × margin − LP − Ship) / LP) × 100
+                        const percent = ebay3ComputeGrossRoi(rowData, 'SPRICE');
+                        if (percent === null || !isFinite(percent)) return '';
+
+                        let color = '';
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
                     title: "S GPFT",
                     field: "SGPFT",
                     hozAlign: "center",
@@ -5787,36 +5856,6 @@
                         else if (percent >= 20 && percent <= 40) color = '#28a745';
                         else color = '#e83e8c';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 80
-                },
-                {
-                    title: "S GROI",
-                    field: "SGROI",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        let percent = parseFloat(cell.getValue());
-                        // Fallback: compute gross from SPRICE when SGROI not stored yet
-                        if (!isFinite(percent)) {
-                            const sprice = parseFloat(rowData.SPRICE);
-                            const lp = parseFloat(rowData.LP_productmaster);
-                            if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return '';
-                            const ship = parseFloat(rowData.Ship_productmaster) || 0;
-                            const marginRaw = parseFloat(rowData.percentage);
-                            const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.85;
-                            percent = ((sprice * margin - ship - lp) / lp) * 100;
-                        }
-                        if (!isFinite(percent)) return '';
-
-                        let color = '';
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
-
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 80
