@@ -2257,9 +2257,35 @@
 
     function setPushProgressUi(active, msg, done, total, ok, fail, failedTasks) {
         const $box = $('#pef-push-progress');
+        // Only keep banner open while push is running (or caller explicitly shows a result once).
+        // Do not leave failed history stuck on screen forever across reloads.
         if (active) $box.addClass('active');
-        else if (!fail) $box.removeClass('active');
-        else $box.addClass('active');
+        else $box.removeClass('active');
+        $('#pef-push-progress-msg').text(msg || '');
+        const t = total || 0;
+        const d = done || 0;
+        const pct = t > 0 ? Math.min(100, Math.round((d / t) * 100)) : 0;
+        $('#pef-push-progress-bar').css('width', pct + '%');
+        $('#pef-push-progress-counts').text(
+            t ? (d + '/' + t + ' · ' + (ok || 0) + ' ok · ' + (fail || 0) + ' failed') : ''
+        );
+        const $fail = $('#pef-push-fail-list').empty();
+        if (active || (fail > 0 && pefPushInFlight)) {
+            (failedTasks || []).slice(0, 50).forEach(function(f) {
+                $fail.append(
+                    $('<div class="pef-fail-item"></div>').text(
+                        (f.sku || '') + ' → ' + (f.channel || f.marketplace || '') + ': ' + (f.error || 'failed')
+                    )
+                );
+            });
+        }
+        $('#pef-push-cancel-btn').toggle(!!active);
+    }
+
+    /** Show completed push summary once (then user can dismiss / it won't return on reload). */
+    function showPushResultOnce(msg, done, total, ok, fail, failedTasks) {
+        const $box = $('#pef-push-progress');
+        $box.addClass('active');
         $('#pef-push-progress-msg').text(msg || '');
         const t = total || 0;
         const d = done || 0;
@@ -2276,7 +2302,7 @@
                 )
             );
         });
-        $('#pef-push-cancel-btn').toggle(!!active);
+        $('#pef-push-cancel-btn').hide();
     }
 
     function stopPushPoll() {
@@ -2367,15 +2393,23 @@
                     const first = (resp.failed_tasks && resp.failed_tasks[0])
                         ? ((resp.failed_tasks[0].sku || '') + ': ' + (resp.failed_tasks[0].error || 'failed'))
                         : '';
-                    toast(
-                        'Push done: ' + ok + ' ok, ' + fail + ' failed'
-                            + (first ? ' — ' + first : ''),
-                        'error'
+                    const doneMsg = 'Push done: ' + ok + ' ok, ' + fail + ' failed'
+                        + (first ? ' — ' + first : '');
+                    showPushResultOnce(
+                        doneMsg,
+                        done,
+                        total,
+                        ok,
+                        fail,
+                        resp.failed_tasks || []
                     );
+                    toast(doneMsg, 'error');
                 } else if (status === 'completed') {
+                    setPushProgressUi(false, '', 0, 0, 0, 0, []);
                     toast('Push done: ' + ok + ' ok', 'success');
                 } else if (status === 'failed') {
                     toast(resp.message || job.last_message || 'Push failed', 'error');
+                    setPushProgressUi(false, '', 0, 0, 0, 0, []);
                 }
             }
         }).fail(function(xhr) {
@@ -2520,7 +2554,7 @@
         });
     });
 
-    // Resume progress UI if a push is already running when the page opens
+    // Resume ONLY if a push is still running. Do not re-show old completed failures on every reload.
     $(function() {
         $.ajax({
             url: '/pricing-errors-fix-push-status',
@@ -2534,20 +2568,14 @@
                 $('#pef-bulk-push-btn').prop('disabled', true)
                     .html('<i class="fas fa-spinner fa-spin"></i> Running…');
                 startPushPoll();
-            } else if (st === 'completed' || st === 'failed') {
-                if ((resp.fail_count || 0) > 0) {
-                    setPushProgressUi(
-                        false,
-                        resp.message || '',
-                        resp.done_count || 0,
-                        resp.total || 0,
-                        resp.ok_count || 0,
-                        resp.fail_count || 0,
-                        resp.failed_tasks || []
-                    );
-                    applyPushJobToRows(resp);
-                }
             }
+            // completed/failed history stays on server for debugging, but UI stays clean
+        });
+
+        // Click progress banner to dismiss after a finished push
+        $(document).on('click', '#pef-push-progress', function() {
+            if (pefPushInFlight) return;
+            setPushProgressUi(false, '', 0, 0, 0, 0, []);
         });
     });
 
