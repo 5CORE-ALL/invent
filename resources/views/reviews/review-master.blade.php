@@ -467,9 +467,11 @@
             const urlParams = new URLSearchParams(window.location.search);
             const deepParent = (urlParams.get('parent') || '').trim();
             const deepSku = (urlParams.get('sku') || '').trim();
+            const deepMarketplace = (urlParams.get('marketplace') || '').trim();
             const reviewsAjaxParams = {};
             if (deepParent) reviewsAjaxParams.parent = deepParent;
             if (deepSku) reviewsAjaxParams.sku = deepSku;
+            if (deepMarketplace) reviewsAjaxParams.marketplace = deepMarketplace;
 
             table = new Tabulator('#reviews-table', {
                 ajaxURL: REVIEWS_DATA_URL,

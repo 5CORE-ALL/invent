@@ -91,8 +91,27 @@ class ReviewMasterController extends Controller
         if ($supplier = $request->input('supplier_id')) {
             $query->where('sku_reviews.supplier_id', $supplier);
         }
-        if ($marketplace = $request->input('marketplace')) {
-            $query->where('sku_reviews.marketplace', $marketplace);
+        if ($marketplace = trim((string) $request->input('marketplace', ''))) {
+            // Accept PEF / alias keys (temu, ebay1) as well as stored labels (temu 1, amazon)
+            $compact = strtolower(preg_replace('/\s+/', '', $marketplace) ?? '');
+            $aliases = match (true) {
+                $compact === 'amazon' => ['amazon'],
+                in_array($compact, ['ebay', 'ebay1', 'ebayone'], true) => ['ebay', 'ebay1', 'ebay one'],
+                in_array($compact, ['ebay2', 'ebaytwo'], true) => ['ebay2', 'ebay two'],
+                in_array($compact, ['ebay3', 'ebaythree'], true) => ['ebay3', 'ebay three'],
+                in_array($compact, ['temu', 'temu1'], true) => ['temu', 'temu1', 'temu 1'],
+                $compact === 'temu2' => ['temu2', 'temu 2'],
+                default => [$marketplace],
+            };
+            $query->where(function ($q) use ($aliases) {
+                foreach ($aliases as $i => $alias) {
+                    if ($i === 0) {
+                        $q->whereRaw('LOWER(TRIM(sku_reviews.marketplace)) = ?', [strtolower($alias)]);
+                    } else {
+                        $q->orWhereRaw('LOWER(TRIM(sku_reviews.marketplace)) = ?', [strtolower($alias)]);
+                    }
+                }
+            });
         }
         if ($rating = $request->input('rating')) {
             $query->where('sku_reviews.rating', $rating);

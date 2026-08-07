@@ -2313,16 +2313,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Pricing Errors Fix — SKU×marketplace cache for instant /pricing-errors-fix loads
-        $ist($schedule->command('pricing-errors:calculate-data --force')
-            ->everyFifteenMinutes()
-            ->timezone('Asia/Kolkata')
-            ->name('pricing-errors-calculate-data')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-
         $retryFiveTimesUntil('sync:tiktok-api-data', 'sync-tiktok-api-data', '15:45');
         $retryFiveTimesUntil('sync:tiktok-api-data --channel=tiktok2', 'sync-tiktok2-api-data', '16:00');
 

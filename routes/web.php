@@ -3691,13 +3691,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Price Increase Route (same logic / datatable as pricing-master-cvr)
     Route::get('/price-increase', [CvrMasterController::class, 'priceIncreaseView'])->name('price.increase');
 
-    // Pricing Errors Fix — all channels in one Tabulator (per-channel datatable logic)
-    Route::get('/pricing-errors-fix', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'index'])->name('pricing.errors.fix');
-    Route::get('/pricing-errors-fix-data-json', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'dataJson'])->name('pricing.errors.fix.data');
-    Route::get('/pricing-errors-fix-channels', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'channelsJson'])->name('pricing.errors.fix.channels');
-    Route::post('/pricing-errors-fix-push', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'queuePush'])->name('pricing.errors.fix.push');
-    Route::get('/pricing-errors-fix-push-status', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'pushJobStatus'])->name('pricing.errors.fix.push.status');
-    Route::post('/pricing-errors-fix-push-cancel', [\App\Http\Controllers\MarketPlace\PricingErrorsFixController::class, 'cancelPush'])->name('pricing.errors.fix.push.cancel');
+    // Pricing Errors Fix — PEF UI; live data from same CvrMasterController / price-increase calculation
+    Route::get('/pricing-errors-fix', [CvrMasterController::class, 'pricingErrorsFixView'])->name('pricing.errors.fix');
+    Route::get('/pricing-errors-fix-data-json', [CvrMasterController::class, 'pricingErrorsFixDataJson'])->name('pricing.errors.fix.data');
+    Route::get('/pricing-errors-fix-channels', [CvrMasterController::class, 'pricingErrorsFixChannelsJson'])->name('pricing.errors.fix.channels');
+    Route::post('/pricing-errors-fix-push', [CvrMasterController::class, 'pricingErrorsFixQueuePush'])->name('pricing.errors.fix.push');
+    Route::get('/pricing-errors-fix-push-status', [CvrMasterController::class, 'pricingErrorsFixPushJobStatus'])->name('pricing.errors.fix.push.status');
+    Route::post('/pricing-errors-fix-push-cancel', [CvrMasterController::class, 'pricingErrorsFixCancelPush'])->name('pricing.errors.fix.push.cancel');
 
     // WMPNM Dil (copy of price-increase; same datatable /cvr-master-data-json)
     Route::get('/wmpnm-dil', [CvrMasterController::class, 'wmpnmDilView'])->name('wmpnm.dil');

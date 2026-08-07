@@ -123,6 +123,11 @@ use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\PurchasingPowerApiService;
 use App\Support\TemuGoodsIdHelper;
+use App\Jobs\RunPricingErrorsFixPushJob;
+use App\Services\PricingErrorsFixCvrCacheBuilder;
+use App\Services\Support\PricingErrorsFixPushJobStore;
+use Illuminate\Http\JsonResponse;
+use Illuminate\View\View;
 
 class CvrMasterController extends Controller
 {
@@ -169,6 +174,175 @@ class CvrMasterController extends Controller
             "mode" => $mode,
             "demo" => $demo,
         ]);
+    }
+
+    /**
+     * Pricing Errors Fix — same live CVR calculation as /price-increase, flat SKU×channel UI.
+     */
+    public function pricingErrorsFixView(Request $request): View
+    {
+        $channels = [];
+        foreach ($this->pefChannelRegistry() as $key => $label) {
+            $channels[] = ['key' => $key, 'label' => $label];
+        }
+
+        return view('market-places.pricing_errors_fix_view', [
+            'mode' => $request->query('mode'),
+            'demo' => $request->query('demo'),
+            'channels' => $channels,
+            'cache_calculated_at' => null,
+            'initial_rows' => [],
+        ]);
+    }
+
+    /**
+     * Live PEF rows: unpivot getCvrDataJson(?for_pricing_errors_fix=1) via PricingErrorsFixCvrCacheBuilder.
+     */
+    public function pricingErrorsFixDataJson(Request $request): JsonResponse
+    {
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
+        try {
+            $listedOnly = filter_var($request->query('listed_only', true), FILTER_VALIDATE_BOOLEAN);
+            $wanted = $this->pefWantedChannelKeys($request);
+            $built = app(PricingErrorsFixCvrCacheBuilder::class)->build($wanted, null, $listedOnly);
+
+            return response()->json([
+                'data' => $built['rows'],
+                'meta' => [
+                    'total' => count($built['rows']),
+                    'channels' => $wanted,
+                    'errors' => $built['errors'],
+                    'source' => 'cvr-price-increase',
+                    'calculated_at' => null,
+                ],
+            ])->withHeaders([
+                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma' => 'no-cache',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('PEF dataJson: '.$e->getMessage());
+
+            return response()->json(['error' => 'Failed to fetch pricing errors data', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pricingErrorsFixChannelsJson(): JsonResponse
+    {
+        $list = [];
+        foreach ($this->pefChannelRegistry() as $key => $label) {
+            $list[] = [
+                'key' => $key,
+                'label' => $label,
+                'marketplace' => $key === 'ebay' ? 'ebay1' : $key,
+            ];
+        }
+
+        return response()->json($list);
+    }
+
+    public function pricingErrorsFixQueuePush(Request $request, PricingErrorsFixPushJobStore $store): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
+        }
+
+        $current = $store->load();
+        if ($store->isActive($current) && ! $store->isStale($current)) {
+            return response()->json(array_merge($store->toApiResponse($current), [
+                'success' => false,
+                'message' => 'A price push is already running. Wait for it to finish or cancel it.',
+            ]), 409);
+        }
+        if ($store->isActive($current)) {
+            $store->forceStop('Cleared a stale push job (no worker was processing it).');
+            $this->pefReleaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+        }
+
+        $tasks = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $tasks[] = [
+                'row_id' => $item['row_id'] ?? null,
+                'sku' => $item['sku'] ?? null,
+                'marketplace' => $item['marketplace'] ?? null,
+                'channel' => $item['channel'] ?? null,
+                'price' => $item['price'] ?? null,
+                'sprice' => $item['sprice'] ?? null,
+                'self_pick_price' => $item['self_pick_price'] ?? null,
+                'goods_id' => $item['goods_id'] ?? null,
+                'sku_id' => $item['sku_id'] ?? null,
+            ];
+        }
+
+        $job = $store->create($tasks);
+        if ((int) ($job['total'] ?? 0) === 0) {
+            return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + price > 0)'], 400);
+        }
+
+        $this->pefReleaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+
+        try {
+            RunPricingErrorsFixPushJob::dispatch();
+        } catch (\Throwable $e) {
+            Log::warning('PEF push queue dispatch failed', ['error' => $e->getMessage()]);
+        }
+
+        $spawned = $this->spawnPricingErrorsFixPushWorker();
+        if (! $spawned) {
+            Log::error('PEF push sync spawn failed — push may stall until a queue worker picks it up');
+        }
+
+        $store->update(function (array $state) use ($spawned) {
+            $state['last_message'] = $spawned
+                ? 'Worker started — pushing '.$state['total'].' row(s)…'
+                : 'Queued — waiting for worker (spawn failed; ensure queue:work --queue=pricing-errors-fix-push)';
+            $state['worker_spawned_at'] = now()->toDateTimeString();
+
+            return $state;
+        });
+
+        return response()->json(array_merge($store->toApiResponse($store->load()), [
+            'success' => true,
+            'message' => 'Price push started ('.$job['total'].' row(s)). Processing in background with retries…',
+            'worker_spawned' => $spawned,
+        ]));
+    }
+
+    public function pricingErrorsFixPushJobStatus(PricingErrorsFixPushJobStore $store): JsonResponse
+    {
+        $state = $store->load();
+
+        if ($store->isActive($state) && $this->pefPushLooksStuck($state)) {
+            $this->pefReleaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+            $kicked = $this->spawnPricingErrorsFixPushWorker();
+            $store->update(function (array $s) use ($kicked) {
+                $s['last_message'] = $kicked
+                    ? 'Worker re-started after stall — continuing push…'
+                    : 'Push stalled — could not start worker. Click Cancel, then Push again, or run: php artisan pricing-errors:push-run --sync';
+                $s['worker_spawned_at'] = now()->toDateTimeString();
+
+                return $s;
+            });
+            $state = $store->load();
+        }
+
+        return response()->json($store->toApiResponse($state));
+    }
+
+    public function pricingErrorsFixCancelPush(PricingErrorsFixPushJobStore $store): JsonResponse
+    {
+        $job = $store->forceStop('Cancelled by user.');
+        $this->pefReleaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
+
+        return response()->json(array_merge($store->toApiResponse($job), [
+            'success' => true,
+            'message' => 'Push cancelled.',
+        ]));
     }
 
     /**
@@ -6213,29 +6387,6 @@ class CvrMasterController extends Controller
                 }
             }
 
-            // Keep Pricing Errors Fix cache in sync (SKU × marketplace patch).
-            // Also refresh Temu/eBay sibling channels that were cross-applied above.
-            try {
-                $pefChannels = [$marketplace];
-                if (!$skipPairSync && ($marketplace === 'temu' || $marketplace === 'temu2')) {
-                    $pefChannels[] = $marketplace === 'temu' ? 'temu2' : 'temu';
-                }
-                if (!$skipPairSync) {
-                    foreach ($this->ebaySiblingChannels($marketplace) as $otherEbay) {
-                        $pefChannels[] = $otherEbay;
-                    }
-                }
-                foreach (array_values(array_unique($pefChannels)) as $pefMp) {
-                    PricingErrorsFixController::queueSkuRefresh(
-                        $skuToUse,
-                        $pefMp,
-                        $sprice > 0 ? $sprice : 0.0
-                    );
-                }
-            } catch (\Throwable $e) {
-                Log::debug('Pricing Errors Fix cache refresh skipped: '.$e->getMessage());
-            }
-
             return $this->finishSuggestedSaveWithSiblings($request, $fullSku, $marketplace, $payload);
         } catch (\Exception $e) {
             Log::error('Error saving suggested data: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -8436,20 +8587,6 @@ class CvrMasterController extends Controller
                 'pushed_by' => auth()->check() ? auth()->user()->name : 'Unknown'
             ]);
 
-            // Keep Pricing Errors Fix cache in sync after push (same as saveSuggestedData)
-            if ($status === 'pushed') {
-                try {
-                    PricingErrorsFixController::queueSkuRefresh(
-                        $sku,
-                        $marketplace,
-                        $pushedPrice !== null && floatval($pushedPrice) > 0
-                            ? floatval($pushedPrice)
-                            : null
-                    );
-                } catch (\Throwable $e) {
-                    Log::debug('Pricing Errors Fix cache refresh after push skipped: '.$e->getMessage());
-                }
-            }
         } catch (\Exception $e) {
             Log::error('CVR Master - Failed to save price push status', [
                 'sku' => $sku,
@@ -9728,5 +9865,113 @@ class CvrMasterController extends Controller
             "mode" => $mode,
             "demo" => $demo,
         ]);
+    }
+
+    /**
+     * @return array<string, string> pull_key => label
+     */
+    private function pefChannelRegistry(): array
+    {
+        return [
+            'amazon' => 'Amazon',
+            'ebay' => 'eBay 1',
+            'ebay2' => 'eBay 2',
+            'ebay3' => 'eBay 3',
+            'temu' => 'Temu',
+            'temu2' => 'Temu 2',
+            'doba' => 'Doba',
+            'tiktok' => 'TikTok 1',
+            'tiktok2' => 'TikTok 2',
+            'bestbuy' => 'Best Buy',
+            'macy' => "Macy's",
+            'reverb' => 'Reverb',
+            'topdawg' => 'TopDawg',
+            'sb2c' => 'Shopify B2C',
+            'sb2b' => 'Shopify B2B',
+            'ppower' => 'Purchasing Power',
+            'shein' => 'Shein',
+            'faire' => 'Faire',
+            'aliexpress' => 'AliExpress',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function pefWantedChannelKeys(Request $request): array
+    {
+        $all = array_keys($this->pefChannelRegistry());
+        $raw = trim((string) $request->query('channel', ''));
+        if ($raw === '') {
+            return $all;
+        }
+        $wanted = array_values(array_filter(array_map(
+            static fn ($k) => strtolower(trim((string) $k)),
+            explode(',', $raw)
+        )));
+        $wanted = array_values(array_intersect($wanted, $all));
+
+        return $wanted !== [] ? $wanted : $all;
+    }
+
+    private function spawnPricingErrorsFixPushWorker(): bool
+    {
+        try {
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            $artisan = base_path('artisan');
+            $log = storage_path('logs/pricing-errors-fix-push.log');
+            if (stripos(PHP_OS_FAMILY, 'Windows') === 0) {
+                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' pricing-errors:push-run --sync', 'r'));
+
+                return true;
+            }
+
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' pricing-errors:push-run --sync >> '.escapeshellarg($log).' 2>&1 &';
+            exec($cmd);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('PEF push spawn failed', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     */
+    private function pefPushLooksStuck(array $state): bool
+    {
+        if ((int) ($state['current_index'] ?? 0) > 0) {
+            return false;
+        }
+        if (($state['current_sku'] ?? null) !== null) {
+            return false;
+        }
+        $updatedAt = $state['worker_spawned_at'] ?? $state['updated_at'] ?? $state['started_at'] ?? null;
+        if (! is_string($updatedAt) || $updatedAt === '') {
+            return true;
+        }
+        try {
+            return abs(now()->diffInSeconds(Carbon::parse($updatedAt))) >= 45;
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    private function pefReleaseUniqueJobLock(string $jobClass, string $uniqueId): void
+    {
+        try {
+            Cache::lock('laravel_unique_job:'.$jobClass.':'.$uniqueId)->forceRelease();
+        } catch (\Throwable) {
+            // best-effort
+        }
     }
 }

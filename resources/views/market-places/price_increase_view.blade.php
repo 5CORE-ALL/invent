@@ -1768,11 +1768,11 @@
                 {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
                 <div id="modal-target-controls" class="ovl30-toolbar">
                     <div class="ovl30-tool-group"
-                        title="Apply from STD/this box. Doba −25%. SB2B/TopDawg/Faire = (STD × 0.80) − Ship. Purchase = (STD × 1.15) − Ship.">
+                        title="Apply from STD/this box. Doba −25%. TopDawg/Faire = (STD × 0.80) − Ship. SB2B = (Shopify Price × 0.75) − Ship. Purchase = (STD × 1.15) − Ship.">
                         <label for="modal-bulk-sprice-input">SPRICE</label>
                         <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
                             placeholder="0.00" step="0.01" min="0" style="width: 78px;"
-                            title="Doba −25%; SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship">
+                            title="Doba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
                             title="Apply SPRICE" aria-label="Apply SPRICE">
                             <i class="fas fa-check"></i>
@@ -1826,18 +1826,18 @@
                             placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
                             title="STD PRC for all marketplaces — same value on every channel row.">
                         <button type="button" id="modal-apply-std-prc-btn" class="btn btn-sm btn-success"
-                            title="Apply STD PRC → SPRICE (Doba −25%; SB2B/TopDawg/Faire = ×0.80−Ship; Purchase = ×1.15−Ship)"
+                            title="Apply STD PRC → SPRICE (Doba −25%; TopDawg/Faire = ×0.80−Ship; SB2B = Shopify×0.75−Ship; Purchase = ×1.15−Ship)"
                             aria-label="Apply STD PRC">
                             <i class="fas fa-check"></i>
                         </button>
                         
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Apply STD PRC as SPRICE. Doba −25%. SB2B/TopDawg/Faire = (STD × 0.80) − Ship. Purchase = (STD × 1.15) − Ship.">
+                        title="Apply STD PRC as SPRICE. Doba −25%. TopDawg/Faire = (STD × 0.80) − Ship. SB2B = (Shopify Price × 0.75) − Ship. Purchase = (STD × 1.15) − Ship.">
                         <label for="modal-sprice-same-input">SPRICE $</label>
                         <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
-                            title="From STD PRC. Doba −25%; SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship">
+                            title="From STD PRC. Doba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
                             title="Apply SPRICE $" aria-label="Apply same SPRICE">
                             <i class="fas fa-check"></i>
@@ -4384,7 +4384,8 @@
                 const rawShip = parseFloat(item.ship || 0) || 0;
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 const ship = (isPpMp || isTdMp || isFaireMp || isSb2bMp) ? 0 : rawShip;
-                // STD-rule channels: SPRICE = (STD × 0.80) − Ship (TopDawg / Faire / SB2B)
+                // TopDawg / Faire: SPRICE = (STD × 0.80) − Ship
+                // SB2B: SPRICE = (Shopify Price × 0.75) − Ship — same as /shopify-b2b-pricing
                 let sprice = parseFloat(item.sprice || 0);
                 const stdForApply = parseFloat(item.standard_price) || 0;
                 // Prefer row ship; fall back to any positive ship in this modal payload (Amazon)
@@ -4395,7 +4396,14 @@
                         if (isFinite(sn) && sn > 0) { applyShip = sn; break; }
                     }
                 }
-                if (isSb2bMp || isTdMp || isFaireMp) {
+                if (isSb2bMp) {
+                    // Shopify B2B listed price (b2b_price / Prc on /shopify-b2b-pricing)
+                    if (price > 0) {
+                        sprice = Math.max(0.01, Math.round(((price * 0.75) - applyShip) * 100) / 100);
+                        item.sprice = sprice;
+                        if (!(rawShip > 0) && applyShip > 0) item.ship = applyShip;
+                    }
+                } else if (isTdMp || isFaireMp) {
                     const ruleBase = stdForApply > 0 ? stdForApply : price;
                     if (ruleBase > 0) {
                         sprice = Math.max(0.01, Math.round(((ruleBase * 0.80) - applyShip) * 100) / 100);
@@ -8143,7 +8151,7 @@
                         return;
                     }
                     let newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
-                    // Same-price apply from STD: Doba −25%; SB2B/TopDawg/Faire = ×0.80 − Ship; Purchase = ×1.15 − Ship
+                    // Same-price apply: Doba −25%; TopDawg/Faire = ×0.80−Ship; SB2B = Shopify×0.75−Ship; Purchase = ×1.15−Ship
                     if (mode === 'same') {
                         newPrice = adjustAppliedSpriceForChannel(inputValue, $tr);
                     }
@@ -8198,7 +8206,8 @@
         });
 
         // ==================== BULK SPRICE ====================
-        // From STD PRC: Doba ×0.75; SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase/PPower = (STD×1.15)−Ship
+        // From STD PRC: Doba ×0.75; TopDawg/Faire = (STD×0.80)−Ship; Purchase/PPower = (STD×1.15)−Ship
+        // SB2B: (Shopify Price × 0.75) − Ship — same as /shopify-b2b-pricing
         function isDobaChannel(mpLower) {
             return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'doba';
         }
@@ -8220,10 +8229,9 @@
         function isBulkSpriceFaireChannel(mpLower) {
             return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'faire';
         }
-        /** SB2B / TopDawg / Faire: (STD × 0.80) − Ship */
+        /** TopDawg / Faire: (STD × 0.80) − Ship */
         function isBulkSprice20OffMinusShipChannel(mpLower) {
-            return isBulkSpriceSb2bChannel(mpLower)
-                || isBulkSpriceTopDawgChannel(mpLower)
+            return isBulkSpriceTopDawgChannel(mpLower)
                 || isBulkSpriceFaireChannel(mpLower);
         }
         /** Shared product-master ship (fallback when row data-ship is 0) */
@@ -8248,10 +8256,15 @@
         function sprice25OffFromBase(basePrice) {
             return Math.max(0.01, +(Number(basePrice) * 0.75).toFixed(2));
         }
-        /** SB2B / TopDawg / Faire: (STD × 0.80) − Ship */
+        /** TopDawg / Faire: (STD × 0.80) − Ship */
         function sprice20OffMinusShipFromBase(basePrice, rowShip) {
             const ship = (isFinite(rowShip) && rowShip > 0) ? rowShip : 0;
             return Math.max(0.01, +((Number(basePrice) * 0.80) - ship).toFixed(2));
+        }
+        /** SB2B: (Shopify Price × 0.75) − Ship — same as /shopify-b2b-pricing */
+        function spriceSb2bFromShopifyPrice(shopifyPrice, rowShip) {
+            const ship = (isFinite(rowShip) && rowShip > 0) ? rowShip : 0;
+            return Math.max(0.01, +((Number(shopifyPrice) * 0.75) - ship).toFixed(2));
         }
         /** Purchase / PPower: (STD × 1.15) − Ship */
         function ppowerSpriceFromBase(basePrice, rowShip) {
@@ -8260,12 +8273,18 @@
         }
         /**
          * Convert STD / apply base into the channel SPRICE.
-         * SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship; Doba ×0.75.
+         * TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship; Doba ×0.75;
+         * SB2B = (Shopify Price × 0.75) − Ship (ignores STD — uses row listed price).
          */
         function adjustAppliedSpriceForChannel(basePrice, $tr) {
             const mpLower = String(($tr && $tr.attr('data-marketplace')) || '').toLowerCase();
             const base = Math.max(0.01, +Number(basePrice).toFixed(2));
             const rowShip = getModalRowShipForApply($tr);
+            if (isBulkSpriceSb2bChannel(mpLower)) {
+                const shopifyPrice = parseFloat($tr && $tr.attr('data-price')) || 0;
+                const sb2bBase = shopifyPrice > 0 ? shopifyPrice : base;
+                return spriceSb2bFromShopifyPrice(sb2bBase, rowShip);
+            }
             if (isBulkSprice25OffChannel(mpLower)) {
                 return sprice25OffFromBase(base);
             }
@@ -8333,7 +8352,8 @@
             if (!confirm(
                 'Apply from STD/base $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
                 + '?\n\nDoba −25%: $' + reducedPrice.toFixed(2)
-                + '\nSB2B / TopDawg / Faire = (STD × 0.80) − Ship'
+                + '\nTopDawg / Faire = (STD × 0.80) − Ship'
+                + '\nSB2B = (Shopify Price × 0.75) − Ship'
                 + '\nPurchase = (STD × 1.15) − Ship'
                 + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
                 + siblingsApplyLabel()
@@ -8518,7 +8538,7 @@
         });
 
         // ==================== SAME $ SPRICE (SP / box → channels + siblings) ====================
-        // From STD: Doba −25%; SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship
+        // From STD: Doba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship
         function applyModalSameSpriceFromBox() {
             let rawInput = $('#modal-sprice-same-input').val();
             let samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -8555,7 +8575,8 @@
                 if (!confirm(
                     'Apply from STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
                     + '?\n\nDoba −25%: $' + reducedPrice.toFixed(2)
-                    + '\nSB2B / TopDawg / Faire = (STD × 0.80) − Ship'
+                    + '\nTopDawg / Faire = (STD × 0.80) − Ship'
+                    + '\nSB2B = (Shopify Price × 0.75) − Ship'
                     + '\nPurchase = (STD × 1.15) − Ship'
                     + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
                     + siblingsApplyLabel()
@@ -8717,7 +8738,7 @@
 
             if (!silent && !confirm(
                 'Apply STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel SPRICE?'
-                + '\nDoba −25%; SB2B/TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship'
+                + '\nDoba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship'
             )) return;
 
             let doneCount = 0;

@@ -2309,13 +2309,6 @@
                 <a href="{{ route('pricing.errors.fix') }}" class="side-nav-link pricing-errors-fix-nav">
                     <i class="ri-error-warning-line"></i>
                     <span>Pricing Errors Fix</span>
-                    @php
-                        $pefLowGroiSkuCount = \App\Http\Controllers\MarketPlace\PricingErrorsFixController::lowGroiSkuCountForSidebar();
-                    @endphp
-                    @if($pefLowGroiSkuCount > 0)
-                        <span class="badge rounded-pill ms-auto pricing-errors-fix-sku-badge"
-                            title="Unique SKUs with GROI &lt; 40%">{{ number_format($pefLowGroiSkuCount) }}</span>
-                    @endif
                 </a>
             </li>
 
@@ -3093,13 +3086,6 @@
 
     /* Variations Verify Masters — sum of all channel mismatch counts. */
     .side-nav a.variations-verify-masters-nav > .variations-verify-mismatch-badge {
-        background-color: #a71d2a !important;
-        color: #fff !important;
-        font-weight: 700;
-    }
-
-    /* Pricing Errors Fix — unique SKUs with GROI < 40%. */
-    .side-nav a.pricing-errors-fix-nav > .pricing-errors-fix-sku-badge {
         background-color: #a71d2a !important;
         color: #fff !important;
         font-weight: 700;

@@ -20,6 +20,32 @@ class PricingErrorsFixPushJobStore
     }
 
     /**
+     * Stable push order — finish one marketplace completely, then the next.
+     *
+     * @var list<string>
+     */
+    private const MARKETPLACE_ORDER = [
+        'amazon',
+        'ebay1', 'ebay', 'ebay2', 'ebay3',
+        'temu', 'temu2',
+        'doba',
+        'tiktok', 'tiktok1', 'tiktok2',
+        'bestbuy',
+        'macy', 'macys',
+        'reverb',
+        'sb2c', 'shopify',
+        'sb2b',
+        'shein',
+        'faire',
+        'aliexpress',
+        'ppower',
+        'topdawg',
+        'walmart',
+        'pls',
+        'wayfair',
+    ];
+
+    /**
      * @param  list<array<string, mixed>>  $tasks
      */
     public function create(array $tasks): array
@@ -51,6 +77,13 @@ class PricingErrorsFixPushJobStore
             ];
         }
 
+        // Queue marketplace-wise: all Amazon → then eBay1 → … (never interleave channels)
+        $normalized = $this->sortTasksMarketplaceWise($normalized);
+
+        $mpCount = count(array_unique(array_column($normalized, 'marketplace')));
+        $queueMsg = 'Price push queued ('.count($normalized).' row(s), '.$mpCount
+            .' marketplace(s) — one channel at a time).';
+
         $state = array_merge($this->defaultState(), [
             'id' => date('YmdHis').'_'.bin2hex(random_bytes(4)),
             'status' => 'running',
@@ -64,17 +97,45 @@ class PricingErrorsFixPushJobStore
             'results' => [],
             'started_at' => now()->toDateTimeString(),
             'updated_at' => now()->toDateTimeString(),
-            'last_message' => 'Price push queued ('.count($normalized).' row(s)).',
+            'last_message' => $queueMsg,
             'messages' => [[
                 'time' => now()->format('H:i:s'),
                 'ok' => true,
-                'message' => 'Price push queued ('.count($normalized).' row(s)).',
+                'message' => $queueMsg,
             ]],
         ]);
 
         $this->save($state);
 
         return $state;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $tasks
+     * @return list<array<string, mixed>>
+     */
+    private function sortTasksMarketplaceWise(array $tasks): array
+    {
+        $rank = array_flip(self::MARKETPLACE_ORDER);
+
+        usort($tasks, static function (array $a, array $b) use ($rank): int {
+            $mpA = (string) ($a['marketplace'] ?? '');
+            $mpB = (string) ($b['marketplace'] ?? '');
+            $ra = $rank[$mpA] ?? 1000;
+            $rb = $rank[$mpB] ?? 1000;
+            if ($ra !== $rb) {
+                return $ra <=> $rb;
+            }
+            // Same marketplace rank (or both unknown): group by marketplace name, then SKU
+            $byMp = strcmp($mpA, $mpB);
+            if ($byMp !== 0) {
+                return $byMp;
+            }
+
+            return strcmp((string) ($a['sku'] ?? ''), (string) ($b['sku'] ?? ''));
+        });
+
+        return array_values($tasks);
     }
 
     public function update(callable $callback): array

@@ -3,7 +3,6 @@
 namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\CvrMasterController;
-use App\Http\Controllers\MarketPlace\PricingErrorsFixController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -100,6 +99,27 @@ class PricingErrorsFixPushRunner
             $price = (float) ($task['price'] ?? 0);
             $attempts = (int) ($task['attempts'] ?? 0);
 
+            // Announce when queue moves to a new marketplace (marketplace-wise batching)
+            $prevMp = $index > 0 && is_array($tasks[$index - 1] ?? null)
+                ? (string) ($tasks[$index - 1]['marketplace'] ?? '')
+                : '';
+            if ($index === 0 || ($mp !== '' && $mp !== $prevMp)) {
+                $remainingInMp = 0;
+                for ($i = $index; $i < $total; $i++) {
+                    if (! is_array($tasks[$i] ?? null)) {
+                        break;
+                    }
+                    if ((string) ($tasks[$i]['marketplace'] ?? '') !== $mp) {
+                        break;
+                    }
+                    $remainingInMp++;
+                }
+                $this->store->appendMessage(
+                    "Starting marketplace {$mp} ({$remainingInMp} row(s))…",
+                    true
+                );
+            }
+
             $this->store->update(function (array $state) use ($sku, $mp, $index, $total, $attempts) {
                 $state['current_sku'] = $sku;
                 $state['current_marketplace'] = $mp;
@@ -162,11 +182,6 @@ class PricingErrorsFixPushRunner
             });
 
             if ($ok) {
-                try {
-                    PricingErrorsFixController::queueSkuRefresh($sku, $mp, isset($task['sprice']) ? (float) $task['sprice'] : null);
-                } catch (\Throwable) {
-                    // best-effort cache refresh
-                }
                 $this->advanceIndex($index, true, $message, $result);
                 $this->store->appendMessage("{$sku} → {$mp}: {$message}", true);
                 usleep(400000);
