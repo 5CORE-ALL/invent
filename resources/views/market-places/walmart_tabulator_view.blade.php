@@ -570,7 +570,7 @@
                         width: 90
                     },
                     {
-                        title: "Prc",
+                        title: "Price",
                         field: "price",
                         hozAlign: "center",
                         formatter: function(cell) {

@@ -23,7 +23,6 @@ use App\Models\Ebay2Order;
 use App\Models\Ebay2OrderItem;
 use App\Models\AmazonDatasheet;
 use App\Models\EbaySkuCompetitor;
-use App\Models\TemuMetric;
 use App\Services\LmpSkuGroupService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -257,33 +256,6 @@ class EbayTwoController extends Controller
         
         // Fetch Amazon prices for comparison
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
-
-        // Temu Price lookup (mirrors TemuController::getTemuDecreaseData logic):
-        //   - SKU normalized identically to /temu-decrease so "2 PCS"/"2 PC"/spaces/NBSP all match
-        //   - Temu Price = base_price + 2.99 if base_price <= 26.99, else base_price
-        //   - 0 when SKU is missing from temu_pricing or base_price <= 0
-        $temuPriceNormalizer = static function ($value) {
-            $value = strtoupper(trim(str_replace("\u{00a0}", ' ', (string) $value)));
-            $value = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $value);
-            $value = preg_replace('/\s+/', ' ', $value);
-            return (string) $value;
-        };
-        $temuPriceByNormalizedSku = [];
-        if (Schema::hasTable('temu_metrics')) {
-            foreach (TemuMetric::select('sku', 'base_price')->get() as $temuRow) {
-                $basePrice = (float) ($temuRow->base_price ?? 0);
-                if ($basePrice <= 0) {
-                    continue;
-                }
-                $key = $temuPriceNormalizer($temuRow->sku);
-                if ($key === '' || isset($temuPriceByNormalizedSku[$key])) {
-                    continue;
-                }
-                $temuPriceByNormalizedSku[$key] = $basePrice <= 26.99
-                    ? round($basePrice + 2.99, 2)
-                    : round($basePrice, 2);
-            }
-        }
         
         // Add OPEN BOX and USED items from ebay2_metrics to processing list.
         // Always keep ebay2_metrics.sku casing (original listing SKU); never the uppercase keyBy key.
@@ -691,9 +663,6 @@ class EbayTwoController extends Controller
             // Amazon Price for comparison
             $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
 
-            // Temu Price (computed from temu_pricing.base_price, normalized SKU match — see /temu-decrease)
-            $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($pm->sku)] ?? 0;
-
             // LMP — merged across the Sku Link LMP group so linked SKUs share LMP (same as /ebay-tabulator-view).
             EbaySkuCompetitor::applyLinkedGroupToRow(
                 $row,
@@ -1002,10 +971,6 @@ class EbayTwoController extends Controller
                 $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
                 $row['E Stock'] = $metric->ebay_stock ?? 0;
-
-                // Temu Price for OPEN BOX / USED rows: fall back to the base SKU since temu_pricing keys on the original listing SKU.
-                $temuLookupSku = $row['base_sku'] !== '' ? $row['base_sku'] : $displaySku;
-                $row['Temu Price'] = $temuPriceByNormalizedSku[$temuPriceNormalizer($temuLookupSku)] ?? 0;
 
                 EbaySkuCompetitor::applyLinkedGroupToRow(
                     $row,
@@ -1410,7 +1375,6 @@ class EbayTwoController extends Controller
                     'base_sku' => '',
                     'base_inv' => 0,
                     'A Price' => 0,
-                    'Temu Price' => 0,
                     'AD_Spend_L30' => 0,
                     'spend_l30' => 0,
                     'pmt_spend_L30' => 0,

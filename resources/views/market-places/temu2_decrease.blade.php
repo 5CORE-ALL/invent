@@ -132,7 +132,7 @@
             justify-content: flex-start !important;
         }
 
-        /* Column visibility — 4 groups (Basics / Pricing / Advertisement / Other)
+        /* Column visibility — 4 groups (Basics / Pricing / Advertisement / Others)
            Only style when open (.show); never force display:block or it stays open after refresh. */
         #column-dropdown-menu.show {
             min-width: min(92vw, 720px);
@@ -3634,6 +3634,20 @@
                     headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — same as /pricing-master-cvr; raw LMP stays in the modal",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
+                        if (window.ParentExpand) {
+                            const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
+                                dataset: typeof fullDataset !== 'undefined' ? fullDataset : (typeof allTableData !== 'undefined' ? allTableData : undefined),
+                                field: 'lmp',
+                                getValue: function(r) {
+                                    const rawLowest = getTemu2RawLmp(r);
+                                    const recovery = temuLmpRecovery(rawLowest);
+                                    if (recovery != null && isFinite(recovery) && recovery > 0) return recovery;
+                                    const v = parseFloat(r.lmp);
+                                    return isFinite(v) && v > 0 ? v : null;
+                                }
+                            });
+                            if (avgHtml !== null) return avgHtml;
+                        }
                         const rawLowest = getTemu2RawLmp(row);
                         const recovery = temuLmpRecovery(rawLowest);
                         const displayVal = recovery != null ? recovery : (parseFloat(cell.getValue()) || null);
@@ -4783,16 +4797,16 @@
         window.iconClicked = false;
 
         /*
-         * Column visibility — 4 groups (Basics / Pricing / Advertisement / Other)
+         * Column visibility — 4 groups (Basics / Pricing / Advertisement / Others)
          * with group-header checkboxes to select/deselect an entire group.
          * Persists via /tabulator-column-visibility (channel = 'temu2_decrease').
          */
-        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'other'];
+        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'others'];
         const COL_VIS_CATEGORY_LABELS = {
             basics: 'Basics',
             pricing: 'Pricing',
             advertisement: 'Advertisement',
-            other: 'Other'
+            others: 'Others'
         };
 
         function classifyTemu2Column(field, title) {
@@ -4826,7 +4840,7 @@
                 return 'pricing';
             }
 
-            return 'other';
+            return 'others';
         }
 
         function syncGroupHeaderCheckbox(groupEl) {

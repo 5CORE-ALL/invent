@@ -1733,6 +1733,12 @@
                     headerTooltip: 'Lowest marketplace price — click to open competitors modal',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
+                        if (window.ParentExpand) {
+                            const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
+                                dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                            });
+                            if (avgHtml !== null) return avgHtml;
+                        }
                         const sku = row['(Child) sku'] || '';
                         const lmpPrice = parseFloat(cell.getValue());
                         const total = parseInt(row.lmp_entries_total, 10) || 0;

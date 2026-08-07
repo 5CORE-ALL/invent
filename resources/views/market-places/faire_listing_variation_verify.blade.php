@@ -86,6 +86,11 @@
         .faire-stat-badge--children { background: #8b5cf6; }
         .faire-stat-badge--listed { background: #16a34a; }
         .faire-stat-badge--mismatch { background: #dc2626; }
+        .faire-stat-badge--mismatch-inv { background: #dc2626; cursor: pointer; }
+        .faire-stat-badge--mismatch-inv:hover { filter: brightness(0.92); }
+        .faire-stat-badge--mismatch { cursor: pointer; }
+        .faire-stat-badge--mismatch:hover { filter: brightness(0.92); }
+        .faire-stat-badge.is-active { outline: 2px solid #0f172a; outline-offset: 2px; }
         .faire-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .faire-raw-icon-btn > i { font-size: 14px; }
 
@@ -122,7 +127,8 @@
                             <span class="faire-stat-badge faire-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="faire-lvv-badge-parents">0</span></span>
                             <span class="faire-stat-badge faire-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="faire-lvv-badge-children">0</span></span>
                             <span class="faire-stat-badge faire-stat-badge--listed" title="Faire listings from products API (faire_metric)">LISTED:<span id="faire-lvv-badge-listed">0</span></span>
-                            <span class="faire-stat-badge faire-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="faire-lvv-badge-mismatch">0</span></span>
+                            <span class="faire-stat-badge faire-stat-badge--mismatch" id="faire-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="faire-lvv-badge-mismatch">0</span></span>
+                            <span class="faire-stat-badge faire-stat-badge--mismatch-inv" id="faire-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents with Shopify INV &gt; 0">MISMATCH INV&gt;0:<span id="faire-lvv-badge-mismatch-inv">0</span></span>
                         </div>
                         <span id="faire-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="faire-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -145,6 +151,7 @@
                                 <select id="faire-lvv-listed-filter" class="form-select form-select-sm faire-lvv-filter-select">
                                     <option value="all">All</option>
                                     <option value="mismatch" selected>Mismatch Only</option>
+                                    <option value="mismatch_inv">Mismatch INV&gt;0</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
@@ -179,6 +186,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let faireLvvTable = null;
+        let faireLvvAllData = [];
 
         function faireLvvEscapeHtml(str) {
             return String(str ?? '')
@@ -201,6 +209,7 @@
             $('#faire-lvv-badge-children').text((meta.required_child_count || 0).toLocaleString());
             $('#faire-lvv-badge-listed').text((meta.listings_count || 0).toLocaleString());
             $('#faire-lvv-badge-mismatch').text((meta.mismatch_count || 0).toLocaleString());
+            $('#faire-lvv-badge-mismatch-inv').text((meta.mismatch_inv_gt0_count || 0).toLocaleString());
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -221,7 +230,22 @@
             }
         }
 
+        function faireLvvSyncBadgeActive() {
+            const v = $('#faire-lvv-listed-filter').val();
+            $('#faire-lvv-badge-mismatch-btn').toggleClass('is-active', v === 'mismatch');
+            $('#faire-lvv-badge-mismatch-inv-btn').toggleClass('is-active', v === 'mismatch_inv');
+        }
+
         function faireLvvApplyFilters() {
+            if (!faireLvvTable) return;
+            if (window.ParentExpand) {
+                ParentExpand.beforeFilters(function () { faireLvvApplyFiltersBody(); });
+                return;
+            }
+            faireLvvApplyFiltersBody();
+        }
+
+        function faireLvvApplyFiltersBody() {
             if (!faireLvvTable) return;
             faireLvvTable.clearFilter();
 
@@ -230,6 +254,8 @@
 
             if (listedFilter === 'mismatch') {
                 faireLvvTable.addFilter(d => d.match_status === false);
+            } else if (listedFilter === 'mismatch_inv') {
+                faireLvvTable.addFilter(d => d.match_status === false && (parseFloat(d.INV) || 0) > 0);
             } else if (listedFilter === 'match') {
                 faireLvvTable.addFilter(d => d.match_status === true);
             }
@@ -238,6 +264,7 @@
                 faireLvvTable.addFilter(d => String(d.parent || '').toLowerCase().includes(q));
             }
 
+            faireLvvSyncBadgeActive();
             faireLvvUpdateRowCount();
         }
 
@@ -317,6 +344,7 @@
 
                 return {
                     'Parent': d.parent || '',
+                    'INV': d.INV ?? 0,
                     'Required': d.child_sku_required_label ?? '',
                     'Parent Vs Listed SKU': d.child_sku_available_label || '',
                     'Listed Count': d.child_sku_available_count ?? '',
@@ -347,6 +375,8 @@
                 ajaxURL: '{{ route("faire.listing.variation.verify.data") }}',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
+                    faireLvvAllData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(rows);
                     if (response && response.meta) faireLvvUpdateMeta(response.meta);
                     return rows;
                 },
@@ -360,7 +390,16 @@
                 paginationButtonCount: 10,
                 placeholder: 'No parents found in CP Master',
                 rowFormatter: function (row) {
-                    row.getElement().classList.add('faire-lvv-parent-row');
+                    const el = row.getElement();
+                    const d = row.getData() || {};
+                    const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                    if (isParent) {
+                        el.classList.add('faire-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.remove('faire-lvv-child-row');
+                    } else {
+                        el.classList.remove('faire-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.add('faire-lvv-child-row');
+                    }
                 },
                 columns: [
                     {
@@ -371,9 +410,34 @@
                         minWidth: 160,
                         widthGrow: 2,
                         formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                            if (!isParent) {
+                                const sku = d.sku || '';
+                                if (!sku) return faireLvvDash(null);
+                                return `<span class="fw-semibold text-primary">${faireLvvEscapeHtml(sku)}</span>`;
+                            }
                             const v = cell.getValue() || '';
                             if (!v) return faireLvvDash(null);
                             return `<span class="fw-semibold">${faireLvvEscapeHtml(v)}</span>`;
+                        }
+                    },
+                    (window.ParentExpand
+                        ? ParentExpand.columnDef({ frozen: false })
+                        : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, hozAlign: 'center' }),
+                    {
+                        title: 'INV',
+                        field: 'INV',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 70,
+                        minWidth: 60,
+                        headerTooltip: 'Shopify INV — sum of child SKU inventory for this parent',
+                        formatter: function (cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (!isFinite(value)) return faireLvvDash(null);
+                            return `<span class="fw-semibold">${Math.round(value)}</span>`;
                         }
                     },
                     {
@@ -407,12 +471,39 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: function () { return faireLvvTable; },
+                    getDataset: function () { return faireLvvAllData; },
+                    setDataset: function (rows) { faireLvvAllData = rows; },
+                    onCollapse: function () { faireLvvApplyFilters(); },
+                    onAfterExpand: function () { faireLvvUpdateRowCount(); },
+                });
+                ParentExpand.bind();
+            }
+
             faireLvvTable.on('dataProcessed', faireLvvApplyFilters);
             faireLvvTable.on('dataFiltered', faireLvvUpdateRowCount);
             faireLvvTable.on('pageLoaded', faireLvvUpdateRowCount);
 
             $('#faire-lvv-filter-apply').on('click', faireLvvApplyFilters);
             $('#faire-lvv-listed-filter').on('change', faireLvvApplyFilters);
+            $('#faire-lvv-badge-mismatch-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#faire-lvv-listed-filter').val();
+                $('#faire-lvv-listed-filter').val(cur === 'mismatch' ? 'all' : 'mismatch');
+                faireLvvApplyFilters();
+            });
+            $('#faire-lvv-badge-mismatch-inv-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#faire-lvv-listed-filter').val();
+                $('#faire-lvv-listed-filter').val(cur === 'mismatch_inv' ? 'all' : 'mismatch_inv');
+                faireLvvApplyFilters();
+            });
             $('#faire-lvv-filter-clear').on('click', function () {
                 $('#faire-lvv-listed-filter').val('all');
                 $('#faire-lvv-search').val('');

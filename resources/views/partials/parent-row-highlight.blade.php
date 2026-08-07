@@ -74,6 +74,16 @@
         transform: none;
         filter: grayscale(1) drop-shadow(none);
     }
+
+    /* P expand column header — teal bar (price-increase / variation-verify) */
+    .tabulator .tabulator-header .tabulator-col[tabulator-field="_parent_expand"],
+    .tabulator .tabulator-header .tabulator-col[tabulator-field="_parent_expand"] .tabulator-col-content {
+        background: #20c997 !important;
+    }
+    .tabulator .tabulator-header .tabulator-col[tabulator-field="_parent_expand"] .tabulator-col-title {
+        color: #000 !important;
+        font-weight: 700 !important;
+    }
 </style>
 <script src="{{ asset('js/parent-expand-column.js') }}"></script>
 <script>

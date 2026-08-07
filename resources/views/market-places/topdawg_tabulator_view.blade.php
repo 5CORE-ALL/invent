@@ -820,7 +820,7 @@
                         </select>`;
                     },
                     cellClick: (e) => e.stopPropagation() },
-                { title: 'Prc', field: 'TD Price', hozAlign: 'center', width: 70, sorter: 'number',
+                { title: 'Price', field: 'TD Price', hozAlign: 'center', width: 70, sorter: 'number',
                     formatter: c => {
                         const v = parseFloat(c.getValue()) || 0;
                         if (v === 0) {

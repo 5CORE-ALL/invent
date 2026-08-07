@@ -1017,6 +1017,13 @@
                         tooltip: "Lowest Newegg competitor price (manual LMP)",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined,
+                                    field: 'lmp_price'
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
                             const lmpPrice = parseFloat(cell.getValue() || 0);
                             const totalCompetitors = parseInt(rowData.lmp_entries_total, 10) || 0;
                             const sku = rowData.sku || '';

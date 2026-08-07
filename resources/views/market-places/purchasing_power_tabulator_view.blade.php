@@ -812,7 +812,7 @@
                     cellClick: function(e) { e.stopPropagation(); }
                 },
                 {
-                    title: 'Prc', field: 'PP Price', hozAlign: 'center', sorter: 'number', width: 70,
+                    title: 'Price', field: 'PP Price', hozAlign: 'center', sorter: 'number', width: 70,
                     headerTooltip: 'Purchasing Power listed price from MCM OF21 (purchasing_power_products). Hover a cell for its source.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();

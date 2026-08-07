@@ -836,7 +836,7 @@
                     cellClick: function(e) { e.stopPropagation(); }
                 },
                 {
-                    title: 'Prc', field: 'V Price', hozAlign: 'center', sorter: 'number', width: 70,
+                    title: 'Price', field: 'V Price', hozAlign: 'center', sorter: 'number', width: 70,
                     formatter: function(cell) {
                         const v = parseFloat(cell.getValue() || 0);
                         if (v === 0) return `<span style="color:#a00211;font-weight:600;">$0.00 <i class="fas fa-exclamation-triangle"></i></span>`;

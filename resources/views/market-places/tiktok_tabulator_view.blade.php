@@ -3120,7 +3120,7 @@
                         width: 85
                     },
                     {
-                        title: "Prc",
+                        title: "Price",
                         field: "TT Price",
                         hozAlign: "center",
                         sorter: "number",
@@ -3166,6 +3166,12 @@
                         visible: true,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
                             const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
                             if (isParent) return '';
 

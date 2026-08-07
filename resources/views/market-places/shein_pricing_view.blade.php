@@ -1511,6 +1511,23 @@
                         tooltip: "Lowest market price (Shein competitors)",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(d, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined,
+                                    field: 'lmp_price',
+                                    getValue: function(r) {
+                                        const entries = Array.isArray(r.lmp_entries) ? r.lmp_entries : [];
+                                        if (!entries.length) {
+                                            const v = parseFloat(r.lmp_price);
+                                            return isFinite(v) && v > 0 ? v : null;
+                                        }
+                                        const prices = entries.map(function(e) { return parseFloat(e.price); })
+                                            .filter(function(n) { return isFinite(n) && n > 0; });
+                                        return prices.length ? Math.min.apply(null, prices) : null;
+                                    }
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const entries = Array.isArray(d.lmp_entries) ? d.lmp_entries : [];
                             const total = entries.length;

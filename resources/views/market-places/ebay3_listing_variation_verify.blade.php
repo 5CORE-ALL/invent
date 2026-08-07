@@ -86,6 +86,11 @@
         .ebay3-stat-badge--children { background: #8b5cf6; }
         .ebay3-stat-badge--listed { background: #16a34a; }
         .ebay3-stat-badge--mismatch { background: #dc2626; }
+        .ebay3-stat-badge--mismatch-inv { background: #dc2626; cursor: pointer; }
+        .ebay3-stat-badge--mismatch-inv:hover { filter: brightness(0.92); }
+        .ebay3-stat-badge--mismatch { cursor: pointer; }
+        .ebay3-stat-badge--mismatch:hover { filter: brightness(0.92); }
+        .ebay3-stat-badge.is-active { outline: 2px solid #0f172a; outline-offset: 2px; }
         .ebay3-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .ebay3-raw-icon-btn > i { font-size: 14px; }
 
@@ -122,7 +127,8 @@
                             <span class="ebay3-stat-badge ebay3-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="ebay3-lvv-badge-parents">0</span></span>
                             <span class="ebay3-stat-badge ebay3-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="ebay3-lvv-badge-children">0</span></span>
                             <span class="ebay3-stat-badge ebay3-stat-badge--listed" title="eBay listings cache (ebay_3_metrics)">LISTED:<span id="ebay3-lvv-badge-listed">0</span></span>
-                            <span class="ebay3-stat-badge ebay3-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="ebay3-lvv-badge-mismatch">0</span></span>
+                            <span class="ebay3-stat-badge ebay3-stat-badge--mismatch" id="ebay3-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="ebay3-lvv-badge-mismatch">0</span></span>
+                            <span class="ebay3-stat-badge ebay3-stat-badge--mismatch-inv" id="ebay3-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents with Shopify INV &gt; 0">MISMATCH INV&gt;0:<span id="ebay3-lvv-badge-mismatch-inv">0</span></span>
                         </div>
                         <span id="ebay3-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="ebay3-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -145,6 +151,7 @@
                                 <select id="ebay3-lvv-listed-filter" class="form-select form-select-sm ebay3-lvv-filter-select">
                                     <option value="all">All</option>
                                     <option value="mismatch" selected>Mismatch Only</option>
+                                    <option value="mismatch_inv">Mismatch INV&gt;0</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
@@ -179,6 +186,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let ebay3LvvTable = null;
+        let ebay3LvvAllData = [];
 
         function ebay3LvvEscapeHtml(str) {
             return String(str ?? '')
@@ -201,6 +209,7 @@
             $('#ebay3-lvv-badge-children').text((meta.required_child_count || 0).toLocaleString());
             $('#ebay3-lvv-badge-listed').text((meta.listings_count || 0).toLocaleString());
             $('#ebay3-lvv-badge-mismatch').text((meta.mismatch_count || 0).toLocaleString());
+            $('#ebay3-lvv-badge-mismatch-inv').text((meta.mismatch_inv_gt0_count || 0).toLocaleString());
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -221,7 +230,22 @@
             }
         }
 
+        function ebay3LvvSyncBadgeActive() {
+            const v = $('#ebay3-lvv-listed-filter').val();
+            $('#ebay3-lvv-badge-mismatch-btn').toggleClass('is-active', v === 'mismatch');
+            $('#ebay3-lvv-badge-mismatch-inv-btn').toggleClass('is-active', v === 'mismatch_inv');
+        }
+
         function ebay3LvvApplyFilters() {
+            if (!ebay3LvvTable) return;
+            if (window.ParentExpand) {
+                ParentExpand.beforeFilters(function () { ebay3LvvApplyFiltersBody(); });
+                return;
+            }
+            ebay3LvvApplyFiltersBody();
+        }
+
+        function ebay3LvvApplyFiltersBody() {
             if (!ebay3LvvTable) return;
             ebay3LvvTable.clearFilter();
 
@@ -230,6 +254,8 @@
 
             if (listedFilter === 'mismatch') {
                 ebay3LvvTable.addFilter(d => d.match_status === false);
+            } else if (listedFilter === 'mismatch_inv') {
+                ebay3LvvTable.addFilter(d => d.match_status === false && (parseFloat(d.INV) || 0) > 0);
             } else if (listedFilter === 'match') {
                 ebay3LvvTable.addFilter(d => d.match_status === true);
             }
@@ -238,6 +264,7 @@
                 ebay3LvvTable.addFilter(d => String(d.parent || '').toLowerCase().includes(q));
             }
 
+            ebay3LvvSyncBadgeActive();
             ebay3LvvUpdateRowCount();
         }
 
@@ -317,6 +344,7 @@
 
                 return {
                     'Parent': d.parent || '',
+                    'INV': d.INV ?? 0,
                     'Required': d.child_sku_required_label ?? '',
                     'Parent Vs Listed SKU': d.child_sku_available_label || '',
                     'Listed Count': d.child_sku_available_count ?? '',
@@ -347,6 +375,8 @@
                 ajaxURL: '{{ route("ebay3.listing.variation.verify.data") }}',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
+                    ebay3LvvAllData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(rows);
                     if (response && response.meta) ebay3LvvUpdateMeta(response.meta);
                     return rows;
                 },
@@ -360,7 +390,16 @@
                 paginationButtonCount: 10,
                 placeholder: 'No parents found in CP Master',
                 rowFormatter: function (row) {
-                    row.getElement().classList.add('ebay3-lvv-parent-row');
+                    const el = row.getElement();
+                    const d = row.getData() || {};
+                    const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                    if (isParent) {
+                        el.classList.add('ebay3-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.remove('ebay3-lvv-child-row');
+                    } else {
+                        el.classList.remove('ebay3-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.add('ebay3-lvv-child-row');
+                    }
                 },
                 columns: [
                     {
@@ -371,9 +410,34 @@
                         minWidth: 160,
                         widthGrow: 2,
                         formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                            if (!isParent) {
+                                const sku = d.sku || '';
+                                if (!sku) return ebay3LvvDash(null);
+                                return `<span class="fw-semibold text-primary">${ebay3LvvEscapeHtml(sku)}</span>`;
+                            }
                             const v = cell.getValue() || '';
                             if (!v) return ebay3LvvDash(null);
                             return `<span class="fw-semibold">${ebay3LvvEscapeHtml(v)}</span>`;
+                        }
+                    },
+                    (window.ParentExpand
+                        ? ParentExpand.columnDef({ frozen: false })
+                        : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, hozAlign: 'center' }),
+                    {
+                        title: 'INV',
+                        field: 'INV',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 70,
+                        minWidth: 60,
+                        headerTooltip: 'Shopify INV — sum of child SKU inventory for this parent',
+                        formatter: function (cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (!isFinite(value)) return ebay3LvvDash(null);
+                            return `<span class="fw-semibold">${Math.round(value)}</span>`;
                         }
                     },
                     {
@@ -407,12 +471,39 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: function () { return ebay3LvvTable; },
+                    getDataset: function () { return ebay3LvvAllData; },
+                    setDataset: function (rows) { ebay3LvvAllData = rows; },
+                    onCollapse: function () { ebay3LvvApplyFilters(); },
+                    onAfterExpand: function () { ebay3LvvUpdateRowCount(); },
+                });
+                ParentExpand.bind();
+            }
+
             ebay3LvvTable.on('dataProcessed', ebay3LvvApplyFilters);
             ebay3LvvTable.on('dataFiltered', ebay3LvvUpdateRowCount);
             ebay3LvvTable.on('pageLoaded', ebay3LvvUpdateRowCount);
 
             $('#ebay3-lvv-filter-apply').on('click', ebay3LvvApplyFilters);
             $('#ebay3-lvv-listed-filter').on('change', ebay3LvvApplyFilters);
+            $('#ebay3-lvv-badge-mismatch-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#ebay3-lvv-listed-filter').val();
+                $('#ebay3-lvv-listed-filter').val(cur === 'mismatch' ? 'all' : 'mismatch');
+                ebay3LvvApplyFilters();
+            });
+            $('#ebay3-lvv-badge-mismatch-inv-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#ebay3-lvv-listed-filter').val();
+                $('#ebay3-lvv-listed-filter').val(cur === 'mismatch_inv' ? 'all' : 'mismatch_inv');
+                ebay3LvvApplyFilters();
+            });
             $('#ebay3-lvv-filter-clear').on('click', function () {
                 $('#ebay3-lvv-listed-filter').val('all');
                 $('#ebay3-lvv-search').val('');

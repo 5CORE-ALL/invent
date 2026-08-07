@@ -2085,7 +2085,7 @@
                     width: 60
                 },
                 {
-                    title: "Prc",
+                    title: "Price",
                     field: "Price",
                     hozAlign: "center",
                     sorter: "number",
@@ -2121,6 +2121,12 @@
                     headerTooltip: "Google LMP from /repricer/google-search (manual add supported)",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        if (window.ParentExpand) {
+                            const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                            });
+                            if (avgHtml !== null) return avgHtml;
+                        }
                         if (isShopifyB2bParentRow(rowData)) return '';
 
                         const sku = String(rowData['(Child) sku'] || '');

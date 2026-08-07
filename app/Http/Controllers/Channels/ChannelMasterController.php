@@ -4560,6 +4560,9 @@ class ChannelMasterController extends Controller
             // TikTok 2: overlay live L30/GPFT/ROI from /tiktok-two/daily-sales
             $formattedData = $this->overlayLiveTiktokTwoMetricsOnChannelRows($formattedData);
             $formattedData = $this->applyDefaultMissingLinks($formattedData);
+            // Growth = Y Sales vs sales on the Pacific day 30 days before yesterday
+            // (must run after overlays that still write the old L30/L60 Growth).
+            $formattedData = $this->applyGrowthFromYesterdayVsD30($formattedData);
 
             // Keep Map Issues sidebar N Map in sync with the active channel page total.
             if (! $section && $page === 1 && count($formattedData) >= $total) {
@@ -5309,6 +5312,9 @@ class ChannelMasterController extends Controller
         // totals the table shows (e.g. EbayTwo views = E Stock > 0 tabulator sum).
         $finalData = $this->overlayLiveMapMissNMapOnChannelRows($finalData);
         $finalData = $this->applyDefaultMissingLinks($finalData);
+        // Growth = Y Sales vs sales on the Pacific day 30 days before yesterday
+        // (must run after overlays that still write the old L30/L60 Growth).
+        $finalData = $this->applyGrowthFromYesterdayVsD30($finalData);
 
         \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($finalData);
 
@@ -14941,6 +14947,83 @@ class ChannelMasterController extends Controller
         ];
         
         return $mapping[$normalizedChannelName] ?? ucfirst($normalizedChannelName);
+    }
+
+    /**
+     * Growth % = ((Y Sales − Sales on day −30) / Sales on day −30) × 100.
+     *
+     * "Yesterday" and "−30 days" are Pacific calendar days. Day −30 sales come from
+     * channel_master_daily_data: a snapshot saved on day D stores y_sales for D−1, so
+     * sales on target day T are read from the snapshot dated T+1.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyGrowthFromYesterdayVsD30(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        try {
+            $tz = 'America/Los_Angeles';
+            $yesterday = Carbon::yesterday($tz);
+            $d30Day = $yesterday->copy()->subDays(30);
+            $targetSnapshot = $d30Day->copy()->addDay()->toDateString();
+
+            // Prefer exact snapshot; widen ±5 days so a missed capture day still works.
+            $earliest = Carbon::parse($targetSnapshot, $tz)->subDays(5)->toDateString();
+            $latest = Carbon::parse($targetSnapshot, $tz)->addDays(5)->toDateString();
+
+            $candidates = \App\Models\ChannelMasterSummary::whereBetween('snapshot_date', [$earliest, $latest])
+                ->orderBy('snapshot_date', 'desc')
+                ->get(['channel', 'snapshot_date', 'summary_data']);
+
+            $d30ByChannel = [];
+            $bestDelta = [];
+            $target = Carbon::parse($targetSnapshot, $tz)->startOfDay();
+
+            foreach ($candidates as $snap) {
+                $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) $snap->channel)));
+                if ($key === '') {
+                    continue;
+                }
+                $sd = is_array($snap->summary_data) ? $snap->summary_data : [];
+                // Only use snapshots that actually persisted y_sales (field added later).
+                if (! array_key_exists('y_sales', $sd)) {
+                    continue;
+                }
+                $delta = abs(Carbon::parse($snap->snapshot_date, $tz)->startOfDay()->diffInDays($target));
+                if (! isset($bestDelta[$key]) || $delta < $bestDelta[$key]) {
+                    $bestDelta[$key] = $delta;
+                    $d30ByChannel[$key] = (float) $sd['y_sales'];
+                }
+            }
+
+            foreach ($rows as &$row) {
+                $channelKey = strtolower(str_replace([' ', '-', '&', '/'], '', trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''))));
+                $ySales = is_numeric($row['Y Sales'] ?? null)
+                    ? (float) $row['Y Sales']
+                    : (float) preg_replace('/[^0-9.\-]/', '', (string) ($row['Y Sales'] ?? 0));
+
+                $d30Sales = $d30ByChannel[$channelKey] ?? null;
+                $row['D30 Sales'] = $d30Sales !== null ? round($d30Sales, 2) : null;
+
+                if ($d30Sales === null || $d30Sales <= 0) {
+                    // No comparable −30 day baseline — leave blank (frontend shows —).
+                    $row['Growth'] = null;
+                    continue;
+                }
+
+                $growth = (($ySales - $d30Sales) / $d30Sales) * 100;
+                $row['Growth'] = round($growth, 2) . '%';
+            }
+            unset($row);
+        } catch (\Throwable $e) {
+            Log::warning('applyGrowthFromYesterdayVsD30 failed: ' . $e->getMessage());
+        }
+
+        return $rows;
     }
 
     /**

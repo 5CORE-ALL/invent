@@ -86,6 +86,11 @@
         .shopify-b2c-stat-badge--children { background: #8b5cf6; }
         .shopify-b2c-stat-badge--listed { background: #16a34a; }
         .shopify-b2c-stat-badge--mismatch { background: #dc2626; }
+        .shopify-b2c-stat-badge--mismatch-inv { background: #dc2626; cursor: pointer; }
+        .shopify-b2c-stat-badge--mismatch-inv:hover { filter: brightness(0.92); }
+        .shopify-b2c-stat-badge--mismatch { cursor: pointer; }
+        .shopify-b2c-stat-badge--mismatch:hover { filter: brightness(0.92); }
+        .shopify-b2c-stat-badge.is-active { outline: 2px solid #0f172a; outline-offset: 2px; }
         .shopify-b2c-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .shopify-b2c-raw-icon-btn > i { font-size: 14px; }
 
@@ -122,7 +127,8 @@
                             <span class="shopify-b2c-stat-badge shopify-b2c-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="shopify-b2c-lvv-badge-parents">0</span></span>
                             <span class="shopify-b2c-stat-badge shopify-b2c-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="shopify-b2c-lvv-badge-children">0</span></span>
                             <span class="shopify-b2c-stat-badge shopify-b2c-stat-badge--listed" title="Shopify listings cache (shopify_skus)">LISTED:<span id="shopify-b2c-lvv-badge-listed">0</span></span>
-                            <span class="shopify-b2c-stat-badge shopify-b2c-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="shopify-b2c-lvv-badge-mismatch">0</span></span>
+                            <span class="shopify-b2c-stat-badge shopify-b2c-stat-badge--mismatch" id="shopify-b2c-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="shopify-b2c-lvv-badge-mismatch">0</span></span>
+                            <span class="shopify-b2c-stat-badge shopify-b2c-stat-badge--mismatch-inv" id="shopify-b2c-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents with Shopify INV &gt; 0">MISMATCH INV&gt;0:<span id="shopify-b2c-lvv-badge-mismatch-inv">0</span></span>
                         </div>
                         <span id="shopify-b2c-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="shopify-b2c-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -145,6 +151,7 @@
                                 <select id="shopify-b2c-lvv-listed-filter" class="form-select form-select-sm shopify-b2c-lvv-filter-select">
                                     <option value="all">All</option>
                                     <option value="mismatch" selected>Mismatch Only</option>
+                                    <option value="mismatch_inv">Mismatch INV&gt;0</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
@@ -179,6 +186,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let shopifyB2cLvvTable = null;
+        let shopifyB2cLvvAllData = [];
 
         function shopifyB2cLvvEscapeHtml(str) {
             return String(str ?? '')
@@ -201,6 +209,7 @@
             $('#shopify-b2c-lvv-badge-children').text((meta.required_child_count || 0).toLocaleString());
             $('#shopify-b2c-lvv-badge-listed').text((meta.listings_count || 0).toLocaleString());
             $('#shopify-b2c-lvv-badge-mismatch').text((meta.mismatch_count || 0).toLocaleString());
+            $('#shopify-b2c-lvv-badge-mismatch-inv').text((meta.mismatch_inv_gt0_count || 0).toLocaleString());
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -221,7 +230,22 @@
             }
         }
 
+        function shopifyB2cLvvSyncBadgeActive() {
+            const v = $('#shopify-b2c-lvv-listed-filter').val();
+            $('#shopify-b2c-lvv-badge-mismatch-btn').toggleClass('is-active', v === 'mismatch');
+            $('#shopify-b2c-lvv-badge-mismatch-inv-btn').toggleClass('is-active', v === 'mismatch_inv');
+        }
+
         function shopifyB2cLvvApplyFilters() {
+            if (!shopifyB2cLvvTable) return;
+            if (window.ParentExpand) {
+                ParentExpand.beforeFilters(function () { shopifyB2cLvvApplyFiltersBody(); });
+                return;
+            }
+            shopifyB2cLvvApplyFiltersBody();
+        }
+
+        function shopifyB2cLvvApplyFiltersBody() {
             if (!shopifyB2cLvvTable) return;
             shopifyB2cLvvTable.clearFilter();
 
@@ -230,6 +254,8 @@
 
             if (listedFilter === 'mismatch') {
                 shopifyB2cLvvTable.addFilter(d => d.match_status === false);
+            } else if (listedFilter === 'mismatch_inv') {
+                shopifyB2cLvvTable.addFilter(d => d.match_status === false && (parseFloat(d.INV) || 0) > 0);
             } else if (listedFilter === 'match') {
                 shopifyB2cLvvTable.addFilter(d => d.match_status === true);
             }
@@ -238,6 +264,7 @@
                 shopifyB2cLvvTable.addFilter(d => String(d.parent || '').toLowerCase().includes(q));
             }
 
+            shopifyB2cLvvSyncBadgeActive();
             shopifyB2cLvvUpdateRowCount();
         }
 
@@ -317,6 +344,7 @@
 
                 return {
                     'Parent': d.parent || '',
+                    'INV': d.INV ?? 0,
                     'Required': d.child_sku_required_label ?? '',
                     'Parent Vs Listed SKU': d.child_sku_available_label || '',
                     'Listed Count': d.child_sku_available_count ?? '',
@@ -347,6 +375,8 @@
                 ajaxURL: '{{ route("shopify.b2c.listing.variation.verify.data") }}',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
+                    shopifyB2cLvvAllData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(rows);
                     if (response && response.meta) shopifyB2cLvvUpdateMeta(response.meta);
                     return rows;
                 },
@@ -360,7 +390,16 @@
                 paginationButtonCount: 10,
                 placeholder: 'No parents found in CP Master',
                 rowFormatter: function (row) {
-                    row.getElement().classList.add('shopify-b2c-lvv-parent-row');
+                    const el = row.getElement();
+                    const d = row.getData() || {};
+                    const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                    if (isParent) {
+                        el.classList.add('shopify-b2c-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.remove('shopify-b2c-lvv-child-row');
+                    } else {
+                        el.classList.remove('shopify-b2c-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.add('shopify-b2c-lvv-child-row');
+                    }
                 },
                 columns: [
                     {
@@ -371,9 +410,34 @@
                         minWidth: 160,
                         widthGrow: 2,
                         formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                            if (!isParent) {
+                                const sku = d.sku || '';
+                                if (!sku) return shopifyB2cLvvDash(null);
+                                return `<span class="fw-semibold text-primary">${shopifyB2cLvvEscapeHtml(sku)}</span>`;
+                            }
                             const v = cell.getValue() || '';
                             if (!v) return shopifyB2cLvvDash(null);
                             return `<span class="fw-semibold">${shopifyB2cLvvEscapeHtml(v)}</span>`;
+                        }
+                    },
+                    (window.ParentExpand
+                        ? ParentExpand.columnDef({ frozen: false })
+                        : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, hozAlign: 'center' }),
+                    {
+                        title: 'INV',
+                        field: 'INV',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 70,
+                        minWidth: 60,
+                        headerTooltip: 'Shopify INV — sum of child SKU inventory for this parent',
+                        formatter: function (cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (!isFinite(value)) return shopifyB2cLvvDash(null);
+                            return `<span class="fw-semibold">${Math.round(value)}</span>`;
                         }
                     },
                     {
@@ -407,12 +471,39 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: function () { return shopifyB2cLvvTable; },
+                    getDataset: function () { return shopifyB2cLvvAllData; },
+                    setDataset: function (rows) { shopifyB2cLvvAllData = rows; },
+                    onCollapse: function () { shopifyB2cLvvApplyFilters(); },
+                    onAfterExpand: function () { shopifyB2cLvvUpdateRowCount(); },
+                });
+                ParentExpand.bind();
+            }
+
             shopifyB2cLvvTable.on('dataProcessed', shopifyB2cLvvApplyFilters);
             shopifyB2cLvvTable.on('dataFiltered', shopifyB2cLvvUpdateRowCount);
             shopifyB2cLvvTable.on('pageLoaded', shopifyB2cLvvUpdateRowCount);
 
             $('#shopify-b2c-lvv-filter-apply').on('click', shopifyB2cLvvApplyFilters);
             $('#shopify-b2c-lvv-listed-filter').on('change', shopifyB2cLvvApplyFilters);
+            $('#shopify-b2c-lvv-badge-mismatch-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#shopify-b2c-lvv-listed-filter').val();
+                $('#shopify-b2c-lvv-listed-filter').val(cur === 'mismatch' ? 'all' : 'mismatch');
+                shopifyB2cLvvApplyFilters();
+            });
+            $('#shopify-b2c-lvv-badge-mismatch-inv-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#shopify-b2c-lvv-listed-filter').val();
+                $('#shopify-b2c-lvv-listed-filter').val(cur === 'mismatch_inv' ? 'all' : 'mismatch_inv');
+                shopifyB2cLvvApplyFilters();
+            });
             $('#shopify-b2c-lvv-filter-clear').on('click', function () {
                 $('#shopify-b2c-lvv-listed-filter').val('all');
                 $('#shopify-b2c-lvv-search').val('');

@@ -1663,7 +1663,7 @@
                     width: 60
                 },
                 {
-                    title: "Prc",
+                    title: "Price",
                     field: "BB Price",
                     hozAlign: "center",
                     sorter: "number",
@@ -1711,6 +1711,12 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        if (window.ParentExpand) {
+                            const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                            });
+                            if (avgHtml !== null) return avgHtml;
+                        }
                         const lmpPrice = cell.getValue();
                         const sku = rowData['(Child) sku'] || '';
                         const totalCompetitors = rowData.lmp_entries_total || 0;

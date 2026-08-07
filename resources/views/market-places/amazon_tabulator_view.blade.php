@@ -7308,7 +7308,12 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
 
-                            // Empty for parent rows
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
                             if (rowData.is_parent_summary) return '';
 
                             const lmpPrice = cell.getValue();

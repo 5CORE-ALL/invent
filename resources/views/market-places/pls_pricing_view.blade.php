@@ -736,7 +736,7 @@
                     }
                 },
                 {
-                    title: "Prc",
+                    title: "Price",
                     field: "price",
                     hozAlign: "center",
                     sorter: "number",

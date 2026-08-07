@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\FaireMetric;
 use App\Models\ProductMaster;
+use App\Models\ShopifySku;
 use App\Services\MarketplaceManager\FaireLinkMapSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -27,6 +28,7 @@ class FaireListingVariationVerifyController extends Controller
     {
         $listedSkuSet = $this->buildListedSkuLookup();
         $pmParentByNorm = $this->buildProductMasterParentLookup();
+        $invByNorm = $this->buildShopifyInvLookup();
 
         $childRows = ProductMaster::query()
             ->whereNull('deleted_at')
@@ -80,9 +82,76 @@ class FaireListingVariationVerifyController extends Controller
                 }
             }
 
+
+
+            $inv = 0.0;
+            foreach ($children as $child) {
+                $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku'] ?? '');
+                if ($norm !== '' && isset($invByNorm[$norm])) {
+                    $inv += $invByNorm[$norm];
+                }
+            }
+
+            $childPayload = [];
+            foreach ($children as $child) {
+                $listed = $child['child_sku_available'];
+                $childInv = 0;
+                if (isset($invByNorm) && is_array($invByNorm)) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($child['sku'] ?? '');
+                    if ($norm !== '' && isset($invByNorm[$norm])) {
+                        $childInv = (int) round($invByNorm[$norm]);
+                    }
+                }
+                $childPayload[] = [
+                    'parent' => $parentKey,
+                    'sku' => $child['sku'],
+                    'is_parent' => false,
+                    'INV' => $childInv,
+                    'child_sku_required' => 1,
+                    'child_sku_required_label' => '1',
+                    'child_sku_available' => $listed,
+                    'child_sku_available_label' => $listed === null ? '—' : ($listed ? 'Listed' : 'Missing'),
+                    'child_sku_available_count' => $listed ? 1 : 0,
+                    'child_sku_total' => 1,
+                    'missing_skus' => ($listed === false) ? [$child['sku']] : [],
+                    'extra_skus' => [],
+                    'missing_count' => ($listed === false) ? 1 : 0,
+                    'extra_count' => 0,
+                    'match_status' => $listed,
+                ];
+            }
+            foreach ($extraSkus as $extraSku) {
+                $extraInv = 0;
+                if (isset($invByNorm) && is_array($invByNorm)) {
+                    $norm = ShopifySku::normalizeSkuForShopifyLookup($extraSku);
+                    if ($norm !== '' && isset($invByNorm[$norm])) {
+                        $extraInv = (int) round($invByNorm[$norm]);
+                    }
+                }
+                $childPayload[] = [
+                    'parent' => $parentKey,
+                    'sku' => $extraSku,
+                    'is_parent' => false,
+                    'INV' => $extraInv,
+                    'child_sku_required' => 0,
+                    'child_sku_required_label' => '0',
+                    'child_sku_available' => false,
+                    'child_sku_available_label' => 'Excess',
+                    'child_sku_available_count' => 1,
+                    'child_sku_total' => 0,
+                    'missing_skus' => [],
+                    'extra_skus' => [$extraSku],
+                    'missing_count' => 0,
+                    'extra_count' => 1,
+                    'match_status' => false,
+                ];
+            }
+
             $formattedData[] = [
                 'parent' => $parentKey,
                 'is_parent' => true,
+                '_children' => $childPayload,
+                'INV' => (int) round($inv),
                 'child_sku_required' => $requiredCount,
                 'child_sku_required_label' => (string) $requiredCount,
                 'child_sku_available' => $parentMatch,
@@ -110,6 +179,7 @@ class FaireListingVariationVerifyController extends Controller
                     && FaireMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->exists(),
                 'required_parent_count' => count($parentGroups),
                 'mismatch_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false)),
+                'mismatch_inv_gt0_count' => count(array_filter($formattedData, fn ($r) => ($r['match_status'] ?? null) === false && (float) ($r['INV'] ?? 0) > 0)),
                 'required_child_count' => count($childRows),
                 'required_refreshed_at' => now()->toDateTimeString(),
             ],
@@ -316,6 +386,32 @@ class FaireListingVariationVerifyController extends Controller
     /**
      * @param  array{set: array<string, true>, empty: bool}  $lookup
      */
+
+    /**
+     * Shopify stock on hand keyed by normalized SKU.
+     *
+     * @return array<string, float>
+     */
+    private function buildShopifyInvLookup(): array
+    {
+        $map = [];
+
+        $rows = ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get(['sku', 'inv']);
+
+        foreach ($rows as $row) {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? ''));
+            if ($norm === '' || isset($map[$norm])) {
+                continue;
+            }
+            $map[$norm] = (float) ($row->inv ?? 0);
+        }
+
+        return $map;
+    }
+
     private function isSkuListed(string $sku, array $lookup): ?bool
     {
         if ($lookup['empty']) {

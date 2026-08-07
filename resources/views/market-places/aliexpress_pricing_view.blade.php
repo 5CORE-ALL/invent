@@ -1364,6 +1364,23 @@
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined,
+                                    field: 'lmp',
+                                    getValue: function(r) {
+                                        const entries = r.lmp_entries || [];
+                                        const prices = entries.map(function(e) {
+                                            const p = e.price;
+                                            return (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p))) ? parseFloat(p) : null;
+                                        }).filter(function(p) { return p !== null && p > 0; });
+                                        if (prices.length) return Math.min.apply(null, prices);
+                                        const v = parseFloat(r.lmp);
+                                        return isFinite(v) && v > 0 ? v : null;
+                                    }
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
                             if (row.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const entries = row.lmp_entries || [];
                             const prices = entries.map(function(e) {

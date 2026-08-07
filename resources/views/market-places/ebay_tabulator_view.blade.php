@@ -7328,7 +7328,7 @@
                     },
 
                     {
-                        title: "Prc",
+                        title: "Price",
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
@@ -7500,8 +7500,14 @@
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
-                            const lmpPrice = cell.getValue();
                             const rowData = cell.getRow().getData();
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
+                            const lmpPrice = cell.getValue();
                             const sku = rowData['(Child) sku'];
                             const totalCompetitors = rowData.lmp_entries_total || 0;
                             const linkedSkus = Array.isArray(rowData.linked_lmp_skus) ? rowData.linked_lmp_skus : [];
@@ -7873,7 +7879,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 72,
-                        headerTooltip: "L30 views. Click value for Rolling L30 history (same as Prc). Arrow: L7 pace vs L30 pace.",
+                        headerTooltip: "L30 views. Click value for Rolling L30 history (same as Price). Arrow: L7 pace vs L30 pace.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const value = parseFloat(cell.getValue() || 0);
@@ -7883,7 +7889,7 @@
                             const variation = viewsPaceVariation(rowData);
                             const arrowBtn = viewsHistoryArrowBtn(sku, isParent, variation, 'views');
                             const num = Math.round(value);
-                            // Same history entry as Prc column → Rolling L30 skuMetricsModal
+                            // Same history entry as Price column → Rolling L30 skuMetricsModal
                             if (sku && !isParent) {
                                 return `<span class="view-sku-chart" data-sku="${sku}" data-metric="views" title="View L30 View chart" style="color: ${color}; font-weight: 600; cursor: pointer; white-space: nowrap;">${num}</span> ${arrowBtn}`.trim();
                             }

@@ -84,6 +84,7 @@
 
     function isParentRow(data) {
         if (typeof state.opts.isParentRow === 'function') return !!state.opts.isParentRow(data);
+        if (typeof window.isPmParentRowData === 'function') return !!window.isPmParentRowData(data);
         return defaultIsParentRow(data);
     }
 
@@ -189,10 +190,16 @@
         var parentRow = all.find(function (r) {
             return isParentRow(r) && parentKeyFromRow(r).toUpperCase() === keyU;
         });
-        var childRows = all.filter(function (r) {
-            if (isParentRow(r)) return false;
-            return normalizeKey(r[parentField]).toUpperCase() === keyU;
-        });
+
+        // Prefer nested `_children` on the parent row (listing-variation-verify pages);
+        // fall back to flat dataset rows sharing the same Parent key.
+        var childRows = childRowsForParent(parentRow, { dataset: all });
+        if (!childRows.length) {
+            childRows = all.filter(function (r) {
+                if (isParentRow(r)) return false;
+                return normalizeKey(r[parentField]).toUpperCase() === keyU;
+            });
+        }
 
         var displayData = childRows.slice();
         if (parentRow) {
@@ -285,6 +292,110 @@
         return ParentExpand;
     }
 
+    /**
+     * Child rows belonging to a parent — from dataTree `_children` or flat dataset by Parent key.
+     * opts: { dataset, parentField, skuField, isParentRow, parentKeyFromRow }
+     */
+    function childRowsForParent(parentRow, opts) {
+        opts = opts || {};
+        if (!parentRow) return [];
+
+        if (Array.isArray(parentRow._children) && parentRow._children.length) {
+            return parentRow._children.filter(function (r) {
+                return r && !isParentRow(r);
+            });
+        }
+
+        var dataset = Array.isArray(opts.dataset) && opts.dataset.length ? opts.dataset : getDataset();
+        if (!Array.isArray(dataset) || !dataset.length) {
+            var table = getTable();
+            if (table && typeof table.getData === 'function') {
+                try {
+                    dataset = table.getData('all') || table.getData() || [];
+                } catch (e) {
+                    dataset = [];
+                }
+            }
+        }
+        if (!Array.isArray(dataset) || !dataset.length) return [];
+
+        var key = parentKeyFromRow(parentRow);
+        if (!key) return [];
+        var keyU = key.toUpperCase();
+        var parentField = opts.parentField || state.opts.parentField || 'Parent';
+
+        return dataset.filter(function (r) {
+            if (!r || isParentRow(r)) return false;
+            return normalizeKey(r[parentField]).toUpperCase() === keyU;
+        });
+    }
+
+    /**
+     * Average a numeric field across a parent's child SKUs.
+     * Returns { avg, count } or null when not a parent / no values.
+     * opts: { field: 'lmp_price', dataset, getValue(row) }
+     */
+    function avgChildField(parentRow, opts) {
+        opts = opts || {};
+        if (!parentRow || !isParentRow(parentRow)) return null;
+
+        var field = opts.field || 'lmp_price';
+        var getValue =
+            typeof opts.getValue === 'function'
+                ? opts.getValue
+                : function (r) {
+                      var v = parseFloat(r && r[field]);
+                      return isFinite(v) && v > 0 ? v : null;
+                  };
+
+        var children = childRowsForParent(parentRow, opts);
+        var vals = [];
+        children.forEach(function (r) {
+            var v = getValue(r);
+            if (v !== null && v !== undefined && isFinite(v) && v > 0) vals.push(Number(v));
+        });
+        if (!vals.length) return { avg: null, count: 0 };
+        var sum = vals.reduce(function (a, b) {
+            return a + b;
+        }, 0);
+        return { avg: sum / vals.length, count: vals.length };
+    }
+
+    /**
+     * LMP formatter helper for parent rows.
+     * Returns HTML for AVG LMP when row is a parent; otherwise null (caller keeps normal UI).
+     */
+    function parentAvgLmpHtml(parentRow, opts) {
+        opts = opts || {};
+        if (!parentRow || !isParentRow(parentRow)) return null;
+
+        var result = avgChildField(parentRow, opts);
+        if (!result || result.count === 0 || result.avg === null) {
+            return (
+                '<span class="text-muted" title="No child LMP values" ' +
+                'style="font-size:11px;font-weight:600;">—</span>'
+            );
+        }
+        var avg = result.avg;
+        var tip =
+            'AVG LMP of ' +
+            result.count +
+            ' child SKU' +
+            (result.count === 1 ? '' : 's') +
+            ': $' +
+            avg.toFixed(2);
+        return (
+            '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.15;" title="' +
+            tip +
+            '">' +
+            '<span style="color:#0d6efd;font-weight:700;font-size:13px;">$' +
+            avg.toFixed(2) +
+            '</span>' +
+            '<span style="color:#6c757d;font-size:10px;font-weight:700;letter-spacing:0.02em;">AVG</span>' +
+            '</div>'
+        );
+    }
+
     var ParentExpand = {
         configure: configure,
         captureDataset: captureDataset,
@@ -293,6 +404,9 @@
         normalizeKey: normalizeKey,
         isParentRow: isParentRow,
         parentKeyFromRow: parentKeyFromRow,
+        childRowsForParent: childRowsForParent,
+        avgChildField: avgChildField,
+        parentAvgLmpHtml: parentAvgLmpHtml,
         yellowSvg: yellowSvg,
         columnDef: columnDef,
         expand: showExpanded,

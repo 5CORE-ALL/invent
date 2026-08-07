@@ -2402,7 +2402,7 @@
                         },
 
                         {
-                            title: "Prc",
+                            title: "Price",
                             field: "FBA_Price",
                             hozAlign: "center",
                             formatter: function(cell) {

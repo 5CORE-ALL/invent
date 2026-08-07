@@ -69,6 +69,94 @@
             flex-shrink: 0;
         }
 
+        /* Column visibility — 4 groups (Basics / Pricing / Advertisement / Others)
+           Only style when open (.show); never force display:block or it stays open after refresh. */
+        #column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 280px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            border-radius: 4px;
+        }
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+
         /* LMP modal: image + add form + our price on one line */
         #lmpModal .lmp-add-form-box {
             display: flex;
@@ -746,6 +834,17 @@
                         </select>
                     </div>
 
+                    {{-- CVR trend — CVR 30 vs CVR 60 (same arrows as CVR column; options match /ebay2-tabulator-view) --}}
+                    <div>
+                        <select id="cvr-trend-filter" class="form-select form-select-sm" style="width: 130px;"
+                            title="CVR L30 vs prior period L31–L60 (CVR 60)">
+                            <option value="all">CVR trend</option>
+                            <option value="down">Down</option>
+                            <option value="up">Up</option>
+                            <option value="same">Same</option>
+                        </select>
+                    </div>
+
                     {{-- Sold dropdown (mirrors Amazon tabulator + every other /pricing page).
                          Backed by `temu_l30`:
                            all  → no filter
@@ -905,8 +1004,7 @@
                             aria-label="Toggle column visibility">
                             <i class="fas fa-table-columns"></i>
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu"
-                            style="max-height: 400px; overflow-y: auto;">
+                        <ul class="dropdown-menu" aria-labelledby="columnVisibilityDropdown" id="column-dropdown-menu">
                         </ul>
                     </div>
 
@@ -5204,6 +5302,31 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
+                        if (window.ParentExpand) {
+                            const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
+                                dataset: typeof fullDataset !== 'undefined' ? fullDataset : (typeof allTableData !== 'undefined' ? allTableData : undefined),
+                                field: 'lmp',
+                                getValue: function(r) {
+                                    const entries = Array.isArray(r.lmp_entries) ? r.lmp_entries : [];
+                                    const prices = entries
+                                        .filter(function(e) { return !e.ignored; })
+                                        .map(function(e) {
+                                            const p = e.price;
+                                            if (p === null || p === undefined || p === '' || isNaN(parseFloat(p))) return null;
+                                            const base = parseFloat(p);
+                                            const d = parseFloat(e.delivery);
+                                            let delivery = (!isNaN(d) && d > 0) ? d : 0;
+                                            if (delivery <= 0 && base < 27) delivery = 2.99;
+                                            return base + delivery;
+                                        })
+                                        .filter(function(p) { return p !== null && p > 0; });
+                                    if (prices.length) return Math.min.apply(null, prices);
+                                    const fallback = parseFloat(r.lmp_raw != null ? r.lmp_raw : r.lmp);
+                                    return (!isNaN(fallback) && fallback > 0) ? fallback : null;
+                                }
+                            });
+                            if (avgHtml !== null) return avgHtml;
+                        }
                         const entries = Array.isArray(row.lmp_entries) ? row.lmp_entries : [];
                         // L1 = lowest non-ignored entry; fall back to row.lmp / lmp_raw
                         const prices = entries
@@ -5940,6 +6063,7 @@
             const gpftFilter = $('#gpft-filter').val();
             const groiFilter = $('#roi-filter').val();
             const cvrFilter = $('#cvr-filter').val();
+            const cvrTrendFilter = $('#cvr-trend-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
             // Clear all filters first
@@ -6004,6 +6128,22 @@
                     if (cvrFilter === '3-7') return cvrRounded > 3 && cvrRounded <= 7;
                     if (cvrFilter === '7-13') return cvrRounded > 7 && cvrRounded <= 13;
                     if (cvrFilter === '13plus') return cvrRounded > 13;
+                    return true;
+                });
+            }
+
+            // CVR trend filter: CVR 30 vs CVR 60 (same as CVR column arrows / ebay2 — Down / Up / Same)
+            if (cvrTrendFilter !== 'all') {
+                const cvrTrendTol = 0.1;
+                table.addFilter(function(data) {
+                    const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
+                    const cvr60 = parseFloat(data.cvr_60) || 0;
+                    let trend = 'equal';
+                    if (cvr30 > cvr60 + cvrTrendTol) trend = 'up';
+                    else if (cvr30 < cvr60 - cvrTrendTol) trend = 'down';
+                    if (cvrTrendFilter === 'down') return trend === 'down';
+                    if (cvrTrendFilter === 'up') return trend === 'up';
+                    if (cvrTrendFilter === 'same' || cvrTrendFilter === 'equal') return trend === 'equal';
                     return true;
                 });
             }
@@ -6702,7 +6842,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 
@@ -7135,12 +7275,62 @@
         window.iconClicked = false;
 
         /*
-         * Column visibility (every column for this page) persists in the shared DB table
-         * `channel_tabulator_column_settings` under channel = 'temu_decrease'. We hit the
-         * same /tabulator-column-visibility endpoint used by the amazon / ebay1 / ebay2 /
-         * ebay3 / mfrg tabulators so a single row owns the show/hide map for everyone
-         * on this view.
+         * Column visibility — 4 groups (Basics / Pricing / Advertisement / Others)
+         * with group-header checkboxes to select/deselect an entire group.
+         * Persists via /tabulator-column-visibility (channel = 'temu_decrease').
          */
+        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'others'];
+        const COL_VIS_CATEGORY_LABELS = {
+            basics: 'Basics',
+            pricing: 'Pricing',
+            advertisement: 'Advertisement',
+            others: 'Others'
+        };
+
+        function classifyTemuColumn(field, title) {
+            const f = String(field || '');
+            const t = String(title || field || '').replace(/<[^>]*>/g, '');
+            const fl = f.toLowerCase();
+            const tl = t.toLowerCase();
+
+            // Advertisement
+            if (
+                /^(spend|spend_l60|ad_sold_l60|ad_sales_l60|l60_vs_l30|acos_ad|ad_clicks|impressions|add_to_cart_number|out_roas_l30|in_roas_l30|campaign_status|target|ads_percent|has_campaign)$/i.test(f) ||
+                /\b(spend|ad\s*sold|ad\s*sales|acos|ad\s*clicks|impressions|add\s*to\s*cart|roas|target|ads\s*%|campaign|has\s*campaign)\b/i.test(tl)
+            ) {
+                return 'advertisement';
+            }
+
+            // Basics — identity / inventory / listing status / views / sold
+            if (
+                /^(image_path|parent|sku|links_column|goods_id|inventory|temu_stock|ovl30|dil_percent|temu_l30|temu_l45|temu_l60|missing|MAP|nr_req|nrp|product_clicks|product_clicks_l7|product_clicks_l7_to_l14)$/i.test(f) ||
+                /\b(image|parent|sku|links|goods|inv|stock|ovl|dil|temu\s*l\d+|t\s*l\d+|missing|map|nrl|req|views|o\s*clicks|nrp)\b/i.test(tl)
+            ) {
+                return 'basics';
+            }
+
+            // Pricing
+            if (
+                /^(cvr_percent|cvr_30|cvr_45|cvr_60|base_price|temu_price|a_price|e_price|e2_price|profit|profit_percent|roi_percent|npft_percent|nroi_percent|lmp|linked_lmp_skus|linked_lmp_sku_add|recommended_base_price|sprice|_push|stemu_price|sgprft_percent|spft_percent|sroi_percent|lp|temu_ship)$/i.test(f) ||
+                /\b(cvr|price|prc|gpft|gprft|npft|groi|nroi|prft|profit|lmp|s\s*prc|sgprft|spft|sroi|lp|ship|push)\b/i.test(tl)
+            ) {
+                return 'pricing';
+            }
+
+            return 'others';
+        }
+
+        function syncGroupHeaderCheckbox(groupEl) {
+            if (!groupEl) return;
+            const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+            const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+            if (!headerCb || !itemCbs.length) return;
+            let checked = 0;
+            itemCbs.forEach(function(cb) { if (cb.checked) checked++; });
+            headerCb.checked = checked === itemCbs.length;
+            headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+        }
+
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
             if (!menu) return;
@@ -7156,26 +7346,78 @@
             .then(response => response.json())
             .then(savedVisibility => {
                 const map = (savedVisibility && typeof savedVisibility === 'object') ? savedVisibility : {};
+
+                const showAllLi = document.createElement("li");
+                showAllLi.className = "col-vis-full";
+                showAllLi.innerHTML = '<a class="dropdown-item py-1" href="#" id="show-all-columns-btn"><i class="fa fa-eye"></i> Show All</a>';
+                menu.appendChild(showAllLi);
+
+                const groupsLi = document.createElement("li");
+                groupsLi.className = "col-vis-full";
+                const groupsWrap = document.createElement("div");
+                groupsWrap.className = "col-vis-groups";
+
+                const lists = {};
+                const groupEls = {};
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    const group = document.createElement("div");
+                    group.className = "col-vis-group";
+                    group.dataset.category = cat;
+
+                    const titleEl = document.createElement("label");
+                    titleEl.className = "col-vis-group-title";
+                    const groupCb = document.createElement("input");
+                    groupCb.type = "checkbox";
+                    groupCb.className = "col-vis-group-toggle";
+                    groupCb.dataset.group = cat;
+                    groupCb.title = "Select / deselect all in " + COL_VIS_CATEGORY_LABELS[cat];
+                    titleEl.appendChild(groupCb);
+                    titleEl.appendChild(document.createTextNode(COL_VIS_CATEGORY_LABELS[cat]));
+                    group.appendChild(titleEl);
+
+                    const list = document.createElement("ul");
+                    list.className = "col-vis-group-list";
+                    list.dataset.category = cat;
+                    group.appendChild(list);
+                    groupsWrap.appendChild(group);
+                    lists[cat] = list;
+                    groupEls[cat] = group;
+                });
+
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
-                    if (def.field && def.field !== '_select') {
-                        // Prefer saved value; anything explicitly false in the DB map = hidden.
-                        // Otherwise fall back to the column's natural visibility flag.
-                        const visible = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : (def.visible !== false);
-                        const li = document.createElement('li');
-                        li.className = 'dropdown-item';
-                        li.innerHTML = `
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" value="${def.field}" 
-                                       id="col-${def.field}" ${visible ? 'checked' : ''}>
-                                <label class="form-check-label" for="col-${def.field}">
-                                    ${def.title}
-                                </label>
-                            </div>
-                        `;
-                        menu.appendChild(li);
-                    }
+                    if (!def.field || def.field === '_select') return;
+
+                    const rawTitle = def.title || def.field;
+                    const title = String(rawTitle).replace(/<[^>]*>/g, '').trim() || def.field;
+                    const cat = classifyTemuColumn(def.field, title);
+
+                    const li = document.createElement("li");
+                    li.className = "col-vis-item";
+                    li.dataset.field = def.field;
+                    li.dataset.group = cat;
+
+                    const label = document.createElement("label");
+                    const checkbox = document.createElement("input");
+                    checkbox.type = "checkbox";
+                    checkbox.value = def.field;
+                    checkbox.className = "col-vis-field-toggle";
+                    checkbox.dataset.group = cat;
+                    checkbox.checked = map.hasOwnProperty(def.field) ? (map[def.field] !== false) : col.isVisible();
+
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(title));
+                    label.title = title;
+                    li.appendChild(label);
+                    lists[cat].appendChild(li);
                 });
+
+                COL_VIS_CATEGORY_KEYS.forEach(function(cat) {
+                    syncGroupHeaderCheckbox(groupEls[cat]);
+                });
+
+                groupsLi.appendChild(groupsWrap);
+                menu.appendChild(groupsLi);
             })
             .catch(err => console.error('Error loading column visibility:', err));
         }
@@ -7283,18 +7525,56 @@
             }, 100);
         });
 
-        document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-            if (e.target.type === 'checkbox') {
+        (function() {
+            var colMenu = document.getElementById("column-dropdown-menu");
+            if (!colMenu) return;
+            colMenu.addEventListener("change", function(e) {
+                if (e.target.type !== 'checkbox') return;
+
+                // Group header: select / deselect entire group
+                if (e.target.classList.contains('col-vis-group-toggle')) {
+                    const group = e.target.dataset.group;
+                    const checked = e.target.checked;
+                    const groupEl = e.target.closest('.col-vis-group');
+                    const itemCbs = groupEl
+                        ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                        : colMenu.querySelectorAll('.col-vis-field-toggle[data-group="' + group + '"]');
+                    itemCbs.forEach(function(cb) {
+                        const field = cb.value;
+                        cb.checked = checked;
+                        const col = table.getColumn(field);
+                        if (!col) return;
+                        if (checked) col.show();
+                        else col.hide();
+                    });
+                    e.target.indeterminate = false;
+                    saveColumnVisibilityToServer();
+                    return;
+                }
+
+                // Individual column checkbox
                 const field = e.target.value;
                 const col = table.getColumn(field);
+                if (!col) return;
                 if (e.target.checked) {
                     col.show();
                 } else {
                     col.hide();
                 }
+                syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
                 saveColumnVisibilityToServer();
-            }
-        });
+            });
+            colMenu.addEventListener("click", function(e) {
+                var showAll = e.target.closest('#show-all-columns-btn');
+                if (showAll) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    table.getColumns().forEach(col => col.show());
+                    buildColumnDropdown();
+                    saveColumnVisibilityToServer();
+                }
+            });
+        })();
 
         function updateCampaignPeriodUi() {
             const isL7 = currentCampaignPeriod === 'L7';

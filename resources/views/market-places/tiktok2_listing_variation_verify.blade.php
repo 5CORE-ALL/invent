@@ -86,6 +86,11 @@
         .tiktok2-stat-badge--children { background: #8b5cf6; }
         .tiktok2-stat-badge--listed { background: #16a34a; }
         .tiktok2-stat-badge--mismatch { background: #dc2626; }
+        .tiktok2-stat-badge--mismatch-inv { background: #dc2626; cursor: pointer; }
+        .tiktok2-stat-badge--mismatch-inv:hover { filter: brightness(0.92); }
+        .tiktok2-stat-badge--mismatch { cursor: pointer; }
+        .tiktok2-stat-badge--mismatch:hover { filter: brightness(0.92); }
+        .tiktok2-stat-badge.is-active { outline: 2px solid #0f172a; outline-offset: 2px; }
         .tiktok2-raw-icon-btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
         .tiktok2-raw-icon-btn > i { font-size: 14px; }
 
@@ -122,7 +127,8 @@
                             <span class="tiktok2-stat-badge tiktok2-stat-badge--parents" title="Parents from CP Master">PARENTS:<span id="tiktok2-lvv-badge-parents">0</span></span>
                             <span class="tiktok2-stat-badge tiktok2-stat-badge--children" title="Required child SKUs from CP Master">REQUIRED:<span id="tiktok2-lvv-badge-children">0</span></span>
                             <span class="tiktok2-stat-badge tiktok2-stat-badge--listed" title="TikTok 2 listings cache (tiktok_products_two)">LISTED:<span id="tiktok2-lvv-badge-listed">0</span></span>
-                            <span class="tiktok2-stat-badge tiktok2-stat-badge--mismatch" title="Parents with missing or excess SKUs">MISMATCH:<span id="tiktok2-lvv-badge-mismatch">0</span></span>
+                            <span class="tiktok2-stat-badge tiktok2-stat-badge--mismatch" id="tiktok2-lvv-badge-mismatch-btn" role="button" tabindex="0" title="Filter: mismatch only">MISMATCH:<span id="tiktok2-lvv-badge-mismatch">0</span></span>
+                            <span class="tiktok2-stat-badge tiktok2-stat-badge--mismatch-inv" id="tiktok2-lvv-badge-mismatch-inv-btn" role="button" tabindex="0" title="Filter: mismatch parents with Shopify INV &gt; 0">MISMATCH INV&gt;0:<span id="tiktok2-lvv-badge-mismatch-inv">0</span></span>
                         </div>
                         <span id="tiktok2-lvv-total" class="badge bg-secondary">Total: —</span>
                         <span id="tiktok2-lvv-page-info" class="badge bg-light text-dark border">Page: —</span>
@@ -145,6 +151,7 @@
                                 <select id="tiktok2-lvv-listed-filter" class="form-select form-select-sm tiktok2-lvv-filter-select">
                                     <option value="all">All</option>
                                     <option value="mismatch" selected>Mismatch Only</option>
+                                    <option value="mismatch_inv">Mismatch INV&gt;0</option>
                                     <option value="match">Match Only</option>
                                 </select>
                             </div>
@@ -179,6 +186,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let tiktok2LvvTable = null;
+        let tiktok2LvvAllData = [];
 
         function tiktok2LvvEscapeHtml(str) {
             return String(str ?? '')
@@ -201,6 +209,7 @@
             $('#tiktok2-lvv-badge-children').text((meta.required_child_count || 0).toLocaleString());
             $('#tiktok2-lvv-badge-listed').text((meta.listings_count || 0).toLocaleString());
             $('#tiktok2-lvv-badge-mismatch').text((meta.mismatch_count || 0).toLocaleString());
+            $('#tiktok2-lvv-badge-mismatch-inv').text((meta.mismatch_inv_gt0_count || 0).toLocaleString());
 
             const parts = [];
             if (meta.required_refreshed_at) parts.push('CP Master · ' + meta.required_refreshed_at);
@@ -221,7 +230,22 @@
             }
         }
 
+        function tiktok2LvvSyncBadgeActive() {
+            const v = $('#tiktok2-lvv-listed-filter').val();
+            $('#tiktok2-lvv-badge-mismatch-btn').toggleClass('is-active', v === 'mismatch');
+            $('#tiktok2-lvv-badge-mismatch-inv-btn').toggleClass('is-active', v === 'mismatch_inv');
+        }
+
         function tiktok2LvvApplyFilters() {
+            if (!tiktok2LvvTable) return;
+            if (window.ParentExpand) {
+                ParentExpand.beforeFilters(function () { tiktok2LvvApplyFiltersBody(); });
+                return;
+            }
+            tiktok2LvvApplyFiltersBody();
+        }
+
+        function tiktok2LvvApplyFiltersBody() {
             if (!tiktok2LvvTable) return;
             tiktok2LvvTable.clearFilter();
 
@@ -230,6 +254,8 @@
 
             if (listedFilter === 'mismatch') {
                 tiktok2LvvTable.addFilter(d => d.match_status === false);
+            } else if (listedFilter === 'mismatch_inv') {
+                tiktok2LvvTable.addFilter(d => d.match_status === false && (parseFloat(d.INV) || 0) > 0);
             } else if (listedFilter === 'match') {
                 tiktok2LvvTable.addFilter(d => d.match_status === true);
             }
@@ -238,6 +264,7 @@
                 tiktok2LvvTable.addFilter(d => String(d.parent || '').toLowerCase().includes(q));
             }
 
+            tiktok2LvvSyncBadgeActive();
             tiktok2LvvUpdateRowCount();
         }
 
@@ -317,6 +344,7 @@
 
                 return {
                     'Parent': d.parent || '',
+                    'INV': d.INV ?? 0,
                     'Required': d.child_sku_required_label ?? '',
                     'Parent Vs Listed SKU': d.child_sku_available_label || '',
                     'Listed Count': d.child_sku_available_count ?? '',
@@ -347,6 +375,8 @@
                 ajaxURL: '{{ route("tiktok2.listing.variation.verify.data") }}',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
+                    tiktok2LvvAllData = rows;
+                    if (window.ParentExpand) ParentExpand.captureDataset(rows);
                     if (response && response.meta) tiktok2LvvUpdateMeta(response.meta);
                     return rows;
                 },
@@ -360,7 +390,16 @@
                 paginationButtonCount: 10,
                 placeholder: 'No parents found in CP Master',
                 rowFormatter: function (row) {
-                    row.getElement().classList.add('tiktok2-lvv-parent-row');
+                    const el = row.getElement();
+                    const d = row.getData() || {};
+                    const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                    if (isParent) {
+                        el.classList.add('tiktok2-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.remove('tiktok2-lvv-child-row');
+                    } else {
+                        el.classList.remove('tiktok2-lvv-parent-row', 'parent-row', 'pm-parent-row');
+                        el.classList.add('tiktok2-lvv-child-row');
+                    }
                 },
                 columns: [
                     {
@@ -371,9 +410,34 @@
                         minWidth: 160,
                         widthGrow: 2,
                         formatter: function (cell) {
+                            const d = cell.getRow().getData() || {};
+                            const isParent = d.is_parent === true || (window.isPmParentRowData && window.isPmParentRowData(d));
+                            if (!isParent) {
+                                const sku = d.sku || '';
+                                if (!sku) return tiktok2LvvDash(null);
+                                return `<span class="fw-semibold text-primary">${tiktok2LvvEscapeHtml(sku)}</span>`;
+                            }
                             const v = cell.getValue() || '';
                             if (!v) return tiktok2LvvDash(null);
                             return `<span class="fw-semibold">${tiktok2LvvEscapeHtml(v)}</span>`;
+                        }
+                    },
+                    (window.ParentExpand
+                        ? ParentExpand.columnDef({ frozen: false })
+                        : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, hozAlign: 'center' }),
+                    {
+                        title: 'INV',
+                        field: 'INV',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        sorter: 'number',
+                        width: 70,
+                        minWidth: 60,
+                        headerTooltip: 'Shopify INV — sum of child SKU inventory for this parent',
+                        formatter: function (cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (!isFinite(value)) return tiktok2LvvDash(null);
+                            return `<span class="fw-semibold">${Math.round(value)}</span>`;
                         }
                     },
                     {
@@ -407,12 +471,39 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: function () { return tiktok2LvvTable; },
+                    getDataset: function () { return tiktok2LvvAllData; },
+                    setDataset: function (rows) { tiktok2LvvAllData = rows; },
+                    onCollapse: function () { tiktok2LvvApplyFilters(); },
+                    onAfterExpand: function () { tiktok2LvvUpdateRowCount(); },
+                });
+                ParentExpand.bind();
+            }
+
             tiktok2LvvTable.on('dataProcessed', tiktok2LvvApplyFilters);
             tiktok2LvvTable.on('dataFiltered', tiktok2LvvUpdateRowCount);
             tiktok2LvvTable.on('pageLoaded', tiktok2LvvUpdateRowCount);
 
             $('#tiktok2-lvv-filter-apply').on('click', tiktok2LvvApplyFilters);
             $('#tiktok2-lvv-listed-filter').on('change', tiktok2LvvApplyFilters);
+            $('#tiktok2-lvv-badge-mismatch-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#tiktok2-lvv-listed-filter').val();
+                $('#tiktok2-lvv-listed-filter').val(cur === 'mismatch' ? 'all' : 'mismatch');
+                tiktok2LvvApplyFilters();
+            });
+            $('#tiktok2-lvv-badge-mismatch-inv-btn').on('click keypress', function (e) {
+                if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return;
+                e.preventDefault();
+                const cur = $('#tiktok2-lvv-listed-filter').val();
+                $('#tiktok2-lvv-listed-filter').val(cur === 'mismatch_inv' ? 'all' : 'mismatch_inv');
+                tiktok2LvvApplyFilters();
+            });
             $('#tiktok2-lvv-filter-clear').on('click', function () {
                 $('#tiktok2-lvv-listed-filter').val('all');
                 $('#tiktok2-lvv-search').val('');

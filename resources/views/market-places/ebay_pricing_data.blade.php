@@ -480,7 +480,7 @@
                     },
                    
                     {
-                        title: "Prc",
+                        title: "Price",
                         field: "eBay Price",
                         hozAlign: "center",
                         sorter: "number",
@@ -582,11 +582,17 @@
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue();
                             const rowData = cell.getRow().getData();
+                            if (window.ParentExpand) {
+                                const avgHtml = ParentExpand.parentAvgLmpHtml(rowData, {
+                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined
+                                });
+                                if (avgHtml !== null) return avgHtml;
+                            }
+                            const value = cell.getValue();
                             const sku = rowData['(Child) sku'];
                             const lmpEntries = rowData.lmp_entries || [];
-                            
+
                             if (value && lmpEntries.length > 0) {
                                 const jsonData = JSON.stringify(lmpEntries);
                                 return `<a href="#" class="lmp-link" data-sku="${sku}" data-lmp-data='${jsonData}'>$${parseFloat(value).toFixed(2)}</a>`;

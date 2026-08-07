@@ -1391,7 +1391,7 @@
                     {
                         title: "L60 Sales",
                         field: "L-60 Sales",
-                        headerTooltip: "Sales from days 31-60 (previous 30-day period: {{ \Carbon\Carbon::now()->subDays(60)->format('M d, Y') }} – {{ \Carbon\Carbon::now()->subDays(31)->format('M d, Y') }}). Used for Growth calculation.",
+                        headerTooltip: "Sales from days 31-60 (previous 30-day period: {{ \Carbon\Carbon::now()->subDays(60)->format('M d, Y') }} – {{ \Carbon\Carbon::now()->subDays(31)->format('M d, Y') }}).",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
@@ -1474,74 +1474,72 @@
                     {
                         title: "Growth",
                         field: "Growth",
-                        headerTooltip: "Growth percentage comparing L30 Sales to L60 Sales. Formula: ((L30 - L60) / L60) × 100. Green indicates positive growth, red indicates decline.",
+                        headerTooltip: "Growth % comparing yesterday’s sales (Y Sales) to sales on the Pacific day 30 days before yesterday (D30 Sales). Formula: ((Y Sales − D30 Sales) / D30 Sales) × 100. Green = up vs that day, red = down.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 88,
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            
-                            // If backend provides Growth value, use it
-                            if (value && value !== '0%' && value !== '0.00%') {
-                                const growthStr = String(value).replace('%', '');
-                                const growth = parseFloat(growthStr);
-                                
-                                if (isNaN(growth) || Math.abs(growth) < 0.1) {
-                                    return '<span style="font-weight:600;color:#6c757d;">0%</span>';
-                                }
-                                
-                                const isPositive = growth > 0;
-                                const color = isPositive ? '#198754' : '#dc3545';
-                                const arrow = isPositive ? '↑' : '↓';
-                                
-                                return `<span style="font-weight:600;color:${color};">${arrow} ${Math.abs(growth).toFixed(0)}%</span>`;
-                            }
-                            
-                            // Fallback: calculate from L30 and L60
                             const rowData = cell.getRow().getData();
-                            const l30 = parseNumber(rowData['L30 Sales'] || 0);
-                            const l60 = parseNumber(rowData['L-60 Sales'] || 0);
-                            
-                            if (l60 === 0 || !l60) {
+                            let growth = null;
+                            const value = cell.getValue();
+
+                            if (value !== null && value !== undefined && value !== '' && value !== '—') {
+                                const growthStr = String(value).replace('%', '');
+                                const parsed = parseFloat(growthStr);
+                                if (!isNaN(parsed)) growth = parsed;
+                            }
+
+                            // Fallback: Y Sales vs D30 Sales (day −30)
+                            if (growth === null) {
+                                const ySales = parseNumber(rowData['Y Sales'] || 0);
+                                const d30 = parseNumber(rowData['D30 Sales'] || 0);
+                                if (!d30) {
+                                    return '<span style="color:#adb5bd;">—</span>';
+                                }
+                                growth = ((ySales - d30) / d30) * 100;
+                            }
+
+                            if (!isFinite(growth)) {
                                 return '<span style="color:#adb5bd;">—</span>';
                             }
-                            
-                            const growth = ((l30 - l60) / l60) * 100;
-                            
+
                             if (Math.abs(growth) < 0.1) {
                                 return '<span style="font-weight:600;color:#6c757d;">0%</span>';
                             }
-                            
+
                             const isPositive = growth > 0;
                             const color = isPositive ? '#198754' : '#dc3545';
                             const arrow = isPositive ? '↑' : '↓';
-                            
+
                             return `<span style="font-weight:600;color:${color};">${arrow} ${Math.abs(growth).toFixed(0)}%</span>`;
                         },
                         bottomCalc: function(values, data) {
-                            let sumL30 = 0;
-                            let sumL60 = 0;
+                            let sumY = 0;
+                            let sumD30 = 0;
                             data.forEach(function(row) {
-                                sumL30 += parseNumber(row['L30 Sales'] || 0);
-                                sumL60 += parseNumber(row['L-60 Sales'] || 0);
+                                sumY += parseNumber(row['Y Sales'] || 0);
+                                const d30 = row['D30 Sales'];
+                                if (d30 !== null && d30 !== undefined && d30 !== '') {
+                                    sumD30 += parseNumber(d30);
+                                }
                             });
-                            if (sumL60 === 0) return null;
-                            return ((sumL30 - sumL60) / sumL60) * 100;
+                            if (sumD30 === 0) return null;
+                            return ((sumY - sumD30) / sumD30) * 100;
                         },
                         bottomCalcFormatter: function(cell) {
                             const v = cell.getValue();
                             if (v === null || v === undefined) return '<strong>—</strong>';
                             const growth = parseNumber(v);
                             if (!isFinite(growth)) return '<strong>—</strong>';
-                            
+
                             if (Math.abs(growth) < 0.1) {
                                 return '<strong style="color:#6c757d;">0%</strong>';
                             }
-                            
+
                             const isPositive = growth > 0;
                             const color = isPositive ? '#198754' : '#dc3545';
                             const arrow = isPositive ? '↑' : '↓';
-                            
+
                             return `<strong style="color:${color};">${arrow} ${Math.abs(growth).toFixed(0)}%</strong>`;
                         }
                     },
@@ -1814,6 +1812,37 @@
                         }
                     },
                     {
+                        title: "G ROI %",
+                        field: "G Roi",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'groi');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="groi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            let style = '';
+
+                            if (value <= 50) {
+                                style = 'color:#a00211;';
+                            } else if (value > 50 && value <= 75) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 75 && value <= 125) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#8000ff;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
                         title: "GPFT%",
                         field: "Gprofit%",
                         hozAlign: "center",
@@ -1880,37 +1909,6 @@
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                    {
-                        title: "G ROI %",
-                        field: "G Roi",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'groi');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="groi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            let style = '';
-
-                            if (value <= 50) {
-                                style = 'color:#a00211;';
-                            } else if (value > 50 && value <= 75) {
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-                            } else if (value > 75 && value <= 125) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#8000ff;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
                         }
                     },
                     {
@@ -1989,6 +1987,38 @@
                         }
                     },
                     {
+                        title: "NROI %",
+                        field: "N ROI",
+                        hozAlign: "center",
+                        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const dotColor = getMetricDotColor(channel, 'nroi');
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            let style = '';
+
+                            if (value <= 50) {
+                                style = 'color:#a00211;';
+                            } else if (value > 50 && value <= 75) {
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
+                            } else if (value > 75 && value <= 125) {
+                                style = 'color:#28a745;';
+                            } else {
+                                style = 'color:#8000ff;';
+                            }
+
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
+                            }
+                        }
+                    },
+                    {
                         title: "NPFT%",
                         field: "N PFT",
                         hozAlign: "center",
@@ -2010,38 +2040,6 @@
                                 style = 'color:#28a745;';
                             } else {
                                 style = 'color:#e83e8c;';
-                            }
-
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
-                        },
-                        cellClick: function(e, cell) {
-                            if (e.target.classList.contains('metric-chart-icon')) {
-                                e.stopPropagation();
-                                var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
-                            }
-                        }
-                    },
-                    {
-                        title: "NROI %",
-                        field: "N ROI",
-                        hozAlign: "center",
-                        // NROI% = (Gross Profit − Ad Spend) / COGS × 100 — do not cut Ads% from GROI%.
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
-                            const dotColor = getMetricDotColor(channel, 'nroi');
-                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
-                            let style = '';
-
-                            if (value <= 50) {
-                                style = 'color:#a00211;';
-                            } else if (value > 50 && value <= 75) {
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
-                            } else if (value > 75 && value <= 125) {
-                                style = 'color:#28a745;';
-                            } else {
-                                style = 'color:#8000ff;';
                             }
 
                             return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
@@ -3343,7 +3341,7 @@
             });
 
             // Initial load only: set column dot color from last-two values (same red/green/gray logic as chart).
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','ad_spend','l30_orders','qty','gprofit','groi','ads_pct','npft','nroi','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp'];
             function loadMetricDotTrends(tableData) {
                 if (typeof lastDotColorByKey === 'undefined') return;
                 var data = tableData && Array.isArray(tableData) ? tableData : (typeof table !== 'undefined' && table.getData ? table.getData() : []);
@@ -3690,10 +3688,10 @@
             }
 
             // Fields that are permanently hidden in the UI but still drive calculations
-            // (e.g. Growth uses L-60 Sales; NP$ is derived from L30 Sales × N PFT).
+            // (e.g. Growth uses D30 Sales; NP$ is derived from L30 Sales × N PFT).
             // PT / PMT / SERP / KW / HL breakdowns removed from page + Columns menu.
             const PERMANENTLY_HIDDEN_FIELDS = [
-                'L-60 Sales', 'L60 Orders', 'NP$',
+                'L-60 Sales', 'L60 Orders', 'NP$', 'D30 Sales',
                 'PT Spent', 'PMT Spent', 'SERP Spent',
                 'PT Clicks', 'PMT Clicks', 'SERP Clicks',
                 'PT Sales', 'PMT Sales', 'SERP Sales',
