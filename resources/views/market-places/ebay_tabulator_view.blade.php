@@ -1176,9 +1176,7 @@
                                 style="width: 100px; font-size: 13px;">
                                 <option value="all">All</option>
                                 <option value="parent">Parent</option>
-                                {{-- Default selection: hide parent summary rows on initial load.
-                                     Filter logic (applyFilters) already drops parent rows
-                                     when this value is 'sku', so nothing else needs to change. --}}
+                                {{-- Default: SKU (parent-only default is eBay 2 / eBay 3 only) --}}
                                 <option value="sku" selected>SKU</option>
                             </select>
                         </div>

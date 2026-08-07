@@ -668,9 +668,7 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">All Rows</option>
                         <option value="parents">Parents</option>
-                        {{-- Default selection: hide parent summary rows on initial load.
-                             Filter logic (applyFilters in script-bottom) already drops parent rows
-                             when this value is 'skus', so nothing else needs to change. --}}
+                        {{-- Default: SKUs (parent-only default is eBay 2 / eBay 3 only) --}}
                         <option value="skus" selected>SKUs</option>
                     </select>
 

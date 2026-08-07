@@ -520,7 +520,6 @@
                     <select id="parent-filter" class="form-select form-select-sm" title="Filter by row type">
                         <option value="all">All Rows</option>
                         <option value="parents">Parents</option>
-                        {{-- Default: hide parent summary rows on initial load --}}
                         <option value="skus" selected>SKUs</option>
                     </select>
 

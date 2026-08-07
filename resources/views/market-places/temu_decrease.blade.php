@@ -798,6 +798,16 @@
                      the CSS rule for .temu-toolbar-row > *) and the row simply
                      overflows downward instead of sideways. --}}
                 <div class="d-flex align-items-center flex-wrap gap-1 mb-1 temu-toolbar-row">
+                    {{-- Row type filter (All Rows / Parents / SKUs) — same as temu2 / Amazon --}}
+                    <div>
+                        <select id="parent-filter" class="form-select form-select-sm" style="width: 130px;"
+                            title="Filter by row type: All Rows, Parents only, or SKUs only">
+                            <option value="all">All Rows</option>
+                            <option value="parents">Parents</option>
+                            <option value="skus" selected>SKUs</option>
+                        </select>
+                    </div>
+
                     <!-- Inventory Filter -->
                     <div>
                         <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
@@ -4593,6 +4603,12 @@
         let currentPlayParentIndex = 0;
         let suppressDataLoadedHandler = false;
 
+        /** CVR display: ≤3.5 keep 1 decimal; >3.5 round to whole number (e.g. 4%). */
+        function formatCvrPct(val) {
+            const n = parseFloat(val) || 0;
+            return (n > 3.5 ? String(Math.round(n)) : n.toFixed(1)) + '%';
+        }
+
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
             ajaxSorting: false,
@@ -4753,7 +4769,7 @@
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${formatCvrPct(val)}</span>`;
                     }
                 },
                 {
@@ -4767,7 +4783,7 @@
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${formatCvrPct(val)}</span>`;
                     }
                 },
                 {
@@ -4799,11 +4815,11 @@
                             // CVR 30 equals CVR 60 (within tolerance)
                             dotColor = '#ffc107'; // yellow
                         }
-                        arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                        arrowHtml = ` <span title="CVR 30 vs CVR 60: ${formatCvrPct(cvr60)}" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                         const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                         const sku = rowData.sku || '';
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>` : '';
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml} ${dotBtn}`.trim();
+                        return `<span style="color: ${color}; font-weight: 600;">${formatCvrPct(val)}</span>${arrowHtml} ${dotBtn}`.trim();
                     }
                 },
                 {
@@ -6047,6 +6063,14 @@
             applyFilters();
         });
 
+        /** True for ProductMaster PARENT rows (used by All Rows / Parents / SKUs filter). */
+        function isTemuParentRow(data) {
+            if (!data) return false;
+            if (data.is_parent === true || data.is_parent === 1 || data.is_parent === '1') return true;
+            const sku = String(data.sku || '').trim().toUpperCase();
+            return sku.indexOf('PARENT ') === 0 || sku === 'PARENT';
+        }
+
         // Apply filters
         function applyFilters() {
             if (window.ParentExpand && ParentExpand.isExpanded()) {
@@ -6059,6 +6083,7 @@
                 return;
             }
 
+            const parentFilter = $('#parent-filter').val() || 'skus';
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const groiFilter = $('#roi-filter').val();
@@ -6066,8 +6091,21 @@
             const cvrTrendFilter = $('#cvr-trend-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
+            // When showing All Rows / Parents, keep parent summary rows visible even if a data filter would drop them
+            const parentRowsBypassDataFilters = (parentFilter === 'all' || parentFilter === 'parents');
             // Clear all filters first
             table.clearFilter();
+
+            // Row type: All Rows / Parents / SKUs (default SKUs — parent-only default is eBay 2 / 3 only)
+            if (parentFilter === 'parents') {
+                table.addFilter(function(data) {
+                    return isTemuParentRow(data);
+                });
+            } else if (parentFilter === 'skus') {
+                table.addFilter(function(data) {
+                    return !isTemuParentRow(data);
+                });
+            }
 
             // SKU search filter (case-insensitive)
             if (skuSearch) {
@@ -6080,6 +6118,7 @@
             // Inventory filter
             if (inventoryFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
                     const inv = parseFloat(data.inventory) || 0;
                     if (inventoryFilter === 'gt0') return inv > 0;
                     if (inventoryFilter === 'eq0') return inv === 0;
@@ -6090,6 +6129,7 @@
             // GPFT filter — same formula/margin as GPRFT column & GROI (row.percentage)
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
                     const price = parseFloat(data.temu_price) || 0;
                     const marginRaw = parseFloat(data.percentage);
                     const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;
@@ -6107,6 +6147,7 @@
             // ROI filter (GROI%) — buckets: <40, 40–60, 60–80, 80–100, 100+
             if (groiFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
                     const groi = parseFloat(data.roi_percent) || 0;
                     if (groiFilter === 'lt40') return groi < 40;
                     if (groiFilter === '40-60') return groi >= 40 && groi < 60;
@@ -6120,6 +6161,7 @@
             // CVR filter
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
                     const cvr = parseFloat(data.cvr_percent) || 0;
                     const cvrRounded = Math.round(cvr * 100) / 100;
                     
@@ -6136,6 +6178,7 @@
             if (cvrTrendFilter !== 'all') {
                 const cvrTrendTol = 0.1;
                 table.addFilter(function(data) {
+                    if (isTemuParentRow(data) && parentRowsBypassDataFilters) return true;
                     const cvr30 = parseFloat(data.cvr_30 || data.cvr_percent) || 0;
                     const cvr60 = parseFloat(data.cvr_60) || 0;
                     let trend = 'equal';
@@ -6842,7 +6885,7 @@
             });
         });
 
-        $('#inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
+        $('#parent-filter, #inventory-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #nr-req-filter, #nrp-filter, #sold-filter').on('change', function() {
             applyFilters();
         });
 

@@ -3093,6 +3093,12 @@
         let badgeAvgAds = null; // Ads % from badge — shown in ADS% column for all rows
         let currentCampaignPeriod = 'L30';
 
+        /** CVR display: ≤3.5 keep 1 decimal; >3.5 round to whole number (e.g. 4%). */
+        function formatCvrPct(val) {
+            const n = parseFloat(val) || 0;
+            return (n > 3.5 ? String(Math.round(n)) : n.toFixed(1)) + '%';
+        }
+
         // Play/Pause parent navigation (like pricing-master-cvr)
         let fullDataset = [];
         let isPlayNavigationActive = false;
@@ -3294,7 +3300,7 @@
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${formatCvrPct(val)}</span>`;
                     }
                 },
                 {
@@ -3307,7 +3313,7 @@
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         let color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${formatCvrPct(val)}</span>`;
                     }
                 },
                 {
@@ -3340,11 +3346,11 @@
                             // CVR 30 equals CVR 60 (within tolerance)
                             dotColor = '#ffc107'; // yellow
                         }
-                        arrowHtml = ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                        arrowHtml = ` <span title="CVR 30 vs CVR 60: ${formatCvrPct(cvr60)}" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                         const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                         const sku = rowData.sku || '';
                         const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="cvr" title="View CVR% chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>` : '';
-                        return `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>${arrowHtml} ${dotBtn}`.trim();
+                        return `<span style="color: ${color}; font-weight: 600;">${formatCvrPct(val)}</span>${arrowHtml} ${dotBtn}`.trim();
                     }
                 },
                 {

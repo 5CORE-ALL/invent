@@ -6032,6 +6032,8 @@
                             const val = parseFloat(cell.getValue()) || 0;
                             const cvr60 = parseFloat(rowData.CVR_60) || 0;
                             const tol = 0.1;
+                            // ≤3.5 keep 1 decimal; >3.5 round to whole number
+                            const fmtCvr = (n) => (n > 3.5 ? String(Math.round(n)) : n.toFixed(1)) + '%';
                             let arrowHtml = '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
                             if (!isParent) {
@@ -6047,15 +6049,15 @@
                                     arrowIcon = 'fa-arrow-down';
                                 }
                                 arrowHtml =
-                                    ` <span title="CVR 30 vs CVR 60: ${cvr60.toFixed(1)}%" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
+                                    ` <span title="CVR 30 vs CVR 60: ${fmtCvr(cvr60)}" style="vertical-align: middle;"><i class="fas ${arrowIcon}" style="color: ${arrowColor}; font-size: 12px;"></i></span>`;
                             }
                             const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' :
                                 (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
                             const sku = rowData['(Child) sku'] || '';
                             // Click the % value to open CVR chart (same as /ebay-tabulator-view)
                             const valueHtml = (sku && !isParent)
-                                ? `<span class="view-sku-chart" data-sku="${sku}" data-metric="cvr" title="View CVR chart" style="color: ${color}; font-weight: 600; cursor: pointer;">${val.toFixed(1)}%</span>`
-                                : `<span style="color: ${color}; font-weight: 600;">${val.toFixed(1)}%</span>`;
+                                ? `<span class="view-sku-chart" data-sku="${sku}" data-metric="cvr" title="View CVR chart" style="color: ${color}; font-weight: 600; cursor: pointer;">${fmtCvr(val)}</span>`
+                                : `<span style="color: ${color}; font-weight: 600;">${fmtCvr(val)}</span>`;
                             return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">${valueHtml}${arrowHtml}</span>`;
                         },
                         width: 65

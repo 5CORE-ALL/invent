@@ -2475,12 +2475,7 @@ class TemuController extends Controller
                 ->orderBy("sku", "asc")
                 ->get();
 
-            // Temu 1: hide PARENT SKUs. Temu 2: keep them for All Rows / Parents / SKUs filter.
-            if (!$isTemu2Pricing) {
-                $productMasters = $productMasters->filter(function ($item) {
-                    return stripos($item->sku, 'PARENT') === false;
-                })->values();
-            }
+            // Keep PARENT SKUs for both Temu 1 and Temu 2 (All Rows / Parents / SKUs filter).
 
             // 2. Get all SKUs from product master
             $skus = $productMasters->pluck("sku")
@@ -3613,6 +3608,77 @@ class TemuController extends Controller
                     $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
                     // Temu 2 parent CVR = Sold / T Clicks (goods_id-level clicks)
                     $row['cvr_percent'] = $parentT > 0 ? round(($temuL30 / $parentT) * 100, 2) : 0;
+                    $row['cvr_30'] = $row['cvr_percent'];
+                    $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
+
+                    return $row;
+                })->values();
+            } else {
+                // Temu 1: roll child INV / sold / views onto PARENT rows (same Parents filter as Temu 2).
+                $normalizeParentKey = static function ($value): string {
+                    return strtoupper(trim((string) $value));
+                };
+
+                $childrenByParent = [];
+                foreach ($processedData as $row) {
+                    if (! empty($row['is_parent'])) {
+                        continue;
+                    }
+                    $pk = $normalizeParentKey($row['parent'] ?? '');
+                    if ($pk === '') {
+                        continue;
+                    }
+                    $childrenByParent[$pk][] = $row;
+                }
+
+                $processedData = $processedData->map(function ($row) use ($childrenByParent, $normalizeParentKey) {
+                    if (empty($row['is_parent'])) {
+                        return $row;
+                    }
+
+                    $pk = $normalizeParentKey($row['parent'] ?? '');
+                    if ($pk === '') {
+                        $pk = $normalizeParentKey(preg_replace('/^PARENT\s+/i', '', (string) ($row['sku'] ?? '')));
+                    }
+                    $children = $childrenByParent[$pk] ?? [];
+                    if ($children === []) {
+                        return $row;
+                    }
+
+                    $inv = 0.0;
+                    $ovl30 = 0.0;
+                    $temuL30 = 0;
+                    $temuL45 = 0;
+                    $temuL60 = 0;
+                    $productClicks = 0;
+                    $productClicksL7 = 0;
+                    $productClicksL7ToL14 = 0;
+                    $hasReq = false;
+                    foreach ($children as $c) {
+                        $inv += (float) ($c['inventory'] ?? 0);
+                        $ovl30 += (float) ($c['ovl30'] ?? 0);
+                        $temuL30 += (int) ($c['temu_l30'] ?? 0);
+                        $temuL45 += (int) ($c['temu_l45'] ?? 0);
+                        $temuL60 += (int) ($c['temu_l60'] ?? 0);
+                        $productClicks += (int) ($c['product_clicks'] ?? 0);
+                        $productClicksL7 += (int) ($c['product_clicks_l7'] ?? 0);
+                        $productClicksL7ToL14 += (int) ($c['product_clicks_l7_to_l14'] ?? 0);
+                        $nr = strtoupper(trim((string) ($c['nr_req'] ?? 'REQ')));
+                        if ($nr !== 'NR' && $nr !== 'NRL') {
+                            $hasReq = true;
+                        }
+                    }
+
+                    $row['inventory'] = $inv;
+                    $row['ovl30'] = $ovl30;
+                    $row['temu_l30'] = $temuL30;
+                    $row['temu_l45'] = $temuL45;
+                    $row['temu_l60'] = $temuL60;
+                    $row['product_clicks'] = $productClicks;
+                    $row['product_clicks_l7'] = $productClicksL7;
+                    $row['product_clicks_l7_to_l14'] = $productClicksL7ToL14;
+                    $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
+                    $row['cvr_percent'] = $productClicks > 0 ? round(($temuL30 / $productClicks) * 100, 2) : 0;
                     $row['cvr_30'] = $row['cvr_percent'];
                     $row['nr_req'] = $hasReq ? 'REQ' : 'NR';
 
