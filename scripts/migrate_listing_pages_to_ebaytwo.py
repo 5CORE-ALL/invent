@@ -28,7 +28,6 @@ CHANNELS = [
     ("wayfair", "ListingWayfairController", "getViewListingWayfairData", "listingWayfair", "listingWayfair", "wayfair", "wayfairPercentage", "Wayfair"),
     ("pls", "ListingPlsController", "getViewListingPlsData", "listingPls", "listingPls", "pls", "plsPercentage", "PLS"),
     ("bestbuyusa", "ListingBestbuyUSAController", "getViewListingBestbuyUSAData", "listingBestbuyUSA", "listingBestbuyUSA", "bestbuyusa", "bestbuyUSAPercentage", "BestBuy USA"),
-    ("tiendamia", "ListingTiendamiaController", "getViewListingTiendamiaData", "listingTiendamia", "listingTiendamia", "tiendamia", "tiendamiaPercentage", "Tiendamia"),
     ("fbmarketplace", "ListingFBMarketplaceController", "getViewListingFBMarketplaceData", "listingFBMarketplace", "listingFBMarketplace", "fbmarketplace", "fbMarketplacePercentage", "FB Marketplace"),
     ("fbshop", "ListingFBShopController", "getViewListingFBShopData", "listingFBShop", "listingFBShop", "fbshop", "fbShopPercentage", "FB Shop"),
     ("instagramshop", "ListingInstagramShopController", "getViewListingInstagramShopData", "listingInstagramShop", "listingInstagramShop", "instagramshop", "instagramShopPercentage", "Instagram Shop"),

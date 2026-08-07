@@ -4294,9 +4294,20 @@ class ChannelMasterController extends Controller
             // Get pagination parameters
             $page = (int) $request->input('page', 1);
             $size = (int) $request->input('size', 50);
+
+            // Only Active channel_master rows (same as live getViewChannelData).
+            // Prevents archived/deleted channels from lingering in calculated_data.
+            $activeChannelNames = ChannelMaster::query()
+                ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->pluck('channel')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
             
             // Get data from pre-calculated table
             $query = \App\Models\ChannelMasterCalculatedData::query()
+                ->whereIn('channel', $activeChannelNames)
                 ->orderBy('l30_sales', 'desc');
             
             // Apply type filter if needed (from frontend section filter)

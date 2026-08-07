@@ -71,14 +71,6 @@ class MiraklDailyData extends Model
     }
 
     /**
-     * Scope for Tiendamia orders
-     */
-    public function scopeTiendamia($query)
-    {
-        return $query->where('channel_name', 'Tiendamia');
-    }
-
-    /**
      * Scope for Best Buy USA orders
      */
     public function scopeBestBuyUsa($query)

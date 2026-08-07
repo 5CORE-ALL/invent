@@ -618,35 +618,35 @@
                     </div>
 
 
-                    {{-- Target ROI% bulk control — back-solves SPRICE so SNROI (Amazon NROI formula) = Target. --}}
+                    {{-- Target ROI% bulk control — back-solves SPRICE so SGROI = Target (gross, no Ads%). --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-roi-controls"
-                        title="Target SNROI% — sets SPRICE so net SROI = Target (accounts for fees, shipping, and Ads%)">
+                        title="Target SGROI% — sets SPRICE so S GROI column = Target (gross ROI: fees + shipping, no Ads%)">
                         <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> ROI%:
                         </label>
                         <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target SNROI% applied to all selected rows when you click 'Apply SPRICE'">
+                            title="Target SGROI% applied to all selected rows when you click 'Apply SPRICE'">
                         <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save SPRICE so SNROI equals Target for every selected row">
+                            title="Compute & save SPRICE so SGROI equals Target for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
 
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
+                    {{-- Target GPFT% bulk control — back-solves SPRICE for selected rows so SGPFT = Target GPFT%.
                          Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
                     <div class="d-inline-flex align-items-center gap-1 ms-2 p-1 border rounded bg-light pricing-filter-item"
                         id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (0.85 − Target GPFT%/100) on every selected row">
+                        title="Target SGPFT% — sets SPRICE = (LP + Ship) / (0.85 − Target GPFT%/100) on every selected row">
                         <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
                             <span style="font-size:1em;" aria-hidden="true">🎯</span> GPFT%:
                         </label>
                         <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
                             placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the eBay3 take-home margin (< 85%).">
+                            title="Target SGPFT% applied to all selected rows when you click 'Apply SPRICE'. Must be less than the eBay3 take-home margin (< 85%).">
                         <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (0.85 − Target GPFT%/100) for every selected row">
+                            title="Compute & save SPRICE so SGPFT equals Target for every selected row">
                             <i class="fas fa-calculator"></i>
                         </button>
                     </div>
@@ -4461,18 +4461,17 @@
         /*
          * Target ROI% / Target GPFT% bulk apply (eBay3, margin = 0.85 fixed)
          * ------------------------------------------------------------------
-         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered
-         * target. eBay3's server-side SGPFT formula (EbayThreeController::saveSpriceToDatabase
-         * line 2420) is:
+         * Back-solves SPRICE so the resulting SGROI / SGPFT columns match the entered
+         * target (gross only — Ads% / SNROI are not used). eBay3 formulas:
          *     SGPFT% = ((sprice * 0.85 − ship − lp) / sprice) * 100
-         *     SROI%  = ((sprice * 0.85 − ship − lp) / lp)     * 100
+         *     SGROI% = ((sprice * 0.85 − ship − lp) / lp)     * 100
          *   → sprice = (lp * (1 + ROI%/100)  + ship) / 0.85
          *   → sprice = (lp + ship) / (0.85 − GPFT%/100)
          * Each save goes through the existing saveSpriceWithRetry() Promise pipeline
          * so SPRICE_STATUS (processing → saved / error) and the server-recomputed
-         * SGPFT / SPFT / SROI values stay in sync exactly like applyDiscount.
+         * SGPFT / SGROI values stay in sync exactly like applyDiscount.
          * Rounding is plain 2-decimal — no .99 / .49 retail snapping — because
-         * snapping would shift the achieved SROI / SGPFT off the user-typed target.
+         * snapping would shift the achieved SGROI / SGPFT off the user-typed target.
          */
         function ebay3ApplyTargetBackSolve(computeFn, labelPrefix) {
             if (selectedSkus.size === 0) {
@@ -4561,16 +4560,14 @@
                 return;
             }
 
-            // Target displayed SNROI (Amazon NROI shape), not gross SGROI:
-            //   ((sprice×margin − ship − lp) − sprice×Ads%/100) / lp × 100 = Target
-            //   -> sprice = (lp × (1 + Target/100) + ship) / (margin − Ads%/100)
-            const adsFrac = (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) / 100;
+            // Target displayed SGROI (gross), not SNROI:
+            //   (sprice×margin − ship − lp) / lp × 100 = Target
+            //   -> sprice = (lp × (1 + Target/100) + ship) / margin
             const roiMultiplier = 1 + (targetRoiPct / 100);
             ebay3ApplyTargetBackSolve(function (lp, ship, margin) {
-                const netMargin = margin - adsFrac;
-                if (netMargin <= 0) return null;
-                return (lp * roiMultiplier + ship) / netMargin;
-            }, `Target SNROI ${targetRoiPct}%`);
+                if (margin <= 0) return null;
+                return (lp * roiMultiplier + ship) / margin;
+            }, `Target SGROI ${targetRoiPct}%`);
         });
 
         $('#apply-target-gpft-btn').on('click', function () {
@@ -4586,12 +4583,15 @@
                 return;
             }
 
+            // Target displayed SGPFT:
+            //   ((sprice×margin − ship − lp) / sprice) × 100 = Target
+            //   -> sprice = (lp + ship) / (margin − Target/100)
             const targetFraction = targetGpftPct / 100;
             ebay3ApplyTargetBackSolve(function (lp, ship, margin) {
                 const denom = margin - targetFraction;
                 if (denom <= 0) return null; // signals "target ≥ margin" skip
                 return (lp + ship) / denom;
-            }, `Target GPFT ${targetGpftPct}%`);
+            }, `Target SGPFT ${targetGpftPct}%`);
         });
 
         $('#target-roi-input').on('keypress', function (e) {
