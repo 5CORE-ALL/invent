@@ -1111,7 +1111,7 @@
      * Temu2 push base from SPRICE (same as /price-increase and /temu-decrease):
      *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
      *   if SPRICE ≥ $35 → (Sprice × 0.85)
-     * PFT / ROI / S Temu Prc stay on stored SPRICE — conversion is push-only.
+     * Shown in "S Temu B Prc"; PFT / ROI stay on stored SPRICE.
      */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
@@ -1120,6 +1120,8 @@
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }
+    // Temu Price column display only (~1/0.85). Other calcs stay on unmultiplied price.
+    const TEMU_PRICE_DISPLAY_MULT = 1.1765;
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -3530,6 +3532,21 @@
                 //     width: 80
                 // },
                 {
+                    title: "Temu Price",
+                    field: "temu_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
+                        if (basePrice === 0) {
+                            return '$0.00';
+                        }
+                        const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
+                        const displayPrice = +(temuPrice * TEMU_PRICE_DISPLAY_MULT).toFixed(2);
+                        return `<span title="Temu Price × 1.1765 (shown). Calc price: $${temuPrice.toFixed(2)}">$${displayPrice.toFixed(2)}</span>`;
+                    }
+                },
+                {
                     title: "Base Price",
                     field: "base_price",
                     hozAlign: "center",
@@ -3545,20 +3562,6 @@
                     editorParams: {
                         min: 0,
                         step: 0.01
-                    }
-                },
-                {
-                    title: "Temu Price",
-                    field: "temu_price",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
-                        if (basePrice === 0) {
-                            return '$0.00';
-                        }
-                        const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
-                        return '$' + temuPrice.toFixed(2);
                     }
                 },
                 {
@@ -3751,23 +3754,16 @@
                 },
            
                 {
-                    title: "S Temu Prc",
+                    title: "S Temu B Prc",
                     field: "stemu_price",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Push base from SPRICE: (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
-                        
-                        if (sprice === 0) return '';
-                        
-                        // If user enters current Temu Price into SPRICE, treat it as final price
-                        // (avoid applying +2.99 twice). Otherwise keep normal base->Temu conversion.
-                        const stemuPrice = (currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01)
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        return `$${stemuPrice.toFixed(2)}`;
+                        const pushBase = temuPushBaseFromSprice(rowData['sprice']);
+                        if (pushBase == null) return '';
+                        return `<span style="font-weight:600;">$${pushBase.toFixed(2)}</span>`;
                     }
                 },
                 {

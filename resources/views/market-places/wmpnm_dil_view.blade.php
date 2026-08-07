@@ -4953,7 +4953,7 @@
                     minWidth: 80
                 },
                 {
-                    title: "S Temu Prc",
+                    title: "S Temu B Prc",
                     field: "stemu_price_display",
                     hozAlign: "center",
                     headerSort: false,

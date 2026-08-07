@@ -1738,7 +1738,7 @@
      * Temu push base from SPRICE (same as /price-increase):
      *   if SPRICE < $35 → (Sprice × 0.85) − 2.99
      *   if SPRICE ≥ $35 → (Sprice × 0.85)
-     * PFT / ROI / S Temu Prc stay on stored SPRICE — conversion is push-only.
+     * Shown in "S Temu B Prc"; PFT / ROI stay on stored SPRICE.
      */
     function temuPushBaseFromSprice(sprice) {
         const s = parseFloat(sprice);
@@ -1747,6 +1747,8 @@
         if (!(push > 0)) return null;
         return +push.toFixed(2);
     }
+    // Temu Price column display only (~1/0.85). Alerts / GPFT / push stay on unmultiplied price.
+    const TEMU_PRICE_DISPLAY_MULT = 1.1765;
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -5083,6 +5085,37 @@
                 //     width: 80
                 // },
                 {
+                    title: "Temu Price",
+                    field: "temu_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const basePrice = parseFloat(rowData['base_price']) || 0;
+
+                        // Only calculate Temu Price if base_price > 0 (item exists in Temu)
+                        if (basePrice === 0) {
+                            return '$0.00';
+                        }
+                        const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
+                        // Display × 1.1765 (same as /price-increase Temu Price). Alerts use unmultiplied.
+                        const displayPrice = +(temuPrice * TEMU_PRICE_DISPLAY_MULT).toFixed(2);
+                        const tipBase = 'Temu Price × 1.1765 (shown). Calc price: $' + temuPrice.toFixed(2);
+
+                        // Green Alert: Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
+                        // Driven by temuIsGreenAlert(rd) so the toolbar filter + summary
+                        // count + cell color always agree on which rows count.
+                        if (temuIsGreenAlert(rowData)) {
+                            return `<span style="color: #28a745; font-weight: 600;" title="Green Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2. ${tipBase}">$${displayPrice.toFixed(2)}</span>`;
+                        }
+                        // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
+                        if (temuIsRedAlert(rowData)) {
+                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is at/above 85% of Amazon AND 90% of eBay 1 / eBay 2 (uncompetitive). ${tipBase}">$${displayPrice.toFixed(2)}</span>`;
+                        }
+                        return `<span title="${tipBase}">$${displayPrice.toFixed(2)}</span>`;
+                    }
+                },
+                {
                     title: "Base Price",
                     field: "base_price",
                     hozAlign: "center",
@@ -5098,34 +5131,6 @@
                     editorParams: {
                         min: 0,
                         step: 0.01
-                    }
-                },
-                {
-                    title: "Temu Price",
-                    field: "temu_price",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const basePrice = parseFloat(rowData['base_price']) || 0;
-
-                        // Only calculate Temu Price if base_price > 0 (item exists in Temu)
-                        if (basePrice === 0) {
-                            return '$0.00';
-                        }
-                        const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
-
-                        // Green Alert: Temu Price < Amazon × 0.85 OR < eBay 1 × 0.90 OR < eBay 2 × 0.90.
-                        // Driven by temuIsGreenAlert(rd) so the toolbar filter + summary
-                        // count + cell color always agree on which rows count.
-                        if (temuIsGreenAlert(rowData)) {
-                            return `<span style="color: #28a745; font-weight: 600;" title="Green Alert: Temu price is below 85% of Amazon or 90% of eBay 1 / eBay 2">$${temuPrice.toFixed(2)}</span>`;
-                        }
-                        // Red Alert: opposite — Temu uncompetitive (at/above every reference threshold).
-                        if (temuIsRedAlert(rowData)) {
-                            return `<span style="color: #a00211; font-weight: 600;" title="Red Alert: Temu price is at/above 85% of Amazon AND 90% of eBay 1 / eBay 2 (uncompetitive)">$${temuPrice.toFixed(2)}</span>`;
-                        }
-                        return '$' + temuPrice.toFixed(2);
                     }
                 },
                 {
@@ -5506,23 +5511,16 @@
                 },
            
                 {
-                    title: "S Temu Prc",
+                    title: "S Temu B Prc",
                     field: "stemu_price",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Push base from SPRICE: (Sprice×0.85)−2.99 if SPRICE<$35; else Sprice×0.85",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const currentTemuPrice = parseFloat(rowData['temu_price']) || 0;
-                        
-                        if (sprice === 0) return '';
-                        
-                        // If user enters current Temu Price into SPRICE, treat it as final price
-                        // (avoid applying +2.99 twice). Otherwise keep normal base->Temu conversion.
-                        const stemuPrice = (currentTemuPrice > 0 && Math.abs(sprice - currentTemuPrice) < 0.01)
-                            ? sprice
-                            : (sprice <= 26.99 ? sprice + 2.99 : sprice);
-                        return `$${stemuPrice.toFixed(2)}`;
+                        const pushBase = temuPushBaseFromSprice(rowData['sprice']);
+                        if (pushBase == null) return '';
+                        return `<span style="font-weight:600;">$${pushBase.toFixed(2)}</span>`;
                     }
                 },
                 {
