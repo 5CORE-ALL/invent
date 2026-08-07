@@ -5302,7 +5302,7 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        if (window.ParentExpand) {
+                        if (window.ParentExpand && typeof ParentExpand.parentAvgLmpHtml === 'function') {
                             const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
                                 dataset: typeof fullDataset !== 'undefined' ? fullDataset : (typeof allTableData !== 'undefined' ? allTableData : undefined),
                                 field: 'lmp',

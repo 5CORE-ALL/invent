@@ -85,7 +85,7 @@
         font-weight: 700 !important;
     }
 </style>
-<script src="{{ asset('js/parent-expand-column.js') }}"></script>
+<script src="{{ asset('js/parent-expand-column.js') }}?v={{ file_exists(public_path('js/parent-expand-column.js')) ? filemtime(public_path('js/parent-expand-column.js')) : '1' }}"></script>
 <script>
     window.isPmParentSku = function (sku) {
         return String(sku || '').toUpperCase().includes('PARENT');

@@ -3634,7 +3634,7 @@
                     headerTooltip: "Temu Recovery (≤$27: Price×0.85+2.99; >$27: Price×0.85) — same as /pricing-master-cvr; raw LMP stays in the modal",
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
-                        if (window.ParentExpand) {
+                        if (window.ParentExpand && typeof ParentExpand.parentAvgLmpHtml === 'function') {
                             const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
                                 dataset: typeof fullDataset !== 'undefined' ? fullDataset : (typeof allTableData !== 'undefined' ? allTableData : undefined),
                                 field: 'lmp',
