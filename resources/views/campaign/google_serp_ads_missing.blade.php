@@ -13,7 +13,7 @@
             font-size: 0.82rem;
         }
         .gs-serp-ads-missing .parent-row {
-            background-color: rgba(69, 233, 255, 0.10);
+            background-color: #fffef2;
         }
         .gs-serp-ads-missing .parent-copy-btn {
             cursor: pointer;

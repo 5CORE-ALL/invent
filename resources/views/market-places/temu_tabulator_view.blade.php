@@ -233,7 +233,7 @@
             },
             rowFormatter: function(row) {
                 if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
             initialSort: [{

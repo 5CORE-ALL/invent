@@ -827,6 +827,7 @@
     }
 
     let table = null;
+    let allTableData = []; // Full dataset for ParentExpand
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -2113,7 +2114,12 @@
                     campaignTotals = response.campaign_totals;
                 }
                 // Return only the data array to Tabulator
-                return response.data || response;
+                var payload = response.data || response;
+                if (Array.isArray(payload)) {
+                    allTableData = payload;
+                    if (window.ParentExpand) ParentExpand.captureDataset(payload);
+                }
+                return payload;
             },
             initialSort: [{
                 column: "L30",
@@ -2137,6 +2143,7 @@
                     width: 150,
                     visible: true
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "Image",
                     field: "image_path",
@@ -2828,6 +2835,23 @@
             ]
         });
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => {
+                    if (typeof updateSummary === 'function') updateSummary();
+                    if (typeof updateCalcValues === 'function') updateCalcValues();
+                },
+                onCollapse: () => {
+                    if (typeof applyFilters === 'function') applyFilters();
+                },
+            });
+            ParentExpand.bind();
+        }
+
         // SKU Search functionality
         $('#sku-search, #parent-search').on('keyup', function() {
             table.setFilter([
@@ -2915,6 +2939,12 @@
 
         // Apply filters
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function() {
+                    applyFilters();
+                });
+                return;
+            }
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();

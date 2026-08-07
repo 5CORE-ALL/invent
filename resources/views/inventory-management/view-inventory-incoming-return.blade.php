@@ -136,7 +136,7 @@
 
         /* Parent rows — match AliExpress / Amazon tabulator parent styling */
         .parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #1e3a5f !important;
         }

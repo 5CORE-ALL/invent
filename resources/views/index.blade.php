@@ -373,7 +373,7 @@
 
 <!-- Pricing — user-provided PRICE image -->
 <div id="pricing-card" class="p-3 bg-white rounded shadow-sm border dashboard-badge-panel">
-    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fef08a, #fefce8); padding: 0; overflow: hidden;">
+    <div class="dashboard-badge-panel__icon" aria-hidden="true" style="background: linear-gradient(145deg, #fefce8, #fefce8); padding: 0; overflow: hidden;">
         <a href="{{ route('pricing.master.cvr') }}" title="Open Pricing Master CVR">
             <img
                 src="{{ asset('assets/images/pricing-dashboard-icon.png') }}"

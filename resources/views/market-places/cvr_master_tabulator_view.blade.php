@@ -118,12 +118,12 @@
 
         /* Parent row styling - Light blue background like Amazon */
         .parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
 
         .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
     </style>
@@ -581,7 +581,7 @@
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
-                    row.getElement().style.backgroundColor = "#bde0ff";
+                    row.getElement().style.backgroundColor = "#fffef2";
                     row.getElement().style.fontWeight = "bold";
                     row.getElement().classList.add("parent-row");
                 }
@@ -600,6 +600,8 @@
                     headerSort: false,
                     width: 80
                 },
+                { title: "Parent", field: "parent", visible: false, width: 120 },
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 {
                     title: "SKU",
                     field: "sku",
@@ -1337,6 +1339,10 @@
         });
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             // When Play navigation is active, ignore all filters and show only current parent (same as pricing master)
             if (isPlayNavigationActive) {
                 showCurrentParentPlayView();
@@ -1492,12 +1498,25 @@
             applyColumnVisibilityFromServer();
         });
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'parent',
+                skuField: 'sku',
+                getTable: () => table,
+                getDataset: () => fullDataset,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
+
         table.on('dataLoaded', function(data) {
             // Store full dataset for parent expand/collapse
             if (!suppressDataLoadedHandler) {
                 // Reorder so "10 FR" group is first, then others A-Z; within group children A-Z then parent row last
                 const reordered = reorderDataWith10FRFirst(data);
                 fullDataset = reordered;
+                if (window.ParentExpand) ParentExpand.captureDataset(reordered);
                 
                 suppressDataLoadedHandler = true;
                 table.setData(reordered).then(function() {

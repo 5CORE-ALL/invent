@@ -13,11 +13,11 @@ use Illuminate\Support\Facades\Artisan;
 
 /**
  * eBay 2 mirror of {@see EbayCampaignAdsController}
- * — same Sbid Rule slabs as eBay 1 (`ebay1_sbid_slabs`) + DIL, driven off eBay-2 data:
+ * — own Sbid Rule slabs (`ebay2_sbid_slabs`) + DIL, driven off eBay-2 data:
  *   - Campaign data: `ebay2_campaign_ads`
  *   - Metrics:       `ebay_2_metrics` (App\Models\Ebay2Metric)
- *   - Rule keys:     `ebay1_sbid_slabs` (shared For L7 Views / CVR → S Bid) and
- *                    `ebay2_dil` (DIL colour bands) in `ebay_sbid_rules`
+ *   - Rule keys:     `ebay2_sbid_slabs` (For L7 Views / CVR → S Bid, separate from eBay 1)
+ *                    and `ebay2_dil` (DIL colour bands) in `ebay_sbid_rules`
  *                    (`ebay2` SCVR bands kept only for legacy getRule/saveRule;
  *                     `ebay2_sbid_views` kept for /ebay2-tabulator-view)
  *   - Token / push:  Ebay2ApiService + `ebay2:update-suggestedbid`
@@ -26,13 +26,103 @@ class Ebay2CampaignAdsController extends Controller
 {
     use ProvidesEbayCampaignAdsBadgeSummary;
 
+    public const SBID_SLABS_KEY = 'ebay2_sbid_slabs';
+
     /**
      * Sbid (Views) settings — kept for /ebay2-tabulator-view.
-     * Campaign-ads S Bid now uses the shared Ebay 1 slab rule instead.
+     * Campaign-ads S Bid uses eBay-2-only slab rule (`ebay2_sbid_slabs`).
      */
     public function getSbidViewsRule()
     {
         return response()->json(\App\Support\SbidViewsRule::settings(\App\Support\SbidViewsRule::KEY_EBAY2));
+    }
+
+    /**
+     * eBay 2 Sbid Rule slabs (For L7 Views / CVR → S Bid).
+     * Stored under `ebay2_sbid_slabs` — not shared with eBay 1.
+     */
+    public function getSbidSlabRule()
+    {
+        $row = DB::table('ebay_sbid_rules')->where('key', self::SBID_SLABS_KEY)->first();
+
+        // First visit: seed a copy of eBay 1 rules once so the modal is not empty,
+        // then eBay 2 edits diverge independently.
+        if (! $row) {
+            $ebay1 = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+            if ($ebay1 && ! empty($ebay1->rule)) {
+                DB::table('ebay_sbid_rules')->updateOrInsert(
+                    ['key' => self::SBID_SLABS_KEY],
+                    ['rule' => $ebay1->rule, 'updated_at' => now()]
+                );
+                $row = DB::table('ebay_sbid_rules')->where('key', self::SBID_SLABS_KEY)->first();
+            }
+        }
+
+        $decoded = $row ? json_decode($row->rule, true) : null;
+        $rules = is_array($decoded['rules'] ?? null) ? $decoded['rules'] : [];
+
+        return response()->json([
+            'rules' => $rules !== [] ? $rules : $this->defaultSbidSlabRules(),
+        ]);
+    }
+
+    public function saveSbidSlabRule(Request $request)
+    {
+        $rules = $request->input('rules', []);
+
+        if (! is_array($rules)) {
+            return response()->json(['error' => 'Invalid rule data'], 422);
+        }
+
+        $clean = [];
+        foreach ($rules as $r) {
+            if (! is_array($r)) {
+                continue;
+            }
+            $clean[] = [
+                'label' => isset($r['label']) ? (string) $r['label'] : '',
+                'cvr_min' => $this->numOrNull($r['cvr_min'] ?? null),
+                'cvr_max' => $this->numOrNull($r['cvr_max'] ?? null),
+                'l7_views_min' => $this->numOrNull($r['l7_views_min'] ?? null),
+                'l7_views_max' => $this->numOrNull($r['l7_views_max'] ?? null),
+                'sbid' => $this->numOrNull($r['sbid'] ?? null) ?? 0,
+            ];
+        }
+
+        if ($clean === []) {
+            $clean = $this->defaultSbidSlabRules();
+        }
+
+        $rule = ['rules' => $clean];
+
+        DB::table('ebay_sbid_rules')->updateOrInsert(
+            ['key' => self::SBID_SLABS_KEY],
+            ['rule' => json_encode($rule), 'updated_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'rule' => $rule]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function defaultSbidSlabRules(): array
+    {
+        return [
+            ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
+            ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
+            ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
+        ];
+    }
+
+    private function numOrNull($v): ?float
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (! is_numeric($v)) {
+            return null;
+        }
+
+        return (float) $v;
     }
 
     public function saveSbidViewsRule(Request $request)
@@ -145,7 +235,7 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'No listings selected'], 422);
         }
 
-        // Same Sbid Rule slabs as eBay 1 (ebay1_sbid_slabs).
+        // eBay 2–only Sbid Rule slabs (ebay2_sbid_slabs).
         $slabs = $this->sbidSlabs();
 
         $metrics = \App\Models\Ebay2Metric::whereIn('item_id', $listingIds)->get()->keyBy('item_id');
@@ -240,7 +330,7 @@ class Ebay2CampaignAdsController extends Controller
     }
 
     /**
-     * Apply the shared Ebay 1 Sbid Rule slabs to SKUs and push each computed S Bid
+     * Apply eBay 2 Sbid Rule slabs to SKUs and push each computed S Bid
      * to its eBay 2 campaign. Used by the "Push to Ebay" button in the Sbid Rule modal.
      */
     public function pushSbidSlabsBySku(Request $request)
@@ -374,7 +464,7 @@ class Ebay2CampaignAdsController extends Controller
             return response()->json(['error' => 'listing_ids and campaign_id required'], 422);
         }
 
-        // Starting bid from the shared Ebay 1 Sbid Rule slabs (same as S Bid column).
+        // Starting bid from eBay 2 Sbid Rule slabs (same as S Bid column).
         $slabs = $this->sbidSlabs();
 
         $ads = DB::table('ebay2_campaign_ads')
@@ -467,18 +557,28 @@ class Ebay2CampaignAdsController extends Controller
         ]);
     }
 
-    /** Shared Ebay 1 Sbid Rule slabs (For L7 Views / CVR → S Bid). */
+    /** eBay 2–only Sbid Rule slabs (For L7 Views / CVR → S Bid). */
     private function sbidSlabs(): array
     {
-        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
-        $slabs   = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
-        if (!is_array($slabs) || $slabs === []) {
-            return [
-                ['label' => 'Rule 1', 'l7_views_min' => null, 'l7_views_max' => null, 'cvr_min' => 0, 'cvr_max' => 0, 'sbid' => 15],
-                ['label' => 'Rule 2', 'l7_views_min' => 0, 'l7_views_max' => 36, 'cvr_min' => 0.01, 'cvr_max' => 1000, 'sbid' => 10],
-                ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
-            ];
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', self::SBID_SLABS_KEY)->first();
+
+        // Seed from eBay 1 once if eBay 2 has never saved its own rules.
+        if (! $slabRow) {
+            $ebay1 = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+            if ($ebay1 && ! empty($ebay1->rule)) {
+                DB::table('ebay_sbid_rules')->updateOrInsert(
+                    ['key' => self::SBID_SLABS_KEY],
+                    ['rule' => $ebay1->rule, 'updated_at' => now()]
+                );
+                $slabRow = DB::table('ebay_sbid_rules')->where('key', self::SBID_SLABS_KEY)->first();
+            }
         }
+
+        $slabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
+        if (! is_array($slabs) || $slabs === []) {
+            return $this->defaultSbidSlabRules();
+        }
+
         return $slabs;
     }
 

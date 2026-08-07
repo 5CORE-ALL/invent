@@ -238,16 +238,16 @@
     #skuLinkLmpLmpModal .sku-link-lmp-five-core-row > td,
     #skuLinkLmpLmpModal .sku-link-lmp-core-match-row,
     #skuLinkLmpLmpModal .sku-link-lmp-core-match-row > td {
-        background-color: #fef9c3 !important;
+        background-color: #fffef2 !important;
         color: #713f12;
-        --bs-table-bg-type: #fef9c3;
-        --bs-table-striped-bg: #fef9c3;
-        --bs-table-hover-bg: #fef08a;
+        --bs-table-bg-type: #fffef2;
+        --bs-table-striped-bg: #fffef2;
+        --bs-table-hover-bg: #fefce8;
     }
 
     #skuLinkLmpLmpModal .sku-link-lmp-five-core-row:hover > td,
     #skuLinkLmpLmpModal .sku-link-lmp-core-match-row:hover > td {
-        background-color: #fef08a !important;
+        background-color: #fefce8 !important;
     }
 
     .sku-link-lmp-competitor-thumb {

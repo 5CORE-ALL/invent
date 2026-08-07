@@ -301,6 +301,7 @@
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
     const PLS_PERCENTAGE = {{ $plsPercentage ?? 100 }} / 100; // Dynamic from database
     let table = null;
+    let allTableData = [];
 
     // Play / Pause parent navigation state
     let plsUniqueParents = [];
@@ -405,6 +406,10 @@
         $('#sku-search, #parent-search').on('keyup', function () { applyFilters(); });
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             if (!table) return;
             table.clearFilter();
 
@@ -570,7 +575,7 @@
             },
             rowFormatter: function(row) {
                 if (row.getData().parent && row.getData().parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
             columns: [
@@ -789,6 +794,7 @@
                         return aVal.localeCompare(bVal);
                     }
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "PLS L60",
                     field: "pls_l60",
@@ -1250,9 +1256,25 @@
             _fitBadgesTimer = setTimeout(fitSummaryBadges, 150);
         });
 
-        table.on('dataLoaded', function () { setTimeout(updateSummary, 100); });
+        table.on('dataLoaded', function (data) {
+            allTableData = Array.isArray(data) ? data : [];
+            if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+            setTimeout(updateSummary, 100);
+        });
         table.on('dataFiltered', function () { setTimeout(updateSummary, 100); });
         table.on('renderComplete', function () { setTimeout(updateSummary, 100); });
+
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'parent',
+                skuField: 'sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
 
         // Cell edited event for SPRICE
         table.on('cellEdited', function(cell) {

@@ -383,7 +383,7 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            /* background-color: rgba(69, 233, 255, 0.1) !important; */
+            /* background-color: #fffef2 !important; */
         }
 
         /* ========== SKU TOOLTIPS ========== */
@@ -2992,7 +2992,7 @@
                     if (isParentRow) {
                         $row.css({
                             // backgroundColor: 'rgba(13, 110, 253, 0.2)',
-                            backgroundColor: 'rgba(69, 233, 255, 0.1)',
+                            backgroundColor: '#fffef2',
                             fontWeight: '500'
                         });
 

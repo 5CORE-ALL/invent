@@ -339,26 +339,26 @@
 
         /* Product Master Ship column only: light yellow bg, black text */
         .table-responsive thead th.shipping-ship-col {
-            background-color: #fef9c3 !important;
+            background-color: #fffef2 !important;
             color: #000000 !important;
         }
         .table-responsive thead th.shipping-ship-col .th-vertical-label {
             color: #000000 !important;
         }
         .table-responsive tbody td.shipping-ship-col {
-            background-color: #fef9c3 !important;
+            background-color: #fffef2 !important;
             color: #000000 !important;
         }
         .table-responsive tbody tr:hover td.shipping-ship-col {
-            background-color: #fef08a !important;
+            background-color: #fefce8 !important;
             color: #000000 !important;
         }
         .table-responsive tbody tr.shipping-parent-row td.shipping-ship-col {
-            background-color: #fef9c3 !important;
+            background-color: #fffef2 !important;
             color: #000000 !important;
         }
         .table-responsive tbody tr.shipping-parent-row:hover td.shipping-ship-col {
-            background-color: #fef08a !important;
+            background-color: #fefce8 !important;
             color: #000000 !important;
         }
         .table-responsive tbody td.shipping-ship-col.shipping-rate-alert {
@@ -459,7 +459,7 @@
 
         /* Highlight selected item dimension headers */
         .table-responsive thead th.item-dim-header {
-            background-color: #fff9c4 !important; /* light yellow */
+            background-color: #fffef2 !important; /* light yellow */
         }
         /* Declared dimension headers — distinct from ACT yellow */
         .table-responsive thead th.item-dim-decl-header {

@@ -320,6 +320,7 @@
 <script>
     const COLUMN_VIS_KEY = "vinted_tabulator_column_visibility";
     let table = null;
+    let allTableData = [];
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -764,10 +765,11 @@
             initialSort: [{ column: 'V L30', dir: 'desc' }],
             rowFormatter: function(row) {
                 if (row.getData().Parent && row.getData().Parent.startsWith('PARENT'))
-                    row.getElement().style.backgroundColor = 'rgba(69, 233, 255, 0.1)';
+                    row.getElement().style.backgroundColor = '#fffef2';
             },
             columns: [
                 { title: 'Parent', field: 'Parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...', cssClass: 'text-primary', tooltip: true, frozen: true, width: 150, visible: false },
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, headerSort: false, frozen: true }),
                 {
                     title: 'Image', field: 'image_path', headerSort: false, width: 80,
                     formatter: function(cell) {
@@ -958,6 +960,18 @@
             ]
         });
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: function() { return table; },
+                getDataset: function() { return allTableData; },
+                onAfterExpand: function() { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: function() { applyFilters(); }
+            });
+            ParentExpand.bind();
+        }
+
         $('#sku-search, #parent-search').on('keyup', function() {
             table.setFilter([
                 { field: '(Child) sku', type: 'like', value: $('#sku-search').val() || '' },
@@ -1044,6 +1058,10 @@
         });
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function() { applyFilters(); });
+                return;
+            }
             const inv   = $('#inventory-filter').val();
             const nrl   = $('#nrl-filter').val();
             const gpft  = $('#gpft-filter').val();
@@ -1189,7 +1207,11 @@
         }
 
         table.on('tableBuilt', function() { buildColumnDropdown(); applyColumnVisibilityFromServer(); });
-        table.on('dataLoaded', function() { setTimeout(function() { applyFilters(); updateSummary(); }, 100); });
+        table.on('dataLoaded', function(data) {
+            allTableData = Array.isArray(data) ? data : (table.getData('all') || []);
+            if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+            setTimeout(function() { applyFilters(); updateSummary(); }, 100);
+        });
         table.on('renderComplete', function() { setTimeout(function() { updateSummary(); }, 100); });
 
         document.getElementById('column-dropdown-menu').addEventListener('change', function(e) {

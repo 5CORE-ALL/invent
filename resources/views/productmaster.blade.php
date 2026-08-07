@@ -107,7 +107,7 @@
         .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
         .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
         .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
+        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fefce8; }
         .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
         .status-badges-full .status-badge-item.bg-zero-inv { 
             background-color: #fed7aa; 
@@ -263,7 +263,7 @@
         }
 
         .pm-status-marble--upcoming {
-            background: radial-gradient(circle at 32% 28%, #fef9c3, #eab308 45%, #713f12);
+            background: radial-gradient(circle at 32% 28%, #fffef2, #eab308 45%, #713f12);
         }
 
         .pm-status-marble--2bdc {
@@ -1784,7 +1784,7 @@
 
                     // Parent row
                     if (item.SKU && item.SKU.toUpperCase().includes('PARENT')) {
-                        row.style.backgroundColor = '#fef9c3';
+                        row.style.backgroundColor = '#fffef2';
                         row.style.fontWeight = '500';
                         const totals = parentTotals[item.Parent] || {
                             inv: 0,
@@ -3211,7 +3211,7 @@
                 const row = document.createElement('tr');
 
                 if (isParent) {
-                    row.style.backgroundColor = '#fef9c3';
+                    row.style.backgroundColor = '#fffef2';
                     row.style.fontWeight = '500';
                 }
 

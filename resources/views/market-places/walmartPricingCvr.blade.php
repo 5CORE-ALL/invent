@@ -154,7 +154,7 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
+            background-color: #fffef2 !important;
         }
 
         /* ========== SKU TOOLTIPS ========== */

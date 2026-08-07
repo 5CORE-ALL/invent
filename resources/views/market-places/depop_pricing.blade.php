@@ -108,6 +108,7 @@
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
     let table = null;
+    let allTableData = [];
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -227,6 +228,8 @@
             ajaxURL: "{{ route('depop.pricing.data') }}",
             ajaxResponse: function(_url, _params, response) {
                 const data = (response && response.data) ? response.data : [];
+                allTableData = data;
+                if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                 updateStats(data);
                 return data;
             },
@@ -267,6 +270,7 @@
                     }
                 },
                 { title: "Parent", field: "parent", width: 180 },
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: "P", field: "_parent_expand", width: 36, headerSort: false }),
                 { title: "SKU",    field: "sku",    minWidth: 200 },
                 {
                     title: "Inv",
@@ -348,6 +352,18 @@
                 },
             ],
         });
+
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'parent',
+                skuField: 'sku',
+                getTable: function() { return table; },
+                getDataset: function() { return allTableData; },
+                onAfterExpand: function() { if (typeof updateStats === 'function') updateStats(table.getData()); },
+                onCollapse: function() { applyDepopFilters(); }
+            });
+            ParentExpand.bind();
+        }
 
         table.on('renderComplete', updateSelectAllHeaderCheckbox);
 
@@ -476,6 +492,10 @@
         }
         function applyDepopFilters() {
             if (!table) return;
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function() { applyDepopFilters(); });
+                return;
+            }
             table.clearFilter(true);
 
             // Play navigation: only show current parent's group

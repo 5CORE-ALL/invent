@@ -18,7 +18,7 @@
                 <i class="fas fa-plus-circle me-1"></i>Enroll in Campaign (<span id="enroll-count">0</span>)
             </button>
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
-                    title="Same Sbid Rule as eBay 1 — For L7 Views / CVR that set the S Bid column">
+                    title="eBay 2 Sbid Rule — For L7 Views / CVR that set the S Bid column">
                 <i class="fas fa-sliders-h me-1"></i>Sbid Rule
             </button>
             <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
@@ -105,7 +105,7 @@
             <div class="modal-body">
                 <p class="small text-muted mb-3">
                     Selected <strong id="enroll-listing-count">0</strong> eligible listing(s) will be added to the chosen campaign
-                    with bid calculated from the shared eBay 1 <strong>Sbid Rule</strong> slabs (For L7 Views / CVR).
+                    with bid calculated from the eBay 2 <strong>Sbid Rule</strong> slabs (For L7 Views / CVR).
                 </p>
                 <label class="form-label fw-semibold">Select Campaign (RUNNING · COST_PER_SALE)</label>
                 <select class="form-select" id="enroll-campaign-select">
@@ -123,11 +123,11 @@
     </div>
 </div>
 
-{{-- Sbid Rule Modal — same slab builder as eBay 1 (ebay_sbid_rules.key = ebay1_sbid_slabs). --}}
+{{-- Sbid Rule Modal — eBay 2 only (ebay_sbid_rules.key = ebay2_sbid_slabs). --}}
 <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
     <style>
         #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
-        #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+        #sbid-slab-rule-table thead th { background-color: #fffef2 !important; color: #000 !important; }
         #sbidRuleModal input[type=number]::-webkit-inner-spin-button,
         #sbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         #sbidRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
@@ -138,7 +138,7 @@
             <div class="modal-header py-2">
                 <h5 class="modal-title" id="sbidRuleModalLabel">
                     <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
-                    <span class="badge bg-secondary ms-2" style="font-size:11px;">shared with eBay 1</span>
+                    <span class="badge bg-primary ms-2" style="font-size:11px;">eBay 2 only</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -171,7 +171,7 @@
 
                 <div class="alert alert-info small py-2 mb-0">
                     <i class="fas fa-info-circle me-1"></i>
-                    Same rule as <code>/ebay/campaign-ads</code> (<code>ebay1_sbid_slabs</code>).
+                    eBay 2 rules only (<code>ebay2_sbid_slabs</code>) — not shared with eBay 1.
                     Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
                     match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
                     Applied by <strong>ebay2:update-suggestedbid</strong>.
@@ -233,7 +233,7 @@
                 <div class="alert alert-info small py-2 mb-0">
                     <i class="fas fa-info-circle me-1"></i>
                     Set DIL Max to <code>9999</code> for the last band (catches everything above the previous threshold).
-                    Used for the Dil % column colours. Bid push uses the shared eBay 1 <strong>Sbid Rule</strong> slabs.
+                    Used for the Dil % column colours. Bid push uses the eBay 2 <strong>Sbid Rule</strong> slabs.
                 </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="dil-rule-err"></p>
             </div>
@@ -490,7 +490,7 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'S Bid from shared eBay 1 Sbid Rule slabs (For L7 Views / CVR). First matching rule wins. No match → —.',
+                headerTooltip: 'S Bid from eBay 2 Sbid Rule slabs (For L7 Views / CVR). First matching rule wins. No match → —.',
                 sorter: function(a, b, aRow, bRow) {
                     return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                 },
@@ -684,7 +684,7 @@ document.getElementById('push-selected-btn').addEventListener('click', function(
     });
 });
 
-// ── S Bid from shared eBay 1 Sbid Rule slabs (ebay1_sbid_slabs) ──
+// ── S Bid from eBay 2–only Sbid Rule slabs (ebay2_sbid_slabs) ──
 let currentSbidSlabs = [];
 
 function sbidSlabInRange(val, min, max) {
@@ -714,8 +714,8 @@ function getCombinedSbid(row) {
     return { bid: 0, color: '#6c757d', skip: true };
 }
 
-const sbidSlabGetUrl   = @json(url('/ebay-one/sbid-slab-rule'));
-const sbidSlabSaveUrl  = @json(url('/ebay-one/sbid-slab-rule'));
+const sbidSlabGetUrl   = @json(url('/ebay2/campaign-ads/sbid-slab-rule'));
+const sbidSlabSaveUrl  = @json(url('/ebay2/campaign-ads/sbid-slab-rule'));
 const sbidSlabApplyUrl = @json(url('/ebay2/campaign-ads/push-sbid-slabs'));
 
 $.get(sbidSlabGetUrl, function(data) {
@@ -893,7 +893,7 @@ document.getElementById('sbid-slab-apply-btn').addEventListener('click', functio
 const pushSbidUrl = '/ebay2/campaign-ads/push-sbid';
 
 document.getElementById('push-sbid-btn').addEventListener('click', function() {
-    if (!confirm('Run ebay2:update-suggestedbid now?\nThis will push bids to eBay for all campaign listings using the shared eBay 1 Sbid Rule.')) return;
+    if (!confirm('Run ebay2:update-suggestedbid now?\nThis will push bids to eBay for all campaign listings using the eBay 2 Sbid Rule.')) return;
     const btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Pushing…';

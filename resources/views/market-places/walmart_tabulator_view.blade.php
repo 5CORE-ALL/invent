@@ -11,12 +11,12 @@
         }
 
         .parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
 
         .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
 
@@ -282,6 +282,7 @@
         const COLUMN_VIS_KEY = "walmart_tabulator_column_visibility";
         const MARKETPLACE_PERCENTAGE = {{ $percentage ?? 80 }} / 100; // Walmart marketplace percentage
         let table = null;
+        let allTableData = []; // Full dataset for ParentExpand
 
         $(document).ready(function() {
             table = new Tabulator("#walmart-table", {
@@ -292,6 +293,14 @@
                 paginationSize: 100,
                 paginationCounter: "rows",
                 columnCalcs: "both",
+                ajaxResponse: function(url, params, response) {
+                    var payload = (response && response.data) ? response.data : response;
+                    if (Array.isArray(payload)) {
+                        allTableData = payload;
+                        if (window.ParentExpand) ParentExpand.captureDataset(payload);
+                    }
+                    return payload;
+                },
                 initialSort: [{
                     column: "parent",
                     dir: "asc"
@@ -313,6 +322,7 @@
                         width: 150,
                         visible: false
                     },
+                    ParentExpand.columnDef(),
                     {
                         title: "Image",
                         field: "image_path",
@@ -850,6 +860,23 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: '(Child) sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => {
+                        if (typeof updateSummary === 'function') updateSummary();
+                        if (typeof updateCalcValues === 'function') updateCalcValues();
+                    },
+                    onCollapse: () => {
+                        if (typeof applyFilters === 'function') applyFilters();
+                    },
+                });
+                ParentExpand.bind();
+            }
+
             // NR select change handler with color coding
             $(document).on('change', '.nr-select', function() {
                 const $select = $(this);
@@ -1043,6 +1070,12 @@
 
             // Apply filters
             function applyFilters() {
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    ParentExpand.beforeFilters(function() {
+                        applyFilters();
+                    });
+                    return;
+                }
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
                 const cvrFilter = $('#cvr-filter').val();

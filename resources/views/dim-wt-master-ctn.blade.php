@@ -195,7 +195,7 @@
         /* Parent SKU rows – light yellow background */
         .table-responsive tbody tr.parent-row,
         .table-responsive tbody tr.parent-row:nth-child(even) {
-            background-color: #fef9c3 !important;
+            background-color: #fffef2 !important;
         }
         .table-responsive tbody tr.parent-row:hover {
             background-color: #fdf3a8 !important;
@@ -206,7 +206,7 @@
         }
         /* Highlight selected item dimension headers */
         .table-responsive thead th.item-dim-header {
-            background-color: #fff9c4 !important; /* light yellow */
+            background-color: #fffef2 !important; /* light yellow */
         }
         /* Always hide CTN L/W/H (CM) columns from view */
         .table-responsive thead th.ctn-cm-col,

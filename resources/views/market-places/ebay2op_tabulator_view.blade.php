@@ -2383,6 +2383,7 @@
                 ajaxResponse: function(url, params, response) {
                     // Extract the data array from the response object
                     allTableData = response.data || []; // Store unfiltered data
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     console.log('API Response - Total rows:', allTableData.length);
                     
                     // Calculate total L30 for verification
@@ -2426,7 +2427,7 @@
                 }],
                 rowFormatter: function(row) {
                     if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                        row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                        row.getElement().style.backgroundColor = "#fffef2";
                     }
                 },
                 columns: [{
@@ -2440,6 +2441,7 @@
                         width: 150,
                         visible: false
                     },
+                    ParentExpand.columnDef(),
 
                     {
                         field: "_select",
@@ -4127,6 +4129,23 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: '(Child) sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => {
+                        if (typeof updateSummary === 'function') updateSummary();
+                        if (typeof updateCalcValues === 'function') updateCalcValues();
+                    },
+                    onCollapse: () => {
+                        if (typeof applyFilters === 'function') applyFilters();
+                    },
+                });
+                ParentExpand.bind();
+            }
+
             syncEbay2OpDiscountBarForMode();
 
             $(document).on('change', '#ebay2op-table .nrp-nr-select', function() {
@@ -4281,6 +4300,12 @@
 
             // Apply filters
             function applyFilters() {
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    ParentExpand.beforeFilters(function() {
+                        applyFilters();
+                    });
+                    return;
+                }
                 const inventoryFilter = $('#inventory-filter').val();
                 const el30Filter = $('#el30-filter').val();
                 const nrlFilter = $('#nrl-filter').val();

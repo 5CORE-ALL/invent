@@ -50,7 +50,7 @@
         }
         #doba-table .tabulator-row.parent-row,
         #doba-table .tabulator-row.parent-row .tabulator-cell {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             min-height: 48px !important;
         }
@@ -624,6 +624,7 @@
             return !dobaInvWithinMapTolerance(shopInv, dInv);
         }
         let table = null; // Global table reference
+        let allTableData = [];
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let samePriceModeActive = false;
@@ -1922,6 +1923,8 @@
                                 push_status_updated_at: item.PUSH_STATUS_UPDATED_AT || null // Timestamp when push status was updated
                             };
                         });
+                        allTableData = processedData;
+                        if (window.ParentExpand) ParentExpand.captureDataset(processedData);
                         return processedData;
                     }
                     return [];
@@ -1958,6 +1961,8 @@
                             return '<div class="dws-img-hover-wrap"><img class="dws-thumb-sm" src="' + safe + '" alt="" loading="lazy" style="max-width:48px;max-height:48px;object-fit:contain;"></div>';
                         }
                     },
+                    { title: "Parent", field: "Parent", visible: false, width: 120 },
+                    (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                     {
                         title: "SKU",
                         field: "(Child) sku",
@@ -2399,6 +2404,10 @@
 
             // Apply filters
             function applyFilters() {
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    ParentExpand.beforeFilters(function(){ applyFilters(); });
+                    return;
+                }
                 const inventoryFilter = $('#inventory-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const missingFilter = $('#missing-filter').val();
@@ -2950,7 +2959,23 @@
                 applyFilters(); // Apply default INV > 0 filter
             });
 
-            table.on('dataLoaded', function() {
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: '(Child) sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+                });
+                ParentExpand.bind();
+            }
+
+            table.on('dataLoaded', function(data) {
+                if (Array.isArray(data) && data.length) {
+                    allTableData = data;
+                    if (window.ParentExpand) ParentExpand.captureDataset(data);
+                }
                 setTimeout(() => {
                     updateSummary();
                     updateVisibleRowsCount();

@@ -128,7 +128,7 @@
            views, and uses !important so it wins over .table-striped's
            alternating cell colour. */
         .task-summary-table tbody tr.task-summary-row[data-sort-org_level="mgr"] > td {
-            background-color: #fef9c3 !important;
+            background-color: #fffef2 !important;
         }
         .task-summary-table.table-hover tbody tr.task-summary-row[data-sort-org_level="mgr"]:hover > td {
             background-color: #fde68a !important;

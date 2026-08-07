@@ -23,7 +23,7 @@ class UpdateEbayTwoSuggestedBid extends Command
     protected $signature = 'ebay2:update-suggestedbid
         {--dry-run : Run without making actual API calls}
         {--chunk= : Override chunk size (default from cron-monitor config)}';
-    protected $description = 'Bulk update eBay2 ad bids using Sbid Rule slabs — same rule as ebay:update-suggestedbid (ebay1_sbid_slabs)';
+    protected $description = 'Bulk update eBay2 ad bids using eBay 2 Sbid Rule slabs (ebay2_sbid_slabs)';
 
     protected string $monitorJobName = 'eBay2 Suggested Bid';
 
@@ -181,9 +181,21 @@ class UpdateEbayTwoSuggestedBid extends Command
                 ->get()
                 ->keyBy('listing_id');
 
-        // Load Sbid Rule slabs (ebay1_sbid_slabs) — same as eBay 1 /ebay/campaign-ads.
+        // Load eBay 2–only Sbid Rule slabs (ebay2_sbid_slabs).
         // Rules are evaluated top to bottom; the first rule whose filled ranges all match wins.
-        $slabRow = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+        $slabKey = 'ebay2_sbid_slabs';
+        $slabRow = DB::table('ebay_sbid_rules')->where('key', $slabKey)->first();
+        if (! $slabRow) {
+            // Seed once from eBay 1 if eBay 2 has never saved its own rules.
+            $ebay1 = DB::table('ebay_sbid_rules')->where('key', 'ebay1_sbid_slabs')->first();
+            if ($ebay1 && ! empty($ebay1->rule)) {
+                DB::table('ebay_sbid_rules')->updateOrInsert(
+                    ['key' => $slabKey],
+                    ['rule' => $ebay1->rule, 'updated_at' => now()]
+                );
+                $slabRow = DB::table('ebay_sbid_rules')->where('key', $slabKey)->first();
+            }
+        }
         $sbidSlabs = $slabRow ? (json_decode($slabRow->rule, true)['rules'] ?? []) : [];
         if (! is_array($sbidSlabs) || $sbidSlabs === []) {
             $sbidSlabs = [
@@ -192,7 +204,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                 ['label' => 'Rule 3', 'l7_views_min' => 36, 'l7_views_max' => null, 'cvr_min' => 7, 'cvr_max' => 1000, 'sbid' => 5],
             ];
         }
-        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (shared with eBay 1 — For L7 Views / CVR → S Bid)');
+        $this->info('SBID slab rules loaded: ' . count($sbidSlabs) . ' (ebay2_sbid_slabs — eBay 2 only)');
 
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on Sbid Rule slabs...');

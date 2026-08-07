@@ -13,7 +13,7 @@
             font-size: 0.82rem;
         }
         .gs-ads-missing .parent-row {
-            background-color: rgba(69, 233, 255, 0.10);
+            background-color: #fffef2;
         }
         .gs-ads-missing .parent-copy-btn {
             cursor: pointer;

@@ -416,6 +416,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         let table = null;
+        let allTableData = [];
         let summaryDataCache = [];
         let frMissingActive = false;
         let frMapActive = false;
@@ -1080,6 +1081,10 @@
         $('#play-backward').on('click', previousFrParent);
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             if (!table) return;
             table.clearFilter();
 
@@ -1434,6 +1439,7 @@
                             return '<span style="color:#0d6efd;font-size:11px;font-weight:600;">' + v + '</span>';
                         }
                     },
+                    ParentExpand.columnDef(),
                     {
                         title: 'SKU', field: 'sku', minWidth: 200, frozen: true, headerFilter: 'input',
                         formatter: function(cell) {
@@ -1713,6 +1719,8 @@
                     },
                 ],
                 dataLoaded: function(data) {
+                    allTableData = Array.isArray(data) ? data : [];
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     frResetSkuColHoverWidth();
                     frRemoveImagePreview();
                     updateSummary(data);
@@ -1721,6 +1729,18 @@
                 dataProcessed: function() { updateSummary(); },
                 renderComplete: function() { updateSummary(); }
             });
+
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+                });
+                ParentExpand.bind();
+            }
 
             function frSyncFilterBadgeActiveClasses() {
                 $('#fr-missing-badge').toggleClass('active-filter', frMissingActive);

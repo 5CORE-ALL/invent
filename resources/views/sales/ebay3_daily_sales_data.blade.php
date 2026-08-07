@@ -38,10 +38,10 @@
 
         /* PARENT row light blue background */
         .tabulator-row.parent-row {
-            background-color: rgba(69, 233, 255, 0.25) !important;
+            background-color: #fffef2 !important;
         }
         .tabulator-row.parent-row:hover {
-            background-color: rgba(69, 233, 255, 0.35) !important;
+            background-color: #fefce8 !important;
         }
     </style>
 @endsection

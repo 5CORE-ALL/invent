@@ -182,12 +182,12 @@
             background-color: #f8fafc;
         }
 
-        /* Parent SKU rows — light yellow (same family as item-dim-header #fff9c4) */
+        /* Parent SKU rows — light yellow (same family as item-dim-header #fffef2) */
         .table-responsive tbody tr.dim-wt-parent-row {
-            background-color: #fff9c4;
+            background-color: #fffef2;
         }
         .table-responsive tbody tr.dim-wt-parent-row:nth-child(even) {
-            background-color: #fff9c4;
+            background-color: #fffef2;
         }
 
         .table-responsive tbody tr:hover {
@@ -198,7 +198,7 @@
 
         /* Keep parent rows yellow on hover (must follow generic tr:hover) */
         .table-responsive tbody tr.dim-wt-parent-row:hover {
-            background-color: #fff59d;
+            background-color: #fefce8;
         }
 
         .table-responsive tbody tr:hover td {
@@ -210,7 +210,7 @@
         }
         /* Highlight selected item dimension headers */
         .table-responsive thead th.item-dim-header {
-            background-color: #fff9c4 !important; /* light yellow */
+            background-color: #fffef2 !important; /* light yellow */
         }
         /* Always hide CTN L/W/H (CM) columns from view */
         .table-responsive thead th.ctn-cm-col,
@@ -294,7 +294,7 @@
         .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
         .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
         .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
+        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fefce8; }
         .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
 
         /* Ensure table fits container - auto layout so columns fit content */

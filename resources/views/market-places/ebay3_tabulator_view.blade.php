@@ -98,18 +98,18 @@
             z-index: 11 !important;
         }
         
-        /* PARENT row light blue background */
+        /* PARENT row light yellow background */
         .tabulator-row.parent-row {
-            background-color: #d4f8fc !important;
+            background-color: #fffef2 !important;
         }
         .tabulator-row.parent-row .tabulator-frozen {
-            background-color: #d4f8fc !important;
+            background-color: #fffef2 !important;
         }
         .tabulator-row.parent-row:hover {
-            background-color: #bef3f9 !important;
+            background-color: #fefce8 !important;
         }
         .tabulator-row.parent-row:hover .tabulator-frozen {
-            background-color: #bef3f9 !important;
+            background-color: #fefce8 !important;
         }
 
         /* Hide tree + / − glyphs and box styling; keep control clickable to expand/collapse */

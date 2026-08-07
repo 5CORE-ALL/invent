@@ -172,7 +172,7 @@
         .sof-carrier-ups { background: #fef3c7; color: #92400e; border-color: #fde68a; }
         .sof-carrier-fedex { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
         .sof-carrier-dhl { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
-        .sof-carrier-amazon { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .sof-carrier-amazon { background: #fffef2; color: #854d0e; border-color: #fde047; }
         .sof-carrier-gofo { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
         .sof-carrier-ontrac { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
         .sof-carrier-veeqo { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
@@ -797,9 +797,9 @@
             color: #000;
             vertical-align: middle;
             padding: 0.85rem 0.75rem;
-            --bs-table-bg: #fff9c4;
-            --bs-table-accent-bg: #fff9c4;
-            background-color: #fff9c4 !important;
+            --bs-table-bg: #fffef2;
+            --bs-table-accent-bg: #fffef2;
+            background-color: #fffef2 !important;
         }
         #sofLabelDimsModal .sof-label-dims-table th.sof-dim-decl {
             --bs-table-bg: #f8d7da;

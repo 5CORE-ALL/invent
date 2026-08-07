@@ -169,7 +169,7 @@
         }
         /* PARENT campaign rows — same tint as google shopping missing ads */
         #google-ads-campaigns-raw-wrap .tabulator .tabulator-row.parent-row {
-            background-color: rgba(69, 233, 255, 0.10);
+            background-color: #fffef2;
         }
         /* CTR / CVR flag bands (relative to the filtered-set average):
            red   < avg*0.80, green avg*0.80–avg*1.20, magenta > avg*1.20 */

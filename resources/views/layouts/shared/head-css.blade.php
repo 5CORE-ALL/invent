@@ -33,5 +33,8 @@
     }
 </style>
 
+{{-- Global: PARENT rows light yellow + ParentExpand triangle column helpers --}}
+@include('partials.parent-row-highlight')
+
 {{-- Global NROI / GROI / NPFT / GPFT % color schema (window.MetricPctColors) --}}
 <script src="{{ asset('js/metric-percent-colors.js') }}"></script>

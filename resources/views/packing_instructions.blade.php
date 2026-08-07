@@ -401,7 +401,7 @@
         }
 
         .cm-status-marble--upcoming {
-            background: radial-gradient(circle at 32% 28%, #fef9c3, #eab308 45%, #713f12);
+            background: radial-gradient(circle at 32% 28%, #fffef2, #eab308 45%, #713f12);
         }
 
         .cm-status-marble--2bdc {

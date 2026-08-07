@@ -128,7 +128,7 @@
 <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
     <style>
         #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
-        #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+        #sbid-slab-rule-table thead th { background-color: #fffef2 !important; color: #000 !important; }
         /* Hide number-input spinner arrows */
         #sbidRuleModal input[type=number]::-webkit-inner-spin-button,
         #sbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

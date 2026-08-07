@@ -435,6 +435,7 @@
     }
 
     let table = null;
+    let allTableData = [];
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
@@ -1498,7 +1499,7 @@
             }],
             rowFormatter: function(row) {
                 if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
             columns: [
@@ -1514,6 +1515,7 @@
                     width: 150,
                     visible: false
                 },
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 {
                     title: "Image",
                     field: "image_path",
@@ -2080,6 +2082,10 @@
 
         // Apply filters
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
@@ -2371,13 +2377,27 @@
             });
         }
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
+
         // Wait for table to be built
         table.on('tableBuilt', function() {
             buildColumnDropdown();
             applyColumnVisibilityFromServer();
         });
 
-        table.on('dataLoaded', function() {
+        table.on('dataLoaded', function(data) {
+            allTableData = Array.isArray(data) ? data : [];
+            if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
             setTimeout(function() {
                 applyFilters();
                 updateSummary();

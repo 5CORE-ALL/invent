@@ -319,7 +319,7 @@
 
   #qcAuditModal th.qc-audit-spec-col,
   #qcAuditModal td.qc-audit-spec-col {
-    background-color: #fef9c3 !important;
+    background-color: #fffef2 !important;
   }
 
   #qcAuditModal .qc-audit-specs-table thead th {
@@ -334,7 +334,7 @@
   }
 
   #qcAuditModal .qc-audit-specs-table thead th.qc-audit-spec-col {
-    background-color: #fef08a !important;
+    background-color: #fefce8 !important;
     color: #1e3a8a;
     z-index: 21;
   }

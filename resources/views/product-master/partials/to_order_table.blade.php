@@ -14,7 +14,7 @@
         @continue($stage === 'Mfrg Progress')
         @continue($nrl === 'NR')
 
-        <tr style="{{ $isParent ? 'background-color: #e0f7ff;' : '' }}"
+        <tr style="{{ $isParent ? 'background-color: #fffef2;' : '' }}"
             data-row-id="{{ $row->id ?? '' }}"
             data-is-parent="{{ $row->is_parent ? '1' : '0' }}">
             <td style="position: relative;">

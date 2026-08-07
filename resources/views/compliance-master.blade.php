@@ -320,11 +320,11 @@
 
         /* Parent summary rows (SKU or Parent contains PARENT) */
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell {
-            background-color: #fff9c4 !important;
+            background-color: #fffef2 !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell {
-            background-color: #fff59d !important;
+            background-color: #fefce8 !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover {
@@ -332,11 +332,11 @@
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell.compliance-status-col {
-            background-color: #fff9c4 !important;
+            background-color: #fffef2 !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell.compliance-status-col {
-            background-color: #fff59d !important;
+            background-color: #fefce8 !important;
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword .tabulator-cell.compliance-parent-col:hover {
@@ -344,7 +344,7 @@
         }
 
         #compliance-tabulator .tabulator-row.tabulator-com-parent-keyword:hover .tabulator-cell.compliance-parent-col:hover {
-            background-color: #fff9c4 !important;
+            background-color: #fffef2 !important;
         }
 
         .table-responsive .text-center {
@@ -594,7 +594,7 @@
         }
 
         .cm-status-marble--upcoming {
-            background: radial-gradient(circle at 32% 28%, #fef9c3, #eab308 45%, #713f12);
+            background: radial-gradient(circle at 32% 28%, #fffef2, #eab308 45%, #713f12);
         }
 
         .cm-status-marble--2bdc {

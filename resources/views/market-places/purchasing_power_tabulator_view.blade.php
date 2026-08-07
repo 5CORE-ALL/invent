@@ -265,6 +265,7 @@
 <script>
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
+    let allTableData = [];
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -730,10 +731,11 @@
             initialSort: [{ column: 'PP L30', dir: 'desc' }],
             rowFormatter: function(row) {
                 if (row.getData().Parent && row.getData().Parent.startsWith('PARENT'))
-                    row.getElement().style.backgroundColor = 'rgba(69, 233, 255, 0.1)';
+                    row.getElement().style.backgroundColor = '#fffef2';
             },
             columns: [
                 { title: 'Parent', field: 'Parent', headerFilter: 'input', headerFilterPlaceholder: 'Search Parent...', cssClass: 'text-primary', tooltip: true, frozen: true, width: 150, visible: false },
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 {
                     title: 'Image', field: 'image_path', headerSort: false, width: 80,
                     formatter: function(cell) {
@@ -1052,6 +1054,10 @@
         });
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             const inv   = $('#inventory-filter').val();
             const nrl   = $('#nrl-filter').val();
             const gpft  = $('#gpft-filter').val();
@@ -1231,8 +1237,24 @@
             });
         }
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
+
         table.on('tableBuilt', function() { buildColumnDropdown(); applyColumnVisibilityFromServer(); });
-        table.on('dataLoaded', function() { setTimeout(function() { applyFilters(); updateSummary(); }, 100); });
+        table.on('dataLoaded', function(data) {
+            allTableData = Array.isArray(data) ? data : [];
+            if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+            setTimeout(function() { applyFilters(); updateSummary(); }, 100);
+        });
         table.on('renderComplete', function() { setTimeout(function() { updateSummary(); }, 100); });
 
         document.getElementById('column-dropdown-menu').addEventListener('change', function(e) {

@@ -103,7 +103,7 @@
         .tabulator-row.temu2-parent-row .tabulator-cell,
         .tabulator-row.temu2-parent-row .tabulator-cell.tabulator-frozen,
         .tabulator-row.temu2-parent-row .tabulator-cell.tabulator-frozen-left {
-            background-color: #b3e5fc !important;
+            background-color: #fffef2 !important;
         }
 
         /* Keep frozen left columns above scrolling cells */
@@ -3121,7 +3121,7 @@
                 const el = row.getElement();
                 if (isTemu2ParentRow(data)) {
                     el.classList.add('temu2-parent-row');
-                    el.style.setProperty('background-color', '#b3e5fc', 'important');
+                    el.style.setProperty('background-color', '#fffef2', 'important');
                 } else {
                     el.classList.remove('temu2-parent-row');
                     el.style.removeProperty('background-color');
@@ -3191,6 +3191,7 @@
                         return value;
                     }
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "SKU",
                     field: "sku",
@@ -4070,6 +4071,10 @@
 
         // Apply filters — same structure as /ebay-tabulator-view, Temu field mapping
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             if (isPlayNavigationActive) {
                 if (typeof showCurrentParentPlayView === 'function') showCurrentParentPlayView();
                 return;
@@ -4999,6 +5004,7 @@
                 return;
             }
             fullDataset = (data && Array.isArray(data)) ? data : (table.getData ? table.getData("all") : []) || [];
+            if (window.ParentExpand) ParentExpand.captureDataset(fullDataset);
             applyFilters();
             updateCampaignPeriodUi();
             // Wait a bit to ensure badgeAvgAds is set from ajaxResponse before calculating NPFT
@@ -5018,6 +5024,18 @@
                 updateSelectAllCheckbox();
             }, 100);
         });
+
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'parent',
+                skuField: 'sku',
+                getTable: () => table,
+                getDataset: () => fullDataset,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
 
         table.on('renderComplete', function() {
             updateSummary();

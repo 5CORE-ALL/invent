@@ -39,6 +39,44 @@
             z-index: 10050;
         }
 
+        /* Parent expand icon — yellow play triangle (same as /price-increase P column) */
+        .ebay2-parent-sku-dot {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            vertical-align: middle;
+            line-height: 0;
+            transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+            filter: drop-shadow(0 1px 1px rgba(180, 110, 0, 0.35));
+        }
+        .ebay2-parent-sku-dot svg {
+            width: 14px;
+            height: 14px;
+            display: block;
+        }
+        .ebay2-parent-sku-dot:hover {
+            filter: drop-shadow(0 2px 3px rgba(180, 110, 0, 0.45));
+            transform: scale(1.08);
+        }
+        .ebay2-parent-sku-dot.is-expanded {
+            transform: rotate(90deg);
+        }
+        .ebay2-parent-sku-dot.is-expanded:hover {
+            transform: rotate(90deg) scale(1.08);
+        }
+        .ebay2-parent-sku-dot.no-parent {
+            cursor: default;
+            opacity: 0.35;
+            filter: grayscale(1) drop-shadow(none);
+        }
+        .ebay2-parent-sku-dot.no-parent:hover {
+            transform: none;
+            filter: grayscale(1) drop-shadow(none);
+        }
+
         /* Sku Link LMP (mirrors /ebay-tabulator-view) */
         .linked-sku-badge-wrap { display: inline-flex; align-items: center; gap: 2px; }
         .linked-sku-badge-wrap .sku-link-lmp-remove { font-size: 0.55rem; opacity: 0.65; padding: 0; margin-left: 2px; }
@@ -447,6 +485,14 @@
                     <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search SKU..." style="width: 160px; display: inline-block;">
                     <input type="text" id="parent-search" class="form-control form-control-sm" placeholder="Search Parent..." style="width: 160px; display: inline-block;">
 
+                    <select id="view-mode-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;"
+                        title="ALL = Parent + SKU · Parents = PARENT rows only · SKU = child SKU rows only">
+                        <option value="all">ALL</option>
+                        <option value="parent" selected>Parents</option>
+                        <option value="sku">SKU</option>
+                    </select>
+
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">INV</option>
@@ -563,6 +609,13 @@
 
                     <button type="button" class="btn btn-sm btn-success pricing-filter-item" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
+                    </button>
+
+                    {{-- Sbid Rule — eBay 2 only (ebay2_sbid_slabs), same as /ebay2/campaign-ads --}}
+                    <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item"
+                            data-bs-toggle="modal" data-bs-target="#sbidRuleModal"
+                            title="eBay 2 Sbid Rule — For L7 Views / CVR that set the S Bid (ebay2_sbid_slabs)">
+                        <i class="fas fa-sliders-h me-1"></i>Sbid Rule
                     </button>
 
                     {{-- Sbid (Views) — same as /ebay2/campaign-ads --}}
@@ -923,6 +976,79 @@
                     <button type="button" class="btn btn-primary" id="sku-link-lmp-save-btn">
                         <i class="fas fa-link"></i> <span id="sku-link-lmp-save-btn-label">Link SKU(s)</span>
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Sbid Rule Modal — eBay 2 only (ebay_sbid_rules.key = ebay2_sbid_slabs). Same as /ebay2/campaign-ads. --}}
+    <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
+        <style>
+            #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
+            #sbid-slab-rule-table thead th { background-color: #fffef2 !important; color: #000 !important; }
+            #sbidRuleModal input[type=number]::-webkit-inner-spin-button,
+            #sbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+            #sbidRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+            #sbidRuleModal .form-control, #sbidRuleModal .form-select { border-radius: 0.6rem; }
+        </style>
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="sbidRuleModalLabel">
+                        <i class="fas fa-sliders-h me-2 text-primary"></i>Sbid Rule
+                        <span class="badge bg-primary ms-2" style="font-size:11px;">eBay 2 only</span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle" id="sbid-slab-rule-table" style="min-width: 720px;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th rowspan="2" style="width:34px;" class="text-center align-middle">#</th>
+                                    <th rowspan="2" style="min-width:110px;" class="align-middle">Label</th>
+                                    <th colspan="2" class="text-center">For L7 Views</th>
+                                    <th colspan="2" class="text-center">CVR %</th>
+                                    <th rowspan="2" style="width:100px;" class="align-middle text-center">S Bid (%)</th>
+                                    <th rowspan="2" style="width:44px;" class="align-middle"></th>
+                                </tr>
+                                <tr>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                    <th class="text-center small text-muted">Min</th><th class="text-center small text-muted">Max</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sbid-slab-rules-body">
+                                {{-- filled by JS --}}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-primary mb-2" id="sbid-slab-add-rule-btn">
+                        <i class="fas fa-plus me-1"></i>Add rule / slab
+                    </button>
+
+                    <div class="alert alert-info small py-2 mb-0">
+                        <i class="fas fa-info-circle me-1"></i>
+                        eBay 2 rules only (<code>ebay2_sbid_slabs</code>) — not shared with eBay 1.
+                        Same editor as <code>/ebay2/campaign-ads</code>.
+                        Rules are evaluated <strong>top to bottom</strong> — the first rule where all filled ranges
+                        match a row sets that row's <strong>S Bid</strong>. Leave a Min/Max blank to ignore it.
+                        Applied by <strong>ebay2:update-suggestedbid</strong>.
+                    </div>
+                    <p class="small text-danger mb-0 mt-2 d-none" id="sbid-slab-rule-err"></p>
+                </div>
+                <div class="modal-footer py-2 d-flex justify-content-between">
+                    <span class="small text-muted" id="sbid-slab-rule-status"></span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-sm btn-success" id="sbid-slab-apply-btn"
+                                title="Push each visible row's computed S Bid to its eBay 2 campaign">
+                            <i class="fas fa-bolt me-1"></i>Push to Ebay
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" id="sbid-slab-rule-save-btn">
+                            <i class="fas fa-save me-1"></i>Save Rule
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1779,11 +1905,48 @@
         function rowEbay2StockQty(data) {
             return parseFloat(data['E Stock'] || 0) || 0;
         }
-        function isEbay2TabulatorParentRowForMap(data) {
+        function isEbay2TabulatorParentRow(data) {
             if (!data) return false;
-            if (data.is_parent_summary === true) return true;
+            if (data.is_parent_summary === true || data.is_parent_row === true) return true;
+            const sku = String(data['(Child) sku'] || '').toUpperCase();
+            if (sku.includes('PARENT')) return true;
             const p = data.Parent;
             return !!(p && String(p).toUpperCase().startsWith('PARENT'));
+        }
+        function ebay2NormalizeParentKey(val) {
+            return String(val || '').trim().replace(/^PARENT\s+/i, '').trim();
+        }
+        function ebay2ParentKeyFromRow(row) {
+            if (!row) return '';
+            const fromParent = ebay2NormalizeParentKey(row.Parent);
+            const sku = String(row['(Child) sku'] || '').trim();
+            if (sku.toUpperCase().includes('PARENT')) {
+                return fromParent || ebay2NormalizeParentKey(sku);
+            }
+            return fromParent;
+        }
+        function ebay2YellowPlayTriangleSvg() {
+            const uid = 'e2p' + Math.random().toString(36).slice(2, 9);
+            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+                '<defs>' +
+                `<linearGradient id="${uid}g" x1="4" y1="2" x2="20" y2="22" gradientUnits="userSpaceOnUse">` +
+                '<stop offset="0%" stop-color="#FFE566"/>' +
+                '<stop offset="45%" stop-color="#FFC107"/>' +
+                '<stop offset="100%" stop-color="#F59E0B"/>' +
+                '</linearGradient>' +
+                `<linearGradient id="${uid}s" x1="6" y1="3" x2="14" y2="14" gradientUnits="userSpaceOnUse">` +
+                '<stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75"/>' +
+                '<stop offset="55%" stop-color="#FFFFFF" stop-opacity="0.12"/>' +
+                '<stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>' +
+                '</linearGradient>' +
+                '</defs>' +
+                `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}g)"/>` +
+                `<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="url(#${uid}s)"/>` +
+                '<path d="M8.2 4.8c-.9-.55-2.05.1-2.05 1.15v12.1c0 1.05 1.15 1.7 2.05 1.15l10.2-6.05c.85-.5.85-1.8 0-2.3L8.2 4.8z" fill="none" stroke="#D97706" stroke-opacity="0.35" stroke-width="0.8"/>' +
+                '</svg>';
+        }
+        function isEbay2TabulatorParentRowForMap(data) {
+            return isEbay2TabulatorParentRow(data);
         }
         /** N Map — same rule as /map-issues (listed, REQ, INV>0, E Stock>0, outside tolerance). */
         function isEbay2TabulatorNMapRow(data) {
@@ -2169,6 +2332,238 @@
                     }
                 });
             });
+
+            // ════════════════════════════════════════════════════════════════
+            // Sbid Rule modal — eBay 2 only (ebay2_sbid_slabs).
+            // Same endpoints as /ebay2/campaign-ads — not shared with eBay 1.
+            // ════════════════════════════════════════════════════════════════
+            (function() {
+                const getUrl  = @json(url('/ebay2/campaign-ads/sbid-slab-rule'));
+                const saveUrl = @json(url('/ebay2/campaign-ads/sbid-slab-rule'));
+                const applyUrl = @json(url('/ebay2/campaign-ads/push-sbid-slabs'));
+
+                let currentSbidSlabRules = [];
+
+                function sbidSlabInRange(val, min, max) {
+                    if (min !== null && min !== undefined && min !== '' && val < parseFloat(min)) return false;
+                    if (max !== null && max !== undefined && max !== '' && val > parseFloat(max)) return false;
+                    return true;
+                }
+
+                function getCombinedSbid(rowData) {
+                    const esold = parseFloat(rowData['eBay L30']) || 0;
+                    const views = parseFloat(rowData.views) || 0;
+                    const l7Views = parseFloat(rowData.l7_views) || 0;
+                    const cvr = views > 0 ? (esold / views) * 100 : 0;
+                    const rules = currentSbidSlabRules || [];
+                    for (let i = 0; i < rules.length; i++) {
+                        const r = rules[i];
+                        if (sbidSlabInRange(cvr, r.cvr_min, r.cvr_max)
+                            && sbidSlabInRange(l7Views, r.l7_views_min, r.l7_views_max)) {
+                            const bid = parseFloat(r.sbid);
+                            if (isFinite(bid) && bid > 0) {
+                                return { bid: bid, color: '#0d6efd', skip: false };
+                            }
+                            return { bid: 0, color: '#6c757d', skip: true };
+                        }
+                    }
+                    return { bid: 0, color: '#6c757d', skip: true };
+                }
+
+                function numAttr(v) {
+                    return (v === null || v === undefined || v === '' || isNaN(v)) ? '' : v;
+                }
+
+                function rangeInputs(rule, key) {
+                    return `
+                        <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                                   value="${numAttr(rule[key + '_min'])}" data-field="${key}_min"
+                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>
+                        <td><input type="number" step="0.01" class="form-control form-control-sm text-end"
+                                   value="${numAttr(rule[key + '_max'])}" data-field="${key}_max"
+                                   onchange="window.sbidSlabUpdate(this)" placeholder="—"></td>`;
+                }
+
+                function renderSbidSlabRules(rules) {
+                    const tbody = document.getElementById('sbid-slab-rules-body');
+                    if (!tbody) return;
+                    tbody.innerHTML = '';
+                    if (!rules.length) {
+                        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted small py-3">
+                            No rules yet — click <strong>Add rule / slab</strong> to create one.</td></tr>`;
+                        return;
+                    }
+                    rules.forEach(function(rule, i) {
+                        const tr = document.createElement('tr');
+                        tr.setAttribute('data-idx', i);
+                        tr.innerHTML = `
+                            <td class="text-center text-muted small">${i + 1}</td>
+                            <td><input type="text" class="form-control form-control-sm" value="${(rule.label || '').replace(/"/g, '&quot;')}"
+                                       data-field="label" onchange="window.sbidSlabUpdate(this)" placeholder="Rule ${i + 1}"></td>
+                            ${rangeInputs(rule, 'l7_views')}
+                            ${rangeInputs(rule, 'cvr')}
+                            <td><input type="number" step="0.1" min="0" class="form-control form-control-sm text-end fw-semibold"
+                                       value="${numAttr(rule.sbid)}" data-field="sbid"
+                                       onchange="window.sbidSlabUpdate(this)"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                        onclick="window.sbidSlabRemove(${i})" title="Remove rule">&times;</button>
+                            </td>`;
+                        tbody.appendChild(tr);
+                    });
+                }
+
+                window.sbidSlabUpdate = function(el) {
+                    const tr = el.closest('tr');
+                    const idx = parseInt(tr.getAttribute('data-idx'), 10);
+                    const field = el.dataset.field;
+                    if (!currentSbidSlabRules[idx]) return;
+                    if (field === 'label') {
+                        currentSbidSlabRules[idx][field] = el.value;
+                    } else {
+                        currentSbidSlabRules[idx][field] = (el.value === '' ? null : parseFloat(el.value));
+                    }
+                };
+
+                window.sbidSlabRemove = function(idx) {
+                    currentSbidSlabRules.splice(idx, 1);
+                    renderSbidSlabRules(currentSbidSlabRules);
+                };
+
+                $(document).on('click', '#sbid-slab-add-rule-btn', function() {
+                    currentSbidSlabRules.push({
+                        label: '', cvr_min: null, cvr_max: null,
+                        l7_views_min: null, l7_views_max: null, sbid: 2.1
+                    });
+                    renderSbidSlabRules(currentSbidSlabRules);
+                });
+
+                function loadSbidSlabRules() {
+                    $.ajax({
+                        url: getUrl,
+                        method: 'GET',
+                        dataType: 'json',
+                        success: function(data) {
+                            currentSbidSlabRules = (data && Array.isArray(data.rules)) ? data.rules : [];
+                            renderSbidSlabRules(currentSbidSlabRules);
+                        },
+                        error: function(xhr) {
+                            console.error('[Sbid Rule] load failed', xhr.status, xhr.responseText);
+                        }
+                    });
+                }
+
+                const sbidModalEl = document.getElementById('sbidRuleModal');
+                if (sbidModalEl) {
+                    sbidModalEl.addEventListener('show.bs.modal', function() {
+                        renderSbidSlabRules(currentSbidSlabRules);
+                    });
+                }
+
+                $('#sbid-slab-rule-save-btn').on('click', function() {
+                    const errEl = document.getElementById('sbid-slab-rule-err');
+                    errEl.classList.add('d-none');
+                    const btn = this;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
+
+                    const csrf = $('meta[name="csrf-token"]').attr('content') || '';
+                    $.ajax({
+                        url: saveUrl,
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': csrf,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ rules: currentSbidSlabRules || [], _token: csrf }),
+                        success: function(resp) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+                            if (resp.rule && Array.isArray(resp.rule.rules)) currentSbidSlabRules = resp.rule.rules;
+                            if (typeof showToast === 'function') showToast('Sbid Rule saved', 'success');
+                            setTimeout(() => { btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule'; }, 1200);
+                        },
+                        error: function(xhr) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
+                            const msg = (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message))
+                                || xhr.responseText
+                                || ('HTTP ' + xhr.status);
+                            errEl.textContent = 'Error: ' + msg;
+                            errEl.classList.remove('d-none');
+                        }
+                    });
+                });
+
+                $('#sbid-slab-apply-btn').on('click', function() {
+                    const btn = this;
+                    const statusEl = document.getElementById('sbid-slab-rule-status');
+                    const errEl = document.getElementById('sbid-slab-rule-err');
+                    errEl.classList.add('d-none');
+
+                    if (!currentSbidSlabRules.length) {
+                        errEl.textContent = 'Add at least one rule before applying.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    if (typeof table === 'undefined' || !table) {
+                        errEl.textContent = 'Table not ready yet.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+
+                    const skus = [];
+                    table.getRows('active').forEach(function(r) {
+                        const rd = r.getData();
+                        const sku = rd['(Child) sku'];
+                        if (!sku) return;
+                        if (rd.is_parent_summary || rd.is_parent_row) return;
+                        if (rd.Parent && String(rd.Parent).toUpperCase().startsWith('PARENT')) return;
+                        const res = getCombinedSbid(rd);
+                        if (res && !res.skip && res.bid > 0) skus.push(sku);
+                    });
+
+                    if (!skus.length) {
+                        errEl.textContent = 'No visible rows match a slab with a valid S Bid.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+
+                    if (!confirm(`Push S Bid to eBay for ${skus.length} visible SKU(s)?`)) return;
+
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Applying…';
+                    if (statusEl) statusEl.textContent = `Pushing ${skus.length} SKU(s)…`;
+
+                    $.ajax({
+                        url: applyUrl,
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                        contentType: 'application/json',
+                        data: JSON.stringify({ skus: skus }),
+                        success: function(resp) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
+                            const s = resp.success || 0, f = resp.failed || 0, sk = resp.skipped || 0;
+                            if (statusEl) statusEl.textContent = `Pushed: ${s} · Failed: ${f} · Skipped: ${sk}`;
+                            if (typeof showToast === 'function') {
+                                if (f === 0) showToast(`S Bid pushed to eBay for ${s} SKU(s)`, 'success');
+                                else showToast(`Pushed ${s}, ${f} failed, ${sk} skipped`, 'error');
+                            }
+                        },
+                        error: function(xhr) {
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fas fa-bolt me-1"></i>Push to Ebay';
+                            errEl.textContent = 'Error: ' + ((xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText);
+                            errEl.classList.remove('d-none');
+                        }
+                    });
+                });
+
+                loadSbidSlabRules();
+            })();
 
             // ---- Edit Links (Buyer / Seller) ----
             function ebay2LinksNotify(msg, type) {
@@ -4921,6 +5316,39 @@
 
             // Event delegation for eye button clicks (add to SKU column formatter)
             let allTableData = []; // Store all unfiltered data
+            let ebay2ExpandedParent = null; // parent key when triangle expand is active
+
+            function ebay2ShowExpandedParent(parentKey) {
+                const key = ebay2NormalizeParentKey(parentKey);
+                if (!key || !table || !allTableData.length) return;
+                const keyU = key.toUpperCase();
+                const parentRow = allTableData.find(function(r) {
+                    return isEbay2TabulatorParentRow(r) && ebay2ParentKeyFromRow(r).toUpperCase() === keyU;
+                });
+                const childRows = allTableData.filter(function(r) {
+                    if (isEbay2TabulatorParentRow(r)) return false;
+                    return ebay2NormalizeParentKey(r.Parent).toUpperCase() === keyU;
+                });
+                const displayData = childRows.slice();
+                if (parentRow) {
+                    parentRow._expanded = true;
+                    displayData.push(parentRow);
+                }
+                table.clearFilter(true);
+                table.clearSort();
+                table.setData(displayData).then(function() {
+                    updateCalcValues();
+                    updateSummary();
+                });
+            }
+
+            function ebay2CollapseExpandedParent() {
+                ebay2ExpandedParent = null;
+                if (allTableData && allTableData.length) {
+                    allTableData.forEach(function(r) { if (r) r._expanded = false; });
+                }
+                applyFilters();
+            }
 
             function ebay2EscHtmlAttr(val) {
                 if (val == null || val === '') return '';
@@ -5076,8 +5504,14 @@
                     dir: "asc"
                 }],
                 rowFormatter: function(row) {
-                    if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                        row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    const el = row.getElement();
+                    const d = row.getData();
+                    if (isEbay2TabulatorParentRow(d) || (window.isPmParentRowData && window.isPmParentRowData(d))) {
+                        el.classList.add('parent-row');
+                        el.classList.add('pm-parent-row');
+                    } else {
+                        el.classList.remove('parent-row');
+                        el.classList.remove('pm-parent-row');
                     }
                 },
                 columns: [{
@@ -5090,6 +5524,34 @@
                         frozen: true,
                         width: 150,
                         visible: false
+                    },
+                    {
+                        title: "P",
+                        field: "_parent_expand",
+                        headerSort: false,
+                        hozAlign: "center",
+                        frozen: true,
+                        width: 36,
+                        minWidth: 36,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const playIcon = ebay2YellowPlayTriangleSvg();
+                            if (!isEbay2TabulatorParentRow(rowData)) {
+                                return '<span class="ebay2-parent-sku-dot no-parent" title="">' + playIcon + '</span>';
+                            }
+                            const parentKey = ebay2ParentKeyFromRow(rowData);
+                            if (!parentKey) {
+                                return '<span class="ebay2-parent-sku-dot no-parent" title="No parent key">' + playIcon + '</span>';
+                            }
+                            const parentEsc = String(parentKey).replace(/"/g, '&quot;');
+                            const isExpanded = (ebay2ExpandedParent &&
+                                ebay2NormalizeParentKey(ebay2ExpandedParent).toUpperCase() === parentKey.toUpperCase())
+                                || rowData._expanded === true;
+                            const expandedCls = isExpanded ? ' is-expanded' : '';
+                            return `<span class="ebay2-parent-sku-dot ebay2-parent-expand-btn${expandedCls}"
+                                        data-parent="${parentEsc}"
+                                        title="Show all SKUs for parent: ${parentEsc}">${playIcon}</span>`;
+                        }
                     },
 
                     {
@@ -6438,6 +6900,15 @@
 
             // Apply filters
             function applyFilters() {
+                // Leaving expand mode whenever filters re-run
+                if (ebay2ExpandedParent) {
+                    ebay2ExpandedParent = null;
+                    if (allTableData && allTableData.length) {
+                        allTableData.forEach(function(r) { if (r) r._expanded = false; });
+                    }
+                }
+
+                const viewModeFilter = $('#view-mode-filter').val() || 'parent';
                 const inventoryFilter = $('#inventory-filter').val();
                 const el30Filter = $('#el30-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
@@ -6449,7 +6920,19 @@
                 const temuPriceFilter = $('#temu-price-filter').val();
                 const dilFilter = $('#dil-filter').val() || 'all';
 
+                function runEbay2Filters() {
                 table.clearFilter(true);
+
+                // View mode: ALL (Parent + SKU) · Parents · SKU
+                if (viewModeFilter === 'parent') {
+                    table.addFilter(function(data) {
+                        return isEbay2TabulatorParentRow(data);
+                    });
+                } else if (viewModeFilter === 'sku') {
+                    table.addFilter(function(data) {
+                        return !isEbay2TabulatorParentRow(data);
+                    });
+                }
 
                 // INV filter — same as /ebay-tabulator-view (Shopify INV, not eBay Stock)
                 if (inventoryFilter === 'zero') {
@@ -6665,9 +7148,31 @@
                 setTimeout(function() {
                     updateSelectAllCheckbox();
                 }, 100);
+                } // end runEbay2Filters
+
+                // Restore full dataset after parent-expand (setData replaced it with a subset)
+                if (allTableData && allTableData.length && table.getDataCount() !== allTableData.length) {
+                    table.setData(allTableData).then(runEbay2Filters);
+                } else {
+                    runEbay2Filters();
+                }
             }
 
-            $('#inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #temu-price-filter, #dil-filter').on('change', function() {
+            $(document).on('click', '.ebay2-parent-expand-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const parentKey = String($(this).data('parent') || '').trim();
+                if (!parentKey) return;
+                if (ebay2ExpandedParent &&
+                    ebay2NormalizeParentKey(ebay2ExpandedParent).toUpperCase() === ebay2NormalizeParentKey(parentKey).toUpperCase()) {
+                    ebay2CollapseExpandedParent();
+                    return;
+                }
+                ebay2ExpandedParent = parentKey;
+                ebay2ShowExpandedParent(parentKey);
+            });
+
+            $('#view-mode-filter, #inventory-filter, #el30-filter, #nrl-filter, #gpft-filter, #roi-filter, #cvr-filter, #cvr-trend-filter, #sprice-filter, #temu-price-filter, #dil-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -6828,6 +7333,8 @@
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field) return;
+                            // Keep expand / select columns always available (not in Columns menu)
+                            if (def.field === '_parent_expand' || def.field === '_select') return;
 
                             const li = document.createElement("li");
                             const label = document.createElement("label");
@@ -6883,7 +7390,8 @@
                     .then(savedVisibility => {
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
-                            if (def.field && savedVisibility[def.field] === false) {
+                            if (!def.field || def.field === '_parent_expand' || def.field === '_select') return;
+                            if (savedVisibility[def.field] === false) {
                                 col.hide();
                             }
                         });

@@ -1139,6 +1139,12 @@ class EbayTwoController extends Controller
                 $result[] = (object) $row;
         }
 
+        // PARENT rows: aggregate child INV/L30/views/price (same idea as /ebay3-tabulator-view)
+        // so Parents view is not empty under default INV > 0. Also create missing PARENT * rows.
+        if (! $request->boolean('open_box_only')) {
+            $result = $this->ensureEbay2ParentPrefixRows($result, $percentage);
+        }
+
         // AD% = channel-level Ads% (same as /all-marketplace-master), every row identical
         $channelAdsPct = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
         foreach ($result as $row) {
@@ -1189,8 +1195,258 @@ class EbayTwoController extends Controller
         ]);
     }
 
+    /**
+     * Ensure every parent group has a "PARENT {key}" row with child aggregates
+     * (INV, L30, eBay L30/L60, views, avg price/LP/ship, derived CVR/GPFT/ROI),
+     * matching /ebay3-tabulator-view parent-row behavior. Flat list (no _children tree).
+     *
+     * @param  array<int, object|array<string, mixed>>  $result
+     * @return array<int, object>
+     */
+    private function ensureEbay2ParentPrefixRows(array $result, float $percentage): array
+    {
+        if ($percentage <= 0) {
+            $percentage = 0.85;
+        }
 
+        $rows = [];
+        foreach ($result as $row) {
+            $rows[] = is_object($row) ? (array) $row : $row;
+        }
 
+        $parentRowsByKey = []; // UPPER(key) => row
+        $parentKeyDisplay = []; // UPPER(key) => display key
+        $childRowsByParent = []; // UPPER(key) => child rows
+        $passthrough = [];
+
+        foreach ($rows as $row) {
+            $sku = (string) ($row['(Child) sku'] ?? '');
+            $parentValue = trim((string) ($row['Parent'] ?? ''));
+
+            if (stripos($sku, 'PARENT') !== false) {
+                $key = $parentValue !== ''
+                    ? $parentValue
+                    : trim((string) preg_replace('/^PARENT\s+/i', '', $sku));
+                if ($key === '') {
+                    $passthrough[] = $row;
+                    continue;
+                }
+                $ukey = strtoupper($key);
+                $row['Parent'] = $key;
+                $row['(Child) sku'] = 'PARENT ' . $key;
+                $row['is_parent_row'] = true;
+                $parentRowsByKey[$ukey] = $row;
+                $parentKeyDisplay[$ukey] = $key;
+                continue;
+            }
+
+            if ($parentValue !== '') {
+                $ukey = strtoupper($parentValue);
+                if (! isset($childRowsByParent[$ukey])) {
+                    $childRowsByParent[$ukey] = [];
+                }
+                $childRowsByParent[$ukey][] = $row;
+                if (! isset($parentKeyDisplay[$ukey])) {
+                    $parentKeyDisplay[$ukey] = $parentValue;
+                }
+            } else {
+                $passthrough[] = $row;
+            }
+        }
+
+        $aggregateChildren = static function (array $children) use ($percentage): array {
+            $inv = 0.0;
+            $l30 = 0.0;
+            $ebayL30 = 0.0;
+            $ebayL60 = 0.0;
+            $eStock = 0.0;
+            $views = 0.0;
+            $l7Views = 0.0;
+            $totalPrice = 0.0;
+            $priceCount = 0;
+            $totalLp = 0.0;
+            $totalShip = 0.0;
+            $lpCount = 0;
+            $imagePath = null;
+
+            foreach ($children as $child) {
+                $inv += (float) ($child['INV'] ?? 0);
+                $l30 += (float) ($child['L30'] ?? 0);
+                $ebayL30 += (float) ($child['eBay L30'] ?? 0);
+                $ebayL60 += (float) ($child['eBay L60'] ?? 0);
+                $eStock += (float) ($child['E Stock'] ?? 0);
+                $views += (float) ($child['views'] ?? 0);
+                $l7Views += (float) ($child['l7_views'] ?? 0);
+
+                $price = (float) ($child['eBay Price'] ?? 0);
+                if ($price > 0) {
+                    $totalPrice += $price;
+                    $priceCount++;
+                }
+
+                $lp = (float) ($child['LP_productmaster'] ?? 0);
+                $ship = (float) ($child['Ship_productmaster'] ?? $child['ebay2_ship'] ?? 0);
+                if ($lp > 0) {
+                    $totalLp += $lp;
+                    $totalShip += $ship;
+                    $lpCount++;
+                }
+
+                if ($imagePath === null && ! empty($child['image_path'])) {
+                    $imagePath = $child['image_path'];
+                }
+            }
+
+            $avgPrice = $priceCount > 0 ? round($totalPrice / $priceCount, 2) : 0.0;
+            $avgLp = $lpCount > 0 ? round($totalLp / $lpCount, 2) : 0.0;
+            $avgShip = $lpCount > 0 ? round($totalShip / $lpCount, 2) : 0.0;
+            $ebayL45 = round(($ebayL30 + $ebayL60) / 2, 2);
+            $salesL30 = round($avgPrice * $ebayL30, 2);
+            $gpft = $avgPrice > 0
+                ? (($avgPrice * $percentage - $avgShip - $avgLp) / $avgPrice) * 100
+                : 0.0;
+            $roi = $avgLp > 0
+                ? (($avgPrice * $percentage - $avgLp - $avgShip) / $avgLp) * 100
+                : 0.0;
+            $profit = round(($avgPrice * $percentage - $avgLp - $avgShip) * $ebayL30, 2);
+
+            return [
+                'INV' => $inv,
+                'L30' => $l30,
+                'eBay L30' => $ebayL30,
+                'eBay L60' => $ebayL60,
+                'eBay L45' => $ebayL45,
+                'E Stock' => $eStock,
+                'views' => $views,
+                'l7_views' => $l7Views,
+                'eBay Price' => $avgPrice,
+                'LP_productmaster' => $avgLp,
+                'Ship_productmaster' => $avgShip,
+                'ebay2_ship' => $avgShip,
+                'SCVR' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,
+                'CVR_45' => $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0,
+                'CVR_60' => $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0,
+                'E Dil%' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,
+                'T_Sale_l30' => $salesL30,
+                'Sales L30' => $salesL30,
+                'Total_pft' => $profit,
+                'Profit' => $profit,
+                'GPFT%' => round($gpft, 2),
+                'ROI%' => round($roi, 2),
+                'percentage' => $percentage,
+                'image_path' => $imagePath,
+            ];
+        };
+
+        $applyAggToParent = static function (array $parentRow, array $agg, string $displayKey) use ($percentage): array {
+            $parentRow['Parent'] = $displayKey;
+            $parentRow['(Child) sku'] = 'PARENT ' . $displayKey;
+            $parentRow['is_parent_row'] = true;
+
+            foreach ($agg as $k => $v) {
+                // Keep existing image if parent already has one
+                if ($k === 'image_path' && ! empty($parentRow['image_path'])) {
+                    continue;
+                }
+                $parentRow[$k] = $v;
+            }
+
+            // SPRICE defaults to avg eBay price when blank (same as ebay3 parent rows)
+            $sprice = $parentRow['SPRICE'] ?? null;
+            $spriceNum = is_numeric($sprice) ? (float) $sprice : 0.0;
+            if ($spriceNum <= 0) {
+                $parentRow['SPRICE'] = $agg['eBay Price'];
+                $avgLp = (float) $agg['LP_productmaster'];
+                $avgShip = (float) $agg['Ship_productmaster'];
+                $avgPrice = (float) $agg['eBay Price'];
+                $sgpft = $avgPrice > 0
+                    ? (($avgPrice * $percentage - $avgShip - $avgLp) / $avgPrice) * 100
+                    : 0.0;
+                $parentRow['SGPFT'] = round($sgpft, 2);
+                $parentRow['SGROI'] = $avgLp > 0
+                    ? round((($avgPrice * $percentage - $avgLp - $avgShip) / $avgLp) * 100, 2)
+                    : 0;
+                $parentRow['SROI'] = $parentRow['SGROI'];
+            }
+
+            if (! isset($parentRow['nr_req']) || $parentRow['nr_req'] === '' || $parentRow['nr_req'] === null) {
+                $parentRow['nr_req'] = 'REQ';
+            }
+
+            return $parentRow;
+        };
+
+        $enrichedParents = [];
+        $allParentKeys = array_unique(array_merge(array_keys($parentRowsByKey), array_keys($childRowsByParent)));
+        sort($allParentKeys);
+
+        foreach ($allParentKeys as $ukey) {
+            $displayKey = $parentKeyDisplay[$ukey] ?? $ukey;
+            $children = $childRowsByParent[$ukey] ?? [];
+            $agg = $aggregateChildren($children);
+
+            if (isset($parentRowsByKey[$ukey])) {
+                $enrichedParents[] = $applyAggToParent($parentRowsByKey[$ukey], $agg, $displayKey);
+            } else {
+                // Synthetic PARENT row when product_masters has children but no PARENT sku
+                $synthetic = [
+                    'Parent' => $displayKey,
+                    '(Child) sku' => 'PARENT ' . $displayKey,
+                    'is_parent_row' => true,
+                    'nr_req' => 'REQ',
+                    'NRL' => '',
+                    'NR' => '',
+                    'Listed' => null,
+                    'Live' => null,
+                    'APlus' => null,
+                    'SPRICE' => null,
+                    'SGPFT' => null,
+                    'SPFT' => null,
+                    'SROI' => null,
+                    'SGROI' => null,
+                    'eBay_item_id' => null,
+                    'Missing' => null,
+                    'fba' => '',
+                    'base_sku' => '',
+                    'base_inv' => 0,
+                    'A Price' => 0,
+                    'Temu Price' => 0,
+                    'AD_Spend_L30' => 0,
+                    'spend_l30' => 0,
+                    'pmt_spend_L30' => 0,
+                    'kw_spend_L30' => 0,
+                    'AD%' => 0,
+                    'PFT %' => 0,
+                    'TacosL30' => 0,
+                    'bid_percentage' => null,
+                    'suggested_bid' => null,
+                    'ca_bid_percentage' => null,
+                    'ca_suggested_bid' => null,
+                    'ca_promote_with_ad' => null,
+                    'pmt_clicks_l30' => 0,
+                    'pmt_clicks_l7' => 0,
+                    'nrp' => '',
+                ];
+                $enrichedParents[] = $applyAggToParent($synthetic, $agg, $displayKey);
+            }
+        }
+
+        // Flat output: parents first (like ebay3 tree roots), then children, then orphans
+        $out = [];
+        foreach ($enrichedParents as $p) {
+            $out[] = (object) $p;
+        }
+        foreach ($childRowsByParent as $children) {
+            foreach ($children as $c) {
+                $out[] = (object) $c;
+            }
+        }
+        foreach ($passthrough as $r) {
+            $out[] = (object) $r;
+        }
+
+        return $out;
+    }
 
     public function updateAllEbay2Skus(Request $request)
     {
@@ -2260,8 +2516,12 @@ class EbayTwoController extends Controller
                 $totalWeightedPrice += $ebayPrice * $ebayL30;
                 $totalL30 += $ebayL30;
                 
-                // Views
-                $totalViews += floatval($row->views ?? 0);
+                // Views — same scope as ebay2-tabulator Views badge / all-marketplace-master
+                // column: rows with E Stock > 0 (live listing traffic).
+                $ebayStockForViews = floatval($row->{'E Stock'} ?? ($row->{'eBay Stock'} ?? 0));
+                if ($ebayStockForViews > 0) {
+                    $totalViews += floatval($row->views ?? 0);
+                }
             }
             
             // Calculate averages and percentages (EXACT JavaScript logic)

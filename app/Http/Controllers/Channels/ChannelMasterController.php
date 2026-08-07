@@ -1945,10 +1945,80 @@ class ChannelMasterController extends Controller
             if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
                 $row['CVR'] = $counts['cvr_pct'];
             }
+
+            // EbayTwo views chart was reading a stale ChannelMasterSummary total_views
+            // while the column uses this live overlay — keep history + cache in sync.
+            $historyKey = strtolower(str_replace([' ', '-', '&', '/'], '', $name));
+            if (in_array($historyKey, ['ebaytwo'], true) && array_key_exists('total_views', $counts)) {
+                $this->syncLiveMapMissViewsToChannelHistory($historyKey, $name, $counts);
+            }
         }
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * Push live Map / Miss / NMap / Total Views into channel_master_daily_data
+     * (metric charts) and channel_master_calculated_data (fast-path cache).
+     * Updates today's snapshot when present; otherwise the latest existing row
+     * (avoids creating a sparse day that would zero out other chart metrics).
+     */
+    private function syncLiveMapMissViewsToChannelHistory(string $channelKey, string $displayName, array $counts): void
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+
+            $existing = \App\Models\ChannelMasterSummary::where('channel', $channelKey)
+                ->whereDate('snapshot_date', $today)
+                ->first();
+            if (! $existing) {
+                $existing = \App\Models\ChannelMasterSummary::where('channel', $channelKey)
+                    ->orderByDesc('snapshot_date')
+                    ->first();
+            }
+            if (! $existing) {
+                return;
+            }
+
+            $summary = is_array($existing->summary_data) ? $existing->summary_data : [];
+            $summary['miss_count'] = (int) ($counts['miss'] ?? 0);
+            $summary['map_count'] = (int) ($counts['map'] ?? 0);
+            $summary['nmap_count'] = (int) ($counts['nmap'] ?? 0);
+            $summary['total_views'] = (float) ($counts['total_views'] ?? 0);
+            if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null) {
+                $summary['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
+            }
+            $summary['map_miss_updated_at'] = now()->toDateTimeString();
+
+            $existing->summary_data = $summary;
+            $existing->notes = 'Map/Miss/Views synced from all-marketplace-master live overlay';
+            $existing->save();
+
+            if (Schema::hasTable('channel_master_calculated_data')) {
+                $calcUpdate = [
+                    'miss' => (int) ($counts['miss'] ?? 0),
+                    'map' => (int) ($counts['map'] ?? 0),
+                    'nmap' => (int) ($counts['nmap'] ?? 0),
+                    'total_views' => (int) round((float) ($counts['total_views'] ?? 0)),
+                ];
+                if (array_key_exists('cvr_pct', $counts) && $counts['cvr_pct'] !== null
+                    && Schema::hasColumn('channel_master_calculated_data', 'listing_cvr')) {
+                    $calcUpdate['listing_cvr'] = round((float) $counts['cvr_pct'], 2);
+                }
+                \App\Models\ChannelMasterCalculatedData::query()
+                    ->where(function ($q) use ($displayName, $channelKey) {
+                        $q->where('channel', $displayName)
+                            ->orWhereRaw(
+                                'LOWER(REPLACE(REPLACE(REPLACE(REPLACE(channel, " ", ""), "-", ""), "&", ""), "/", "")) = ?',
+                                [$channelKey]
+                            );
+                    })
+                    ->update($calcUpdate);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('syncLiveMapMissViewsToChannelHistory failed for ' . $channelKey . ': ' . $e->getMessage());
+        }
     }
 
     /**
@@ -5225,12 +5295,6 @@ class ChannelMasterController extends Controller
             $finalData[0]['inventory_value_amazon'] = $inventoryValueAmazon;
         }
 
-        // Auto-save channel-wise daily summaries
-        try {
-            $this->saveChannelDailySummaries($finalData);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
-        }
         // Sum of (Shopify inventory * LP) for Inv@LP badge and chart + Inv / LP breakdown
         $shopifyInvLp = $this->getShopifyInvLpMetrics();
         $invAtLp = $shopifyInvLp['inv_at_lp'];
@@ -5241,10 +5305,19 @@ class ChannelMasterController extends Controller
         $adSpendByColorAmazon = $this->getAdSpendByProductColorAmazonFamilyL30();
         $adSpendByColorByChannel = $this->getAdSpendByColorByChannelL30();
 
+        // Live Map/Miss/Views overlay BEFORE daily snapshot so charts store the same
+        // totals the table shows (e.g. EbayTwo views = E Stock > 0 tabulator sum).
         $finalData = $this->overlayLiveMapMissNMapOnChannelRows($finalData);
         $finalData = $this->applyDefaultMissingLinks($finalData);
 
         \App\Support\Badges\AllMarketplaceMasterBadgeCalculator::syncNmapFromChannelRows($finalData);
+
+        // Auto-save channel-wise daily summaries (after overlays so total_views etc. match the row)
+        try {
+            $this->saveChannelDailySummaries($finalData);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('saveChannelDailySummaries failed: ' . $e->getMessage(), ['exception' => $e]);
+        }
 
         return response()->json([
             'status'  => 200,
@@ -14186,24 +14259,35 @@ class ChannelMasterController extends Controller
                 ];
             }
 
-            // For single-channel: show exact DB snapshot values (no scaling).
-            // For "all" channels: scale so the latest point matches the live badge total.
-            // Prefer badge_value from the page (exact sum of the table the user sees); fall back
-            // to marketplace_daily_metrics only when the frontend did not send one.
-            // Never scale listing CVR: it is a ratio (Σ qty / Σ views); uniform scaling would distort history.
-            if (!empty($chartData) && $isAll && $metric !== 'cvr') {
+            // Align chart with the live cell/badge the user clicked.
+            // - "all" channels: scale the whole series to the badge total (aggregate drift).
+            // - single channel: when badge_value is sent, pin only the latest point to that
+            //   value (EbayTwo views column is live-overlaid; snapshots can lag). Do not
+            //   rescale history — that would distort real day-to-day movement.
+            // Never touch listing CVR: it is a ratio (Σ qty / Σ views).
+            if (!empty($chartData) && $metric !== 'cvr') {
                 $badgeValue = $request->input('badge_value');
-                $tableRef = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue))
-                    ? (float) $badgeValue
-                    : $this->getAllChannelsTableReference($metric);
-                if ($tableRef !== null && $tableRef != 0) {
-                    $chartLatest = (float) end($chartData)['value'];
-                    if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {
-                        $sf = $tableRef / $chartLatest;
-                        foreach ($chartData as &$pt) {
-                            $pt['value'] = round($pt['value'] * $sf, 2);
+                $hasBadge = ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue));
+
+                if ($isAll) {
+                    $tableRef = $hasBadge
+                        ? (float) $badgeValue
+                        : $this->getAllChannelsTableReference($metric);
+                    if ($tableRef !== null && $tableRef != 0) {
+                        $chartLatest = (float) end($chartData)['value'];
+                        if ($chartLatest != 0 && abs($chartLatest - $tableRef) > 0.01) {
+                            $sf = $tableRef / $chartLatest;
+                            foreach ($chartData as &$pt) {
+                                $pt['value'] = round($pt['value'] * $sf, 2);
+                            }
+                            unset($pt);
                         }
-                        unset($pt);
+                    }
+                } elseif ($hasBadge) {
+                    $tableRef = (float) $badgeValue;
+                    $lastIdx = array_key_last($chartData);
+                    if ($lastIdx !== null && abs((float) $chartData[$lastIdx]['value'] - $tableRef) > 0.01) {
+                        $chartData[$lastIdx]['value'] = round($tableRef, 2);
                     }
                 }
             }

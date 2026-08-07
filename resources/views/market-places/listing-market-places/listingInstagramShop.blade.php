@@ -142,14 +142,14 @@
 
         #instagramshop-listing-wrap .tabulator-row.parent-row,
         #instagramshop-listing-wrap .tabulator-row.parent-row .tabulator-cell {
-            background-color: rgba(69, 233, 255, 0.15) !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
         #instagramshop-listing-wrap .tabulator-row.parent-row:hover,
         #instagramshop-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
-            background-color: rgba(69, 233, 255, 0.28) !important;
+            background-color: #fefce8 !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */

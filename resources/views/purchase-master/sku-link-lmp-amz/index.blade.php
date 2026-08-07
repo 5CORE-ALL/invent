@@ -238,16 +238,16 @@
     #skuLinkLmpAmzLmpModal .sku-link-lmp-amz-five-core-row > td,
     #skuLinkLmpAmzLmpModal .sku-link-lmp-amz-core-match-row,
     #skuLinkLmpAmzLmpModal .sku-link-lmp-amz-core-match-row > td {
-        background-color: #fef9c3 !important;
+        background-color: #fffef2 !important;
         color: #713f12;
-        --bs-table-bg-type: #fef9c3;
-        --bs-table-striped-bg: #fef9c3;
-        --bs-table-hover-bg: #fef08a;
+        --bs-table-bg-type: #fffef2;
+        --bs-table-striped-bg: #fffef2;
+        --bs-table-hover-bg: #fefce8;
     }
 
     #skuLinkLmpAmzLmpModal .sku-link-lmp-amz-five-core-row:hover > td,
     #skuLinkLmpAmzLmpModal .sku-link-lmp-amz-core-match-row:hover > td {
-        background-color: #fef08a !important;
+        background-color: #fefce8 !important;
     }
 
     .sku-link-lmp-amz-competitor-thumb {

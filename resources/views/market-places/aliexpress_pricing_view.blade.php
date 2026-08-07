@@ -20,7 +20,7 @@
         /* ── Parent row – identical to amazon_tabulator_view ── */
         .tabulator-row.ae-parent-row,
         .tabulator-row.ae-parent-row .tabulator-cell {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             min-height: 48px !important;
         }
@@ -551,6 +551,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
         let table = null;
+        let allTableData = [];
         let summaryDataCache = [];
         let aeLmpModalSku = '';
 
@@ -856,6 +857,10 @@
         $('#play-backward').on('click', previousAeParent);
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             if (!table) return;
             table.clearFilter();
 
@@ -1212,6 +1217,7 @@
                             return `<span style="color:#0d6efd;font-size:11px;font-weight:600;">${v}</span>`;
                         }
                     },
+                    ParentExpand.columnDef(),
                     {
                         title: "Image",
                         field: "image",
@@ -1566,6 +1572,8 @@
                     },
                 ],
                 dataLoaded: function(data) {
+                    allTableData = Array.isArray(data) ? data : [];
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateSummary(data);
                 },
                 dataFiltered: function(filters, rows) {
@@ -1578,6 +1586,18 @@
                     updateSummary();
                 }
             });
+
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+                });
+                ParentExpand.bind();
+            }
 
             $('#pricing-sku-search').on('input', function() { applyFilters(); });
             $('#ae-row-type-filter').on('change', function() { applyFilters(); });

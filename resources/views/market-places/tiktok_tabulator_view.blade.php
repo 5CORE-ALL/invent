@@ -935,6 +935,7 @@
         // "TT Ship" field is a duplicate of Ship_productmaster — hide it; show one Ship column + checkbox.
         const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit', 'TT Ship'];
         let table = null;
+        let allTableData = [];
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
         let increaseModeActive = false;
@@ -2565,6 +2566,8 @@
                                     .Parent;
                             }
                         });
+                        allTableData = data;
+                        if (window.ParentExpand) ParentExpand.captureDataset(data);
                         return data;
                     }
                     return response;
@@ -2635,6 +2638,7 @@
                         width: 150,
                         visible: true
                     },
+                    (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                     {
                         title: "SKU",
                         field: "(Child) sku",
@@ -4261,6 +4265,10 @@
 
             // Apply filters
             function applyFilters() {
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    ParentExpand.beforeFilters(function(){ applyFilters(); });
+                    return;
+                }
                 const rowTypeFilter = $('#row-type-filter').val();
                 const inventoryFilter = $('#inventory-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
@@ -4925,13 +4933,29 @@
                     .catch(err => console.error('Error loading TikTok column visibility:', err));
             }
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: '(Child) sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+                });
+                ParentExpand.bind();
+            }
+
             // Wait for table to be built
             table.on('tableBuilt', function() {
                 buildColumnDropdown();
                 applyColumnVisibilityFromServer();
             });
 
-            table.on('dataLoaded', function() {
+            table.on('dataLoaded', function(data) {
+                if (Array.isArray(data) && data.length) {
+                    allTableData = data;
+                    if (window.ParentExpand) ParentExpand.captureDataset(data);
+                }
                 function afterLoad() {
                     setTimeout(function() {
                         ttRefreshAllSkuRows();

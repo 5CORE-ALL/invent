@@ -829,12 +829,12 @@
 
         /* Parent row styling - Light blue background like Amazon */
         .parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
 
         .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
 
@@ -1398,9 +1398,9 @@
             color: #000;
             vertical-align: middle;
             padding: 0.85rem 0.75rem;
-            --bs-table-bg: #fff9c4;
-            --bs-table-accent-bg: #fff9c4;
-            background-color: #fff9c4 !important;
+            --bs-table-bg: #fffef2;
+            --bs-table-accent-bg: #fffef2;
+            background-color: #fffef2 !important;
         }
         #piLabelDimsModal .pi-label-dims-table th.pi-dim-decl {
             --bs-table-bg: #f8d7da;
@@ -4194,7 +4194,7 @@
             rowFormatter: function(row) {
                 const data = row.getData();
                 if (data.is_parent_summary === true) {
-                    row.getElement().style.backgroundColor = "#bde0ff";
+                    row.getElement().style.backgroundColor = "#fffef2";
                     row.getElement().style.fontWeight = "bold";
                     row.getElement().classList.add("parent-row");
                 }

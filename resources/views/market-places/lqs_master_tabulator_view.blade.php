@@ -20,7 +20,7 @@
         /* ── Parent row – identical to aliexpress ── */
         .tabulator-row.lqs-parent-row,
         .tabulator-row.lqs-parent-row .tabulator-cell {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             min-height: 48px !important;
         }
@@ -289,6 +289,7 @@
     <script>
         let table = null;
         let summaryDataCache = [];
+        let allTableData = [];
 
         function lqsNotify(msg, type) {
             if (window.toastr) {
@@ -303,6 +304,10 @@
         // ── applyFilters (mirrors aliexpress applyFilters) ────────────────
         function applyFilters() {
             if (!table) return;
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             table.clearFilter();
 
             const skuSearch  = ($('#lqs-sku-search').val() || '').toLowerCase().trim();
@@ -427,6 +432,8 @@
                 ajaxURL: "/lqs/data",
                 ajaxResponse: function(url, params, response) {
                     summaryDataCache = normalizeRows(response);
+                    allTableData = Array.isArray(response) ? response : summaryDataCache;
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateSummary(summaryDataCache);
                     return response;
                 },
@@ -454,6 +461,7 @@
                             return `<span style="color:#0d6efd;font-size:11px;font-weight:600;">${v}</span>`;
                         }
                     },
+                    (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                     {
                         title: "Image",
                         field: "image",
@@ -560,6 +568,18 @@
                     updateSummary();
                 }
             });
+
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+                });
+                ParentExpand.bind();
+            }
 
             $('#lqs-sku-search').on('input', function() { applyFilters(); });
             $('#lqs-row-type-filter').on('change', function() { applyFilters(); });

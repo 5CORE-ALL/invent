@@ -403,6 +403,7 @@
 <script>
     const COLUMN_VIS_KEY = "macys_tabulator_column_visibility";
     let table = null;
+    let allTableData = []; // Full dataset for ParentExpand
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -1700,13 +1701,21 @@
                     }
                 }
             },
+            ajaxResponse: function(url, params, response) {
+                var payload = (response && response.data) ? response.data : response;
+                if (Array.isArray(payload)) {
+                    allTableData = payload;
+                    if (window.ParentExpand) ParentExpand.captureDataset(payload);
+                }
+                return payload;
+            },
             initialSort: [{
                 column: "MC L30",
                 dir: "desc"
             }],
             rowFormatter: function(row) {
                 if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
             columns: [
@@ -1734,6 +1743,7 @@
                     width: 150,
                     visible: false
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "SKU",
                     field: "(Child) sku",
@@ -2234,6 +2244,23 @@
             ]
         });
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => {
+                    if (typeof updateSummary === 'function') updateSummary();
+                    if (typeof updateCalcValues === 'function') updateCalcValues();
+                },
+                onCollapse: () => {
+                    if (typeof applyFilters === 'function') applyFilters();
+                },
+            });
+            ParentExpand.bind();
+        }
+
         // SKU Search functionality
         $('#sku-search, #parent-search').on('keyup', function() {
             table.setFilter([
@@ -2307,6 +2334,12 @@
 
         // Apply filters
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function() {
+                    applyFilters();
+                });
+                return;
+            }
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();

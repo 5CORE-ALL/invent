@@ -14,7 +14,7 @@
         }
 
         .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
             min-height: 48px !important;
         }

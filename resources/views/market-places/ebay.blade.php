@@ -228,7 +228,7 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            background: linear-gradient(135deg, rgba(69, 233, 255, 0.15) 0%, rgba(69, 233, 255, 0.05) 100%) !important;
+            background: linear-gradient(135deg, #fffef2 0%, #fffef2 100%) !important;
             font-weight: 600;
             border-left: 4px solid #3b82f6;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);

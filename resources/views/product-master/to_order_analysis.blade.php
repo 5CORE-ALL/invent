@@ -517,7 +517,7 @@
                             }
                         }
                         html += `
-                        <tr style="${item.is_parent ? 'background-color:#e0f7ff;' : ''}" data-row-id="${item.id != null ? item.id : ''}" data-is-parent="${item.is_parent ? '1' : '0'}">
+                        <tr style="${item.is_parent ? 'background-color:#fffef2;' : ''}" data-row-id="${item.id != null ? item.id : ''}" data-is-parent="${item.is_parent ? '1' : '0'}">
                             <td>${item['Image'] ? `<img src="${item['Image']}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #eee;">` : `<span class="text-muted">No Image</span>`}</td>
                             <td class="fw-semibold">${item.Parent ?? '-'}</td>
                             <td><span class="fw-semibold text-dark">${item.SKU ?? '-'}</span></td>

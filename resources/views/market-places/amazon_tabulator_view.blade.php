@@ -140,13 +140,13 @@
         }
 
         .parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
             min-height: 48px !important;
         }
 
         .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
             min-height: 48px !important;
         }
@@ -1610,6 +1610,7 @@
         let currentSkuChartMetric = 'price';  // 'price' | 'cvr' - which metric the SKU chart modal shows
         let currentSku = null;
         let table = null; // Global table reference
+        let allTableData = []; // Full dataset for ParentExpand
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let samePriceModeActive = false; // Track Same Price mode (one price for all selected rows)
@@ -6428,6 +6429,8 @@
                 ajaxResponse: function(url, params, response) {
                     var payload = response.data || response;
                     if (Array.isArray(payload)) {
+                        allTableData = payload;
+                        if (window.ParentExpand) ParentExpand.captureDataset(payload);
                         var withFba = 0, sumFba = 0, childN = 0;
                         payload.forEach(function(row) {
                             if (!row || row.is_parent_summary) return;
@@ -6450,7 +6453,7 @@
                     const data = row.getData();
                     const el = row.getElement();
                     if (data.is_parent_summary === true) {
-                        el.style.backgroundColor = "#bde0ff";
+                        el.style.backgroundColor = "#fffef2";
                         el.style.fontWeight = "bold";
                         el.style.minHeight = "48px";
                         el.classList.add("parent-row");
@@ -6502,6 +6505,7 @@
                             return s || '—';
                         }
                     },
+                    ParentExpand.columnDef(),
 
                     {
                         title: "Image",
@@ -8065,6 +8069,23 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: '(Child) sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => {
+                        if (typeof updateSummary === 'function') updateSummary();
+                        if (typeof updateCalcValues === 'function') updateCalcValues();
+                    },
+                    onCollapse: () => {
+                        if (typeof applyFilters === 'function') applyFilters();
+                    },
+                });
+                ParentExpand.bind();
+            }
+
             $(document).on('change', '#amazon-table .nrp-nr-select', function() {
                 const $el = $(this);
                 const newValue = String($el.val() || '').trim();
@@ -8338,6 +8359,12 @@
 
             function applyFilters() {
                 if (typeof table === 'undefined' || !table) return;
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    ParentExpand.beforeFilters(function() {
+                        applyFilters();
+                    });
+                    return;
+                }
                 var sortSnapshot = [];
                 try {
                     sortSnapshot = (table.getSorters() || []).map(function(s) {

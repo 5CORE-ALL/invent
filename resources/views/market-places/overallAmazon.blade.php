@@ -203,7 +203,7 @@
 
         /* ========== PARENT ROWS ========== */
         .parent-row {
-            background-color: rgba(69, 233, 255, 0.1) !important;
+            background-color: #fffef2 !important;
         }
 
         /* ========== SKU TOOLTIPS ========== */
@@ -1151,7 +1151,7 @@
 
         /* Parent row styling */
         .tabulator .tabulator-row.parent-row {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: bold !important;
         }
 
@@ -2732,7 +2732,7 @@
                     rowFormatter: function(row) {
                         const data = row.getData();
                         if (data.is_parent) {
-                            row.getElement().style.backgroundColor = "#bde0ff";
+                            row.getElement().style.backgroundColor = "#fffef2";
                             row.getElement().style.fontWeight = "bold";
                             row.getElement().classList.add("parent-row");
                         } else {

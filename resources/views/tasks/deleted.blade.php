@@ -85,7 +85,7 @@
         }
         .deleted-row-missed:hover,
         .deleted-row-missed:hover .tabulator-cell {
-            background-color: #fff9c4 !important;
+            background-color: #fffef2 !important;
         }
 
         .stat-card-pink .stat-icon {

@@ -4546,6 +4546,7 @@
                     },
                     headerSort: false
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "SKU",
                     field: "sku",
@@ -5925,6 +5926,10 @@
 
         // Apply filters
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             // When Play navigation is active, show only current parent (like pricing-master-cvr)
             if (isPlayNavigationActive) {
                 if (typeof showCurrentParentPlayView === 'function') showCurrentParentPlayView();
@@ -7233,6 +7238,7 @@
                 return;
             }
             fullDataset = (data && Array.isArray(data)) ? data : (table.getData ? table.getData("all") : []) || [];
+            if (window.ParentExpand) ParentExpand.captureDataset(fullDataset);
             applyFilters();
             updateCampaignPeriodUi();
             // Wait a bit to ensure badgeAvgAds is set from ajaxResponse before calculating NPFT
@@ -7252,6 +7258,18 @@
                 updateSelectAllCheckbox();
             }, 100);
         });
+
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'parent',
+                skuField: 'sku',
+                getTable: () => table,
+                getDataset: () => fullDataset,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
 
         table.on('renderComplete', function() {
             updateSummary();

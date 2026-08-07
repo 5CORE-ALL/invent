@@ -197,10 +197,10 @@
             text-decoration: underline;
         }
 
-        /* Parent row light blue background */
+        /* Parent row light yellow background */
         .tabulator-row.ebay-parent-row,
         .tabulator-row.ebay-parent-row .tabulator-cell {
-            background-color: #b3e5fc !important;
+            background-color: #fffef2 !important;
         }
 
         /* Play / Pause parent navigation (same as product-master) */
@@ -1519,7 +1519,7 @@
     <div class="modal fade" id="spriceRuleModal" tabindex="-1" aria-labelledby="spriceRuleModalLabel" aria-hidden="true">
         <style>
             #spriceRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
-            #sprice-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+            #sprice-rule-table thead th { background-color: #fffef2 !important; color: #000 !important; }
             /* Hide number-input spinner arrows */
             #spriceRuleModal input[type=number]::-webkit-inner-spin-button,
             #spriceRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -1591,7 +1591,7 @@
     <div class="modal fade" id="sbidRuleModal" tabindex="-1" aria-labelledby="sbidRuleModalLabel" aria-hidden="true">
         <style>
             #sbidRuleModal .modal-dialog { max-width: 98vw; width: 98vw; margin: 0.5rem auto; }
-            #sbid-slab-rule-table thead th { background-color: #fff9c4 !important; color: #000 !important; }
+            #sbid-slab-rule-table thead th { background-color: #fffef2 !important; color: #000 !important; }
             /* Hide number-input spinner arrows */
             #sbidRuleModal input[type=number]::-webkit-inner-spin-button,
             #sbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -2203,6 +2203,7 @@
         let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views'
         let currentSku = null;
         let table = null; // Global table reference
+        let allTableData = []; // Full dataset for ParentExpand
         /** Average L7 views (rows with E Stock > 0) — drives the L7 View column colours
          *  and the "Avg L7" badge. Recomputed in updateSummary(). */
         let avgL7ViewsGlobal = 0;
@@ -6690,6 +6691,14 @@
                         }
                     }
                 },
+                ajaxResponse: function(url, params, response) {
+                    var payload = (response && response.data) ? response.data : response;
+                    if (Array.isArray(payload)) {
+                        allTableData = payload;
+                        if (window.ParentExpand) ParentExpand.captureDataset(payload);
+                    }
+                    return payload;
+                },
                 initialSort: [{
                         column: "Parent",
                         dir: "asc"
@@ -6706,7 +6715,7 @@
                     const el = row.getElement();
                     if (isParent) {
                         el.classList.add('ebay-parent-row');
-                        el.style.setProperty('background-color', '#b3e5fc', 'important');
+                        el.style.setProperty('background-color', '#fffef2', 'important');
                     } else {
                         el.classList.remove('ebay-parent-row');
                     }
@@ -6801,6 +6810,7 @@
                             return value;
                         }
                     },
+                    ParentExpand.columnDef(),
                     {
                         title: "SKU",
                         field: "(Child) sku",
@@ -7998,6 +8008,23 @@
                 ]
             });
 
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: '(Child) sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => {
+                        if (typeof updateSummary === 'function') updateSummary();
+                        if (typeof updateCalcValues === 'function') updateCalcValues();
+                    },
+                    onCollapse: () => {
+                        if (typeof applyFilters === 'function') applyFilters();
+                    },
+                });
+                ParentExpand.bind();
+            }
+
             $(document).on('change', '#ebay-table .nrp-nr-select', function() {
                 const $el = $(this);
                 const newValue = String($el.val() || '').trim();
@@ -8321,6 +8348,12 @@
 
             // Apply filters
             function applyFilters() {
+                if (window.ParentExpand && ParentExpand.isExpanded()) {
+                    ParentExpand.beforeFilters(function() {
+                        applyFilters();
+                    });
+                    return;
+                }
                 const inventoryFilter = $('#inventory-filter').val();
                 const el30Filter = $('#el30-filter').val();
                 const nrlFilter = $('#nrl-filter').val();

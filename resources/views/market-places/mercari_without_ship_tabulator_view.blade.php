@@ -255,12 +255,15 @@
 @section('script-bottom')
     <script>
         let table;
+        let allTableData = [];
 
         document.addEventListener('DOMContentLoaded', function() {
             table = new Tabulator("#mercari-without-ship-table", {
                 ajaxURL: "{{ route('mercari.woship.tabulator.data') }}",
                 ajaxResponse: function(url, params, response) {
                     const payload = response.data || response;
+                    allTableData = Array.isArray(payload) ? payload : [];
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateBadges(payload);
                     return payload;
                 },
@@ -296,6 +299,7 @@
                             return (val != null && String(val).trim() !== '') ? String(val).trim() : '—';
                         }
                     },
+                    ParentExpand.columnDef(),
                     {
                         title: "Image",
                         field: "image_path",
@@ -542,6 +546,18 @@
                     }
                 ],
             });
+
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'Parent',
+                    skuField: 'sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyAllFilters === 'function') applyAllFilters(); },
+                });
+                ParentExpand.bind();
+            }
 
             // Update the adjust panel whenever row selection changes
             table.on("rowSelectionChanged", function(data, rows) {
@@ -895,6 +911,10 @@
         // overwriting each other (matches the Mercari w/Ship pattern). All three filter
         // entry points (search keyup, badge click, Sold dropdown change) call this.
         function applyAllFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyAllFilters(); });
+                return;
+            }
             if (typeof table === 'undefined' || !table || !table.setFilter) return;
 
             const searchEl = document.getElementById('sku-search');

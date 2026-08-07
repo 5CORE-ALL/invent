@@ -196,7 +196,7 @@
         /* Parent SKU rows – light yellow background */
         .table-responsive tbody tr.parent-row,
         .table-responsive tbody tr.parent-row:nth-child(even) {
-            background-color: #fef9c3 !important;
+            background-color: #fffef2 !important;
         }
         .table-responsive tbody tr.parent-row:hover {
             background-color: #fdf3a8 !important;
@@ -207,7 +207,7 @@
         }
         /* Highlight selected item dimension headers */
         .table-responsive thead th.item-dim-header {
-            background-color: #fff9c4 !important; /* light yellow */
+            background-color: #fffef2 !important; /* light yellow */
         }
         /* Declared dimension headers — distinct from ACT yellow */
         .table-responsive thead th.item-dim-decl-header {
@@ -341,7 +341,7 @@
         .status-badges-full .status-badge-item.bg-active { background-color: #bbf7d0; }
         .status-badges-full .status-badge-item.bg-inactive { background-color: #fecaca; }
         .status-badges-full .status-badge-item.bg-dc { background-color: #fecaca; }
-        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fef08a; }
+        .status-badges-full .status-badge-item.bg-upcoming { background-color: #fefce8; }
         .status-badges-full .status-badge-item.bg-2bdc { background-color: #bfdbfe; }
 
         /* Ensure table fits container - auto layout so columns fit content */

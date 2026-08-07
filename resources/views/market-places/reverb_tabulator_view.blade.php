@@ -589,6 +589,7 @@
     // Columns that stay hidden even when "Show All Columns" is used.
     const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
     let table = null;
+    let allTableData = []; // Full dataset for ParentExpand
     // Reverb channel Ads% (TACOS) — same stored value as /all-marketplace-master (Amazon pattern).
     // Used for PFT% = GPFT% − Ads%, SNPFT = SGPFT − Ads%, and NROI/SNROI.
     const REVERB_CHANNEL_ADS_PCT = {{ isset($reverbAdsPercent) ? (float) $reverbAdsPercent : 0 }};
@@ -1971,7 +1972,13 @@
                     applyMapMissSummary(response.map_miss_summary);
                 }
                 if (response && Array.isArray(response.data)) {
+                    allTableData = response.data;
+                    if (window.ParentExpand) ParentExpand.captureDataset(response.data);
                     return response.data;
+                }
+                if (Array.isArray(response)) {
+                    allTableData = response;
+                    if (window.ParentExpand) ParentExpand.captureDataset(response);
                 }
                 return response;
             },
@@ -1994,7 +2001,7 @@
             }],
             rowFormatter: function(row) {
                 if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                    row.getElement().style.backgroundColor = "#fffef2";
                 }
             },
             columns: [
@@ -2010,6 +2017,7 @@
                     width: 150,
                     visible: false
                 },
+                ParentExpand.columnDef(),
                 {
                     title: "Image",
                     field: "image_path",
@@ -2739,6 +2747,23 @@
             ]
         });
 
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => {
+                    if (typeof updateSummary === 'function') updateSummary();
+                    if (typeof updateCalcValues === 'function') updateCalcValues();
+                },
+                onCollapse: () => {
+                    if (typeof applyFilters === 'function') applyFilters();
+                },
+            });
+            ParentExpand.bind();
+        }
+
         // SKU Search functionality
         $('#sku-search, #parent-search').on('keyup', function() {
             table.setFilter([
@@ -3077,6 +3102,12 @@
 
         // Apply filters
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function() {
+                    applyFilters();
+                });
+                return;
+            }
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();

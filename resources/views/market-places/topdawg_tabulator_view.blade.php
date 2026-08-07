@@ -301,6 +301,7 @@
     const TD_SALES_DASHBOARD_GPFT = {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }};
     const TD_SALES_DASHBOARD_ROI = {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }};
     let table = null;
+    let allTableData = [];
     // zeroSoldFilter / moreSoldFilter removed — Sold filter is now owned by the
     // #sold-filter dropdown (driven by badge clicks and the ?badge=zero_sold|more_sold URL).
     let missingFilter = false, nmapFilter = false;
@@ -619,6 +620,10 @@
 
     function applyFilters() {
         if (!table) return;
+        if (window.ParentExpand && ParentExpand.isExpanded()) {
+            ParentExpand.beforeFilters(function(){ applyFilters(); });
+            return;
+        }
         table.clearFilter();
 
         const invF = $('#inventory-filter').val();
@@ -727,6 +732,7 @@
                     }
                 },
                 { title: 'Parent', field: 'Parent', frozen: true, width: 150, visible: false },
+                (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 { title: 'Image', field: 'image_path', width: 80, headerSort: false,
                     formatter: c => {
                         const v = c.getValue();
@@ -937,11 +943,30 @@
                 { title: 'State', field: 'listing_state', width: 70, visible: false },
             ],
             ajaxResponse: function(url, params, response) {
-                return Array.isArray(response) ? response : (response.data || []);
+                const rows = Array.isArray(response) ? response : (response.data || []);
+                allTableData = rows;
+                if (window.ParentExpand) ParentExpand.captureDataset(rows);
+                return rows;
             },
         });
 
-        table.on('dataLoaded', function() {
+        if (window.ParentExpand) {
+            ParentExpand.configure({
+                parentField: 'Parent',
+                skuField: '(Child) sku',
+                getTable: () => table,
+                getDataset: () => allTableData,
+                onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+            });
+            ParentExpand.bind();
+        }
+
+        table.on('dataLoaded', function(data) {
+            if (Array.isArray(data) && data.length) {
+                allTableData = data;
+                if (window.ParentExpand) ParentExpand.captureDataset(data);
+            }
             setTimeout(function() {
                 applyFilters();
                 updateSummary();

@@ -1159,7 +1159,7 @@
     }
 
     .cd-sheet-table tr.cd-ctn-pkg-row > td {
-        background-color: #fef9c3 !important;
+        background-color: #fffef2 !important;
     }
 
     .cd-sheet-table tr.cd-inner-pkg-row .cd-label-cell,
@@ -2216,7 +2216,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const comparisonQcIssueTextModal = comparisonQcIssueTextModalEl ? new bootstrap.Modal(comparisonQcIssueTextModalEl) : null;
 
     const INNER_PKG_SECTION_COLOR = '#dbeafe';
-    const CTN_PKG_SECTION_COLOR = '#fef9c3';
+    const CTN_PKG_SECTION_COLOR = '#fffef2';
     const INNER_PKG_SECTION = {
         header: 'Inner Pkg',
         color: INNER_PKG_SECTION_COLOR,

@@ -142,14 +142,14 @@
 
         #temu-listing-wrap .tabulator-row.parent-row,
         #temu-listing-wrap .tabulator-row.parent-row .tabulator-cell {
-            background-color: rgba(69, 233, 255, 0.15) !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
         #temu-listing-wrap .tabulator-row.parent-row:hover,
         #temu-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
-            background-color: rgba(69, 233, 255, 0.28) !important;
+            background-color: #fefce8 !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */

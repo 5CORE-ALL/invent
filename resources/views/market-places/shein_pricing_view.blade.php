@@ -23,7 +23,7 @@
         /* ── Parent row – identical to amazon_tabulator_view ── */
         .tabulator-row.ae-parent-row,
         .tabulator-row.ae-parent-row .tabulator-cell {
-            background-color: #bde0ff !important;
+            background-color: #fffef2 !important;
             font-weight: 700 !important;
             min-height: 48px !important;
         }
@@ -535,6 +535,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         let table = null;
+        let allTableData = [];
         let summaryDataCache = [];
         // Sales / GPFT / GROI from /shein-tabulator API orders (product_price × qty) — not special_offer
         let salesPageTotals = null;
@@ -796,6 +797,10 @@
         $('#play-backward').on('click', previousShParent);
 
         function applyFilters() {
+            if (window.ParentExpand && ParentExpand.isExpanded()) {
+                ParentExpand.beforeFilters(function(){ applyFilters(); });
+                return;
+            }
             if (!table) return;
             table.clearFilter();
 
@@ -1235,9 +1240,7 @@
                         salesPageTotals = null;
                         rows = response;
                     }
-                    // Hide parent rows — drop them from the dataset entirely
-                    rows = Array.isArray(rows) ?
-                        rows.filter(r => !(r && r.is_parent === true)) : rows;
+                    // Keep parent rows so ParentExpand "P" column can expand a parent to its SKUs
                     summaryDataCache = normalizeRows(rows);
                     updateSummary(summaryDataCache);
                     setTimeout(aeApplyBadgeFilterFromUrl, 0);
@@ -1294,6 +1297,7 @@
                             return `<span style="color:#0d6efd;font-size:11px;font-weight:600;">${v}</span>`;
                         }
                     },
+                    ParentExpand.columnDef(),
                     {
                         title: "Image",
                         field: "image",
@@ -1715,6 +1719,8 @@
                     },
                 ],
                 dataLoaded: function(data) {
+                    allTableData = Array.isArray(data) ? data : [];
+                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     updateSummary(data);
                     // Honor the dropdown defaults on first load (e.g. INV "More than 0")
                     // so the table doesn't render every row before the user touches a filter.
@@ -1730,6 +1736,18 @@
                     updateSummary();
                 }
             });
+
+            if (window.ParentExpand) {
+                ParentExpand.configure({
+                    parentField: 'parent',
+                    skuField: 'sku',
+                    getTable: () => table,
+                    getDataset: () => allTableData,
+                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
+                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
+                });
+                ParentExpand.bind();
+            }
 
             $('#pricing-sku-search').on('input', function() { applyFilters(); });
             $('#pricing-parent-search').on('input', function() { applyFilters(); });
