@@ -605,12 +605,10 @@
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
-                        <option value="negative">Negative</option>
-                        <option value="0-10">0-10%</option>
-                        <option value="10-20">10-20%</option>
-                        <option value="20-30">20-30%</option>
-                        <option value="30-40">30-40%</option>
-                        <option value="40plus">Above 40%</option>
+                        <option value="lt-20">≤ 20%</option>
+                        <option value="20-30">20–30%</option>
+                        <option value="30-43">30–43%</option>
+                        <option value="gt-43">≥ 43%</option>
                     </select>
                     <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;"
@@ -626,11 +624,10 @@
                     <select id="roi-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GROI%</option>
-                        <option value="lt40">&lt; 40%</option>
-                        <option value="40-60">40–60%</option>
-                        <option value="60-80">60–80%</option>
-                        <option value="80-100">80–100%</option>
-                        <option value="gt100">100%+</option>
+                        <option value="lt-60">&lt; 60%</option>
+                        <option value="60-90">60–90%</option>
+                        <option value="90-150">90–150%</option>
+                        <option value="gte-150">≥ 150%</option>
                     </select>
 
                     <select id="diff-filter" class="form-select form-select-sm"
@@ -1806,30 +1803,31 @@
             if (isNaN(n) || n <= 0) return '—';
             return '$' + n.toFixed(2);
         }
-        /** GPFT % / PFT % — same color bands as tabulator */
-        function amazonModalGpftPftColor(percent) {
-            const p = parseFloat(percent) || 0;
-            if (p < 10) return '#a00211';
-            if (p >= 10 && p < 20) return '#3591dc';
-            if (p >= 20 && p < 30) return '#ffc107';
-            if (p >= 30 && p < 50) return '#28a745';
-            return '#e83e8c';
+        /** GPFT % / PFT % — MetricPctColors (pass kind: gpft|npft) */
+        function amazonModalGpftPftColor(percent, kind) {
+            kind = kind || 'gpft';
+            if (window.MetricPctColors) {
+                return MetricPctColors.colorFor(kind, percent) || '#dc3545';
+            }
+            return '#dc3545';
         }
-        function amazonModalGpftPftColoredHtml(fieldVal) {
+        function amazonModalGpftPftColoredHtml(fieldVal, kind) {
+            kind = kind || 'gpft';
+            if (window.MetricPctColors) {
+                return MetricPctColors.htmlFor(kind, fieldVal, { decimals: 0, empty: '0%' });
+            }
             const p = parseFloat(fieldVal);
             const n = isNaN(p) ? 0 : p;
-            const c = amazonModalGpftPftColor(n);
-            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(n) + '%</span>';
+            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(n) + '%</span>';
         }
-        /** GROI% — same as tabulator */
+        /** GROI% — MetricPctColors */
         function amazonModalGroiColoredHtml(fieldVal) {
+            if (window.MetricPctColors) {
+                return MetricPctColors.htmlFor('groi', fieldVal, { decimals: 0, empty: '0%' });
+            }
             const p = parseFloat(fieldVal);
             const n = isNaN(p) ? 0 : p;
-            let c = '#a00211';
-            if (n >= 50 && n < 75) c = '#ffc107';
-            else if (n >= 75 && n <= 125) c = '#28a745';
-            else if (n > 125) c = '#e83e8c';
-            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(n) + '%</span>';
+            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(n) + '%</span>';
         }
         /** CVR L30 — same formula and colors as tabulator CVR L30 column */
         function amazonModalCvrL30ColoredHtml(row) {
@@ -2007,7 +2005,7 @@
                 '<button type="button" class="btn btn-sm parent-pricing-modal-pls-btn btn-circle" data-sku="' + escAttr(sku) + '" data-price="' + sprice + '" data-status="' + escAttr(plsStatus || '') + '" title="' + escAttr(plsTitle) + '" style="border: none; background: none; color: ' + plsColor + '; padding: 0; cursor: pointer;">' + plsIcon + '</button>' +
                 '</div>';
         }
-        /** S PFT % — same colors as Spft% column */
+        /** S PFT % — NPFT schema via MetricPctColors */
         function amazonModalSpftColoredHtml(row) {
             // SPFT = SGPFT − Ads% (channel TACOS)
             const rawGpft = row.SGPFT;
@@ -2017,34 +2015,28 @@
             const sgpft = parseFloat(rawGpft);
             if (isNaN(sgpft)) return '<span class="text-muted">—</span>';
             const percent = sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
-            let color = '';
-            if (percent < 10) color = '#a00211';
-            else if (percent >= 10 && percent < 20) color = '#3591dc';
-            else if (percent >= 20 && percent < 30) color = '#ffc107';
-            else if (percent >= 30 && percent < 50) color = '#28a745';
-            else color = '#e83e8c';
-            return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
+            if (window.MetricPctColors) {
+                return MetricPctColors.htmlFor('npft', percent, { decimals: 0 });
+            }
+            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(percent) + '%</span>';
         }
-        /** SROI % — same colors as SROI column (NROI-badge formula) */
+        /** SROI % — NROI schema via MetricPctColors */
         function amazonModalSroiColoredHtml(row) {
             const percent = amazonComputeNetSroi(row);
             if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
-            let color = '';
-            if (percent < 50) color = '#a00211';
-            else if (percent >= 50 && percent < 75) color = '#ffc107';
-            else if (percent >= 75 && percent <= 125) color = '#28a745';
-            else color = '#e83e8c';
-            return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
+            if (window.MetricPctColors) {
+                return MetricPctColors.htmlFor('nroi', percent, { decimals: 0 });
+            }
+            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(percent) + '%</span>';
         }
-        /** Sroi (gross) — same colors as GROI% column */
+        /** Sroi (gross) — GROI schema via MetricPctColors */
         function amazonModalSgroiColoredHtml(row) {
             const percent = amazonComputeSroi(row);
             if (percent === null || !isFinite(percent)) return '<span class="text-muted">—</span>';
-            let color = '#a00211';
-            if (percent >= 50 && percent < 75) color = '#ffc107';
-            else if (percent >= 75 && percent <= 125) color = '#28a745';
-            else if (percent > 125) color = '#e83e8c';
-            return '<span style="color: ' + color + '; font-weight: 600;">' + Math.round(percent) + '%</span>';
+            if (window.MetricPctColors) {
+                return MetricPctColors.htmlFor('groi', percent, { decimals: 0 });
+            }
+            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(percent) + '%</span>';
         }
         function collectChildRowsForAmazonParent(parentKey) {
             if (typeof table === 'undefined' || !table || !parentKey) return [];
@@ -2079,7 +2071,7 @@
                     tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(row['GPFT%'])));
                     // PFT% = GPFT% − Ads% (channel TACOS)
                     const modalPft = (parseFloat(row['GPFT%']) || 0) - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
-                    tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(modalPft)));
+                    tr.append($('<td class="text-end"></td>').html(amazonModalGpftPftColoredHtml(modalPft, 'npft')));
                     tr.append($('<td class="text-end"></td>').html(amazonModalGroiColoredHtml(row['GROI%'])));
                     tr.append($('<td class="text-end"></td>').html(amazonModalLmpColoredHtml(row)));
                     tr.append($('<td class="text-end"></td>').html(amazonModalSpriceInputHtml(row)));
@@ -2665,13 +2657,13 @@
         }
 
         function amazonModalNroiColoredHtml(fieldVal) {
+            if (window.MetricPctColors) {
+                const html = MetricPctColors.htmlFor('nroi', fieldVal, { decimals: 0, empty: '' });
+                return html || '<span class="text-muted">—</span>';
+            }
             const p = parseFloat(fieldVal);
             if (!isFinite(p)) return '<span class="text-muted">—</span>';
-            let c = '#a00211';
-            if (p >= 50 && p < 75) c = '#ffc107';
-            else if (p >= 75 && p <= 125) c = '#28a745';
-            else if (p > 125) c = '#e83e8c';
-            return '<span style="color: ' + c + '; font-weight: 600;">' + Math.round(p) + '%</span>';
+            return '<span style="color:#dc3545;font-weight:600;">' + Math.round(p) + '%</span>';
         }
 
         function refreshLmpModalSpMetrics() {
@@ -7235,15 +7227,8 @@
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '0.00%';
                             const percent = parseFloat(value);
-                            let color = '';
-                            
-                            // Color logic for GROI (Gross ROI)
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GROI%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         sorter: "number",
                         width: 65
@@ -7257,15 +7242,8 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const percent = parseFloat(value) || 0;
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -7283,15 +7261,8 @@
                             const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
                             // PFT% = GPFT% − Ads% (channel TACOS)
                             const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
-                            let color = '';
-                            
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -7983,14 +7954,8 @@
                             const percent = amazonComputeSroi(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
 
-                            let color = '';
-                            // Same color logic as GROI%
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GROI%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 65
                     },
@@ -8004,15 +7969,8 @@
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return '';
                             
-                            let color = '';
-                            // Same as GPFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },
@@ -8031,14 +7989,8 @@
                             const percent = amazonComputeNetSroi(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
                             
-                            let color = '';
-                            // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GROI%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },
@@ -8064,15 +8016,8 @@
                             const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
                             const percent = sgpft - ads;
                             
-                            let color = '';
-                            // Same as PFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },
@@ -8485,13 +8430,14 @@
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const gpft = parseFloat(data['GPFT%']) || 0;
-                        
-                        if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
-                        if (gpftFilter === '10-20') return gpft >= 10 && gpft < 20;
-                        if (gpftFilter === '20-30') return gpft >= 20 && gpft < 30;
-                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 40;
-                        if (gpftFilter === '40plus') return gpft >= 40;
+                        if (gpftFilter === 'lt-20') return gpft <= 20;
+                        if (gpftFilter === '20-30') return gpft > 20 && gpft < 30;
+                        if (gpftFilter === '30-43') return gpft >= 30 && gpft < 43;
+                        if (gpftFilter === 'gt-43') return gpft >= 43;
+                        // legacy
+                        if (gpftFilter === 'negative' || gpftFilter === '0-10' || gpftFilter === '10-20') return gpft <= 20;
+                        if (gpftFilter === '30-40') return gpft >= 30 && gpft < 43;
+                        if (gpftFilter === '40plus') return gpft >= 43;
                         return true;
                     });
                 }
@@ -8500,10 +8446,15 @@
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return parentRowsBypassDataFilters;
                         const roiVal = parseFloat(data['GROI%']) || 0;
-                        if (roiFilter === 'lt40') return roiVal < 40;
-                        if (roiFilter === 'gt100') return roiVal > 100;
+                        if (roiFilter === 'lt-60') return roiVal < 60;
+                        if (roiFilter === '60-90') return roiVal >= 60 && roiVal < 90;
+                        if (roiFilter === '90-150') return roiVal >= 90 && roiVal < 150;
+                        if (roiFilter === 'gte-150') return roiVal >= 150;
+                        // legacy
+                        if (roiFilter === 'lt40') return roiVal < 60;
+                        if (roiFilter === 'gt100') return roiVal >= 150;
                         const [min, max] = roiFilter.split('-').map(Number);
-                        return roiVal >= min && roiVal <= max;
+                        return roiVal >= min && roiVal < (max || Infinity);
                     });
                 }
 

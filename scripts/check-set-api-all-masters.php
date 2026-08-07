@@ -35,7 +35,7 @@ $active = DB::table('channel_master')
     ->get(['channel']);
 
 $noApiSlugs = [
-    'tiendamia', 'depop', 'instagramshop',
+    'depop', 'instagramshop',
     'mercariwship', 'mercariwoship', 'fbmarketplace', 'fbshop',
     'shopifyb2b', 'vintedcom', 'vinted',
 ];

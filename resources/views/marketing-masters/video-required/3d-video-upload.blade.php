@@ -677,26 +677,6 @@
                     hozAlign: "center"  
                 },
                 { 
-                    title: "Tiendamia", 
-                    field: "Tiendamia", 
-                    editor: "input", 
-                    titleFormatter: titleWithLinkIcon("Tiendamia"),
-                    
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value && value.trim() !== "") {
-                            return `<a href="${value}" target="_blank" style="text-decoration:none;">
-                                        <i class="fa fa-link"></i> Open
-                                    </a>`;
-                        }
-                        return "";
-                    },
-                    cellDblClick: function(e, cell) {
-                        cell.edit();
-                    },
-                    hozAlign: "center"  
-                },
-                { 
                     title: "Shein", 
                     field: "Shein", 
                     editor: "input", 
@@ -1071,7 +1051,6 @@
                     AutoDS: rowData.AutoDS || '',
                     MercariWOShip: rowData.MercariWOShip || '',
                     Poshmark: rowData.Poshmark || '',
-                    Tiendamia: rowData.Tiendamia || '',
                     Shein: rowData.Shein || '',
                     Spocket: rowData.Spocket || '',
                     Zendrop: rowData.Zendrop || '',

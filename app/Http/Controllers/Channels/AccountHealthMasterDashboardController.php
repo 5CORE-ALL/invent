@@ -24,7 +24,6 @@ use App\Models\ProductMaster;
 use App\Models\RefundRate;
 use App\Models\ReverbProduct;
 use App\Models\TemuMetric;
-use App\Models\TiendamiaProduct;
 use App\Models\ValidTrackingRate;
 use App\Models\VoilanceRate;
 use App\Models\WaifairProductSheet;
@@ -79,7 +78,6 @@ class AccountHealthMasterDashboardController extends Controller
                 'ebaytwo' => 'getEbaytwoChannelData',
                 'ebaythree' => 'getEbaythreeChannelData',
                 'macys' => 'getMacysChannelData',
-                'tiendamia' => 'getTiendamiaChannelData',
                 'bestbuyusa' => 'getBestbuyUsaChannelData',
                 'reverb' => 'getReverbChannelData',
                 'doba' => 'getDobaChannelData',
@@ -412,22 +410,6 @@ class AccountHealthMasterDashboardController extends Controller
         ]);
     }
 
-    public function getTiendamiaChannelData(Request $request)
-    {
-        $data = $this->fetchChannelData(
-            TiendamiaProduct::class,
-            'Tiendamia',
-            'm_l30',
-            'm_l60',
-            'price',
-            'Tiendamia'
-        );
-        return response()->json([
-            'status' => 200,
-            'message' => 'Tiendamia channel data fetched successfully',
-            'data' => [$data],
-        ]);
-    }
 
     public function getBestbuyUsaChannelData(Request $request)
     {

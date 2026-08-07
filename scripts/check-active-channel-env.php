@@ -20,7 +20,7 @@ $noApi = [];
 
 // Channels with no API push (from MarketplaceApiConfigService::CHANNEL_SLUG_TO_API = null)
 $noApiSlugs = [
-    'tiendamia', 'depop', 'instagramshop',
+    'depop', 'instagramshop',
     'mercariwship', 'mercariwoship', 'fbmarketplace', 'fbshop',
     'shopifyb2b', 'vintedcom', 'vinted',
 ];

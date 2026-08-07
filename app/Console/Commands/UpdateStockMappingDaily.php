@@ -15,7 +15,6 @@ use App\Models\EbayListingStatus;
 use App\Models\EbayTwoListingStatus;
 use App\Models\EbayThreeListingStatus;
 use App\Models\BestbuyUSAListingStatus;
-use App\Models\TiendamiaListingStatus;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
@@ -79,7 +78,6 @@ class UpdateStockMappingDaily extends Command
                 'ebay2'   => [EbayTwoListingStatus::class, 'inventory_ebay2'],
                 'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
                 'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
-                'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
             ];
 
             foreach ($marketplaces as $key => [$model, $inventoryField]) {
@@ -137,7 +135,7 @@ class UpdateStockMappingDaily extends Command
     {
         $platforms = [
             'shopify', 'amazon', 'walmart', 'reverb', 'shein', 'doba',
-            'temu', 'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'tiendamia'
+            'temu', 'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy'
         ];
 
         $info = [];

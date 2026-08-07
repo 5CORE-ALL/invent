@@ -148,7 +148,6 @@ return [
     'aliexpress.*' => 'sidebar_ads',
     'depop.*' => 'sidebar_ads',
     'bestbuy.*' => 'sidebar_ads',
-    'tiendamia.*' => 'sidebar_ads',
     'review-ratings.*' => 'sidebar_ads',
     'targeting.*' => 'sidebar_ads',
     'zero.*' => 'sidebar_ads',

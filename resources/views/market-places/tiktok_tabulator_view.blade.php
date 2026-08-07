@@ -3246,13 +3246,8 @@
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
-                            let color = '';
-                            if (percent < 10) color = '#a00211';
-                            else if (percent >= 10 && percent < 15) color = '#ffc107';
-                            else if (percent >= 15 && percent < 20) color = '#3591dc';
-                            else if (percent >= 20 && percent <= 40) color = '#28a745';
-                            else color = '#e83e8c';
-                            return `<span style="color: ${color}; font-weight: 700;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -3292,13 +3287,8 @@
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
-                            let color = '';
-                            if (percent < 10) color = '#a00211';
-                            else if (percent >= 10 && percent < 15) color = '#ffc107';
-                            else if (percent >= 15 && percent < 20) color = '#3591dc';
-                            else if (percent >= 20 && percent <= 40) color = '#28a745';
-                            else color = '#e83e8c';
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -3317,12 +3307,8 @@
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return isParent ?
                                 '<span style="color:#6c757d;">-</span>' : '';
-                            let color = '';
-                            if (percent < 40) color = '#a00211';
-                            else if (percent < 75) color = '#ffc107';
-                            else if (percent < 125) color = '#28a745';
-                            else color = '#d63384';
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -3528,15 +3514,8 @@
                             }
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211';
-                            else if (percent >= 10 && percent < 15) color = '#ffc107';
-                            else if (percent >= 15 && percent < 20) color = '#3591dc';
-                            else if (percent >= 20 && percent <= 40) color = '#28a745';
-                            else color = '#e83e8c';
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -3552,15 +3531,8 @@
                             }
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211';
-                            else if (percent >= 10 && percent < 15) color = '#ffc107';
-                            else if (percent >= 15 && percent < 20) color = '#3591dc';
-                            else if (percent >= 20 && percent <= 40) color = '#28a745';
-                            else color = '#e83e8c';
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -3579,14 +3551,8 @@
                             }
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
-                            let color = '';
-
-                            if (percent < 40) color = '#a00211';
-                            else if (percent < 75) color = '#ffc107';
-                            else if (percent < 125) color = '#28a745';
-                            else color = '#d63384';
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         }
                     },
                     {

@@ -2172,27 +2172,14 @@
                     }
 
 
-                    const getPftColor = (value) => {
-                        const percent = parseFloat(value) * 100;
-                        if (percent < 10) return 'red';
-                        if (percent >= 10 && percent < 15) return 'yellow';
-                        if (percent >= 15 && percent < 20) return 'blue';
-                        if (percent >= 20 && percent <= 40) return 'green';
-                        return 'pink';
-                    };
+                    const getPftColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyPftClass(value) : 'red');
 
                     $row.append($('<td>').html(
                         typeof item.amz_pft === 'number' && !isNaN(item.amz_pft) ?
                         `<span class="dil-percent-value ${getPftColor(item.amz_pft)}">${Math.round(item.amz_pft * 100)}%</span>` :
                         ''
                     ));
-                    const getRoiColor = (value) => {
-                        const percent = parseFloat(value) * 100;
-                        if (percent >= 0 && percent < 50) return 'red';
-                        if (percent >= 50 && percent < 75) return 'yellow';
-                        if (percent >= 75 && percent <= 100) return 'green';
-                        return 'pink';
-                    };
+                    const getRoiColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyRoiClass(value) : 'red');
                     $row.append($('<td>').html(
                         typeof item.amz_roi === 'number' && !isNaN(item.amz_roi) ?
                         `<span class="dil-percent-value ${getRoiColor(item.amz_roi)}">${Math.round(item.amz_roi * 100)}%</span>` :

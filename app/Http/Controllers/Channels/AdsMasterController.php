@@ -33,7 +33,6 @@ use App\Services\SheinShopifySalesService;
 use App\Models\ShopifySku;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
-use App\Models\TiendamiaProduct;
 use App\Models\TikTokProduct;
 use App\Models\TiktokOrder;
 use App\Models\TopDawgSheetdata;
@@ -93,7 +92,6 @@ class AdsMasterController extends Controller
             'ebaytwo'   => 'getEbaytwoChannelData',
             'ebaythree' => 'getEbaythreeChannelData',
             'macys'     => 'getMacysChannelData',
-            'tiendamia' => 'getTiendamiaChannelData',
             'bestbuyusa' => 'getBestbuyUsaChannelData',
             'reverb'    => 'getReverbChannelData',
             'doba'      => 'getDobaChannelData',
@@ -1332,122 +1330,6 @@ class AdsMasterController extends Controller
         return response()->json([
             'status' => 200,
             'message' => 'Walmart channel data fetched successfully',
-            'data' => $result,
-        ]);
-    }
-
-    public function getTiendamiaChannelData(Request $request)
-    {
-        $result = [];
-
-        $query = TiendamiaProduct::where('sku', 'not like', '%Parent%');
-
-        $l30Orders = $query->sum('m_l30');
-        $l60Orders = $query->sum('m_l60');
-
-        $l30Sales  = (clone $query)->selectRaw('SUM(m_l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(m_l60 * price) as total')->value('total') ?? 0;
-
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
-
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Tiendamia')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
-
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'm_l30', 'm_l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
-
-
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->m_l30;
-            $unitsL60  = (int) $row->m_l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
-
-            $lp   = 0;
-            $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
-            }
-
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
-
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
-        }
-
-        // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // Channel data
-        $channelData = ChannelMaster::where('channel', 'Tiendamia')->first();
-
-        $result[] = [
-            'Channel '   => 'Tiendamia',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
-            'Growth'     => round($growth, 2) . '%',
-            'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60'   => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'      => round($gRoiL60, 2),
-            'type'       => $channelData->type ?? '',
-            'W/Ads'      => $channelData->w_ads ?? 0,
-            'NR'         => $channelData->nr ?? 0,
-            'Update'     => $channelData->update ?? 0,
-            'cogs'       => round($totalCogs, 2),
-        ];
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Tiendamia channel data fetched successfully',
             'data' => $result,
         ]);
     }
@@ -3567,7 +3449,6 @@ class AdsMasterController extends Controller
         $mercariWsMetrics = MarketplaceDailyMetric::where('channel', 'Mercari With Ship')->latest('date')->first();
         $mercariWosMetrics = MarketplaceDailyMetric::where('channel', 'Mercari Without Ship')->latest('date')->first();
         $macysMetrics = MarketplaceDailyMetric::where('channel', 'Macys')->latest('date')->first();
-        $tiendamiaMetrics = MarketplaceDailyMetric::where('channel', 'Tiendamia')->latest('date')->first();
         $bestbuyMetrics = MarketplaceDailyMetric::where('channel', 'Best Buy USA')->latest('date')->first();
         $dobaMetrics = MarketplaceDailyMetric::where('channel', 'Doba')->latest('date')->first();
         
@@ -4104,7 +3985,6 @@ class AdsMasterController extends Controller
             'Mercari With Ship' => $mercariWsMetrics ?? null,
             'Mercari Without Ship' => $mercariWosMetrics ?? null,
             'Macys' => $macysMetrics ?? null,
-            'Tiendamia' => $tiendamiaMetrics ?? null,
             'Best Buy USA' => $bestbuyMetrics ?? null,
             'Doba' => $dobaMetrics ?? null,
         ];

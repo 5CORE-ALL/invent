@@ -7380,15 +7380,8 @@
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
                             const percent = parseFloat(value);
-                            let color = '';
-
-                            // getRoiColor logic from inc/dec page
-                            if (percent < 40) color = '#a00211'; // red
-                            else if (percent < 75) color = '#ffc107'; // yellow
-                            else if (percent < 125) color = '#28a745'; // green
-                            else color = '#d63384'; // magenta
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         bottomCalc: "avg",
                         bottomCalcFormatter: function(cell) {
@@ -7411,14 +7404,8 @@
                         formatter: function(cell) {
                             const percent = ebayComputeNetRoi(cell.getRow().getData(), 'eBay Price');
                             if (percent === null || !isFinite(percent)) return '';
-                            let color = '';
-
-                            if (percent < 40) color = '#a00211'; // red
-                            else if (percent < 75) color = '#ffc107'; // yellow
-                            else if (percent < 125) color = '#28a745'; // green
-                            else color = '#d63384'; // magenta
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         bottomCalc: function(values, data) {
                             let sum = 0, n = 0;
@@ -7443,15 +7430,8 @@
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
                             const percent = parseFloat(value);
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
                     },
@@ -7470,15 +7450,8 @@
                             const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
                             // NPFT% = GPFT% − Ads% (channel TACOS)
                             const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         bottomCalc: function(values, data) {
                             const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : 0;
@@ -7805,15 +7778,8 @@
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return '';
 
-                            let color = '';
-                            // Same as GPFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },
@@ -7828,14 +7794,8 @@
                             const percent = parseFloat(value);
                             if (isNaN(percent)) return '';
 
-                            let color = '';
-                            // Same as GROI% / ROI% color logic
-                            if (percent < 40) color = '#a00211'; // red
-                            else if (percent < 75) color = '#ffc107'; // yellow
-                            else if (percent < 125) color = '#28a745'; // green
-                            else color = '#d63384'; // magenta
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },
@@ -7855,14 +7815,8 @@
                             const percent = ebayComputeNetRoi(cell.getRow().getData(), 'SPRICE');
                             if (percent === null || !isFinite(percent)) return '';
 
-                            let color = '';
-                            // Same as ROI% color logic
-                            if (percent < 40) color = '#a00211'; // red
-                            else if (percent < 75) color = '#ffc107'; // yellow
-                            else if (percent < 125) color = '#28a745'; // green
-                            else color = '#d63384'; // magenta
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },
@@ -7882,15 +7836,8 @@
                             const ads = parseFloat(EBAY_CHANNEL_ADS_PCT) || 0;
                             const percent = sgpft - ads;
 
-                            let color = '';
-                            // Same as PFT% color logic
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
                     },

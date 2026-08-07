@@ -19,7 +19,6 @@ class AllMarketplaceChannelRegistry
             ['key' => 'ebay2', 'label' => 'eBay 2', 'short' => 'E2', 'cls' => 'btn-ebay2', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'ebay3', 'label' => 'eBay 3', 'short' => 'E3', 'cls' => 'btn-ebay3', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'macy', 'label' => "Macy's", 'short' => 'M', 'cls' => 'btn-macy', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
-            ['key' => 'tiendamia', 'label' => 'Tiendamia', 'short' => 'TM', 'cls' => 'btn-tiendamia', 'group' => 'marketplaces', 'bullet' => false, 'description' => false, 'image' => false, 'video' => false],
             ['key' => 'alibaba', 'label' => 'Alibaba', 'short' => 'AB', 'cls' => 'btn-aliexpress', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'bestbuy', 'label' => 'Best Buy', 'short' => 'B', 'cls' => 'btn-bestbuy', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],
             ['key' => 'newegg', 'label' => 'Newegg', 'short' => 'NE', 'cls' => 'btn-newegg', 'group' => 'marketplaces', 'bullet' => true, 'description' => true, 'image' => true, 'video' => true],

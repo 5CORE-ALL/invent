@@ -7074,7 +7074,7 @@ PROMPT;
             $skus = $request->input('skus');
             $platforms = [
                 'amazon', 'ebay', 'ebay2', 'ebay3', 'shopify', 'walmart',
-                'doba', 'temu', 'shein', 'bestbuy', 'tiendamia', 'macy',
+                'doba', 'temu', 'shein', 'bestbuy', 'macy',
                 'reverb', 'wayfair', 'faire', 'aliexpress', 'mercari',
                 'fb_marketplace', 'tiktok_shop', 'fb_shop', 'insta_shop', 'pls',
             ];
@@ -7247,9 +7247,6 @@ PROMPT;
 
                 case 'bestbuy':
                     return $this->pushToBestBuy($sku, $data);
-
-                case 'tiendamia':
-                    return $this->pushToTiendamia($sku, $data);
 
                 case 'macy':
                     return $this->pushToMacy($sku, $data);
@@ -7749,14 +7746,6 @@ PROMPT;
     {
         // BestBuy API not yet implemented
         Log::info("Pushing dim/wt to BestBuy for SKU: {$sku} - API not implemented");
-
-        return false;
-    }
-
-    private function pushToTiendamia($sku, $data)
-    {
-        // Tiendamia API not yet implemented
-        Log::info("Pushing dim/wt to Tiendamia for SKU: {$sku} - API not implemented");
 
         return false;
     }

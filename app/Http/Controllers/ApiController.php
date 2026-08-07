@@ -10,7 +10,6 @@ use App\Models\AmazonDatasheet;
 use App\Models\EbayMetric;
 use App\Models\Ebay3Metric;
 use App\Models\MacyProduct;
-use App\Models\TiendamiaProduct;
 use App\Models\BestbuyUsaProduct;
 use App\Models\ReverbProduct;
 use App\Models\DobaSheetdata;
@@ -1534,9 +1533,6 @@ class ApiController extends Controller
         $macy_query = MacyProduct::where('sku', 'not like', '%Parent%');
         $macy_l30sales = (clone $macy_query)->selectRaw('SUM(m_l30 * price) as total')->value('total') ?? 0;
 
-        $tiend_query = TiendamiaProduct::where('sku', 'not like', '%Parent%');
-        $tiend_l30Sales  = (clone $tiend_query)->selectRaw('SUM(m_l30 * price) as total')->value('total') ?? 0;
-
         $best_buy_usa_query = BestbuyUsaProduct::where('sku', 'not like', '%Parent%');
         $best_buy_usa_l30Sales  = (clone $best_buy_usa_query)->selectRaw('SUM(m_l30 * price) as total')->value('total') ?? 0;
 
@@ -1599,7 +1595,7 @@ class ApiController extends Controller
         
      
         $total_l30_sales = intval($amz_l30Sales) + intval($ebay_l30Sales) + intval($ebay_two_channel_l30Sales) + intval($ebay_3channel_l30Sales) + intval($macy_l30sales) +
-                         intval($tiend_l30Sales) + intval($best_buy_usa_l30Sales) + intval($reverb_product_l30Sales) + intval($doba_sheetdata_l30Sales) + intval($temu_metric_l30Sales) +
+                         intval($best_buy_usa_l30Sales) + intval($reverb_product_l30Sales) + intval($doba_sheetdata_l30Sales) + intval($temu_metric_l30Sales) +
                          intval($walmart_l30Sales) + intval($pls_product_l30Sales) + intval($waifair_product_l30Sales) + intval($faire_product_sheet_l30Sales) + intval($shein_l30Sales) +
                          intval($tiktok_l30Sales) + intval($instagram_shop_l30Sales) + intval($aliexpress_sheet_l30Sales) + intval($mercari_l30Sales) + intval($mercariwoship_sheet_l30Sales) +
                          intval($fb_marketplace_sheet_l30Sales) + intval($fb_shop_sheet_l30Sales) + intval($business_five_coresheet_l30Sales) + intval($topdawg_sheetdata_l30Sales);

@@ -46,7 +46,6 @@ class MappingChannelCounts
         'macys' => ['label' => 'Macys', 'mi_key' => 'macys_not_map_count', 'loader' => 'macys'],
         'bestbuy' => ['label' => 'BestBuy USA', 'mi_key' => 'bestbuy_not_map_count'],
         'bestbuyusa' => ['label' => 'BestBuy USA', 'mi_key' => 'bestbuy_not_map_count'],
-        'tiendamia' => ['label' => 'Tiendamia', 'mi_key' => 'tiendamia_not_map_count'],
         'temu' => ['label' => 'Temu', 'mi_key' => 'temu_not_map_count', 'loader' => 'temu'],
         'temu2' => ['label' => 'Temu 2', 'loader' => 'temu2'],
         'shein' => ['label' => 'Shein', 'mi_key' => 'shein_not_map_count', 'loader' => 'shein'],
@@ -169,7 +168,7 @@ class MappingChannelCounts
 
         $order = [
             'amazon', 'ebay', 'ebay2', 'ebay3', 'reverb', 'macys', 'bestbuy',
-            'tiendamia', 'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
+            'temu', 'temu2', 'shein', 'newegg', 'aliexpress',
             'pls', 'wayfair', 'faire', 'topdawg', 'tiktok', 'tiktok2',
         ];
 

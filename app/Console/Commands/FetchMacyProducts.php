@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use App\Models\MacyProduct;
-use App\Models\TiendamiaProduct;
 use App\Models\PurchasingPowerProduct;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -330,13 +329,6 @@ class FetchMacyProducts extends Command
         DB::connection()->disconnect();
         sleep(1);
         
-        // Fetch and store Tiendamia products with channel-specific pricing
-        $this->fetchChannelProducts($token, 'tiendamia', "Tiendamia", $skuSales);
-        
-        // Close DB connection between channels
-        DB::connection()->disconnect();
-        sleep(1);
-        
         // Fetch and store BestBuy products with channel-specific pricing
         $this->fetchChannelProducts($token, 'bestbuyusa', "Best Buy USA", $skuSales);
 
@@ -356,7 +348,7 @@ class FetchMacyProducts extends Command
         // Final cleanup
         DB::connection()->disconnect();
         
-        $this->info("All Macy, Tiendamia, BestbuyUSA, Purchasing Power products stored successfully.");
+        $this->info("All Macy, BestbuyUSA, Purchasing Power products stored successfully.");
     }
 
     /**
@@ -549,7 +541,6 @@ class FetchMacyProducts extends Command
             // Determine table name based on channel
             $tableName = match($channelName) {
                 "Macy's, Inc." => 'macy_products',
-                "Tiendamia" => 'tiendamia_products',
                 "Best Buy USA" => 'bestbuy_usa_products',
                 "Purchasing Power" => 'purchasing_power_products',
                 default => null,
@@ -683,7 +674,7 @@ class FetchMacyProducts extends Command
 
     private function getSalesTotals(string $token): array
     {
-        $this->info("Fetching Macy, Tiendamia, BestbuyUSA orders in last 30 days...");
+        $this->info("Fetching Macy, BestbuyUSA, Purchasing Power orders in last 30 days...");
 
         $pageToken = null;
         $sales = [];

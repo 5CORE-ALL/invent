@@ -397,17 +397,20 @@ class PricingErrorsFixController extends Controller
     }
 
     /**
-     * After SPRICE save/push — patch cache for that SKU×marketplace (queued, non-blocking).
+     * After SPRICE save/push — patch PEF cache for that SKU×marketplace immediately.
+     *
+     * Important: do NOT Artisan::queue this. The database queue is often deeply backed up,
+     * so queued patches never run and /pricing-errors-fix keeps showing the old SPRICE.
      */
     public static function queueSkuRefresh(string $sku, string $marketplace, ?float $sprice = null): void
     {
         $sku = trim($sku);
-        $marketplace = strtolower(trim($marketplace));
+        $marketplace = strtolower(preg_replace('/\s+/', '', trim($marketplace)) ?? '');
         if ($sku === '' || $marketplace === '') {
             return;
         }
 
-        // Normalize aliases used by CVR save
+        // Normalize aliases used by CVR save → PEF pull_key / marketplace keys
         $aliases = [
             'ebay' => 'ebay',
             'ebay1' => 'ebay',
@@ -421,30 +424,111 @@ class PricingErrorsFixController extends Controller
             'macys' => 'macy',
             'purchasingpower' => 'ppower',
             'purchase' => 'ppower',
+            'shopify' => 'sb2c',
+            'shopifyb2c' => 'sb2c',
+            'shopifyb2b' => 'sb2b',
         ];
         $channel = $aliases[$marketplace] ?? $marketplace;
 
+        // 1) Instant patch so page reload / listed filter sees the new SPRICE
         try {
-            $params = [
-                '--sku' => $sku,
-                '--channel' => $channel,
-            ];
-            if ($sprice !== null) {
-                $params['--sprice'] = (string) $sprice;
-            }
-            // Prefer queue; fall back to sync in background-ish call
-            try {
-                Artisan::queue('pricing-errors:calculate-data', $params);
-            } catch (\Throwable $e) {
-                Artisan::call('pricing-errors:calculate-data', $params);
-            }
+            self::patchCalculatedCacheSprice($sku, [$channel, $marketplace], $sprice);
         } catch (\Throwable $e) {
-            Log::warning('PricingErrorsFix queueSkuRefresh failed', [
+            Log::warning('PricingErrorsFix immediate cache patch failed', [
                 'sku' => $sku,
                 'marketplace' => $marketplace,
                 'error' => $e->getMessage(),
             ]);
         }
+
+        // 2) Best-effort background full rebuild from CVR (does not block save response,
+        //    and does not add to the million-job database queue backlog).
+        try {
+            $artisan = base_path('artisan');
+            $php = PHP_BINARY ?: 'php';
+            $cmd = escapeshellarg($php).' '.escapeshellarg($artisan)
+                .' pricing-errors:calculate-data --sku='.escapeshellarg($sku)
+                .' --channel='.escapeshellarg($channel);
+            if ($sprice !== null) {
+                $cmd .= ' --sprice='.escapeshellarg((string) $sprice);
+            }
+            $cmd .= ' > /dev/null 2>&1 &';
+            if (stripos(PHP_OS, 'WIN') === 0) {
+                // Windows: fire-and-forget via start
+                pclose(popen('start /B '.$cmd, 'r'));
+            } else {
+                exec($cmd);
+            }
+        } catch (\Throwable $e) {
+            Log::debug('PricingErrorsFix background cache refresh skipped: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Patch existing pricing_errors_fix_calculated_data rows for SKU × channel keys.
+     *
+     * @param  array<int, string>  $channelKeys
+     */
+    public static function patchCalculatedCacheSprice(string $sku, array $channelKeys, ?float $sprice): int
+    {
+        if (! Schema::hasTable('pricing_errors_fix_calculated_data')) {
+            return 0;
+        }
+
+        $keys = array_values(array_unique(array_filter(array_map(static function ($k) {
+            return strtolower(trim((string) $k));
+        }, $channelKeys))));
+        if ($keys === []) {
+            return 0;
+        }
+
+        $skuUpper = strtoupper(trim($sku));
+        $rows = PricingErrorsFixCalculatedData::query()
+            ->where(function ($q) use ($sku, $skuUpper) {
+                $q->where('sku', $sku)
+                    ->orWhereRaw('UPPER(TRIM(sku)) = ?', [$skuUpper]);
+            })
+            ->where(function ($q) use ($keys) {
+                $q->whereIn('marketplace', $keys)->orWhereIn('pull_key', $keys);
+            })
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return 0;
+        }
+
+        $ctrl = app(self::class);
+        $n = 0;
+        foreach ($rows as $row) {
+            if ($sprice !== null && $sprice > 0) {
+                $calc = $ctrl->publicComputeMetrics(
+                    $row->price !== null ? (float) $row->price : null,
+                    (float) $sprice,
+                    (float) ($row->lp ?? 0),
+                    (float) ($row->ship ?? 0),
+                    (float) ($row->margin ?? 0),
+                    (float) ($row->ads_pct ?? 0)
+                );
+                $row->sprice = round((float) $sprice, 2);
+                $row->sroi = $calc['sroi'];
+                $row->sgpft = $calc['sgpft'];
+                $row->snroi = $calc['snroi'];
+                $row->snpft = $calc['snpft'];
+            } else {
+                $row->sprice = null;
+                $row->sroi = null;
+                $row->sgpft = null;
+                $row->snroi = null;
+                $row->snpft = null;
+            }
+            $row->calculated_at = now();
+            $row->save();
+            $n++;
+        }
+
+        self::forgetLowGroiSkuSidebarCountCache();
+
+        return $n;
     }
 
     /**
@@ -751,12 +835,6 @@ class PricingErrorsFixController extends Controller
                 'price_keys' => ['price', 'Price', 'PP Price'],
                 'fetch' => fn (Request $r) => app(PurchasingPowerController::class)->dataJson($r),
             ],
-            'tiendamia' => [
-                'label' => 'Tiendamia',
-                'marketplace' => 'tiendamia',
-                'price_keys' => ['price', 'Price'],
-                'fetch' => fn (Request $r) => app(TiendamiaPricingController::class)->tiendamiaDataJson($r),
-            ],
             'pls' => [
                 'label' => 'PLS',
                 'marketplace' => 'pls',
@@ -995,7 +1073,7 @@ class PricingErrorsFixController extends Controller
             'bestbuy' => 0.85, 'macy' => 0.85, 'reverb' => 0.85,
             'topdawg' => 0.85, 'sb2c' => 0.85, 'sb2b' => 0.85,
             'ppower' => 0.85, 'shein' => 0.85, 'faire' => 0.85,
-            'aliexpress' => 0.85, 'wayfair' => 0.85, 'tiendamia' => 0.85, 'pls' => 0.85,
+            'aliexpress' => 0.85, 'wayfair' => 0.85, 'pls' => 0.85,
         ];
 
         return $this->takeHomeCache[$mp] = $defaults[$mp] ?? 0.80;
@@ -1014,7 +1092,7 @@ class PricingErrorsFixController extends Controller
         // Channels with no ads deduction (same as CVR master / channel tabulators)
         $noAds = [
             'doba', 'bestbuy', 'macy', 'topdawg', 'shein', 'faire', 'aliexpress',
-            'ppower', 'sb2c', 'sb2b', 'temu2', 'wayfair', 'tiendamia', 'pls', 'reverb',
+            'ppower', 'sb2c', 'sb2b', 'temu2', 'wayfair', 'pls', 'reverb',
         ];
         if (in_array($mp, $noAds, true)) {
             return $this->adsPctCache[$mp] = 0.0;
@@ -1130,7 +1208,6 @@ class PricingErrorsFixController extends Controller
             'sb2c' => ['B2B L30', 'b2c_l30', 'l30'],
             'sb2b' => ['B2B L30', 'b2b_l30', 'l30'],
             'ppower' => ['PP L30', 'pp_l30', 'm_l30', 'l30'],
-            'tiendamia' => ['M L30', 'm_l30', 'l30'],
             'pls' => ['pls_l30', 'p_l30', 'l30'],
             'wayfair' => ['al30', 'l30'],
             'shein' => ['al30', 'l30'],

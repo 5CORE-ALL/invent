@@ -169,7 +169,6 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSpocketController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
-use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiendamiaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
@@ -222,8 +221,6 @@ use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
 use App\Http\Controllers\MarketPlace\TemuController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
-use App\Http\Controllers\MarketPlace\TiendamiaController;
-use App\Http\Controllers\MarketPlace\TiendamiaPricingController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
 use App\Http\Controllers\MarketPlace\WayfairController;
@@ -3572,13 +3569,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/macys-daily-sales-column-visibility', [\App\Http\Controllers\Sales\MacysSalesController::class, 'getColumnVisibility']);
     Route::post('/macys-daily-sales-column-visibility', [\App\Http\Controllers\Sales\MacysSalesController::class, 'saveColumnVisibility']);
 
-    // Tiendamia Sales Routes
-    Route::get('/tiendamia/daily-sales-data', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getData'])->name('tiendamia.daily.sales.data');
-    Route::get('/tiendamia/daily-sales', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'index'])->name('tiendamia.daily.sales');
-    Route::get('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getColumnVisibility']);
-    Route::post('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'saveColumnVisibility']);
-    Route::get('/tiendamia-catalog-metrics', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getCatalogMetrics']);
-
     // Best Buy Pricing Routes
     // Bestbuy Listing Variation Verify — listings from bestbuy_usa_products + bestbuy_price_data (/bestbuy-pricing)
     Route::get('/bestbuy-listing-variation-verify', [BestbuyListingVariationVerifyController::class, 'index'])->name('bestbuy.listing.variation.verify');
@@ -5405,13 +5395,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_poshmark/import', [ListingPoshmarkController::class, 'import'])->name('listing_poshmark.import');
     Route::get('/listing_poshmark/export', [ListingPoshmarkController::class, 'export'])->name('listing_poshmark.export');
 
-    // Tiendamia
-    Route::get('/listing-tiendamia', [ListingTiendamiaController::class, 'listingTiendamia'])->name('listing.tiendamia');
-    Route::get('/listing_tiendamia/view-data', [ListingTiendamiaController::class, 'getViewListingTiendamiaData']);
-    Route::post('/listing_tiendamia/save-status', [ListingTiendamiaController::class, 'saveStatus']);
-    Route::post('/listing_tiendamia/import', [ListingTiendamiaController::class, 'import'])->name('listing_tiendamia.import');
-    Route::get('/listing_tiendamia/export', [ListingTiendamiaController::class, 'export'])->name('listing_tiendamia.export');
-
     // Shein
     Route::get('/listing-shein', [ListingSheinController::class, 'listingShein'])->name('listing.shein');
     Route::get('/listing_shein/view-data', [ListingSheinController::class, 'getViewListingSheinData']);
@@ -5498,26 +5481,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // instagram shop
     Route::get('instagramPricingCVR', [InstagramController::class, 'instagramPricingCVR'])->name('instagram.pricing.cvr');
     Route::post('/instagram/save-nr', [InstagramController::class, 'saveNrToDatabase']);
-
-    // tiendamia
-    Route::get('plsPricingCVR', [TiendamiaController::class, 'tiendamiaPricingCVR'])->name('tiendamia.pricing.cvr');
-    
-    // Tiendamia Pricing Routes
-    Route::get('/tiendamia-pricing', [TiendamiaPricingController::class, 'tiendamiaTabulatorView'])->name('tiendamia.pricing');
-    Route::get('/tiendamia-data-json', [TiendamiaPricingController::class, 'tiendamiaDataJson'])->name('tiendamia.data.json');
-    Route::post('/tiendamia-upload-csv', [TiendamiaPricingController::class, 'uploadTiendamiaCsv'])->name('tiendamia.upload.csv');
-    Route::get('/tiendamia-download-sample-csv', [TiendamiaPricingController::class, 'downloadSampleCsv'])->name('tiendamia.download.sample');
-    Route::post('/tiendamia-save-sprice', [TiendamiaPricingController::class, 'saveSpriceUpdates'])->name('tiendamia.save.sprice');
-    Route::post('/tiendamia-save-nrp', [TiendamiaPricingController::class, 'saveNrp'])->name('tiendamia.save.nrp');
-    Route::post('/tiendamia-save-links', [TiendamiaPricingController::class, 'saveLinks'])->name('tiendamia.save.links');
-    Route::get('/tiendamia-test-nrp', [TiendamiaPricingController::class, 'testNrp'])->name('tiendamia.test.nrp');
-    Route::get('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'getColumnVisibility'])->name('tiendamia.column.get');
-    Route::post('/tiendamia-pricing-column-visibility', [TiendamiaPricingController::class, 'setColumnVisibility'])->name('tiendamia.column.set');
-    Route::post('/tiendamia-utilized-update', [TiendamiaPricingController::class, 'updateUtilizedField'])->name('tiendamia.utilized.update');
-    Route::post('/tiendamia-utilized-upload', function() {
-        return response()->json(['success' => false, 'message' => 'Campaign upload not available for Tiendamia (no ads)'], 400);
-    })->name('tiendamia.utilized.upload');
-
 
     // fbshop
     Route::get('fbshopPricingCVR', [FbshopController::class, 'fbshopPricingCVR'])->name('fbshop.pricing.cvr');

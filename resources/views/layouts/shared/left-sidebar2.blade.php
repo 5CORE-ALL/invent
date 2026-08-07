@@ -1773,21 +1773,6 @@
                                 </div>
                             </li> -->
 
-                            <!-- Tiendamia -->
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#sidebarTiendamia" aria-expanded="false"
-                                    aria-controls="sidebarTiendamia">
-                                    <span>Tiendamia</span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="sidebarTiendamia">
-                                    <ul class="side-nav-third-level">
-                                            <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
-                                            </li>
-                                            <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia Pricing</a></li>
-                                    </ul>
-                                </div>
-                            </li>
                             <!-- Shein -->
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarShein" aria-expanded="false"

@@ -2109,21 +2109,6 @@
             </li>
 
 
-            <!-- Tiendamia -->
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarTiendamia" aria-expanded="false"
-                    aria-controls="sidebarTiendamia">
-                    <span>Tiendamia</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarTiendamia">
-                    <ul class="side-nav-third-level">
-                        <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
-                        </li>
-                        <li><a href="{{ route('tiendamia.pricing') }}">Tiendamia - Analytics</a></li>
-                    </ul>
-                </div>
-            </li>
             <!-- Shein -->
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarShein" aria-expanded="false"
@@ -2886,8 +2871,6 @@
                         <li><a href="{{ route('newegg.listing.variation.verify') }}">Newegg Listing Variation Verify</a></li>
 
                         <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
-
-                        <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>
 
                         <li><a href="{{ route('purchasing.power.sales') }}">Purchasing Power Sales Data</a></li>
 

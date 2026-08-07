@@ -32,3 +32,6 @@
         color: #000 !important;
     }
 </style>
+
+{{-- Global NROI / GROI / NPFT / GPFT % color schema (window.MetricPctColors) --}}
+<script src="{{ asset('js/metric-percent-colors.js') }}"></script>

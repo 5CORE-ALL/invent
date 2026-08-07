@@ -850,7 +850,6 @@ class ShopifyController extends Controller
             ['value' => 'vinted-com', 'label' => 'Vinted.com', 'terms' => ['vinted']],
             ['value' => 'newegg', 'label' => 'Newegg', 'terms' => ['newegg']],
             ['value' => 'pls', 'label' => 'PLS', 'terms' => ['pls', 'prolightsounds']],
-            ['value' => 'tiendamia', 'label' => 'Tiendamia', 'terms' => ['tiendamia']],
             ['value' => 'business-5core', 'label' => 'Business 5Core', 'terms' => ['business 5core', 'business5core', 'b5c']],
             ['value' => 'mercari-wo-ship', 'label' => 'Mercari wo ship', 'terms' => ['mercari wo ship', 'mercari without ship']],
             ['value' => 'fb-marketplace', 'label' => 'FB Marketplace', 'terms' => ['fb marketplace', 'facebook marketplace']],

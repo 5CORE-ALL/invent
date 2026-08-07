@@ -13,7 +13,6 @@ use App\Models\PLSProduct;
 use App\Models\ReverbProduct;
 use App\Models\SheinMetric;
 use App\Models\TemuMetric;
-use App\Models\TiendamiaProduct;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\WalmartMetrics;
@@ -161,14 +160,6 @@ class ChannelListingRegistry
                 'dataView' => \App\Models\BestbuyUSADataView::class,
                 'status' => \App\Models\BestbuyUSAListingStatus::class,
                 'listed' => ['type' => 'price', 'model' => BestbuyUsaProduct::class, 'column' => 'price'],
-                'id_field' => 'listing_id',
-                'buyer_tpl' => null,
-                'seller_tpl' => null,
-            ],
-            'tiendamia' => [
-                'dataView' => \App\Models\TiendamiaDataView::class,
-                'status' => \App\Models\TiendamiaListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => TiendamiaProduct::class, 'column' => 'price'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,

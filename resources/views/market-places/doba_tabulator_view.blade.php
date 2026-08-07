@@ -2227,15 +2227,8 @@
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             // Value is already a percentage from controller (PFT_percentage)
-                            let style = '';
-                            // getPftColor logic from pricing CVR
-                            if (value < 10) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
-                            else if (value >= 10 && value < 15) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value >= 15 && value < 20) style = 'color: #3591dc; font-weight: bold;'; // blue
-                            else if (value >= 20 && value <= 40) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
-                            
-                            return `<span style="${style}">${Math.round(value)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },
                     {
@@ -2246,15 +2239,8 @@
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             // Value is already a percentage from controller (ROI_percentage)
-                            let style = '';
-                            
-                            // getRoiColor logic from pricing CVR
-                            if (value < 40) style = 'color: #a00211; font-weight: 800;'; // red - extra bold
-                            else if (value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value < 125) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #d63384; font-weight: 800;'; // magenta - extra bold
-                            
-                            return `<span style="${style}">${Math.round(value)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },
                     {
@@ -2317,14 +2303,8 @@
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value === 0) return '';
-                            let style = '';
-                            // Match NPFT% coloring
-                            if (value < 10) style = 'color: #dc3545; font-weight: 800;'; // red - extra bold
-                            else if (value >= 10 && value < 15) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value >= 15 && value < 20) style = 'color: #3591dc; font-weight: bold;'; // blue
-                            else if (value >= 20 && value <= 40) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #e83e8c; font-weight: 800;'; // pink - extra bold
-                            return `<span style="${style}">${Math.round(value)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },
                     {
@@ -2336,13 +2316,8 @@
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value === 0) return '';
-                            let style = '';
-                            // Match ROI coloring
-                            if (value < 40) style = 'color: #a00211; font-weight: 800;'; // red - extra bold
-                            else if (value < 75) style = 'color: #ffc107; font-weight: bold;'; // yellow
-                            else if (value < 125) style = 'color: #28a745; font-weight: bold;'; // green
-                            else style = 'color: #d63384; font-weight: 800;'; // magenta - extra bold
-                            return `<span style="${style}">${Math.round(value)}%</span>`;
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', value)) || '';
+                            return _st ? `<span style="${_st}">${Math.round(value)}%</span>` : `${Math.round(value)}%`;
                         }
                     },
                     {

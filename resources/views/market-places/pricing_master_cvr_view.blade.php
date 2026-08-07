@@ -1507,13 +1507,13 @@
                             <li><a class="dropdown-item column-filter active" href="#" data-column="avg_gpft" data-range="all">
                                     <span class="status-circle default"></span> All GPFT</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="lt-20">
-                                    <span class="status-circle red"></span> &lt; 20%</a></li>
+                                    <span class="status-circle red"></span> ≤ 20%</a></li>
                             <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="20-30">
                                     <span class="status-circle yellow"></span> 20-30%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="30-40">
-                                    <span class="status-circle green"></span> 30-40%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="gt-40">
-                                    <span class="status-circle magenta-bg"></span> &gt; 40%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="30-43">
+                                    <span class="status-circle green"></span> 30-43%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_gpft" data-range="gt-43">
+                                    <span class="status-circle magenta-bg"></span> ≥ 43%</a></li>
                         </ul>
                     </div>
 
@@ -1525,14 +1525,14 @@
                         <ul class="dropdown-menu" aria-labelledby="npftFilterDropdown">
                             <li><a class="dropdown-item column-filter active" href="#" data-column="avg_pft" data-range="all">
                                     <span class="status-circle default"></span> All NPFT</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="lt-30">
-                                    <span class="status-circle red"></span> &lt; 30%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="30-40">
-                                    <span class="status-circle yellow"></span> 30-40%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="40-50">
-                                    <span class="status-circle green"></span> 40-50%</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="gt-50">
-                                    <span class="status-circle magenta-bg"></span> &gt; 50%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="lt-10">
+                                    <span class="status-circle red"></span> ≤ 10%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="10-20">
+                                    <span class="status-circle yellow"></span> 10-20%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="20-33">
+                                    <span class="status-circle green"></span> 20-33%</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="avg_pft" data-range="gte-33">
+                                    <span class="status-circle pink"></span> ≥ 33%</a></li>
                         </ul>
                     </div>
 
@@ -2595,7 +2595,7 @@
                     }
                 }
                 
-                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3', 'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'macy', 'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b', 'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'].includes(mpLower);
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -2604,17 +2604,12 @@
                 else if (cvr >= 3 && cvr < 5) cvrColor = '#28a745'; // Green
                 else cvrColor = '#e83e8c'; // Pink
                 
-                // Color coding for GPFT% / NPFT%: <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
+                // MetricPctColors: GPFT / NPFT / SGPFT / SPFT / SROI / GROI / NROI / SNROI
                 let gpftColor = '';
-                let gpftStyle = '';
+                let gpftStyle = (window.MetricPctColors && MetricPctColors.gpftStyle(gpft)) || '';
                 let adColor = '';
                 let npftColor = '';
-                let npftStyle = '';
-                
-                if (gpft < 20) { gpftColor = '#dc3545'; gpftStyle = styleForCellColor(gpftColor); }
-                else if (gpft < 30) { gpftColor = '#ffc107'; gpftStyle = styleForCellColor(gpftColor); }
-                else if (gpft <= 40) { gpftColor = '#28a745'; gpftStyle = styleForCellColor(gpftColor); }
-                else { gpftStyle = 'color:#4e0dab;font-weight:700;'; }
+                let npftStyle = (window.MetricPctColors && MetricPctColors.npftStyle(npft)) || '';
                 
                 // Ads% color — Temu uses per-SKU Ads%; others use channel Ads%
                 const adsColorVal = isTemuMpRow ? adsDisplay : tacosCh;
@@ -2622,44 +2617,17 @@
                 else if (adsColorVal <= 10) adColor = '#28a745';
                 else adColor = '#a00211';
                 
-                // NPFT: <30 red, 30–40 yellow, 40–50 green, >50 black on magenta
-                if (npft < 30) { npftColor = '#dc3545'; npftStyle = styleForCellColor(npftColor); }
-                else if (npft < 40) { npftColor = '#ffc107'; npftStyle = styleForCellColor(npftColor); }
-                else if (npft <= 50) { npftColor = '#28a745'; npftStyle = styleForCellColor(npftColor); }
-                else { npftStyle = 'color:#4e0dab;font-weight:700;'; }
-                
-                // Color coding for SGPFT%, SPFT%, SROI%
-                let sgpftColor = '';
-                if (sgpft < 0) sgpftColor = '#a00211';
-                else if (sgpft >= 0 && sgpft < 10) sgpftColor = '#ffc107';
-                else if (sgpft >= 10 && sgpft < 20) sgpftColor = '#3591dc';
-                else if (sgpft >= 20 && sgpft <= 40) sgpftColor = '#28a745';
-                else sgpftColor = '#e83e8c';
-                
-                let spftColor = '';
-                if (spft < 0) spftColor = '#a00211';
-                else if (spft >= 0 && spft < 10) spftColor = '#ffc107';
-                else if (spft >= 10 && spft < 20) spftColor = '#3591dc';
-                else if (spft >= 20 && spft <= 40) spftColor = '#28a745';
-                else spftColor = '#e83e8c';
-                
-                let sroiColor = '';
-                if (sroi < 0) sroiColor = '#a00211';
-                else if (sroi >= 0 && sroi < 50) sroiColor = '#ffc107';
-                else if (sroi >= 50 && sroi < 100) sroiColor = '#3591dc';
-                else if (sroi >= 100 && sroi <= 150) sroiColor = '#28a745';
-                else sroiColor = '#e83e8c';
+                const sgpftStyle = (window.MetricPctColors && MetricPctColors.gpftStyle(sgpft)) || '';
+                const sgpftColor = (window.MetricPctColors && MetricPctColors.gpftColor(sgpft)) || '';
+                const spftStyle = (window.MetricPctColors && MetricPctColors.npftStyle(spft)) || '';
+                const spftColor = (window.MetricPctColors && MetricPctColors.npftColor(spft)) || '';
+                // SROI is net on Amazon/PEF; use NROI schema
+                const sroiStyle = (window.MetricPctColors && MetricPctColors.nroiStyle(sroi)) || '';
+                const sroiColor = (window.MetricPctColors && MetricPctColors.nroiColor(sroi)) || '';
 
-                // GROI / NROI color slabs (same as main-table Avg GROI%)
-                const roiColorFor = (pct) => {
-                    if (pct < 50) return '#a00211';
-                    if (pct < 100) return '#ffc107';
-                    if (pct <= 150) return '#28a745';
-                    return '#e83e8c';
-                };
-                const groiColor = roiColorFor(groi);
-                const nroiColor = roiColorFor(nroi);
-                const snroiColor = roiColorFor(snroi);
+                const groiColor = (window.MetricPctColors && MetricPctColors.groiColor(groi)) || '';
+                const nroiColor = (window.MetricPctColors && MetricPctColors.nroiColor(nroi)) || '';
+                const snroiColor = (window.MetricPctColors && MetricPctColors.nroiColor(snroi)) || '';
                 
                 // Add to totals only if listed
                 if (isListed) {
@@ -2824,7 +2792,7 @@
                                 : (sprice > 0 ? '$' + sprice.toFixed(2) : '-')}
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-sroi" style="${styleForCellColor(sroiColor)}">${Math.round(sroi)}%</span>
+                            <span class="calculated-sroi" style="${(sroiStyle || styleForCellColor(sroiColor))}">${Math.round(sroi)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
                             ${sprice > 0 && lp > 0
@@ -2832,10 +2800,10 @@
                                 : '<span class="calculated-snroi text-muted">-</span>'}
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-sgpft" style="${styleForCellColor(sgpftColor)}">${Math.round(sgpft)}%</span>
+                            <span class="calculated-sgpft" style="${sgpftStyle || styleForCellColor(sgpftColor)}">${Math.round(sgpft)}%</span>
                         </td>
                         <td class="text-end ${textClass}">
-                            <span class="calculated-spft" style="${styleForCellColor(spftColor)}">${Math.round(spft)}%</span>
+                            <span class="calculated-spft" style="${(spftStyle || styleForCellColor(spftColor))}">${Math.round(spft)}%</span>
                         </td>
                         <td class="text-center ${textClass}">
                             ${canPushPrice ? 
@@ -2882,32 +2850,13 @@
             else if (avgCVR >= 3 && avgCVR < 5) cvrColorTotal = '#28a745';
             else cvrColorTotal = '#e83e8c';
             
-            // GPFT% / NPFT% color: <20 red, 20–30 yellow, 30–40 green, >40 black on magenta
-            let gpftStyleTotal = '';
-            if (avgGPFT < 20) gpftStyleTotal = styleForCellColor('#dc3545');
-            else if (avgGPFT < 30) gpftStyleTotal = styleForCellColor('#ffc107');
-            else if (avgGPFT <= 40) gpftStyleTotal = styleForCellColor('#28a745');
-            else gpftStyleTotal = 'color:#4e0dab;font-weight:700;';
-            
-            let npftStyleTotal = '';
-            if (avgNPFT < 30) npftStyleTotal = styleForCellColor('#dc3545');
-            else if (avgNPFT < 40) npftStyleTotal = styleForCellColor('#ffc107');
-            else if (avgNPFT <= 50) npftStyleTotal = styleForCellColor('#28a745');
-            else npftStyleTotal = 'color:#4e0dab;font-weight:700;';
-            
-            let sgpftColorTotal = '';
-            if (avgSGPFT < 0) sgpftColorTotal = '#a00211';
-            else if (avgSGPFT >= 0 && avgSGPFT < 10) sgpftColorTotal = '#ffc107';
-            else if (avgSGPFT >= 10 && avgSGPFT < 20) sgpftColorTotal = '#3591dc';
-            else if (avgSGPFT >= 20 && avgSGPFT <= 40) sgpftColorTotal = '#28a745';
-            else sgpftColorTotal = '#e83e8c';
-            
-            let spftColorTotal = '';
-            if (avgSPFT < 0) spftColorTotal = '#a00211';
-            else if (avgSPFT >= 0 && avgSPFT < 10) spftColorTotal = '#ffc107';
-            else if (avgSPFT >= 10 && avgSPFT < 20) spftColorTotal = '#3591dc';
-            else if (avgSPFT >= 20 && avgSPFT <= 40) spftColorTotal = '#28a745';
-            else spftColorTotal = '#e83e8c';
+            // MetricPctColors totals
+            let gpftStyleTotal = (window.MetricPctColors && MetricPctColors.gpftStyle(avgGPFT)) || '';
+            let npftStyleTotal = (window.MetricPctColors && MetricPctColors.npftStyle(avgNPFT)) || '';
+            let sgpftColorTotal = (window.MetricPctColors && MetricPctColors.gpftColor(avgSGPFT)) || '';
+            const sgpftStyleTotal = (window.MetricPctColors && MetricPctColors.gpftStyle(avgSGPFT)) || '';
+            let spftColorTotal = (window.MetricPctColors && MetricPctColors.npftColor(avgSPFT)) || '';
+            const spftStyleTotal = (window.MetricPctColors && MetricPctColors.npftStyle(avgSPFT)) || '';
             
             // Ads% color — same thresholds as /all-marketplace-master
             let adColorTotal = '';
@@ -2915,13 +2864,9 @@
             else if (avgAD <= 10) adColorTotal = '#28a745';
             else adColorTotal = '#a00211';
             
-            // SROI% color
-            let sroiColorTotal = '';
-            if (avgSROI < 0) sroiColorTotal = '#a00211';
-            else if (avgSROI >= 0 && avgSROI < 50) sroiColorTotal = '#ffc107';
-            else if (avgSROI >= 50 && avgSROI < 100) sroiColorTotal = '#3591dc';
-            else if (avgSROI >= 100 && avgSROI <= 150) sroiColorTotal = '#28a745';
-            else sroiColorTotal = '#e83e8c';
+            // SROI% color (NROI schema)
+            let sroiColorTotal = (window.MetricPctColors && MetricPctColors.nroiColor(avgSROI)) || '';
+            const sroiStyleTotal = (window.MetricPctColors && MetricPctColors.nroiStyle(avgSROI)) || '';
             
             // Update totals with color formatting
             // Calculate average price = Total Sold Amount / Total Sold Qty (L30)
@@ -2933,24 +2878,20 @@
             // Update header L30 to match the calculated total from breakdown (fixes L30 diff issue)
             $('#modal-header-l30').text(totalL30.toLocaleString());
             
-            const roiColorTotal = (pct) => {
-                if (pct < 50) return '#a00211';
-                if (pct < 100) return '#ffc107';
-                if (pct <= 150) return '#28a745';
-                return '#e83e8c';
-            };
+            const roiColorTotal = (pct) => (window.MetricPctColors ? MetricPctColors.groiColor(pct) : '#dc3545');
+            const nroiColorTotal = (pct) => (window.MetricPctColors ? MetricPctColors.nroiColor(pct) : '#dc3545');
             $('#modal-avg-cvr').html(`<span style="${styleForCellColor(cvrColorTotal)}">${Math.round(avgCVR)}%</span>`);
             $('#modal-avg-groi').html(`<span style="${styleForCellColor(roiColorTotal(avgGROI))}">${Math.round(avgGROI)}%</span>`);
-            $('#modal-avg-nroi').html(`<span style="${styleForCellColor(roiColorTotal(avgNROI))}">${Math.round(avgNROI)}%</span>`);
+            $('#modal-avg-nroi').html(`<span style="${styleForCellColor(nroiColorTotal(avgNROI))}">${Math.round(avgNROI)}%</span>`);
             $('#modal-avg-gpft').html(`<span style="${gpftStyleTotal}">${Math.round(avgGPFT)}%</span>`);
             $('#modal-avg-ad').html(`<span style="${styleForCellColor(adColorTotal)};font-weight:600;">${Math.round(avgAD)}%</span>`);
             $('#modal-avg-npft').html(`<span style="${npftStyleTotal}">${Math.round(avgNPFT)}%</span>`);
             
             $('#modal-avg-sprice').text('$' + (spriceCount > 0 ? totalSPRICE / spriceCount : 0).toFixed(2));
-            $('#modal-avg-sgpft').html(`<span style="${styleForCellColor(sgpftColorTotal)}">${Math.round(avgSGPFT)}%</span>`);
-            $('#modal-avg-spft').html(`<span style="${styleForCellColor(spftColorTotal)}">${Math.round(avgSPFT)}%</span>`);
-            $('#modal-avg-sroi').html(`<span style="${styleForCellColor(sroiColorTotal)}">${Math.round(avgSROI)}%</span>`);
-            $('#modal-avg-snroi').html(`<span style="${styleForCellColor(roiColorTotal(avgSNROI))}">${Math.round(avgSNROI)}%</span>`);
+            $('#modal-avg-sgpft').html(`<span style="${(sgpftStyleTotal || styleForCellColor(sgpftColorTotal))}">${Math.round(avgSGPFT)}%</span>`);
+            $('#modal-avg-spft').html(`<span style="${(spftStyleTotal || styleForCellColor(spftColorTotal))}">${Math.round(avgSPFT)}%</span>`);
+            $('#modal-avg-sroi').html(`<span style="${(sroiStyleTotal || styleForCellColor(sroiColorTotal))}">${Math.round(avgSROI)}%</span>`);
+            $('#modal-avg-snroi').html(`<span style="${styleForCellColor(nroiColorTotal(avgSNROI))}">${Math.round(avgSNROI)}%</span>`);
             updateOvl30SortIcons();
             scheduleAutoFitOvl30TableFont();
             applyModalGroupFilter({ selectChannels: false });
@@ -3227,13 +3168,8 @@
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
                         if (!Number.isFinite(pct)) return '-';
-                        // Same slabs as Amz GROI%: <50 red, 50–100 yellow, 100–150 green, >150 magenta
-                        let color = '';
-                        if (pct < 50) color = '#a00211';
-                        else if (pct >= 50 && pct < 100) color = '#ffc107';
-                        else if (pct >= 100 && pct <= 150) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                        const st = (window.MetricPctColors && MetricPctColors.groiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
                     }
                 },
                 {
@@ -3259,13 +3195,8 @@
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
                         if (!Number.isFinite(pct)) return '-';
-                        // Same slabs as GROI%: <50 red, 50–100 yellow, 100–150 green, >150 magenta
-                        let color = '';
-                        if (pct < 50) color = '#a00211';
-                        else if (pct >= 50 && pct < 100) color = '#ffc107';
-                        else if (pct >= 100 && pct <= 150) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
                     }
                 },
                 {
@@ -3373,12 +3304,8 @@
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 50) color = '#a00211';
-                        else if (pct >= 50 && pct < 100) color = '#ffc107';
-                        else if (pct >= 100 && pct <= 150) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${pct.toFixed(0)}%</span>`;
+                        const st = (window.MetricPctColors && MetricPctColors.groiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${pct.toFixed(0)}%</span>` : `${pct.toFixed(0)}%`;
                     }
                 },
                 {
@@ -3428,13 +3355,8 @@
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 0) color = '#a00211';
-                        else if (pct >= 0 && pct < 10) color = '#ffc107';
-                        else if (pct >= 10 && pct < 20) color = '#3591dc';
-                        else if (pct >= 20 && pct <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                        const st = (window.MetricPctColors && MetricPctColors.gpftStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
                     }
                 },
                 {
@@ -3448,13 +3370,8 @@
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 0) color = '#a00211';
-                        else if (pct >= 0 && pct < 10) color = '#ffc107';
-                        else if (pct >= 10 && pct < 20) color = '#3591dc';
-                        else if (pct >= 20 && pct <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                        const st = (window.MetricPctColors && MetricPctColors.npftStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
                     }
                 },
                 {
@@ -3468,13 +3385,8 @@
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
                         const pct = parseFloat(value);
-                        let color = '';
-                        if (pct < 0) color = '#a00211';
-                        else if (pct >= 0 && pct < 50) color = '#ffc107';
-                        else if (pct >= 50 && pct < 100) color = '#3591dc';
-                        else if (pct >= 100 && pct <= 150) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="${styleForCellColor(color)}">${Math.round(pct)}%</span>`;
+                        const st = (window.MetricPctColors && MetricPctColors.nroiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
                     }
                 },
                 {
@@ -3900,18 +3812,13 @@
         
         // Helper: same color logic as modal table for SGPFT%, SPFT%, SROI%
         function getSgpftSpftColor(pct) {
-            if (pct < 0) return '#a00211';
-            if (pct >= 0 && pct < 10) return '#ffc107';
-            if (pct >= 10 && pct < 20) return '#3591dc';
-            if (pct >= 20 && pct <= 40) return '#28a745';
-            return '#e83e8c';
+            if (window.MetricPctColors) return MetricPctColors.gpftColor(pct) || '#dc3545';
+            return '#dc3545';
         }
         function getSroiColor(pct) {
-            if (pct < 0) return '#a00211';
-            if (pct >= 0 && pct < 50) return '#ffc107';
-            if (pct >= 50 && pct < 100) return '#3591dc';
-            if (pct >= 100 && pct <= 150) return '#28a745';
-            return '#e83e8c';
+            // SROI/SNROI → NROI schema
+            if (window.MetricPctColors) return MetricPctColors.nroiColor(pct) || '#dc3545';
+            return '#dc3545';
         }
         // Dark mustard text (no yellow background)
         const darkMustard = '#ff9c00'; // orange/mustard accent
@@ -3928,21 +3835,14 @@
             if (c === '#ffc107') return 'color:' + darkMustard + ';font-weight:600;';
             return 'color:' + c + ';font-weight:600;';
         }
-        // GPFT slabs: <20 red, 20–30 yellow, 30–40 green, >40 purple text (no bg)
+        // GPFT / NPFT via MetricPctColors
         function styleForGpftValue(value) {
-            const v = parseFloat(value) || 0;
-            if (v < 20) return styleForCellColor('#dc3545');
-            if (v < 30) return styleForCellColor('#ffc107');
-            if (v <= 40) return styleForCellColor('#28a745');
-            return 'color:#4e0dab;font-weight:700;';
+            if (window.MetricPctColors) return MetricPctColors.gpftStyle(value) || '';
+            return styleForCellColor('#dc3545');
         }
-        // NPFT slabs: <30 red, 30–40 yellow, 40–50 green, >50 purple text (no bg)
         function styleForNpftValue(value) {
-            const v = parseFloat(value) || 0;
-            if (v < 30) return styleForCellColor('#dc3545');
-            if (v < 40) return styleForCellColor('#ffc107');
-            if (v <= 50) return styleForCellColor('#28a745');
-            return 'color:#4e0dab;font-weight:700;';
+            if (window.MetricPctColors) return MetricPctColors.npftStyle(value) || '';
+            return styleForCellColor('#dc3545');
         }
         function applyCellColor($el, c) {
             if (c === '#ffc107') { $el.css({ backgroundColor: '', color: darkMustard }); }
@@ -4827,7 +4727,7 @@
                     'amazon', 'doba', 'walmart',
                     'ebay', 'ebay1', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
                     'temu', 'temu2', 'tiktok', 'tiktok2', 'tiktok 2', 'bestbuy', 'bestbuyusa', 'macy', 'macys',
-                    'reverb', 'tiendamia', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
+                    'reverb', 'sb2c', 'shopify', 'shopifyb2c', 'sb2b', 'shopifyb2b',
                     'fba', 'tiktok2', 'shein', 'faire', 'aliexpress', 'ppower', 'purchasingpower', 'topdawg'
                 ];
                 const editable = editableChannels.includes(mp);
@@ -6867,10 +6767,12 @@
             if (gpftRange !== 'all') {
                 displayData = displayData.filter(row => {
                     const gpft = parseFloat(row.avg_gpft) || 0;
-                    if (gpftRange === 'lt-20') return gpft < 20;
-                    if (gpftRange === '20-30') return gpft >= 20 && gpft < 30;
-                    if (gpftRange === '30-40') return gpft >= 30 && gpft <= 40;
-                    if (gpftRange === 'gt-40') return gpft > 40;
+                    if (gpftRange === 'lt-20') return gpft <= 20;
+                    if (gpftRange === '20-30') return gpft > 20 && gpft < 30;
+                    if (gpftRange === '30-43') return gpft >= 30 && gpft < 43;
+                    if (gpftRange === 'gt-43') return gpft >= 43;
+                    if (gpftRange === '30-40') return gpft >= 30 && gpft < 43;
+                    if (gpftRange === 'gt-40') return gpft >= 43;
                     // legacy saved filters
                     if (gpftRange === 'negative' || gpftRange === '0-10' || gpftRange === '10-20') return gpft < 20;
                     if (gpftRange === '40-50' || gpftRange === '50-60' || gpftRange === '50+') return gpft > 40;
@@ -6882,10 +6784,15 @@
             if (npftRange !== 'all') {
                 displayData = displayData.filter(row => {
                     const npft = parseFloat(row.avg_pft) || 0;
-                    if (npftRange === 'lt-30') return npft < 30;
-                    if (npftRange === '30-40') return npft >= 30 && npft < 40;
-                    if (npftRange === '40-50') return npft >= 40 && npft <= 50;
-                    if (npftRange === 'gt-50') return npft > 50;
+                    if (npftRange === 'lt-10') return npft <= 10;
+                    if (npftRange === '10-20') return npft > 10 && npft < 20;
+                    if (npftRange === '20-33') return npft >= 20 && npft < 33;
+                    if (npftRange === 'gte-33') return npft >= 33;
+                    // legacy
+                    if (npftRange === 'lt-30') return npft <= 10;
+                    if (npftRange === '30-40') return npft > 10 && npft < 20;
+                    if (npftRange === '40-50') return npft >= 20 && npft < 33;
+                    if (npftRange === 'gt-50') return npft >= 33;
                     return true;
                 });
             }
@@ -7236,10 +7143,12 @@
                 if (gpftRange !== 'all') {
                     table.addFilter(function(data) {
                         const gpft = parseFloat(data['avg_gpft']) || 0;
-                        if (gpftRange === 'lt-20') return gpft < 20;
-                        if (gpftRange === '20-30') return gpft >= 20 && gpft < 30;
-                        if (gpftRange === '30-40') return gpft >= 30 && gpft <= 40;
-                        if (gpftRange === 'gt-40') return gpft > 40;
+                        if (gpftRange === 'lt-20') return gpft <= 20;
+                        if (gpftRange === '20-30') return gpft > 20 && gpft < 30;
+                        if (gpftRange === '30-43') return gpft >= 30 && gpft < 43;
+                        if (gpftRange === 'gt-43') return gpft >= 43;
+                        if (gpftRange === '30-40') return gpft >= 30 && gpft < 43;
+                        if (gpftRange === 'gt-40') return gpft >= 43;
                         if (gpftRange === 'negative' || gpftRange === '0-10' || gpftRange === '10-20') return gpft < 20;
                         if (gpftRange === '40-50' || gpftRange === '50-60' || gpftRange === '50+') return gpft > 40;
                         return true;
@@ -7250,10 +7159,14 @@
                 if (npftRange !== 'all') {
                     table.addFilter(function(data) {
                         const npft = parseFloat(data['avg_pft']) || 0;
-                        if (npftRange === 'lt-30') return npft < 30;
-                        if (npftRange === '30-40') return npft >= 30 && npft < 40;
-                        if (npftRange === '40-50') return npft >= 40 && npft <= 50;
-                        if (npftRange === 'gt-50') return npft > 50;
+                        if (npftRange === 'lt-10') return npft <= 10;
+                        if (npftRange === '10-20') return npft > 10 && npft < 20;
+                        if (npftRange === '20-33') return npft >= 20 && npft < 33;
+                        if (npftRange === 'gte-33') return npft >= 33;
+                        if (npftRange === 'lt-30') return npft <= 10;
+                        if (npftRange === '30-40') return npft > 10 && npft < 20;
+                        if (npftRange === '40-50') return npft >= 20 && npft < 33;
+                        if (npftRange === 'gt-50') return npft >= 33;
                         return true;
                     });
                 }

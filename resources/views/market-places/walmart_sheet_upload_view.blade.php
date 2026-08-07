@@ -1911,23 +1911,9 @@
         }
 
         // Color functions (same as Temu)
-        const getPftColor = (value) => {
-            const percent = parseFloat(value);
-            if (percent < 10) return 'red';
-            if (percent >= 10 && percent < 15) return 'yellow';
-            if (percent >= 15 && percent < 20) return 'blue';
-            if (percent >= 20 && percent <= 40) return 'green';
-            return 'pink';
-        };
+        const getPftColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyPftClass(value) : 'red');
 
-        const getRoiColor = (value) => {
-            const percent = parseFloat(value);
-            if (isNaN(percent)) return 'red';
-            if (percent >= 125) return 'purple';
-            if (percent >= 75) return 'green';
-            if (percent >= 40) return 'yellow';
-            return 'red';
-        };
+        const getRoiColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyRoiClass(value) : 'red');
 
         table = new Tabulator("#walmart-table", {
             ajaxURL: "/walmart-sheet-upload-data-json",

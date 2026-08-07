@@ -407,8 +407,6 @@
                                 ['value' => 'listing_pls', 'text' => 'Listing PLS'],
                                 ['value' => 'mercariwship', 'text' => 'Mercari w/o Ship'],
                                 ['value' => 'listing_mercariwship', 'text' => 'Listing Mercari w/o Ship'],
-                                ['value' => 'tiendamia', 'text' => 'Tiendamia'],
-                                ['value' => 'listing_tiendamia', 'text' => 'Listing Tiendamia'],
                                 ['value' => 'shein', 'text' => 'Shein'],
                                 ['value' => 'listing_shein', 'text' => 'Listing Shein'],
                                 ['value' => 'fbshop', 'text' => 'FB Shop'],

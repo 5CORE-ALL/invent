@@ -18,7 +18,6 @@
     .btn-shein { background-color:#000; }
     .btn-aliexpress { background-color:#e62e04; }
     .btn-amazon-fba { background-color:#e47911; }
-    .btn-tiendamia { background-color:#6c757d; }
     .btn-newegg { background-color:#cc4100; }
     .btn-tiktok { background-color:#010101; }
     .btn-depop { background-color:#ff2300; }

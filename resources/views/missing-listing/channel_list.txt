@@ -14,4 +14,3 @@ DHGate
 =======--WIP--=======
 Wayfair
 Bestbuy USA
-Tiendamia

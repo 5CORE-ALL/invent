@@ -33,7 +33,6 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSpocketController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
-use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiendamiaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
@@ -98,7 +97,6 @@ class ListingChannelCounts
         'zendrop' => ListingZendropController::class,
         'poshmark' => ListingPoshmarkController::class,
         'appscenic' => ListingAppscenicController::class,
-        'tiendamia' => ListingTiendamiaController::class,
         'spocket' => ListingSpocketController::class,
         'offerup' => ListingOfferupController::class,
         'yamibuy' => ListingYamibuyController::class,
@@ -155,7 +153,6 @@ class ListingChannelCounts
         'zendrop' => '/listing-zendrop',
         'poshmark' => '/listing-poshmark',
         'appscenic' => '/listing-appscenic',
-        'tiendamia' => '/listing-tiendamia',
         'spocket' => '/listing-spocket',
         'offerup' => '/listing-offerup',
         'yamibuy' => '/listing-yamibuy',

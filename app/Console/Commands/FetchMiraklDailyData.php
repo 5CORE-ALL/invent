@@ -24,7 +24,7 @@ class FetchMiraklDailyData extends Command
      *
      * @var string
      */
-    protected $description = 'Fetch and store raw order data from Mirakl Connect (Macy\'s, Tiendamia, Best Buy USA)';
+    protected $description = 'Fetch and store raw order data from Mirakl Connect (Macy\'s, Best Buy USA)';
 
     protected $baseUrl = 'https://miraklconnect.com/api/v2/orders';
 

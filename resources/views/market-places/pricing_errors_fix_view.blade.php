@@ -84,9 +84,10 @@
             white-space: nowrap;
         }
         .pef-metric-red { color: #dc3545; font-weight: 600; }
-        .pef-metric-yellow { color: #b78103; font-weight: 600; }
-        .pef-metric-green { color: #198754; font-weight: 600; }
+        .pef-metric-yellow { color: #ffc107; font-weight: 700; }
+        .pef-metric-green { color: #28a745; font-weight: 600; }
         .pef-metric-hot { color: #e83e8c; font-weight: 700; background: transparent; padding: 0; border-radius: 0; }
+        .pef-metric-pink-dil { color: #4e0dab; font-weight: 700; }
         .pef-success-dot {
             display: inline-block; width: 12px; height: 12px; border-radius: 50%;
             border: 1px solid #94a3b8; background: #e2e8f0;
@@ -458,7 +459,7 @@
                             title="Shortcut: INV &gt; 0 + Price Null">Missing: 0</span>
 
                         <span class="badge text-bg-danger" id="pef-sku-groi-badge"
-                            title="Unique SKUs with GROI &lt; 40% — click to filter">SKU: 0</span>
+                            title="Unique SKUs with GROI &lt; 60% — click to filter">SKU: 0</span>
 
                         <div class="dropdown">
                             <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
@@ -485,10 +486,10 @@
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="pef-gpft-filter-btn">
                                 <li><a class="dropdown-item pef-gpft-filter-item active" href="#" data-range="all"><span class="status-circle default"></span> All GPFT</a></li>
-                                <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="lt-20"><span class="status-circle red"></span> &lt; 20%</a></li>
+                                <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="lt-20"><span class="status-circle red"></span> ≤ 20%</a></li>
                                 <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="20-30"><span class="status-circle yellow"></span> 20–30%</a></li>
-                                <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="30-40"><span class="status-circle green"></span> 30–40%</a></li>
-                                <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="gt-40"><span class="status-circle magenta-bg"></span> &gt; 40%</a></li>
+                                <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="30-43"><span class="status-circle green"></span> 30–43%</a></li>
+                                <li><a class="dropdown-item pef-gpft-filter-item" href="#" data-range="gt-43"><span class="status-circle magenta-bg"></span> ≥ 43%</a></li>
                             </ul>
                         </div>
                         <input type="hidden" id="pef-gpft-filter" value="all">
@@ -502,11 +503,10 @@
                             </button>
                             <ul class="dropdown-menu" aria-labelledby="pef-groi-filter-btn">
                                 <li><a class="dropdown-item pef-groi-filter-item active" href="#" data-range="all"><span class="status-circle default"></span> All GROI</a></li>
-                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="lt-40"><span class="status-circle red"></span> &lt; 40%</a></li>
-                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="40-60"><span class="status-circle yellow"></span> 40–60%</a></li>
-                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="60-80"><span class="status-circle orange"></span> 60–80%</a></li>
-                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="80-100"><span class="status-circle green"></span> 80–100%</a></li>
-                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="gte-100"><span class="status-circle pink"></span> 100%+</a></li>
+                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="lt-60"><span class="status-circle red"></span> &lt; 60%</a></li>
+                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="60-90"><span class="status-circle yellow"></span> 60–90%</a></li>
+                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="90-150"><span class="status-circle green"></span> 90–150%</a></li>
+                                <li><a class="dropdown-item pef-groi-filter-item" href="#" data-range="gte-150"><span class="status-circle pink"></span> ≥ 150%</a></li>
                             </ul>
                         </div>
                         <input type="hidden" id="pef-groi-filter" value="all">
@@ -658,14 +658,24 @@
         setTimeout(() => $('#' + id).fadeOut(200, function() { $(this).remove(); }), 4000);
     }
 
-    function metricClass(v) {
+    /** PEF field → metric kind (sroi column is SGROI% / gross). */
+    const PEF_METRIC_KIND = {
+        groi: 'groi', nroi: 'nroi', gpft: 'gpft', npft: 'npft',
+        sroi: 'groi', sgpft: 'gpft', snroi: 'nroi', snpft: 'npft',
+    };
+
+    /** Map MetricPctColors band → PEF CSS class (by field: GROI/NROI/GPFT/NPFT/S*). */
+    function metricClass(v, field) {
         if (v === null || v === undefined || v === '') return '';
-        const n = Number(v);
-        if (isNaN(n)) return '';
-        if (n < 20) return 'pef-metric-red';
-        if (n < 30) return 'pef-metric-yellow';
-        if (n <= 40) return 'pef-metric-green';
-        return 'pef-metric-hot';
+        if (!window.MetricPctColors) return '';
+        const key = String(field || '').toLowerCase();
+        const kind = PEF_METRIC_KIND[key] || MetricPctColors.kindFromField(field);
+        if (!kind) return '';
+        const band = MetricPctColors.bandFor(kind, v);
+        if (!band) return '';
+        if (band === 'pink') return 'pef-metric-hot';
+        if (band === 'pink-dil') return 'pef-metric-pink-dil';
+        return 'pef-metric-' + band;
     }
 
     function fmtPct(cell) {
@@ -673,7 +683,8 @@
         if (v === null || v === undefined || v === '') return '';
         const n = Number(v);
         if (isNaN(n)) return '';
-        const cls = metricClass(n);
+        const field = (typeof cell.getField === 'function') ? cell.getField() : '';
+        const cls = metricClass(n, field);
         return cls ? `<span class="${cls}">${Math.round(n)}%</span>` : `${Math.round(n)}%`;
     }
 
@@ -1052,7 +1063,7 @@
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrf },
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
                 data: {
                     sku: item.d.sku,
                     marketplace: item.d.marketplace,
@@ -1062,6 +1073,7 @@
                     sroi: local.snroi != null ? local.snroi : (local.sroi || 0),
                     sgroi: local.sroi || 0,
                     spft: local.snpft || 0,
+                    _token: csrf,
                 },
             }).done(async function() {
                 ok++;
@@ -1121,28 +1133,36 @@
         return dilColorBand(d.dil) === color;
     }
 
-    /** GPFT% slabs — same as /price-increase: &lt;20 · 20–30 · 30–40 · &gt;40 */
+    /** GPFT% slabs: ≤20 red · 20–30 yellow · 30–43 green · ≥43 pink-dil */
     function matchesGpftFilter(d, range) {
         if (!range || range === 'all') return true;
         const n = Number(d.gpft);
         if (!isFinite(n)) return false;
-        if (range === 'lt-20') return n < 20;
-        if (range === '20-30') return n >= 20 && n < 30;
-        if (range === '30-40') return n >= 30 && n <= 40;
-        if (range === 'gt-40') return n > 40;
+        if (range === 'lt-20') return n <= 20;
+        if (range === '20-30') return n > 20 && n < 30;
+        if (range === '30-43') return n >= 30 && n < 43;
+        if (range === 'gt-43') return n >= 43;
+        // legacy saved filters
+        if (range === '30-40') return n >= 30 && n < 43;
+        if (range === 'gt-40') return n >= 43;
         return true;
     }
 
-    /** GROI% slabs: &lt;40 · 40–60 · 60–80 · 80–100 · 100%+ */
+    /** GROI% slabs: &lt;60 red · 60–90 yellow · 90–150 green · ≥150 pink */
     function matchesGroiFilter(d, range) {
         if (!range || range === 'all') return true;
         const n = Number(d.groi);
         if (!isFinite(n)) return false;
-        if (range === 'lt-40') return n < 40;
+        if (range === 'lt-60') return n < 60;
+        if (range === '60-90') return n >= 60 && n < 90;
+        if (range === '90-150') return n >= 90 && n < 150;
+        if (range === 'gte-150') return n >= 150;
+        // legacy saved filters
+        if (range === 'lt-40') return n < 60;
         if (range === '40-60') return n >= 40 && n < 60;
-        if (range === '60-80') return n >= 60 && n < 80;
-        if (range === '80-100') return n >= 80 && n < 100;
-        if (range === 'gte-100') return n >= 100;
+        if (range === '60-80') return n >= 60 && n < 90;
+        if (range === '80-100') return n >= 90 && n < 150;
+        if (range === 'gte-100') return n >= 150;
         return true;
     }
 
@@ -1162,12 +1182,12 @@
         $('#pef-missing-badge').text('Missing: ' + n);
     }
 
-    /** Unique SKUs with GROI% &lt; 40 */
+    /** Unique SKUs with GROI% &lt; 60 */
     function updateSkuGroiBadge() {
         const skus = new Set();
         pulledRows.forEach(function(d) {
             if (!d.sku) return;
-            if (matchesGroiFilter(d, 'lt-40')) skus.add(String(d.sku));
+            if (matchesGroiFilter(d, 'lt-60')) skus.add(String(d.sku));
         });
         $('#pef-sku-groi-badge').text('SKU: ' + skus.size);
     }
@@ -1318,6 +1338,13 @@
         return Math.round(Number(n) * 100) / 100;
     }
 
+    /** Parse SPRICE from number editor / formatted cell ($12.34). */
+    function parseSpriceValue(v) {
+        if (v === null || v === undefined || v === '') return NaN;
+        if (typeof v === 'number') return v;
+        return parseFloat(String(v).replace(/[$,\s]/g, ''));
+    }
+
     function normMp(name) {
         return String(name || '').toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
     }
@@ -1438,10 +1465,13 @@
     function setGpftFilterUI(range) {
         const map = {
             all: { label: 'GPFT%', dot: 'default' },
-            'lt-20': { label: 'GPFT <20%', dot: 'red' },
+            'lt-20': { label: 'GPFT ≤20%', dot: 'red' },
             '20-30': { label: 'GPFT 20–30%', dot: 'yellow' },
-            '30-40': { label: 'GPFT 30–40%', dot: 'green' },
-            'gt-40': { label: 'GPFT >40%', dot: 'magenta-bg' },
+            '30-43': { label: 'GPFT 30–43%', dot: 'green' },
+            'gt-43': { label: 'GPFT ≥43%', dot: 'magenta-bg' },
+            // legacy
+            '30-40': { label: 'GPFT 30–43%', dot: 'green' },
+            'gt-40': { label: 'GPFT ≥43%', dot: 'magenta-bg' },
         };
         const m = map[range] || map.all;
         $('#pef-gpft-filter').val(range);
@@ -1454,11 +1484,16 @@
     function setGroiFilterUI(range) {
         const map = {
             all: { label: 'GROI%', dot: 'default' },
-            'lt-40': { label: 'GROI <40%', dot: 'red' },
-            '40-60': { label: 'GROI 40–60%', dot: 'yellow' },
-            '60-80': { label: 'GROI 60–80%', dot: 'orange' },
-            '80-100': { label: 'GROI 80–100%', dot: 'green' },
-            'gte-100': { label: 'GROI 100%+', dot: 'pink' },
+            'lt-60': { label: 'GROI <60%', dot: 'red' },
+            '60-90': { label: 'GROI 60–90%', dot: 'yellow' },
+            '90-150': { label: 'GROI 90–150%', dot: 'green' },
+            'gte-150': { label: 'GROI ≥150%', dot: 'pink' },
+            // legacy
+            'lt-40': { label: 'GROI <60%', dot: 'red' },
+            '40-60': { label: 'GROI <60%', dot: 'red' },
+            '60-80': { label: 'GROI 60–90%', dot: 'yellow' },
+            '80-100': { label: 'GROI 90–150%', dot: 'green' },
+            'gte-100': { label: 'GROI ≥150%', dot: 'pink' },
         };
         const m = map[range] || map.all;
         $('#pef-groi-filter').val(range);
@@ -1685,13 +1720,22 @@
                     sorterParams: { alignEmptyValues: 'bottom' },
                     cssClass: 'pef-sortable',
                     editor: 'number',
-                    editorParams: { step: 0.01, min: 0 },
+                    editorParams: { step: 0.01, min: 0, selectContents: true },
+                    // Normalize "$12.34" / strings from the number editor before save
+                    mutatorEdit: function(value) {
+                        const n = parseSpriceValue(value);
+                        return (isFinite(n) && n > 0) ? round2(n) : null;
+                    },
                     formatter: function(cell) {
                         const v = cell.getValue();
                         if (v === null || v === undefined || v === '') {
                             return '<span class="text-muted">—</span>';
                         }
-                        return '$' + Number(v).toFixed(2);
+                        const n = parseSpriceValue(v);
+                        if (!isFinite(n) || n <= 0) {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        return '$' + n.toFixed(2);
                     },
                     cellEdited: function(cell) {
                         saveSprice(cell.getRow());
@@ -1882,8 +1926,18 @@
 
     function saveSprice(row) {
         const d = row.getData();
-        const sprice = parseFloat(d.sprice);
-        if (!d.sku || !d.marketplace || !(sprice > 0)) return;
+        const sprice = round2(parseSpriceValue(d.sprice));
+        if (!d.sku || !d.marketplace) {
+            toast('Save failed: missing SKU/marketplace', 'error');
+            return;
+        }
+        if (!(sprice > 0)) {
+            toast('Enter a SPRICE greater than 0', 'error');
+            return;
+        }
+
+        // Keep numeric sprice on the row (editor may leave a string)
+        row.update({ sprice: sprice });
 
         // Local suggested % update immediately (row-wise)
         const local = recalcSuggestedForRow(Object.assign({}, d, { sprice: sprice }));
@@ -1902,7 +1956,7 @@
         $.ajax({
             url: '/cvr-master-save-suggested-data',
             method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrf },
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
             data: {
                 sku: d.sku,
                 marketplace: d.marketplace,
@@ -1912,12 +1966,25 @@
                 sroi: local.snroi != null ? local.snroi : (local.sroi || 0),
                 sgroi: local.sroi || 0,
                 spft: local.snpft || 0,
+                _token: csrf,
             },
         }).done(async function() {
-            row.update({ success: 'saved' });
-            // Row-wise server refresh for this SKU × channel only
-            await refreshRowFromBreakdown(row);
-            row.update({ success: 'saved' });
+            // Keep saved SPRICE even if breakdown refresh is slow/fails
+            row.update(Object.assign({}, localPatch, { success: 'saved' }));
+            const idx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+            if (idx >= 0) pulledRows[idx] = Object.assign({}, pulledRows[idx], localPatch, { success: 'saved' });
+            try {
+                await refreshRowFromBreakdown(row);
+                // Ensure refresh did not wipe a just-saved positive SPRICE with empty/0
+                const after = row.getData();
+                if (!(Number(after.sprice) > 0)) {
+                    row.update(Object.assign({}, localPatch, { success: 'saved' }));
+                } else {
+                    row.update({ success: 'saved' });
+                }
+            } catch (e) {
+                row.update({ success: 'saved' });
+            }
             toast('SPRICE saved for ' + d.sku + ' / ' + d.channel, 'success');
             updatePushBtn();
         }).fail(function(xhr) {
@@ -2638,7 +2705,7 @@
 
     $('#pef-sku-groi-badge').on('click', function() {
         if (!dataLoaded) return;
-        setGroiFilterUI('lt-40');
+        setGroiFilterUI('lt-60');
         applyStatusFilter();
     }).css('cursor', 'pointer');
 

@@ -46,9 +46,6 @@ use App\Models\BestbuyUsaProduct;
 use App\Models\BestbuyUSADataView;
 use App\Models\BestbuyUSAListingStatus;
 use App\Models\TemuMetric;
-use App\Models\TiendamiaProduct;
-use App\Models\TiendamiaDataView;
-use App\Models\TiendamiaListingStatus;
 use App\Services\AmazonSpApiService;
 use App\Services\DobaApiService;
 use App\Services\EbayApiService;
@@ -124,7 +121,6 @@ class AdsMasterController extends Controller
         $sheinListingData = SheinListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
         $bestbuyUsaListingData = BestbuyUSAListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
         $dobaListingData = DobaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-        $tiendamiaListingData = TiendamiaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
 
 
@@ -202,8 +198,6 @@ class AdsMasterController extends Controller
         }
         $bestbuyUsaLookup = BestbuyUsaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
         $bestbuyUsaDataView = BestbuyUSADataView::whereIn('sku', $skus)->get()->keyBy('sku');
-        $tiendamiaLookup = TiendamiaProduct::whereIn('sku', $skus)->get()->keyBy('sku');
-        $tiendamiaDataView = TiendamiaDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch LMPA data from 5core_repricer database - get lowest price per SKU (excluding 0 prices)
         $lmpaLookup = collect();
@@ -287,7 +281,6 @@ class AdsMasterController extends Controller
             $sheinL60 = (int) ($sheinL60BySku[$skuKey] ?? 0);
             $sheinViews = $sheinMetric ? (int) ($sheinMetric->views ?? 0) : 0;
             $bestbuyUsa = $bestbuyUsaLookup[$sku] ?? null;
-            $tiendamia = $tiendamiaLookup[$sku] ?? null;
 
             // Get Shopify data for L30 and INV
             $shopifyItem = $shopifyData[trim(strtoupper($sku))] ?? null;
@@ -490,17 +483,6 @@ class AdsMasterController extends Controller
                 'bestbuy_buyer_link' => isset($bestbuyUsaListingData[$sku]) ? ($bestbuyUsaListingData[$sku]->value['buyer_link'] ?? null) : null,
                 'bestbuy_seller_link' => isset($bestbuyUsaListingData[$sku]) ? ($bestbuyUsaListingData[$sku]->value['seller_link'] ?? null) : null,
 
-                // Tiendamia
-                'tiendamia_price' => $tiendamia ? ($tiendamia->price ?? 0) : 0,
-                'tiendamia_l30'   => $tiendamia ? ($tiendamia->m_l30 ?? 0) : 0,
-                'tiendamia_l60'   => $tiendamia ? ($tiendamia->m_l60 ?? 0) : 0,
-                'tiendamia_pft'   => $tiendamia && ($tiendamia->price ?? 0) > 0 ? (($tiendamia->price * 0.80 - $lp - $ship) / $tiendamia->price) : 0,
-                'tiendamia_roi'   => $tiendamia && $lp > 0 && ($tiendamia->price ?? 0) > 0 ? (($tiendamia->price * 0.80 - $lp - $ship) / $lp) : 0,
-                'tiendamia_req_view' => 0, // No views data
-                'tiendamia_cvr' => null, // No views data
-                'tiendamia_buyer_link' => isset($tiendamiaListingData[$sku]) ? ($tiendamiaListingData[$sku]->value['buyer_link'] ?? null) : null,
-                'tiendamia_seller_link' => isset($tiendamiaListingData[$sku]) ? ($tiendamiaListingData[$sku]->value['seller_link'] ?? null) : null,
-
                 // Direct assignments for blade template
                 'views_clicks' => $sheinViews,
                 'lmp' => 0,
@@ -636,15 +618,6 @@ class AdsMasterController extends Controller
                 'bestbuy_sroi' => isset($bestbuyUsaDataView[$sku]) ?
                     (is_array($bestbuyUsaDataView[$sku]->value) ?
                         ($bestbuyUsaDataView[$sku]->value['SROI'] ?? null) : (json_decode($bestbuyUsaDataView[$sku]->value, true)['SROI'] ?? null)) : null,
-
-                'tiendamia_sprice' => isset($tiendamiaDataView[$sku]) ?
-                    (is_array($tiendamiaDataView[$sku]->value) ?
-                        ($tiendamiaDataView[$sku]->value['SPRICE'] ?? null) : (json_decode($tiendamiaDataView[$sku]->value, true)['SPRICE'] ?? null)) : null,
-                'tiendamia_spft' => isset($tiendamiaDataView[$sku]) ? (is_array($tiendamiaDataView[$sku]->value) ?
-                    ($tiendamiaDataView[$sku]->value['SPFT'] ?? null) : (json_decode($tiendamiaDataView[$sku]->value, true)['SPFT'] ?? null)) : null,
-                'tiendamia_sroi' => isset($tiendamiaDataView[$sku]) ?
-                    (is_array($tiendamiaDataView[$sku]->value) ?
-                        ($tiendamiaDataView[$sku]->value['SROI'] ?? null) : (json_decode($tiendamiaDataView[$sku]->value, true)['SROI'] ?? null)) : null,
 
 
             ];

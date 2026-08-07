@@ -1694,7 +1694,6 @@ class ShopifyApiService
                     'inventory_ebay2' => 'Not Listed',
                     'inventory_ebay3' => 'Not Listed',
                     'inventory_bestbuy' => 'Not Listed',
-                    'tiendamia' => 'Not Listed',
                 ]
             );
         }

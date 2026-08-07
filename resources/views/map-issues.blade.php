@@ -48,7 +48,6 @@
         .map-ch-reverb { background-color: #6f42c1 !important; }
         .map-ch-macys { background-color: #c8102e !important; }
         .map-ch-bestbuy { background-color: #0046be !important; }
-        .map-ch-tiendamia { background-color: #009688 !important; }
         .map-ch-temu { background-color: #fb6c1e !important; }
         .map-ch-shein { background-color: #333 !important; }
         .map-ch-newegg { background-color: #f59e0b !important; color: #000 !important; }
@@ -61,7 +60,6 @@
         .map-ch-reverb.map-active { background-color: #3d1f73 !important; }
         .map-ch-macys.map-active { background-color: #7a0a1c !important; }
         .map-ch-bestbuy.map-active { background-color: #00257a !important; }
-        .map-ch-tiendamia.map-active { background-color: #00574d !important; }
         .map-ch-temu.map-active { background-color: #a8430c !important; }
         .map-ch-shein.map-active { background-color: #000 !important; }
         .map-ch-newegg.map-active { background-color: #b45309 !important; color: #fff !important; }
@@ -145,16 +143,6 @@
                                 <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="bbnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
                                 <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="bbsm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
                                 <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="bbml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
-                            </ul>
-                        </div>
-                        <div class="dropdown map-channel-dd">
-                            <button class="btn btn-sm dropdown-toggle map-ch-tiendamia" type="button" data-bs-toggle="dropdown" data-channel="tiendamia" aria-expanded="false" title="Tiendamia filters">
-                                <span class="map-ch-label">TDM</span>
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tnp" title="Not Mapped"><span>NM</span><span class="fw-bold ms-3" data-count="nm">0</span></button></li>
-                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tsm" title="SKU Mismatch"><span>SM</span><span class="fw-bold ms-3" data-count="sm">0</span></button></li>
-                                <li><button type="button" class="dropdown-item d-flex justify-content-between" data-filter="tml" title="Missing Listing"><span>NL</span><span class="fw-bold ms-3" data-count="nl">0</span></button></li>
                             </ul>
                         </div>
                         <div class="dropdown map-channel-dd">
@@ -262,9 +250,9 @@
             var showSiteOnly = false; // "Show SKUs not in Product Master" toggle
             var hideSmallDiff = false; // "Hide ≤3% diff rows" toggle
 
-            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', tiendamia: 'Tiendamia Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv', aliexpress: 'Ali Inv' };
-            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', tiendamia: 'tiendamia_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req', newegg: 'newegg_nr_req', aliexpress: 'aliexpress_nr_req' };
-            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', tiendamia: 'tiendamia_within3', temu: 'temu_within3', shein: 'shein_within3', newegg: 'newegg_within3', aliexpress: 'aliexpress_within3' };
+            var invFieldByMarket = { ebay: 'Ebay Inv', ebay2: 'Ebay2 Inv', ebay3: 'Ebay3 Inv', amazon: 'Amazon Inv', reverb: 'Reverb Inv', macys: 'Macys Inv', bestbuy: 'Bestbuy Inv', temu: 'Temu Inv', shein: 'Shein Inv', newegg: 'Newegg Inv', aliexpress: 'Ali Inv' };
+            var nrFieldByMarket  = { ebay: 'ebay_nr_req', ebay2: 'ebay2_nr_req', ebay3: 'ebay3_nr_req', amazon: 'amazon_nr_req', reverb: 'reverb_nr_req', macys: 'macys_nr_req', bestbuy: 'bestbuy_nr_req', temu: 'temu_nr_req', shein: 'shein_nr_req', newegg: 'newegg_nr_req', aliexpress: 'aliexpress_nr_req' };
+            var within3FieldByMarket = { ebay: 'ebay_within3', ebay2: 'ebay2_within3', ebay3: 'ebay3_within3', amazon: 'amazon_within3', reverb: 'reverb_within3', macys: 'macys_within3', bestbuy: 'bestbuy_within3', temu: 'temu_within3', shein: 'shein_within3', newegg: 'newegg_within3', aliexpress: 'aliexpress_within3' };
 
             // NR/REQ column: green "Req", red "Not Req" (anything other than REQ).
             function nrReqFormatter(cell) {
@@ -418,14 +406,6 @@
                         bbml: { field: 'bestbuy_missing_listing', countKey: 'bestbuy_missing_listing_count', type: 'NL' },
                     },
                 },
-                tiendamia: {
-                    code: 'TDM',
-                    filters: {
-                        tnp: { field: 'tiendamia_not_map', countKey: 'tiendamia_not_map_count', type: 'NM' },
-                        tsm: { field: 'tiendamia_mismatch', countKey: 'tiendamia_mismatch_count', type: 'SM' },
-                        tml: { field: 'tiendamia_missing_listing', countKey: 'tiendamia_missing_listing_count', type: 'NL' },
-                    },
-                },
                 temu: {
                     code: 'TM1',
                     filters: {
@@ -520,7 +500,6 @@
                     { title: 'NR/REQ', field: 'reverb_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('reverb') },
                     { title: 'NR/REQ', field: 'macys_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('macys') },
                     { title: 'NR/REQ', field: 'bestbuy_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('bestbuy') },
-                    { title: 'NR/REQ', field: 'tiendamia_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('tiendamia') },
                     { title: 'NR/REQ', field: 'temu_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('temu') },
                     { title: 'NR/REQ', field: 'shein_nr_req', visible: false, formatter: nrReqFormatter },
                     { title: 'NR/REQ', field: 'newegg_nr_req', visible: false, editor: 'list', editorParams: { values: { REQ: 'Req', NR: 'Not Req' } }, formatter: nrReqFormatter, cellEdited: nrEdited('newegg') },
@@ -593,16 +572,6 @@
                             if (e.target.classList.contains('map-info-icon')) {
                                 var d = cell.getRow().getData();
                                 showIssueModal('Best Buy', d['(Child) sku'], d.bestbuy_sku, d.bestbuy_issue);
-                            }
-                        },
-                    },
-                    {
-                        title: 'Tiendamia Inv', field: 'Tiendamia Inv', hozAlign: 'right', sorter: 'number',
-                        formatter: invFormatter('tiendamia_mismatch', 'tiendamia_listed'),
-                        cellClick: function (e, cell) {
-                            if (e.target.classList.contains('map-info-icon')) {
-                                var d = cell.getRow().getData();
-                                showIssueModal('Tiendamia', d['(Child) sku'], d.tiendamia_sku, d.tiendamia_issue);
                             }
                         },
                     },

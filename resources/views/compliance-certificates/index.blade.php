@@ -585,7 +585,6 @@
             'shopify b2c': 'SB2C',
             'temu': 'TMU',
             'temu 2': 'TMU2',
-            'tiendamia': 'TDM',
             'tiktok shop': 'TTS',
             'tiktok shop 2': 'TTS2',
             'topdawg': 'TDG',

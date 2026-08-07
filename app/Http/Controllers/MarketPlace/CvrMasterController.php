@@ -43,9 +43,6 @@ use App\Models\MacyDataView;
 use App\Models\ReverbViewData;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifyB2BDataView;
-use App\Models\TiendamiaProduct;
-use App\Models\TiendamiaPriceUpload;
-use App\Models\TiendamiaDataView;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -94,7 +91,6 @@ use App\Models\MacysListingStatus;
 use App\Models\ReverbListingStatus;
 use App\Models\TemuListingStatus;
 use App\Models\BestbuyUSAListingStatus;
-use App\Models\TiendamiaListingStatus;
 use App\Models\JungleScoutProductData;
 use App\Models\PricingMasterDailySnapshotSku;
 use App\Models\PricingMasterDailySnapshot;
@@ -2722,7 +2718,6 @@ class CvrMasterController extends Controller
                     'temu' => 'temu',
                     'temu2' => 'temu 2',
                     'bestbuy' => 'best buy usa',
-                    'tiendamia' => 'tiendamia',
                     'shein' => 'shein',
                     'faire' => 'faire',
                     'aliexpress' => 'aliexpress',
@@ -6042,8 +6037,6 @@ class CvrMasterController extends Controller
                 }
                 $existingPpView = PurchasingPowerDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
                 $dataView = $existingPpView ?: new PurchasingPowerDataView(['sku' => $skuToUse]);
-            } elseif ($marketplace === 'tiendamia') {
-                $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
                 $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $skuToUse]);
             } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
@@ -6220,13 +6213,25 @@ class CvrMasterController extends Controller
                 }
             }
 
-            // Keep Pricing Errors Fix cache in sync (SKU × marketplace patch)
+            // Keep Pricing Errors Fix cache in sync (SKU × marketplace patch).
+            // Also refresh Temu/eBay sibling channels that were cross-applied above.
             try {
-                PricingErrorsFixController::queueSkuRefresh(
-                    $skuToUse,
-                    $marketplace,
-                    $sprice > 0 ? $sprice : 0.0
-                );
+                $pefChannels = [$marketplace];
+                if (!$skipPairSync && ($marketplace === 'temu' || $marketplace === 'temu2')) {
+                    $pefChannels[] = $marketplace === 'temu' ? 'temu2' : 'temu';
+                }
+                if (!$skipPairSync) {
+                    foreach ($this->ebaySiblingChannels($marketplace) as $otherEbay) {
+                        $pefChannels[] = $otherEbay;
+                    }
+                }
+                foreach (array_values(array_unique($pefChannels)) as $pefMp) {
+                    PricingErrorsFixController::queueSkuRefresh(
+                        $skuToUse,
+                        $pefMp,
+                        $sprice > 0 ? $sprice : 0.0
+                    );
+                }
             } catch (\Throwable $e) {
                 Log::debug('Pricing Errors Fix cache refresh skipped: '.$e->getMessage());
             }
@@ -6379,8 +6384,6 @@ class CvrMasterController extends Controller
             }
             $existingPpView = PurchasingPowerDataView::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($skuToUse))])->first();
             $dataView = $existingPpView ?: new PurchasingPowerDataView(['sku' => $skuToUse]);
-        } elseif ($marketplace === 'tiendamia') {
-            $dataView = TiendamiaDataView::firstOrNew(['sku' => $skuToUse]);
         } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c' || $marketplace === 'shopify') {
             $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $skuToUse]);
         } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {

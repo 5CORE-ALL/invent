@@ -188,9 +188,6 @@ return [
     ['value' => 'poshmark', 'text' => 'Poshmark', 'group' => 'Marketplace'],
     ['value' => 'listing_poshmark', 'text' => 'Listing Poshmark', 'group' => 'Marketplace'],
 
-    ['value' => 'tiendamia', 'text' => 'Tiendamia', 'group' => 'Marketplace'],
-    ['value' => 'listing_tiendamia', 'text' => 'Listing Tiendamia', 'group' => 'Marketplace'],
-
     ['value' => 'shein', 'text' => 'Shein', 'group' => 'Marketplace'],
     ['value' => 'listing_shein', 'text' => 'Listing Shein', 'group' => 'Marketplace'],
     ['value' => 'shein_listing_variation_verify', 'text' => 'Shein Listing Variation Verify', 'group' => 'Marketplace'],

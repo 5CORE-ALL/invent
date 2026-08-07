@@ -2346,22 +2346,9 @@
                         return 'pink'; // 50 and above
                     };
 
-                    const getPftColor = (value) => {
-                        const percent = parseFloat(value) * 100;
-                        if (percent < 10) return 'red';
-                        if (percent >= 10 && percent < 20) return 'yellow';
-                        if (percent >= 20 && percent < 25) return 'blue';
-                        if (percent >= 25 && percent <= 40) return 'green';
-                        return 'pink';
-                    };
+                    const getPftColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyPftClass(value) : 'red');
 
-                    const getRoiColor = (value) => {
-                        const percent = parseFloat(value) * 100;
-                        if (percent < 50) return 'red';
-                        if (percent >= 50 && percent < 75) return 'yellow';
-                        if (percent >= 75 && percent <= 100) return 'green';
-                        return 'pink';
-                    };
+                    const getRoiColor = (value) => (window.MetricPctColors ? MetricPctColors.legacyRoiClass(value) : 'red');
 
                     const getTacosColor = (value) => {
                         const percent = parseFloat(value) * 100;

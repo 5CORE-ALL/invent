@@ -12,7 +12,7 @@ $active = DB::table('channel_master')
     ->get(['id', 'channel', 'type', 'status']);
 
 $controllerMapKeys = [
-    'amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'macys', 'tiendamia',
+    'amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'macys',
     'bestbuyusa', 'newegg', 'reverb', 'doba', 'temu', 'temu2', 'walmart', 'pls',
     'wayfair', 'faire', 'purchasingpower', 'shein', 'tiktokshop', 'tiktokshop2',
     'depop', 'instagramshop', 'aliexpress', 'mercariwship', 'mercariwoship',

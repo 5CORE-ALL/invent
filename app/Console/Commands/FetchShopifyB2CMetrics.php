@@ -246,7 +246,7 @@ class FetchShopifyB2CMetrics extends Command
             'Ebay3', 'Ebay2', 'Best Buy USA', 'Macy', 'Faire',
             'Newegg', 'Instagram', 'Facebook', 'FB Shop', 'FB Marketplace',
             // Additional excluded tags
-            'Tiendamia', 'Mirakl', 'APPSCENIC', 'WHITE LABEL',
+            'Mirakl', 'APPSCENIC', 'WHITE LABEL',
             'vajro_mobile_app', 'vitals_conversion', 'customer-cancel', 'coc-cancelled'
         ];
 

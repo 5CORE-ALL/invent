@@ -52,8 +52,6 @@ class MarketplaceApiConfigService
         'ebaytwo' => 'ebay2',
         'ebaythree' => 'ebay3',
         'macys' => 'macy',
-        'tiendamia' => null,
-        'tendamia' => null,
         'bestbuyusa' => 'bestbuy',
         'newegg' => 'newegg',
         'reverb' => 'reverb',
@@ -92,7 +90,7 @@ class MarketplaceApiConfigService
         'reverb', 'wayfair', 'bestbuy', 'walmart', 'doba', 'faire',
         'shein', 'aliexpress', 'alibaba', 'shopify_main', 'shopify_pls', 'shopify_b5c', 'shopify_b2b',
         'tiktok', 'tiktok2', 'newegg', 'topdawg',
-        'tiendamia', 'purchasing_power', 'depop', 'instagram_shop',
+        'purchasing_power', 'depop', 'instagram_shop',
         'mercari_wship', 'mercari_woship', 'fb_marketplace', 'fb_shop',
     ];
 

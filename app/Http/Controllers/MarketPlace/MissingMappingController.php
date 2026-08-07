@@ -39,7 +39,6 @@ class MissingMappingController extends Controller
         'macys' => ['flag' => 'macys_not_map', 'inv' => 'Macys Inv', 'msku' => 'macys_sku', 'label' => 'Macys'],
         'bestbuy' => ['flag' => 'bestbuy_not_map', 'inv' => 'Bestbuy Inv', 'msku' => 'bestbuy_sku', 'label' => 'BestBuy USA'],
         'bestbuyusa' => ['flag' => 'bestbuy_not_map', 'inv' => 'Bestbuy Inv', 'msku' => 'bestbuy_sku', 'label' => 'BestBuy USA'],
-        'tiendamia' => ['flag' => 'tiendamia_not_map', 'inv' => 'Tiendamia Inv', 'msku' => 'tiendamia_sku', 'label' => 'Tiendamia'],
         'shein' => ['flag' => 'shein_not_map', 'inv' => 'Shein Inv', 'msku' => 'shein_sku', 'label' => 'Shein'],
         'newegg' => ['flag' => 'newegg_not_map', 'inv' => 'Newegg Inv', 'msku' => 'newegg_sku', 'label' => 'Newegg'],
         'neweggb2c' => ['flag' => 'newegg_not_map', 'inv' => 'Newegg Inv', 'msku' => 'newegg_sku', 'label' => 'Newegg'],

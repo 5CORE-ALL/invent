@@ -48,7 +48,7 @@ class ShopifyRawDataController extends Controller
         'faire', 'best buy', 'bestbuy', 'best buy usa',
         'doba', '145019994113',
         'newegg', '189863297025',
-        'depop', 'tiendamia',
+        'depop',
         'mercari', 'aliexpress', 'ali express', 'wayfair',
     ];
 

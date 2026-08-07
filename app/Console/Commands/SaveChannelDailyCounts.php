@@ -44,7 +44,6 @@ class SaveChannelDailyCounts extends Command
             'shein'         => 'SheinZeroController',
             'bestbuyusa'    => 'BestbuyUSAZeroController',
             'aliexpress'    => 'AliexpressZeroController',
-            'tiendamia'     => 'TiendamiaZeroController',
             'pls'           => 'PLSZeroController',
             'mercariwship'  => 'MercariWShipZeroController',
             'mercariwoship' => 'MercariWoShipZeroController',

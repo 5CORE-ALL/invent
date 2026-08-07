@@ -34,7 +34,6 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSpocketController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
-use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiendamiaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
@@ -111,8 +110,6 @@ use App\Models\Temu2DailyData;
 use App\Models\Temu2DailyDataL60;
 use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
-use App\Models\TiendamiaProduct;
-use App\Models\TiendamiaListingStatus;
 use App\Models\TiktokCampaignReport;
 use App\Models\TiktokOrder;
 use App\Models\TiktokSalesTwo;
@@ -1924,12 +1921,6 @@ class ChannelMasterController extends Controller
             'Tiktok Shop 2' => fn () => $this->getTiktok2LiveMapMissNMapFromPricingData(
                 Request::create('/tiktok-2-data-json', 'GET')
             ),
-            'Tiendamia' => fn () => $this->getTiendamiaLiveMapMissNMapFromPricingData(
-                Request::create('/tiendamia-data-json', 'GET')
-            ),
-            'Tienda Mia' => fn () => $this->getTiendamiaLiveMapMissNMapFromPricingData(
-                Request::create('/tiendamia-data-json', 'GET')
-            ),
             // Missing L from /listing-ebaytwo source (EbayTwoDataView NRL + ebay_2_metrics.item_id)
             'EbayTwo' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
             'Ebay 2' => fn () => $this->getEbayTwoLiveMapMissCountsFromListingSource(),
@@ -2045,71 +2036,6 @@ class ChannelMasterController extends Controller
         }
     }
 
-    /**
-     * Map / Miss / NMap for Tiendamia — same rules as tiendamia-pricing badges.
-     * Price on that page = sheet first, else tiendamia_products.price.
-     * Miss: not NRA + INV>0 + price=0
-     * Map / NMap: not NRA + INV>0 + price>0 + |INV − Tiendamia Stock| ≤ 3 (map) or > 3 (NMap)
-     */
-    private function getTiendamiaLiveMapMissNMapFromPricingData(Request $request): array
-    {
-        try {
-            $ctrl = app(\App\Http\Controllers\MarketPlace\TiendamiaPricingController::class);
-            $response = $ctrl->tiendamiaDataJson($request);
-            $rows = json_decode($response->getContent(), true);
-            if (! is_array($rows)) {
-                return $this->getMapAndMissCounts('tiendamia');
-            }
-
-            $map = 0;
-            $miss = 0;
-            $nmap = 0;
-
-            foreach ($rows as $row) {
-                if (is_object($row)) {
-                    $row = (array) $row;
-                }
-                if (! is_array($row)) {
-                    continue;
-                }
-
-                $parent = trim((string) ($row['Parent'] ?? ''));
-                if ($parent !== '' && str_starts_with(strtoupper($parent), 'PARENT')) {
-                    continue;
-                }
-
-                $inv = (float) ($row['INV'] ?? 0);
-                $ttStock = (float) ($row['Tiendamia Stock'] ?? 0);
-                $price = (float) ($row['Tiendamia Price'] ?? 0);
-                $nrp = strtoupper(trim((string) ($row['nrp'] ?? 'RA')));
-                $isReq = ($nrp !== 'NRA');
-
-                if ($isReq && $inv > 0 && $price == 0.0) {
-                    $miss++;
-                }
-
-                if ($isReq && $inv > 0 && $price > 0) {
-                    $diff = abs($inv - $ttStock);
-                    if ($diff <= 3) {
-                        $map++;
-                    } else {
-                        $nmap++;
-                    }
-                }
-            }
-
-            return [
-                'map' => $map,
-                'miss' => $miss,
-                'nmap' => $nmap,
-                'total_views' => 0,
-            ];
-        } catch (\Throwable $e) {
-            Log::warning('Tiendamia live map/miss/nmap fallback: ' . $e->getMessage());
-
-            return $this->getMapAndMissCounts('tiendamia');
-        }
-    }
 
     /**
      * Map / Miss / NMap for Best Buy USA — same rules as bestbuy-pricing (MISSING + N Map badges).
@@ -4783,8 +4709,8 @@ class ChannelMasterController extends Controller
             Log::warning('Best Buy USA Y Sales calculation failed: ' . $e->getMessage());
         }
 
-        // Mirakl (Macy's, Tiendamia): same rules as Best Buy USA
-        foreach (["Macy's, Inc." => 'macys', 'Tiendamia' => 'tiendamia'] as $miraklChannelName => $ysKey) {
+        // Mirakl (Macy's): same rules as Best Buy USA
+        foreach (["Macy's, Inc." => 'macys'] as $miraklChannelName => $ysKey) {
             try {
                 $miraklY = $this->computeMiraklYSalesLikeAmazon($miraklChannelName);
                 if ($miraklY !== null) {
@@ -4792,20 +4718,6 @@ class ChannelMasterController extends Controller
                 }
             } catch (\Throwable $e) {
                 Log::warning('Mirakl Y Sales (' . $miraklChannelName . ') failed: ' . $e->getMessage());
-            }
-        }
-        // Tiendamia: channel_master row "Tienda Mia" normalizes to tendamia (not tiendamia)
-        if (isset($yesterdaySummaries['tiendamia'])) {
-            $yesterdaySummaries['tendamia'] = $yesterdaySummaries['tiendamia'];
-        } else {
-            try {
-                $tiendaMiaY = $this->computeMiraklYSalesLikeAmazon('Tienda Mia');
-                if ($tiendaMiaY !== null) {
-                    $yesterdaySummaries['tiendamia'] = $tiendaMiaY;
-                    $yesterdaySummaries['tendamia'] = $tiendaMiaY;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Mirakl Y Sales (Tienda Mia alt) failed: ' . $e->getMessage());
             }
         }
 
@@ -4947,7 +4859,7 @@ class ChannelMasterController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Best Buy USA L7 Sales calculation failed: ' . $e->getMessage());
         }
-        foreach (["Macy's, Inc." => 'macys', 'Tiendamia' => 'tiendamia'] as $miraklChannelName => $l7Key) {
+        foreach (["Macy's, Inc." => 'macys'] as $miraklChannelName => $l7Key) {
             try {
                 $miraklL7 = $this->computeMiraklL7SalesLikeAmazon($miraklChannelName);
                 if ($miraklL7 !== null) {
@@ -4955,19 +4867,6 @@ class ChannelMasterController extends Controller
                 }
             } catch (\Throwable $e) {
                 Log::warning('Mirakl L7 Sales (' . $miraklChannelName . ') failed: ' . $e->getMessage());
-            }
-        }
-        if (isset($l7Summaries['tiendamia'])) {
-            $l7Summaries['tendamia'] = $l7Summaries['tiendamia'];
-        } else {
-            try {
-                $tiendaMiaL7 = $this->computeMiraklL7SalesLikeAmazon('Tienda Mia');
-                if ($tiendaMiaL7 !== null) {
-                    $l7Summaries['tiendamia'] = $tiendaMiaL7;
-                    $l7Summaries['tendamia'] = $tiendaMiaL7;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Mirakl L7 Sales (Tienda Mia alt) failed: ' . $e->getMessage());
             }
         }
 
@@ -5066,7 +4965,6 @@ class ChannelMasterController extends Controller
             'ebaytwo'   => 'getEbaytwoChannelData',
             'ebaythree' => 'getEbaythreeChannelData',
             'macys'     => 'getMacysChannelData',
-            'tiendamia' => 'getTiendamiaChannelData',
             'bestbuyusa'=> 'getBestbuyUsaChannelData',
             'newegg'    => 'getNeweggChannelData',
             'reverb'    => 'getReverbChannelData',
@@ -5558,7 +5456,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Mirakl channels (Best Buy USA, Macy's, Tiendamia): unit_price × qty, day before latest order_created_at, excl. CLOSED.
+     * Mirakl channels (Best Buy USA, Macy's): unit_price × qty, day before latest order_created_at, excl. CLOSED.
      */
     private function computeMiraklYSalesLikeAmazon(string $channelName): ?float
     {
@@ -6600,7 +6498,6 @@ class ChannelMasterController extends Controller
         'ebaytwo'   => 'getEbaytwoChannelData',
         'ebaythree' => 'getEbaythreeChannelData',
         'macys'     => 'getMacysChannelData',
-        'tiendamia' => 'getTiendamiaChannelData',
         'bestbuyusa'=> 'getBestbuyUsaChannelData',
         'newegg'    => 'getNeweggChannelData',
         'reverb'    => 'getReverbChannelData',
@@ -9221,132 +9118,6 @@ class ChannelMasterController extends Controller
 
             // Count as missing listing if not Listed and not NRL
             if ($listed !== 'Listed' && $rlNrl !== 'NRL') {
-                $missingListingCount++;
-            }
-        }
-
-        return $missingListingCount;
-    }
-
-    public function getTiendamiaChannelData(Request $request)
-    {
-        $result = [];
-
-        // Get metrics from marketplace_daily_metrics table (pre-calculated from MiraklDailyData)
-        $metrics = MarketplaceDailyMetric::where('channel', 'Tiendamia')->latest('date')->first();
-
-        // Get L60 data from TiendamiaProduct for comparison
-        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
-        $sixtyDaysAgo  = Carbon::now()->subDays(60);
-        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', 'Tiendamia')
-            ->where('status', '!=', 'CLOSED')
-            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
-            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
-            ->first();
-        $l60Orders = (int) ($l60Agg->order_count ?? 0);
-        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
-
-        // Use MarketplaceDailyMetric data
-        $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-
-        // Calculate growth
-        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-
-        // L60 profit percentage (calculate from L60 data if needed)
-        $gprofitL60 = 0;
-        $gRoiL60 = 0;
-
-        // N PFT = same as Gprofit% for Tiendamia (no ads)
-        $nPft = $gProfitPct;
-
-        // N ROI = same as G ROI for Tiendamia (no ads)
-        $nRoi = $metrics->n_roi ?? $gRoi;
-
-        // Channel data
-        $channelData = ChannelMaster::where('channel', 'Tiendamia')->first();
-
-        // Live counts from tiendamia-pricing (sheet price Missing L + Map / N Map)
-        $mapMissCounts = $this->getTiendamiaLiveMapMissNMapFromPricingData($request);
-
-        $result[] = [
-            'Channel '   => 'Tiendamia',
-            'L-60 Sales' => intval($l60Sales),
-            'L30 Sales'  => intval($l30Sales),
-            'Growth'     => round($growth, 2) . '%',
-            'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
-            'Qty'        => intval($totalQuantity),
-            'Gprofit%'   => round($gProfitPct, 2) . '%',
-            'gprofitL60' => round($gprofitL60, 2) . '%',
-            'G Roi'      => round($gRoi, 2),
-            'G RoiL60'   => round($gRoiL60, 2),
-            'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($nPft, 2) . '%',
-            'N ROI'      => round($nRoi, 2),
-            'KW Spent'   => 0,
-            'PT Spent'   => 0,
-            'HL Spent'   => 0,
-            'PMT Spent'  => 0,
-            'Shopping Spent' => 0,
-            'SERP Spent' => 0,
-            'Total Ad Spend' => 0,
-            'type'       => $channelData->type ?? '',
-            'W/Ads'      => $channelData->w_ads ?? 0,
-            'NR'         => $channelData->nr ?? 0,
-            'Update'     => $channelData->update ?? 0,
-            'cogs'       => round($totalCogs, 2),
-            'Map' => $mapMissCounts['map'],
-            'Miss' => $mapMissCounts['miss'],
-            'NMap' => $mapMissCounts['nmap'],
-            'Total Views' => $mapMissCounts['total_views'] ?? 0,
-            ...$this->getChannelHealthAndReviewsStub(),
-        ];
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Tiendamia channel data fetched successfully',
-            'data' => $result,
-        ]);
-    }
-
-    /**
-     * Get Missing Listing count for Tiendamia
-     * Missing Listing = SKUs where INV > 0, not PARENT, not Listed, and not NR
-     */
-    private function getTiendamiaMissingListingCount()
-    {
-        $productMasters = ProductMaster::whereNull('deleted_at')->get();
-        $skus = $productMasters->pluck('sku')->unique()->toArray();
-
-        $shopifyData = ShopifySku::mapByProductSkus($skus);
-        $statusData = TiendamiaListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        $missingListingCount = 0;
-
-        foreach ($productMasters as $item) {
-            $sku = trim($item->sku);
-            $isParent = stripos($sku, 'PARENT') !== false;
-            $inv = $shopifyData[$sku]->inv ?? 0;
-
-            if ($isParent || floatval($inv) <= 0) continue;
-
-            $status = $statusData[$sku]->value ?? null;
-            if (is_string($status)) {
-                $status = json_decode($status, true);
-            }
-
-            $nrReq = $status['nr_req'] ?? 'REQ';
-            $listed = $status['listed'] ?? null;
-
-            // Count as missing if not Listed and not NR
-            if ($listed !== 'Listed' && $nrReq !== 'NR') {
                 $missingListingCount++;
             }
         }
@@ -13452,9 +13223,6 @@ class ChannelMasterController extends Controller
                 case 'appscenic':
                     return app(ListingAppscenicController::class)->getNrReqCount()['Listed'] ?? 0;
 
-                case 'tiendamia':
-                    return app(ListingTiendamiaController::class)->getNrReqCount()['Listed'] ?? 0;
-
                 case 'spocket':
                     return app(ListingSpocketController::class)->getNrReqCount()['Listed'] ?? 0;
 
@@ -13957,7 +13725,6 @@ class ChannelMasterController extends Controller
             'ebay2' => EbayTwoListingStatus::class,
             'ebay3' => EbayThreeListingStatus::class,
             'bestbuy' => BestbuyUSAListingStatus::class,
-            'tiendamia' => TiendamiaListingStatus::class,
             'pls' => PlsListingStatus::class,
             'business5core' => Business5CoreListingStatus::class,
         ];
@@ -13990,7 +13757,7 @@ class ChannelMasterController extends Controller
             }
         }
 
-        $platforms = ['amazon', 'walmart', 'reverb', 'shein', 'doba', 'temu', 'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'tiendamia', 'pls', 'business5core'];
+        $platforms = ['amazon', 'walmart', 'reverb', 'shein', 'doba', 'temu', 'macy', 'ebay1', 'ebay2', 'ebay3', 'bestbuy', 'pls', 'business5core'];
 
         $info = [];
         foreach ($platforms as $platform) {
@@ -15054,7 +14821,6 @@ class ChannelMasterController extends Controller
             'temu' => 'Temu',
             'temu2' => 'Temu 2',
             'macys' => 'Macys',
-            'tiendamia' => 'Tiendamia',
             'bestbuyusa' => 'Best Buy USA',
             'reverb' => 'Reverb',
             'doba' => 'Doba',

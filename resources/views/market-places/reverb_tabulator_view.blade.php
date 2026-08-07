@@ -636,21 +636,20 @@
         return ((grossPft - adSpend) / lp) * 100;
     }
 
-    /** Amazon PFT% / SNPFT color bands. */
-    function reverbPftColor(percent) {
-        if (percent < 10) return '#a00211';
-        if (percent >= 10 && percent < 20) return '#3591dc';
-        if (percent >= 20 && percent < 30) return '#ffc107';
-        if (percent >= 30 && percent < 50) return '#28a745';
-        return '#e83e8c';
+    /** PFT / SNPFT color via MetricPctColors (GPFT bands by default; pass field for NPFT). */
+    function reverbPftColor(percent, field) {
+        if (window.MetricPctColors) {
+            return MetricPctColors.colorForField(field || 'GPFT%', percent) || '#dc3545';
+        }
+        return '#dc3545';
     }
 
-    /** Amazon ROI% / SNROI / Sroi color bands. */
-    function reverbRoiColor(percent) {
-        if (percent < 50) return '#a00211';
-        if (percent >= 50 && percent < 75) return '#ffc107';
-        if (percent >= 75 && percent <= 125) return '#28a745';
-        return '#e83e8c';
+    /** ROI / SNROI / Sroi color via MetricPctColors. */
+    function reverbRoiColor(percent, field) {
+        if (window.MetricPctColors) {
+            return MetricPctColors.colorForField(field || 'GROI%', percent) || '#dc3545';
+        }
+        return '#dc3545';
     }
     
     // Toast notification function
@@ -2457,15 +2456,8 @@
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
                 },
@@ -2480,7 +2472,7 @@
                         const percent = parseFloat(value);
                         if (isNaN(percent)) return '';
                         // Same color bands as /amazon-tabulator-view GROI% / SNROI
-                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2499,7 +2491,7 @@
                         const gpft = parseFloat(raw);
                         if (isNaN(gpft)) return '';
                         const percent = gpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0);
-                        return `<span style="color: ${reverbPftColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GPFT%', percent)) || ('color:'+reverbPftColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2517,7 +2509,7 @@
                         // Amazon-style: (gross PFT$ − Ads%×Price) / LP × 100
                         const percent = reverbComputeNetRoi(cell.getRow().getData());
                         if (percent === null || !isFinite(percent)) return '';
-                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2619,15 +2611,8 @@
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
                         const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
                 },
@@ -2645,7 +2630,7 @@
                         if (value === null || value === undefined || value === '') return '';
                         const percent = parseFloat(value);
                         if (isNaN(percent)) return '';
-                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2670,7 +2655,7 @@
                         const sgpft = parseFloat(rawGpft);
                         if (isNaN(sgpft)) return '';
                         const percent = sgpft - (parseFloat(REVERB_CHANNEL_ADS_PCT) || 0);
-                        return `<span style="color: ${reverbPftColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GPFT%', percent)) || ('color:'+reverbPftColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -2688,7 +2673,7 @@
                         // Amazon-style: (gross $ − Ads%×SPRICE) / LP × 100
                         const percent = reverbComputeNetSroi(cell.getRow().getData());
                         if (percent === null || !isFinite(percent)) return '';
-                        return `<span style="color: ${reverbRoiColor(percent)}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
