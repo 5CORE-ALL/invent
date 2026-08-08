@@ -1450,6 +1450,9 @@ class TemuController extends Controller
                 return $normalizeSku($pm->sku);
             });
 
+            // Same margin as /temu-tabulator (marketplace_percentages.Temu) — no hardcode
+            $margin = TemuShopifySalesService::temuMarginDecimal();
+
             $result = [];
             foreach ($allTemuData as $item) {
                 $sku = $item->contribution_sku;
@@ -1478,7 +1481,7 @@ class TemuController extends Controller
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
                 // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease).
                 $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
-                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
+                $pft = ($fbPrice * $margin - $lp - $temuShip) * $quantity;
                 $result[] = [
                     'Parent' => $parent,
                     'contribution_sku' => $item->contribution_sku ?? '',
@@ -1559,6 +1562,9 @@ class TemuController extends Controller
                 return $normalizeSku($pm->sku);
             });
 
+            // Same margin as /temu-tabulator (marketplace_percentages.Temu) — no hardcode
+            $margin = TemuShopifySalesService::temuMarginDecimal();
+
             $result = [];
             foreach ($allTemuData as $item) {
                 $sku = $item->contribution_sku;
@@ -1587,7 +1593,7 @@ class TemuController extends Controller
                 $quantity = $item->quantity_purchased !== null ? (int)$item->quantity_purchased : 0;
                 // FB Prc: +$2.99 when per-unit base price ≤ $26.99 (matches /temu-decrease).
                 $fbPrice = $basePrice <= 26.99 ? ($basePrice + 2.99) : $basePrice;
-                $pft = ($fbPrice * 0.96 - $lp - $temuShip) * $quantity;
+                $pft = ($fbPrice * $margin - $lp - $temuShip) * $quantity;
                 $result[] = [
                     'Parent' => $parent,
                     'contribution_sku' => $item->contribution_sku ?? '',
@@ -1626,8 +1632,7 @@ class TemuController extends Controller
         $temuYSales = TemuShopifySalesService::computeYSalesFromOrders();
 
         // Margin from marketplace_percentages (Temu), same source getOrdersTableRows /
-        // getTemuChannelData use — so /temu-tabulator GPFT%/ROI match /all-marketplace-master
-        // instead of a hardcoded 0.96.
+        // getTemuChannelData use — so /temu-tabulator GPFT%/ROI match /all-marketplace-master.
         $temuMargin = TemuShopifySalesService::temuMarginDecimal();
 
         return view('market-places.temu_tabulator_view', [
@@ -1679,8 +1684,8 @@ class TemuController extends Controller
      */
     public function temu2TabulatorView()
     {
-        $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-        $temu2Pct = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
+        // Same margin source/formula as /temu-tabulator (marketplace_percentages.Temu).
+        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
 
         // Y Sales — base-price sales for the day before the latest uploaded purchase_date
         // (the last complete day). Also expose that date so the badge shows which day it
@@ -1689,7 +1694,7 @@ class TemuController extends Controller
         $latestUpload = (Schema::hasTable('temu2_daily_data') ? Temu2DailyData::whereNotNull('purchase_date')->max('purchase_date') : null);
         $temu2YDate = $latestUpload ? Carbon::parse($latestUpload)->subDay()->toDateString() : null;
 
-        return view('market-places.temu2_tabulator_view', compact('temu2Pct', 'temu2YSales', 'temu2YDate'));
+        return view('market-places.temu2_tabulator_view', compact('temuMargin', 'temu2YSales', 'temu2YDate'));
     }
 
     /**
@@ -1883,14 +1888,362 @@ class TemuController extends Controller
     }
 
     /**
-     * Pricing sheet upload removed — Temu 2 listings/prices come from Open API.
+     * Upload Temu 2 listing/pricing sheet (Seller export).
+     * Format columns: Category, Category id, Product name, Contribution Goods, SKU,
+     * Goods ID, SKU ID, Variation, Quantity, Base price, …
+     * Matches by Goods ID (+ SKU ID / SKU) and updates Base price on temu2_pricing
+     * and temu2_metrics so /temu2-decrease Price column reflects the upload.
+     *
+     * Fast path: bulk insert + in-memory metric match (no per-row ORM queries).
      */
     public function uploadTemu2Pricing(Request $request)
     {
-        return back()->with(
-            'error',
-            'Temu 2 pricing sheet upload is disabled. Run: php artisan app:fetch-temu2-metrics'
-        );
+        @set_time_limit(120);
+        $request->validate([
+            'pricing_file' => 'required|file|max:20480',
+        ]);
+
+        $file = $request->file('pricing_file');
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
+        if (! in_array($ext, $allowed, true)) {
+            $msg = 'Invalid file type. Upload .xlsx, .xls, .csv, or .tsv (Temu listing export).';
+
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => $msg], 422)
+                : back()->with('error', $msg);
+        }
+
+        try {
+            $rows = $this->readTemu2PricingUploadRows($file->getRealPath(), $ext);
+            if (count($rows) < 2) {
+                throw new \RuntimeException('File has no data rows.');
+            }
+
+            $rawHeaders = array_shift($rows);
+            $headerMap = []; // normalized => 0-based index
+            foreach ($rawHeaders as $idx => $header) {
+                if ($header instanceof RichText) {
+                    $header = $header->getPlainText();
+                }
+                $key = strtolower(trim(preg_replace('/\s+/', ' ', (string) $header)));
+                if ($key !== '') {
+                    $headerMap[$key] = (int) $idx;
+                }
+            }
+
+            $col = static function (array $aliases) use ($headerMap) {
+                foreach ($aliases as $alias) {
+                    $k = strtolower(trim(preg_replace('/\s+/', ' ', $alias)));
+                    if (array_key_exists($k, $headerMap)) {
+                        return $headerMap[$k];
+                    }
+                }
+
+                return null;
+            };
+
+            $goodsIdCol = $col(['Goods ID', 'GoodsID', 'goods_id']);
+            $basePriceCol = $col(['Base price', 'Base Price', 'base_price', 'Price']);
+            $skuCol = $col(['SKU', 'Contribution SKU']);
+            $skuIdCol = $col(['SKU ID', 'sku_id']);
+            $qtyCol = $col(['Quantity']);
+            $categoryCol = $col(['Category']);
+            $categoryIdCol = $col(['Category id', 'Category ID']);
+            $productNameCol = $col(['Product name', 'Product Name']);
+            $contribCol = $col(['Contribution Goods']);
+            $variationCol = $col(['Variation']);
+            $statusCol = $col(['Status']);
+            $detailStatusCol = $col(['Detail status', 'Detail Status']);
+            $extTypeCol = $col(['External Product ID Type']);
+            $extIdCol = $col(['External product ID', 'External Product ID']);
+            $incompleteCol = $col(['Incomplete product information']);
+
+            if ($goodsIdCol === null || $basePriceCol === null) {
+                throw new \RuntimeException('Missing required columns: Goods ID and Base price.');
+            }
+
+            $val = static function (array $row, $idx) {
+                if ($idx === null || ! array_key_exists($idx, $row)) {
+                    return null;
+                }
+                $v = $row[$idx];
+                if ($v instanceof RichText) {
+                    $v = $v->getPlainText();
+                }
+
+                return is_string($v) ? trim($v) : $v;
+            };
+
+            $normId = static function ($v) {
+                if ($v === null || $v === '') {
+                    return '';
+                }
+                if (is_float($v) || (is_numeric($v) && preg_match('/[eE]/', (string) $v))) {
+                    return TemuGoodsIdHelper::normalizeKey(number_format((float) $v, 0, '.', '')) ?? '';
+                }
+
+                return TemuGoodsIdHelper::normalizeKey($v) ?? '';
+            };
+
+            $now = now()->format('Y-m-d H:i:s');
+            $pricingRows = [];
+            $metricUpdates = []; // id => [base_price, goods_id, sku_id?, quantity?]
+            $metricCreates = [];
+            $skipped = 0;
+
+            // Normalize SKU the same way /temu2-decrease matches to CP Master
+            $normalizeSku = static function ($sku) {
+                $sku = strtoupper(trim((string) $sku));
+                $sku = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $sku);
+
+                return preg_replace('/\s+/', ' ', $sku);
+            };
+
+            // Preload metrics once for O(1) match (prefer SKU / SKU ID over Goods ID)
+            $bySkuId = [];
+            $bySkuNorm = [];
+            $byGoodsId = [];
+            if (Schema::hasTable('temu2_metrics')) {
+                foreach (DB::table('temu2_metrics')->select(['id', 'sku', 'sku_id', 'goods_id'])->get() as $m) {
+                    $id = (int) $m->id;
+                    $sid = TemuGoodsIdHelper::normalizeKey($m->sku_id) ?? trim((string) $m->sku_id);
+                    $sku = trim((string) $m->sku);
+                    $skuN = $normalizeSku($sku);
+                    $gid = TemuGoodsIdHelper::normalizeKey($m->goods_id) ?? trim((string) $m->goods_id);
+                    if ($sid !== '') {
+                        $bySkuId[$sid] = $id;
+                    }
+                    if ($skuN !== '') {
+                        $bySkuNorm[$skuN] = $id;
+                    }
+                    if ($gid !== '') {
+                        if (! isset($byGoodsId[$gid])) {
+                            $byGoodsId[$gid] = [];
+                        }
+                        $byGoodsId[$gid][$skuN !== '' ? $skuN : ('_'.$id)] = $id;
+                    }
+                }
+            }
+
+            // Pricing table is fully replaced via truncate below — start ids at 1.
+            $nextPricingId = 1;
+            $nextMetricId = Schema::hasTable('temu2_metrics')
+                ? ((int) (DB::table('temu2_metrics')->max('id') ?? 0) + 1)
+                : 1;
+
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    $skipped++;
+                    continue;
+                }
+
+                $goodsId = $normId($val($row, $goodsIdCol));
+                $baseRaw = $val($row, $basePriceCol);
+                $basePrice = is_numeric($baseRaw)
+                    ? (float) $baseRaw
+                    : (float) preg_replace('/[^0-9.\-]/', '', (string) $baseRaw);
+                $sku = trim((string) ($val($row, $skuCol) ?? ''));
+                $skuId = $normId($val($row, $skuIdCol));
+                $qty = (int) ($val($row, $qtyCol) ?? 0);
+
+                if ($goodsId === '' || $basePrice <= 0 || ($sku === '' && $skuId === '')) {
+                    $skipped++;
+                    continue;
+                }
+
+                $skuOut = $sku !== '' ? $sku : $skuId;
+                $pricingRows[] = [
+                    'id' => $nextPricingId++,
+                    'category' => (string) ($val($row, $categoryCol) ?? ''),
+                    'category_id' => (string) ($val($row, $categoryIdCol) ?? ''),
+                    'product_name' => (string) ($val($row, $productNameCol) ?? ''),
+                    'contribution_goods' => (string) ($val($row, $contribCol) ?? ''),
+                    'sku' => $skuOut,
+                    'goods_id' => $goodsId,
+                    'sku_id' => $skuId,
+                    'variation' => (string) ($val($row, $variationCol) ?? ''),
+                    'quantity' => $qty,
+                    'base_price' => round($basePrice, 2),
+                    'external_product_id_type' => (string) ($val($row, $extTypeCol) ?? ''),
+                    'external_product_id' => (string) ($val($row, $extIdCol) ?? ''),
+                    'status' => (string) ($val($row, $statusCol) ?? ''),
+                    'detail_status' => (string) ($val($row, $detailStatusCol) ?? ''),
+                    'date_created' => null,
+                    'incomplete_product_information' => (string) ($val($row, $incompleteCol) ?? ''),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                $skuN = $normalizeSku($skuOut);
+                $metricId = null;
+                // Match order: SKU ID → SKU (CP Master style normalize) → Goods ID + SKU → Goods ID
+                if ($skuId !== '' && isset($bySkuId[$skuId])) {
+                    $metricId = $bySkuId[$skuId];
+                } elseif ($skuN !== '' && isset($bySkuNorm[$skuN])) {
+                    $metricId = $bySkuNorm[$skuN];
+                } elseif ($goodsId !== '' && isset($byGoodsId[$goodsId])) {
+                    $metricId = $byGoodsId[$goodsId][$skuN] ?? reset($byGoodsId[$goodsId]) ?: null;
+                }
+
+                if ($metricId) {
+                    $metricUpdates[(int) $metricId] = [
+                        'base_price' => round($basePrice, 2),
+                        'goods_id' => $goodsId,
+                        'sku_id' => $skuId !== '' ? $skuId : null,
+                        'quantity' => $qty > 0 ? $qty : null,
+                        'updated_at' => $now,
+                    ];
+                } else {
+                    $newId = $nextMetricId++;
+                    $metricCreates[] = [
+                        'id' => $newId,
+                        'sku' => $skuOut,
+                        'sku_id' => $skuId !== '' ? $skuId : null,
+                        'goods_id' => $goodsId,
+                        'base_price' => round($basePrice, 2),
+                        'quantity' => $qty,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                    if ($skuId !== '') {
+                        $bySkuId[$skuId] = $newId;
+                    }
+                    if ($skuN !== '') {
+                        $bySkuNorm[$skuN] = $newId;
+                    }
+                }
+            }
+
+            $imported = count($pricingRows);
+            $metricsUpdated = count($metricUpdates);
+            $metricsCreated = count($metricCreates);
+
+            // TRUNCATE auto-commits on MySQL — run outside the transaction.
+            if (Schema::hasTable('temu2_pricing')) {
+                DB::table('temu2_pricing')->truncate();
+            }
+
+            DB::beginTransaction();
+            try {
+                if (Schema::hasTable('temu2_pricing')) {
+                    foreach (array_chunk($pricingRows, 500) as $chunk) {
+                        DB::table('temu2_pricing')->insert($chunk);
+                    }
+                }
+
+                // Per-id updates (reliable; ~700 rows is still fast)
+                foreach ($metricUpdates as $id => $u) {
+                    $data = [
+                        'base_price' => $u['base_price'],
+                        'goods_id' => $u['goods_id'],
+                        'updated_at' => $now,
+                    ];
+                    if (! empty($u['sku_id'])) {
+                        $data['sku_id'] = $u['sku_id'];
+                    }
+                    if ($u['quantity'] !== null) {
+                        $data['quantity'] = $u['quantity'];
+                    }
+                    DB::table('temu2_metrics')->where('id', (int) $id)->update($data);
+                }
+
+                foreach (array_chunk($metricCreates, 500) as $chunk) {
+                    DB::table('temu2_metrics')->insert($chunk);
+                }
+
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+            $message = "Imported {$imported} pricing row(s). Updated {$metricsUpdated} metric price(s)"
+                .($metricsCreated > 0 ? ", created {$metricsCreated} metric(s)" : '')
+                .($skipped > 0 ? ", skipped {$skipped}" : '')
+                .'.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'imported' => $imported,
+                    'metrics_updated' => $metricsUpdated,
+                    'metrics_created' => $metricsCreated,
+                    'skipped' => $skipped,
+                ]);
+            }
+
+            return back()->with('success', $message);
+        } catch (\Throwable $e) {
+            Log::error('Temu 2 pricing upload failed: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $msg = 'Error uploading Temu 2 pricing: '.$e->getMessage();
+
+            return $request->expectsJson() || $request->ajax()
+                ? response()->json(['success' => false, 'message' => $msg], 500)
+                : back()->with('error', $msg);
+        }
+    }
+
+    /**
+     * Read Temu 2 pricing upload into a plain row array (header + data).
+     * TSV/CSV use native PHP (fast); Excel uses PhpSpreadsheet data-only load.
+     */
+    private function readTemu2PricingUploadRows(string $path, string $ext): array
+    {
+        if (in_array($ext, ['tsv', 'txt', 'csv'], true)) {
+            $delimiter = $ext === 'csv' ? ',' : "\t";
+            $fh = fopen($path, 'rb');
+            if ($fh === false) {
+                throw new \RuntimeException('Could not open upload file.');
+            }
+            $out = [];
+            while (($row = fgetcsv($fh, 0, $delimiter)) !== false) {
+                // Skip fully empty trailing rows
+                if ($row === [null] || $row === false) {
+                    continue;
+                }
+                $allEmpty = true;
+                foreach ($row as $cell) {
+                    if (trim((string) $cell) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if ($allEmpty) {
+                    continue;
+                }
+                $out[] = $row;
+            }
+            fclose($fh);
+
+            return $out;
+        }
+
+        $reader = IOFactory::createReaderForFile($path);
+        if (method_exists($reader, 'setReadDataOnly')) {
+            $reader->setReadDataOnly(true);
+        }
+        $spreadsheet = $reader->load($path);
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+
+        return array_values(array_filter($rows, static function ($row) {
+            if (! is_array($row)) {
+                return false;
+            }
+            foreach ($row as $cell) {
+                if (trim((string) $cell) !== '') {
+                    return true;
+                }
+            }
+
+            return false;
+        }));
     }
 
     /**
@@ -2100,11 +2453,15 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Profit = (Sprice × 0.80) − temu_ship − LP (same for Temu / Temu2)
-            $profit = $sprice * 0.80 - $lp - $temuShip;
-            $sgprftPercent = $sprice > 0 ? ($profit / $sprice) * 100 : 0;
-            // SROI = Profit / LP
-            $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
+            // SGPRFT on Full Sprice; SROI on S Recovery (Sprice × 0.88)
+            // Same margin as /temu-decrease (marketplace_percentages.Temu)
+            $margin = TemuShopifySalesService::temuMarginDecimal();
+            $sRecovery = $sprice * 0.88;
+            $profitRoi = $sRecovery * $margin - $lp - $temuShip;
+            $profitPft = $sprice * $margin - $lp - $temuShip;
+            $sgprftPercent = $sprice > 0 ? ($profitPft / $sprice) * 100 : 0;
+            // SROI = S Profit (recovery) / LP
+            $sroiPercent = $lp > 0 ? ($profitRoi / $lp) * 100 : 0;
 
             $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, true);
             // Auto-apply same suggested price to Temu 1
@@ -2323,9 +2680,9 @@ class TemuController extends Controller
 
     public function temu2DecreaseView()
     {
-        $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-        $temu2Pct = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
-        return view('market-places.temu2_decrease', compact('temu2Pct'));
+        // Same margin source/name as /temu-decrease (marketplace_percentages.Temu)
+        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+        return view('market-places.temu2_decrease', compact('temuMargin'));
     }
 
     /**
@@ -2427,10 +2784,8 @@ class TemuController extends Controller
             $qty = (int)($row->quantity_purchased ?? 0);
             $base = (float)($row->base_price_total ?? 0);
             $totalQuantity += $qty;
-            // FB Prc: +$2.99 when per-unit base price ≤ $26.99
-            // (matches /temu-decrease, all-marketplace-master, and buildTemuDecreaseDataResponse).
-            $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
-            $totalRevenue += $fbPrice * $qty;
+            // Full Temu Price = (base × 1.1765); +$2.99 if that ≤ $26.99
+            $totalRevenue += TemuShopifySalesService::computeFullTemuPrice($base) * $qty;
         }
         return [
             'total_orders' => $totalOrders,
@@ -2471,12 +2826,9 @@ class TemuController extends Controller
             }
             $isL7Period = $selectedPeriod === 'L7';
 
-            // Margin from marketplace_percentages (Temu / TemuTwo) — no hardcoded rate
-            $marketplaceName = $isTemu2Pricing ? 'TemuTwo' : 'Temu';
-            $marketplaceData = MarketplacePercentage::where('marketplace', $marketplaceName)->first();
-            $percentage = ($marketplaceData && $marketplaceData->percentage)
-                ? ((float) $marketplaceData->percentage / 100)
-                : TemuShopifySalesService::temuMarginDecimal();
+            // Margin from marketplace_percentages.Temu for both Temu and Temu 2 decrease
+            // (same TEMU_MARGIN / formula as /temu-decrease).
+            $percentage = TemuShopifySalesService::temuMarginDecimal();
             
             // 1. Start from ProductMaster (like eBay does)
             $productMasters = ProductMaster::orderBy("parent", "asc")
@@ -2525,7 +2877,8 @@ class TemuController extends Controller
 
             // 3. Listing / price / stock source:
             //    Temu 1 → temu_metrics (API)
-            //    Temu 2 → temu2_metrics (API — sheet upload removed)
+            //    Temu 2 → temu2_metrics (API), then overlay Base price from temu2_pricing
+            //             matched by SKU to CP Master (product_master).
             $mapMetricToPricingRow = static function ($m) {
                 return (object) [
                     'sku' => $m->sku,
@@ -2558,7 +2911,7 @@ class TemuController extends Controller
                     ->map($mapMetricToPricingRow);
             }
 
-            // Build pricing data with normalized matching
+            // Build pricing data with normalized matching to CP Master SKUs
             $pricingData = collect();
             // Build normalized SKU map for missing column check (same as pricing logic)
             $temuPricingSkusNormalized = collect();
@@ -2570,6 +2923,59 @@ class TemuController extends Controller
                 if (isset($normalizedSkuMap[$normalizedPricingSku])) {
                     $originalSku = $normalizedSkuMap[$normalizedPricingSku];
                     $pricingData[$originalSku] = $pricing;
+                }
+            }
+
+            // Temu 2: Base Price + Goods ID from temu2_pricing matched by SKU → CP Master.
+            // Goods ID from this sheet is the join key for temu2_view_data Views (product_clicks).
+            $temu2PricingGoodsIdBySku = []; // original CP Master sku => normalized goods_id
+            if ($isTemu2Pricing && Schema::hasTable('temu2_pricing')) {
+                $sheetRows = Temu2Pricing::query()
+                    ->select(['sku', 'sku_id', 'goods_id', 'base_price', 'quantity', 'product_name', 'category', 'variation', 'status', 'detail_status'])
+                    ->get();
+                foreach ($sheetRows as $sheet) {
+                    $normalizedSheetSku = $normalizeSku($sheet->sku);
+                    if ($normalizedSheetSku === '' || ! isset($normalizedSkuMap[$normalizedSheetSku])) {
+                        continue;
+                    }
+                    $originalSku = $normalizedSkuMap[$normalizedSheetSku];
+                    $sheetGoodsId = TemuGoodsIdHelper::normalizeKey($sheet->goods_id);
+                    $temuPricingSkusNormalized->push($normalizedSheetSku);
+                    if ($sheetGoodsId) {
+                        $temu2PricingGoodsIdBySku[$originalSku] = $sheetGoodsId;
+                    }
+                    $existing = $pricingData->get($originalSku);
+                    if ($existing) {
+                        if ($sheet->base_price !== null && (float) $sheet->base_price > 0) {
+                            $existing->base_price = $sheet->base_price;
+                        }
+                        if ($sheetGoodsId) {
+                            $existing->goods_id = $sheetGoodsId;
+                        }
+                        if (! empty($sheet->sku_id)) {
+                            $existing->sku_id = $sheet->sku_id;
+                        }
+                        if ((int) ($sheet->quantity ?? 0) > 0) {
+                            $existing->quantity = (int) $sheet->quantity;
+                        }
+                        $pricingData[$originalSku] = $existing;
+                    } else {
+                        $pricingData[$originalSku] = (object) [
+                            'sku' => $originalSku,
+                            'product_name' => (string) ($sheet->product_name ?? ''),
+                            'category' => (string) ($sheet->category ?? ''),
+                            'variation' => (string) ($sheet->variation ?? ''),
+                            'quantity' => (int) ($sheet->quantity ?? 0),
+                            'base_price' => $sheet->base_price,
+                            'status' => (string) ($sheet->status ?? ''),
+                            'detail_status' => (string) ($sheet->detail_status ?? ''),
+                            'goods_id' => $sheetGoodsId,
+                            'sku_id' => $sheet->sku_id,
+                            'date_created' => '',
+                            'recommended_base_price' => null,
+                            'product_clicks_l30' => null,
+                        ];
+                    }
                 }
             }
             
@@ -2712,6 +3118,7 @@ class TemuController extends Controller
             $salesTotalOrders = 0;
             $salesTotalQuantity = 0;
             $salesTotalRevenue = 0.0;
+            $salesTotalPftFull = 0.0;
             $salesTotalPft = 0.0;
             $salesTotalCogs = 0.0;
             foreach ($salesOrderRows as $row) {
@@ -2735,54 +3142,46 @@ class TemuController extends Controller
                 $base = (float)($row->base_price_total ?? 0);
                 $salesTotalQuantity += $qty;
 
-                if ($isTemu2Pricing) {
-                    // Temu 2 revenue / GPFT / GROI mirror /temu2-tabulator:
-                    // FB Prc (+$2.99 when base ≤ $26.99), order price × qty, PM LP & temu_ship.
-                    $fbPrice = $base <= 26.99 ? $base + 2.99 : $base;
-                    $salesTotalRevenue += $fbPrice * $qty;
+                // Full Temu Price = (base × 1.1765); +$2.99 if that ≤ $26.99 — Sales / GPFT
+                $fullPrice = TemuShopifySalesService::computeFullTemuPrice($base);
+                $salesTotalRevenue += $fullPrice * $qty;
 
-                    if ($qty > 0 && $base > 0) {
-                        $pm = $pmBySku[$rawSku]
-                            ?? $pmByNormalized[$normalizedRowSku]
-                            ?? $pmByNoSpace[$normalizedRowSkuNoSpace]
-                            ?? null;
-                        $orderLp = 0.0;
-                        $orderTemuShip = 0.0;
-                        if ($pm) {
-                            $values = is_array($pm->Values) ? $pm->Values :
-                                (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                            if (!is_array($values)) {
-                                $values = [];
-                            }
-                            foreach ($values as $k => $v) {
-                                if (strtolower((string) $k) === 'lp') {
-                                    $orderLp = (float) $v;
-                                    break;
-                                }
-                            }
-                            if ($orderLp === 0.0 && isset($pm->lp)) {
-                                $orderLp = (float) $pm->lp;
-                            }
-                            if (isset($values['temu_ship'])) {
-                                $orderTemuShip = (float) $values['temu_ship'];
-                            } elseif (isset($pm->temu_ship)) {
-                                $orderTemuShip = (float) $pm->temu_ship;
+                if ($isTemu2Pricing && $qty > 0 && $base > 0) {
+                    $pm = $pmBySku[$rawSku]
+                        ?? $pmByNormalized[$normalizedRowSku]
+                        ?? $pmByNoSpace[$normalizedRowSkuNoSpace]
+                        ?? null;
+                    $orderLp = 0.0;
+                    $orderTemuShip = 0.0;
+                    if ($pm) {
+                        $values = is_array($pm->Values) ? $pm->Values :
+                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                        if (!is_array($values)) {
+                            $values = [];
+                        }
+                        foreach ($values as $k => $v) {
+                            if (strtolower((string) $k) === 'lp') {
+                                $orderLp = (float) $v;
+                                break;
                             }
                         }
-                        $pftDecimal = $fbPrice > 0
-                            ? ($fbPrice * $percentage - $orderLp - $orderTemuShip) / $fbPrice
-                            : 0.0;
-                        $salesTotalPft += $pftDecimal * $fbPrice * $qty;
-                        $salesTotalCogs += $orderLp * $qty;
+                        if ($orderLp === 0.0 && isset($pm->lp)) {
+                            $orderLp = (float) $pm->lp;
+                        }
+                        if (isset($values['temu_ship'])) {
+                            $orderTemuShip = (float) $values['temu_ship'];
+                        } elseif (isset($pm->temu_ship)) {
+                            $orderTemuShip = (float) $pm->temu_ship;
+                        }
                     }
-                } else {
-                    // Temu 1 revenue mirrors the Temu 1 tabulator + Temu Seller Central's
-                    // "Base price sales" tile: base price × qty (no FB freight uplift). Using
-                    // fbPrice here inflated /temu-decrease sales above /temu-tabulator.
-                    $salesTotalRevenue += $base * $qty;
+                    // Same as /temu-decrease: GPFT $ on Full Price; GROI $ on R Price
+                    $rPrice = $base <= 26.99 ? ($base + 2.99) : $base;
+                    $salesTotalPftFull += ($fullPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
+                    $salesTotalPft += ($rPrice * $percentage - $orderLp - $orderTemuShip) * $qty;
+                    $salesTotalCogs += $orderLp * $qty;
                 }
             }
-            $salesGpftPercent = $salesTotalRevenue > 0 ? ($salesTotalPft / $salesTotalRevenue) * 100 : 0.0;
+            $salesGpftPercent = $salesTotalRevenue > 0 ? ($salesTotalPftFull / $salesTotalRevenue) * 100 : 0.0;
             $salesGroiPercent = $salesTotalCogs > 0 ? ($salesTotalPft / $salesTotalCogs) * 100 : 0.0;
             $salesSummary = [
                 'total_orders' => $salesTotalOrders,
@@ -3008,7 +3407,7 @@ class TemuController extends Controller
                 });
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $l60ByNormalizedSku, $normalizeSku, $normalizeSkuLoose, $viewData, $viewDataL7, $viewDataL7ToL14, $temuDataViewData, $amazonData, $ebayData, $ebay2Data, $recommendedBySkuId, $recommendedBySku, $percentage, $temuPricingSkusNormalized, $statusData, $campaignReportL30, $campaignReportL30BySku, $campaignReportL30BySkuLoose, $campaignReportL60, $campaignReportL60BySku, $campaignReportL60BySkuLoose, $campaignReportL7, $campaignReportL7BySku, $campaignReportL7BySkuLoose, $temuLmpByNormalizedSku, $nrByNormalizedSku, $isTemu2Pricing, $temu1PricingBySku, $temu2PricingGoodsIdBySku) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -3057,13 +3456,29 @@ class TemuController extends Controller
                 // Get Temu L30 (last 30 days sales from Temu daily data)
                 $temuL30 = $temuSales ? (int) ($temuSales->temu_l30 ?? 0) : 0;
                 
-                // Views by goods_id: Temu 1 sheet (fallback Ads API); Temu 2 sheet
-                $goodsId = $item ? $item->goods_id : null;
+                // Views / O Clicks by goods_id:
+                // Temu 2 → Goods ID from temu2_pricing, then SUM(product_clicks) from temu2_view_data
+                //           across every uploaded file/date for that Goods ID (no Ads API fallback).
+                // Temu 1 → temu_view_data sheet; Ads API fallback when sheet has no row.
+                if ($isTemu2Pricing) {
+                    $goodsId = $temu2PricingGoodsIdBySku[$sku]
+                        ?? TemuGoodsIdHelper::normalizeKey($item->goods_id ?? null);
+                } else {
+                    $goodsId = $item ? TemuGoodsIdHelper::normalizeKey($item->goods_id) : null;
+                }
                 $goodsIdKeyForViews = $goodsId ? TemuGoodsIdHelper::normalizeKey($goodsId) : null;
                 $viewDataItem = $goodsIdKeyForViews ? $viewData->get($goodsIdKeyForViews) : null;
-                $productClicks = $viewDataItem
-                    ? (int) $viewDataItem->product_clicks
-                    : (int) ($item->product_clicks_l30 ?? 0);
+                // Sheet SUM(product_clicks) for this Goods ID (all uploaded dates/files).
+                $sheetProductClicks = $viewDataItem ? (int) $viewDataItem->product_clicks : 0;
+                $oClicks = $sheetProductClicks;
+                if ($isTemu2Pricing) {
+                    // Views column = uploaded sheet sum only, matched via temu2_pricing.goods_id
+                    $productClicks = $sheetProductClicks;
+                } else {
+                    $productClicks = $viewDataItem
+                        ? $sheetProductClicks
+                        : (int) ($item->product_clicks_l30 ?? 0);
+                }
                 $ctr = $viewDataItem ? ($viewDataItem->ctr ?? 0) : 0;
 
                 // View 7: Temu 1 from ads API L7; Temu 2 unused (0)
@@ -3140,10 +3555,12 @@ class TemuController extends Controller
                 
                 // Calculate Temu Price (Base Price + 2.99 if <= 26.99) - only if item exists in Temu
                 if ($item && $basePrice > 0) {
-                    $temuPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
+                    $temuPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice; // Temu R Price
                 } else {
                     $temuPrice = 0;
                 }
+                // Full Temu Price = (base × 1.1765); +$2.99 if ≤ $26.99 — GPFT / NPFT; GROI stays on R Price
+                $temuFullPrice = TemuShopifySalesService::computeFullTemuPrice((float) $basePrice);
 
                 // Temu 1 base/listing price for the same SKU. Only populated on the Temu 2
                 // endpoint (see $temu1PricingBySku build above). Same +$2.99 adjustment as
@@ -3154,9 +3571,11 @@ class TemuController extends Controller
                     ? ($temu1BasePrice <= 26.99 ? $temu1BasePrice + 2.99 : $temu1BasePrice)
                     : 0;
                 
-                // GPRFT% = ((FB Prc × margin − LP − Temu Ship) / FB Prc) × 100 (margin from marketplace_percentages)
+                // Dollar profit / GROI on Temu R Price; GPFT% on Full Temu Price
                 $profit = $temuPrice * $percentage - $lp - $temuShip;
-                $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
+                $profitPercent = $temuFullPrice > 0
+                    ? (($temuFullPrice * $percentage - $lp - $temuShip) / $temuFullPrice) * 100
+                    : 0;
                 $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
                 
                 // CVR% = Sold / clicks × 100.
@@ -3178,36 +3597,30 @@ class TemuController extends Controller
                 $cvr45 = $cvrDenom > 0 ? round(($temuL45 / $cvrDenom) * 100, 2) : 0;
                 $cvr60 = $cvrDenom > 0 ? round(($temuL60 / $cvrDenom) * 100, 2) : 0;
 
-                // Calculate ADS% (Advertising Cost of Sale: Spend / Revenue * 100)
+                // ADS%: Spend / Full Temu Price revenue (aligned with GPFT/NPFT)
                 // If spend > 0 but no sales (temuL30 = 0), show 100%
-                // Temu 2: no Ads% / NPFT-from-ads (Spend is display-only from temu2_campaign_reports)
-                $revenue = $temuPrice * $temuL30;
-                if ($isTemu2Pricing) {
-                    $adsPercent = 0;
+                // Same formula for Temu and Temu 2 (matches /temu-decrease).
+                $revenue = $temuFullPrice * $temuL30;
+                if ($spend > 0 && $temuL30 == 0) {
+                    $adsPercent = 100;
+                } else {
+                    $adsPercent = $revenue > 0 ? ($spend / $revenue) * 100 : 0;
+                }
+
+                // NPFT% = GPFT% (Full Temu Price) − ADS%
+                // If ADS% is 100% (spent but no sales), don't subtract it
+                if ($adsPercent == 100) {
                     $npftPercent = $profitPercent;
+                } else {
+                    $npftPercent = $profitPercent - $adsPercent;
+                }
+
+                // NROI% = GROI% (R Price) − ADS%
+                // If ADS% is 100%, don't subtract it
+                if ($adsPercent == 100) {
                     $nroiPercent = $roiPercent;
                 } else {
-                    if ($spend > 0 && $temuL30 == 0) {
-                        $adsPercent = 100;
-                    } else {
-                        $adsPercent = $revenue > 0 ? ($spend / $revenue) * 100 : 0;
-                    }
-
-                    // Calculate NPFT% (Net Profit: GPRFT% - ADS%)
-                    // If ADS% is 100% (spent but no sales), don't subtract it
-                    if ($adsPercent == 100) {
-                        $npftPercent = $profitPercent;
-                    } else {
-                        $npftPercent = $profitPercent - $adsPercent;
-                    }
-
-                    // Calculate NROI% (Net ROI: GROI% - ADS%)
-                    // If ADS% is 100%, don't subtract it
-                    if ($adsPercent == 100) {
-                        $nroiPercent = $roiPercent;
-                    } else {
-                        $nroiPercent = $roiPercent - $adsPercent;
-                    }
+                    $nroiPercent = $roiPercent - $adsPercent;
                 }
                 
                 // Saved SPRICE / starget / (Temu 2) listing fields: temu_data_view or temu2_data_view JSON
@@ -3386,6 +3799,7 @@ class TemuController extends Controller
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),
                     'product_clicks' => (int)$productClicks,
+                    'o_clicks' => (int) $oClicks,
                     'ctr' => round($ctr, 2),
                     'product_clicks_l7' => $productClicksL7,
                     'product_clicks_l7_to_l14' => $productClicksL7ToL14,
@@ -3450,13 +3864,17 @@ class TemuController extends Controller
                     if (! empty($row['is_parent'])) {
                         continue;
                     }
-                    $gid = trim((string) ($row['goods_id'] ?? ''));
+                    $gid = TemuGoodsIdHelper::normalizeKey($row['goods_id'] ?? null) ?? '';
                     if ($gid === '') {
                         continue;
                     }
+                    // Keep normalized goods_id on the row for consistent view matching
+                    $row['goods_id'] = $gid;
+                    $processedData[$idx] = $row;
                     if (! isset($goodsIdMetricTotals[$gid])) {
                         $goodsIdMetricTotals[$gid] = [
                             'product_clicks' => (int) ($row['product_clicks'] ?? 0),
+                            'o_clicks' => (int) ($row['o_clicks'] ?? 0),
                             'ad_clicks' => (int) ($row['ad_clicks'] ?? 0),
                             'impressions' => (int) ($row['impressions'] ?? 0),
                             'spend' => round((float) ($row['spend'] ?? 0), 2),
@@ -3468,24 +3886,22 @@ class TemuController extends Controller
                     $skuIndexesByGoodsId[$gid][] = $idx;
                 }
 
-                // Divide each goods_id total across its child SKUs (integer/cents + remainder).
+                // Views / O Clicks / Ad / T Clicks stay as full goods_id totals on every child
+                // (SUM of uploaded product_clicks matched via temu2_pricing.goods_id).
+                // Only spend is split across child SKUs so money totals don't multiply.
                 foreach ($skuIndexesByGoodsId as $gid => $indexes) {
                     $n = count($indexes);
                     if ($n <= 0) {
                         continue;
                     }
                     $fullO = (int) ($goodsIdMetricTotals[$gid]['product_clicks'] ?? 0);
+                    $fullSheetO = (int) ($goodsIdMetricTotals[$gid]['o_clicks'] ?? 0);
                     $fullAd = (int) ($goodsIdMetricTotals[$gid]['ad_clicks'] ?? 0);
                     $fullImp = (int) ($goodsIdMetricTotals[$gid]['impressions'] ?? 0);
+                    $fullT = $fullO + $fullAd;
                     $spendCents = (int) round(((float) ($goodsIdMetricTotals[$gid]['spend'] ?? 0)) * 100);
                     $spendL30Cents = (int) round(((float) ($goodsIdMetricTotals[$gid]['spend_l30'] ?? 0)) * 100);
 
-                    $baseO = intdiv($fullO, $n);
-                    $remO = $fullO % $n;
-                    $baseAd = intdiv($fullAd, $n);
-                    $remAd = $fullAd % $n;
-                    $baseImp = intdiv($fullImp, $n);
-                    $remImp = $fullImp % $n;
                     $baseSpend = intdiv($spendCents, $n);
                     $remSpend = $spendCents % $n;
                     $baseSpendL30 = intdiv($spendL30Cents, $n);
@@ -3493,20 +3909,18 @@ class TemuController extends Controller
 
                     foreach ($indexes as $i => $idx) {
                         $row = $processedData[$idx];
-                        $o = $baseO + ($i < $remO ? 1 : 0);
-                        $ad = $baseAd + ($i < $remAd ? 1 : 0);
-                        $imp = $baseImp + ($i < $remImp ? 1 : 0);
-                        $t = $o + $ad;
                         $spendShare = ($baseSpend + ($i < $remSpend ? 1 : 0)) / 100;
                         $spendL30Share = ($baseSpendL30 + ($i < $remSpendL30 ? 1 : 0)) / 100;
-                        $row['product_clicks'] = $o;
-                        $row['ad_clicks'] = $ad;
-                        $row['t_clicks'] = $t;
-                        $row['impressions'] = $imp;
+                        // Full SUM(product_clicks) for this Goods ID from uploaded view files
+                        $row['product_clicks'] = $fullO;
+                        $row['o_clicks'] = $fullSheetO;
+                        $row['ad_clicks'] = $fullAd;
+                        $row['t_clicks'] = $fullT;
+                        $row['impressions'] = $fullImp;
                         $row['spend'] = round($spendShare, 2);
                         $row['spend_l30'] = round($spendL30Share, 2);
                         $sold = (int) ($row['temu_l30'] ?? 0);
-                        $row['cvr_percent'] = $t > 0 ? round(($sold / $t) * 100, 2) : 0;
+                        $row['cvr_percent'] = $fullT > 0 ? round(($sold / $fullT) * 100, 2) : 0;
                         $row['cvr_30'] = $row['cvr_percent'];
                         $processedData[$idx] = $row;
                     }
@@ -3576,6 +3990,7 @@ class TemuController extends Controller
 
                     // Parent clicks/spend/impressions = goods_id totals (once per unique goods_id), not sum of children
                     $parentO = 0;
+                    $parentSheetO = 0;
                     $parentAd = 0;
                     $parentImp = 0;
                     $parentT7 = 0;
@@ -3584,6 +3999,7 @@ class TemuController extends Controller
                     $parentGrowth = null;
                     foreach ($uniqueChildGoodsIds as $gid) {
                         $parentO += (int) ($goodsIdMetricTotals[$gid]['product_clicks'] ?? 0);
+                        $parentSheetO += (int) ($goodsIdMetricTotals[$gid]['o_clicks'] ?? 0);
                         $parentAd += (int) ($goodsIdMetricTotals[$gid]['ad_clicks'] ?? 0);
                         $parentImp += (int) ($goodsIdMetricTotals[$gid]['impressions'] ?? 0);
                         $parentT7 += (int) ($goodsIdMetricTotals[$gid]['t_clicks_l7'] ?? 0);
@@ -3607,6 +4023,7 @@ class TemuController extends Controller
                     $row['temu_l30'] = $temuL30;
                     $row['temu_l60'] = $temuL60;
                     $row['product_clicks'] = $parentO;
+                    $row['o_clicks'] = $parentSheetO;
                     $row['ad_clicks'] = $parentAd;
                     $row['t_clicks'] = $parentT;
                     $row['t_clicks_l7'] = $parentT7;
@@ -3660,6 +4077,7 @@ class TemuController extends Controller
                     $temuL45 = 0;
                     $temuL60 = 0;
                     $productClicks = 0;
+                    $oClicks = 0;
                     $productClicksL7 = 0;
                     $productClicksL7ToL14 = 0;
                     $hasReq = false;
@@ -3670,6 +4088,7 @@ class TemuController extends Controller
                         $temuL45 += (int) ($c['temu_l45'] ?? 0);
                         $temuL60 += (int) ($c['temu_l60'] ?? 0);
                         $productClicks += (int) ($c['product_clicks'] ?? 0);
+                        $oClicks += (int) ($c['o_clicks'] ?? 0);
                         $productClicksL7 += (int) ($c['product_clicks_l7'] ?? 0);
                         $productClicksL7ToL14 += (int) ($c['product_clicks_l7_to_l14'] ?? 0);
                         $nr = strtoupper(trim((string) ($c['nr_req'] ?? 'REQ')));
@@ -3684,6 +4103,7 @@ class TemuController extends Controller
                     $row['temu_l45'] = $temuL45;
                     $row['temu_l60'] = $temuL60;
                     $row['product_clicks'] = $productClicks;
+                    $row['o_clicks'] = $oClicks;
                     $row['product_clicks_l7'] = $productClicksL7;
                     $row['product_clicks_l7_to_l14'] = $productClicksL7ToL14;
                     $row['dil_percent'] = $inv > 0 ? round(($ovl30 / $inv) * 100, 2) : 0;
@@ -3700,10 +4120,16 @@ class TemuController extends Controller
                 $this->saveDailySummaryIfNeeded($processedData->toArray());
             }
 
-            // Temu 2: no Temu-style campaign/ads badges — only per-row Spend is used.
+            // Campaign / Ads totals — Temu and Temu 2 same formulas (different report tables)
             if ($isTemu2Pricing) {
-                $totalCampaignCount = 0;
-                $totalAdSpend = 0.0;
+                $totalCampaignCount = Temu2CampaignReport::distinct('goods_id')
+                    ->pluck('goods_id')
+                    ->filter()
+                    ->unique()
+                    ->count();
+                $totalAdSpend = round((float) (Temu2CampaignReport::where('report_range', $campaignRange)
+                    ->selectRaw('SUM(spend) as total_spend')
+                    ->value('total_spend') ?? 0), 2);
             } else {
                 $totalCampaignCount = TemuCampaignReport::distinct('goods_id')
                     ->pluck('goods_id')
@@ -3723,14 +4149,17 @@ class TemuController extends Controller
             $metrics = MarketplaceDailyMetric::where('channel', $isTemu2Pricing ? 'Temu 2' : 'Temu')->latest('date')->first();
             $totalSalesFromMetrics = $metrics ? ($metrics->total_sales ?? 0) : 0;
 
-            // Calculate exact Ads% same as all-marketplace-master
-            // Temu 2: Ads% stays 0 (Spend column only; no Temu ads feature set).
-            $aggregateAdsPercent = $isTemu2Pricing
-                ? 0.0
-                : ($totalSalesFromMetrics > 0 ? ($totalAdSpend / $totalSalesFromMetrics) * 100 : 0);
+            // Ads% = Spend / Sales. Temu 2 prefers order Full-Price sales_summary revenue
+            // (same basis as GPFT/Sales badge); else marketplace_daily_metrics.
+            $salesForAds = $isTemu2Pricing
+                ? ((float) ($salesSummary['total_revenue'] ?? 0) > 0
+                    ? (float) $salesSummary['total_revenue']
+                    : (float) $totalSalesFromMetrics)
+                : (float) $totalSalesFromMetrics;
+            $aggregateAdsPercent = $salesForAds > 0 ? ($totalAdSpend / $salesForAds) * 100 : 0.0;
 
-            // Recalculate NPFT% and NROI% for all rows using aggregate Ads% (not per-row ads_percent)
-            // Formula: NPFT% = GPFT% - Aggregate ADS% (Temu 2: aggregate = 0)
+            // Recalculate NPFT% and NROI% for all rows using aggregate Ads%
+            // Formula: NPFT% = GPFT% - Aggregate ADS%; NROI% = GROI% - Aggregate ADS%
             $processedData = $processedData->map(function($row) use ($aggregateAdsPercent) {
                 $profitPercent = (float) ($row['profit_percent'] ?? 0);
                 $roiPercent = (float) ($row['roi_percent'] ?? 0);
@@ -4061,11 +4490,14 @@ class TemuController extends Controller
                 $temuShip = floatval($values['temu_ship'] ?? 0);
             }
 
-            // Profit = (Sprice × 0.80) − temu_ship − LP; SGPFT = Profit/Sprice; SROI = Profit/LP
-            $profit = $sprice * 0.80 - $lp - $temuShip;
-            $sgprftPercent = $sprice > 0 ? ($profit / $sprice) * 100 : 0;
-            // SROI = Profit / LP
-            $sroiPercent = $lp > 0 ? ($profit / $lp) * 100 : 0;
+            // SGPRFT on Full Sprice; SROI on S Recovery (Sprice × 0.88)
+            $margin = TemuShopifySalesService::temuMarginDecimal();
+            $sRecovery = $sprice * 0.88;
+            $profitRoi = $sRecovery * $margin - $lp - $temuShip;
+            $profitPft = $sprice * $margin - $lp - $temuShip;
+            $sgprftPercent = $sprice > 0 ? ($profitPft / $sprice) * 100 : 0;
+            // SROI = S Profit (recovery) / LP
+            $sroiPercent = $lp > 0 ? ($profitRoi / $lp) * 100 : 0;
 
             $this->writeTemuChannelSprice($sku, $sprice, $sgprftPercent, $sroiPercent, false);
 
@@ -4360,83 +4792,231 @@ class TemuController extends Controller
     }
 
     /**
-     * Upload Temu 2 View Data. Mirrors uploadTemuViewData but writes to
-     * temu2_view_data so the two stores don't share a table (the replace-all
-     * upload would otherwise zero out the other marketplace's CVR).
+     * Upload Temu 2 View Data (single or multiple files).
+     * Every upload TRUNCATES temu2_view_data first, then inserts only the new file(s).
+     * Within one upload, multi-file rows are merged (same date+goods_id → last wins).
      */
     public function uploadTemu2ViewData(Request $request)
     {
+        @set_time_limit(300);
         $request->validate([
-            'file' => 'required|mimes:xlsx,xls,csv|max:10240'
+            'file' => 'nullable|file|max:10240',
+            'files' => 'nullable|array|max:30',
+            'files.*' => 'file|max:10240',
         ]);
 
-        try {
-            $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getRealPath());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            $headers = array_shift($rows);
-
-            $imported = 0;
-            $skipped = 0;
-
-            DB::beginTransaction();
-            try {
-                $deletedCount = Temu2ViewData::query()->delete();
-
-                foreach ($rows as $row) {
-                    if (empty($row[0]) || empty($row[1])) {
-                        $skipped++;
-                        continue;
-                    }
-
-                    $rowData = array_combine($headers, $row);
-
-                    $date = null;
-                    if (!empty($rowData['Date'])) {
-                        try {
-                            $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
-                        } catch (\Exception $e) {
-                            Log::warning("Could not parse date: " . $rowData['Date']);
-                        }
-                    }
-
-                    $ctr = 0;
-                    if (!empty($rowData['CTR'])) {
-                        $ctrValue = str_replace('%', '', $rowData['CTR']);
-                        $ctr = (float)$ctrValue;
-                    }
-
-                    $goodsId = $rowData['Goods ID'] ?? null;
-
-                    $viewData = [
-                        'goods_name' => $rowData['Goods Name'] ?? null,
-                        'product_impressions' => !empty($rowData['Product impressions']) ? (int)$rowData['Product impressions'] : 0,
-                        'visitor_impressions' => !empty($rowData['Number of visitor impressions of the product']) ? (int)$rowData['Number of visitor impressions of the product'] : 0,
-                        'product_clicks' => !empty($rowData['Product clicks']) ? (int)$rowData['Product clicks'] : 0,
-                        'visitor_clicks' => !empty($rowData['Number of visitor clicks on the product']) ? (int)$rowData['Number of visitor clicks on the product'] : 0,
-                        'ctr' => $ctr,
-                    ];
-
-                    Temu2ViewData::updateOrCreate(
-                        ['date' => $date, 'goods_id' => $goodsId],
-                        $viewData
-                    );
-                    $imported++;
+        $uploadFiles = [];
+        if ($request->hasFile('files')) {
+            foreach ((array) $request->file('files') as $f) {
+                if ($f) {
+                    $uploadFiles[] = $f;
                 }
-
-                DB::commit();
-
-                return back()->with('success', "Successfully imported $imported records! ($skipped skipped, replaced $deletedCount existing rows)");
-            } catch (\Exception $e) {
-                DB::rollBack();
-                throw $e;
             }
-        } catch (\Exception $e) {
-            Log::error('Error uploading Temu 2 view data: ' . $e->getMessage());
-            return back()->with('error', 'Error uploading file: ' . $e->getMessage());
         }
+        if ($request->hasFile('file')) {
+            $uploadFiles[] = $request->file('file');
+        }
+        if ($uploadFiles === []) {
+            return back()->with('error', 'Choose one or more view data files to upload.');
+        }
+
+        $allowed = ['xlsx', 'xls', 'csv', 'tsv', 'txt'];
+        foreach ($uploadFiles as $f) {
+            $ext = strtolower((string) $f->getClientOriginalExtension());
+            if (! in_array($ext, $allowed, true)) {
+                return back()->with('error', 'Invalid file type for "'.$f->getClientOriginalName().'". Use .xlsx, .xls, .csv, or .tsv.');
+            }
+        }
+
+        try {
+            $now = now()->format('Y-m-d H:i:s');
+            // Keyed by date|goods_id so multi-file duplicates in THIS upload collapse (last wins)
+            $merged = [];
+            $skipped = 0;
+            $fileCount = 0;
+
+            foreach ($uploadFiles as $file) {
+                $parsed = $this->parseTemuViewDataUploadFile($file);
+                $fileCount++;
+                $skipped += (int) ($parsed['skipped'] ?? 0);
+                foreach ($parsed['rows'] as $row) {
+                    $key = ((string) ($row['date'] ?? '')).'|'.((string) $row['goods_id']);
+                    $row['created_at'] = $now;
+                    $row['updated_at'] = $now;
+                    $merged[$key] = $row;
+                }
+            }
+
+            if ($merged === []) {
+                throw new \RuntimeException('No valid view rows found in the uploaded file(s).');
+            }
+
+            $nextId = 1;
+            $insertRows = [];
+            foreach ($merged as $row) {
+                $row['id'] = $nextId++;
+                $insertRows[] = $row;
+            }
+
+            // Always wipe previous temu2_view_data before inserting this upload batch
+            $deletedCount = (int) DB::table('temu2_view_data')->count();
+            try {
+                DB::statement('SET FOREIGN_KEY_CHECKS=0');
+                DB::table('temu2_view_data')->truncate();
+            } catch (\Throwable $e) {
+                DB::table('temu2_view_data')->delete();
+            } finally {
+                try {
+                    DB::statement('SET FOREIGN_KEY_CHECKS=1');
+                } catch (\Throwable $e) {
+                    // ignore
+                }
+            }
+
+            foreach (array_chunk($insertRows, 500) as $chunk) {
+                DB::table('temu2_view_data')->insert($chunk);
+            }
+
+            $imported = count($insertRows);
+
+            return back()->with(
+                'success',
+                "Truncated old temu2_view_data ({$deletedCount} rows). Imported {$imported} new record(s) from {$fileCount} file(s). ({$skipped} skipped)"
+            );
+        } catch (\Exception $e) {
+            Log::error('Error uploading Temu 2 view data: '.$e->getMessage());
+
+            return back()->with('error', 'Error uploading file: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Parse one Temu Seller Center view export into insertable rows (no id/timestamps).
+     *
+     * @return array{rows: array<int, array<string, mixed>>, skipped: int}
+     */
+    private function parseTemuViewDataUploadFile($file): array
+    {
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $path = $file->getRealPath();
+        $sheet = null;
+        $rows = [];
+
+        if (in_array($ext, ['tsv', 'txt', 'csv'], true)) {
+            $delimiter = $ext === 'csv' ? ',' : "\t";
+            $fh = fopen($path, 'rb');
+            if ($fh === false) {
+                throw new \RuntimeException('Could not open '.$file->getClientOriginalName());
+            }
+            while (($row = fgetcsv($fh, 0, $delimiter)) !== false) {
+                $allEmpty = true;
+                foreach ($row as $cell) {
+                    if (trim((string) $cell) !== '') {
+                        $allEmpty = false;
+                        break;
+                    }
+                }
+                if (! $allEmpty) {
+                    $rows[] = $row;
+                }
+            }
+            fclose($fh);
+        } else {
+            $reader = IOFactory::createReaderForFile($path);
+            if (method_exists($reader, 'setReadDataOnly')) {
+                $reader->setReadDataOnly(true);
+            }
+            $spreadsheet = $reader->load($path);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray(null, false, false, false);
+        }
+
+        if (count($rows) < 2) {
+            throw new \RuntimeException($file->getClientOriginalName().' has no data rows.');
+        }
+
+        $headers = array_map(static function ($h) {
+            if ($h instanceof RichText) {
+                $h = $h->getPlainText();
+            }
+
+            return trim((string) $h);
+        }, array_shift($rows));
+
+        $headerMap = [];
+        foreach ($headers as $idx => $h) {
+            if ($h !== '') {
+                $headerMap[$h] = (int) $idx;
+            }
+        }
+        $goodsIdCol = $headerMap['Goods ID'] ?? 1;
+
+        $out = [];
+        $skipped = 0;
+
+        foreach ($rows as $rowIndex => $row) {
+            if (! is_array($row)) {
+                $skipped++;
+                continue;
+            }
+            if (empty($row[0]) && empty($row[1])) {
+                $skipped++;
+                continue;
+            }
+
+            if (count($row) < count($headers)) {
+                $row = array_pad($row, count($headers), null);
+            } elseif (count($row) > count($headers)) {
+                $row = array_slice($row, 0, count($headers));
+            }
+
+            $rowData = @array_combine($headers, $row);
+            if (! is_array($rowData)) {
+                $skipped++;
+                continue;
+            }
+
+            $date = null;
+            if (! empty($rowData['Date'])) {
+                try {
+                    $date = Carbon::parse($rowData['Date'])->format('Y-m-d');
+                } catch (\Exception $e) {
+                    Log::warning('Could not parse Temu 2 view date: '.$rowData['Date']);
+                }
+            }
+
+            $goodsId = null;
+            if ($sheet !== null) {
+                $excelRow = $rowIndex + 2;
+                $goodsIdCell = $sheet->getCell(Coordinate::stringFromColumnIndex($goodsIdCol + 1).$excelRow);
+                $goodsId = TemuGoodsIdHelper::fromSpreadsheetCell($goodsIdCell);
+            }
+            if ($goodsId === null || $goodsId === '') {
+                $goodsId = TemuGoodsIdHelper::normalizeKey($rowData['Goods ID'] ?? null);
+            }
+            if ($goodsId === null || $goodsId === '') {
+                $skipped++;
+                continue;
+            }
+
+            $ctr = 0;
+            if (! empty($rowData['CTR'])) {
+                $ctr = (float) str_replace('%', '', (string) $rowData['CTR']);
+            }
+
+            $out[] = [
+                'date' => $date,
+                'goods_id' => $goodsId,
+                'goods_name' => $rowData['Goods Name'] ?? null,
+                'product_impressions' => ! empty($rowData['Product impressions']) ? (int) $rowData['Product impressions'] : 0,
+                'visitor_impressions' => ! empty($rowData['Number of visitor impressions of the product']) ? (int) $rowData['Number of visitor impressions of the product'] : 0,
+                'product_clicks' => ! empty($rowData['Product clicks']) ? (int) $rowData['Product clicks'] : 0,
+                'visitor_clicks' => ! empty($rowData['Number of visitor clicks on the product']) ? (int) $rowData['Number of visitor clicks on the product'] : 0,
+                'ctr' => $ctr,
+            ];
+        }
+
+        return ['rows' => $out, 'skipped' => $skipped];
     }
 
     /**
@@ -5383,15 +5963,8 @@ class TemuController extends Controller
                 return response()->json(['error' => 'Pricing source table not available'], 410);
             }
 
-            // Margin from marketplace_percentages — same as table GROI/GPRFT (no hardcode)
-            if ($useTemu2PricingChart) {
-                $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-                $percentage = ($mp && $mp->percentage)
-                    ? ((float) $mp->percentage / 100)
-                    : TemuShopifySalesService::temuMarginDecimal();
-            } else {
-                $percentage = TemuShopifySalesService::temuMarginDecimal();
-            }
+            // Margin from marketplace_percentages.Temu — same as /temu-decrease TEMU_MARGIN
+            $percentage = TemuShopifySalesService::temuMarginDecimal();
 
             // Current base_price from temu_pricing / temu2_pricing so latest chart point matches table
             $currentBasePrice = null;
@@ -5449,11 +6022,14 @@ class TemuController extends Controller
                     $spend = $currentSpend;
                 }
                 $temuL30 = intval($record->temu_l30 ?? 0);
-                $temuPrice = $basePrice > 0 ? ($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice) : 0;
-                $revenue = $temuPrice * $temuL30;
+                $temuRPrice = $basePrice > 0 ? ($basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice) : 0;
+                $temuFullPrice = TemuShopifySalesService::computeFullTemuPrice((float) $basePrice);
+                $revenue = $temuFullPrice * $temuL30;
 
-                $profitPercent = $temuPrice > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $temuPrice) * 100 : 0;
-                $roiPercent = $lp > 0 ? (($temuPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
+                $profitPercent = $temuFullPrice > 0
+                    ? (($temuFullPrice * $percentage - $lp - $temuShip) / $temuFullPrice) * 100
+                    : 0;
+                $roiPercent = $lp > 0 ? (($temuRPrice * $percentage - $lp - $temuShip) / $lp) * 100 : 0;
                 $adsPercent = ($spend > 0 && $temuL30 == 0) ? 100 : ($revenue > 0 ? ($spend / $revenue) * 100 : 0);
                 $npftPercent = $adsPercent == 100 ? $profitPercent : $profitPercent - $adsPercent;
                 $nroiPercent = $adsPercent == 100 ? $roiPercent : $roiPercent - $adsPercent;

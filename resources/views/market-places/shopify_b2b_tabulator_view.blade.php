@@ -2249,6 +2249,27 @@
                     width: 70
                 },
                 {
+                    title: "GROI%",
+                    field: "ROI%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+
+                        // Same color slabs as Amazon GROI%
+                        if (percent < 50) color = '#a00211';
+                        else if (percent >= 50 && percent < 75) color = '#ffc107';
+                        else if (percent >= 75 && percent <= 125) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
                     title: "GPFT %",
                     field: "GPFT%",
                     hozAlign: "center",
@@ -2264,27 +2285,6 @@
                         else if (percent >= 10 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent < 30) color = '#ffc107';
                         else if (percent >= 30 && percent < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "GROI%",
-                    field: "ROI%",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-
-                        // Same color slabs as Amazon GROI%
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent <= 125) color = '#28a745';
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
@@ -2480,6 +2480,27 @@
                     }
                 },
                 {
+                    title: "Sroi",
+                    field: "SROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+
+                        // Same as Amazon Sroi / GROI% slabs
+                        if (percent < 50) color = '#a00211';
+                        else if (percent >= 50 && percent < 75) color = '#ffc107';
+                        else if (percent >= 75 && percent <= 125) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
                     title: "S GPFT",
                     field: "SGPFT",
                     hozAlign: "center",
@@ -2495,27 +2516,6 @@
                         else if (percent >= 10 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent < 30) color = '#ffc107';
                         else if (percent >= 30 && percent < 50) color = '#28a745';
-                        else color = '#e83e8c';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "Sroi",
-                    field: "SROI",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-
-                        // Same as Amazon Sroi / GROI% slabs
-                        if (percent < 50) color = '#a00211';
-                        else if (percent >= 50 && percent < 75) color = '#ffc107';
-                        else if (percent >= 75 && percent <= 125) color = '#28a745';
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;

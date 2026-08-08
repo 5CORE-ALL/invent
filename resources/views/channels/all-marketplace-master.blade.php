@@ -798,7 +798,7 @@
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="adBreakdownChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                    <div id="adBreakdownChartContainer" style="height: 28vh; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="adBreakdownChart"></canvas>
                         </div>
@@ -4560,29 +4560,33 @@
                     }
                 };
 
-                // --- Value labels plugin (draws value near each dot) ---
+                // --- Value labels plugin (draws value near each dot, slanted) ---
                 const valueLabelsPlugin = {
                     id: 'valueLabels',
                     afterDatasetsDraw(chart) {
                         const dataset = chart.data.datasets[0];
                         const meta = chart.getDatasetMeta(0);
                         const ctx = chart.ctx;
+                        const slantRad = -Math.PI / 4; // -45°
 
                         ctx.save();
-                        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'bottom';
+                        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
 
                         meta.data.forEach((point, i) => {
                             const val = dataset.data[i];
                             const x = point.x;
                             const y = point.y;
+                            // Alternate height so neighboring slanted labels overlap less
+                            const offsetY = (i % 2 === 0) ? -12 : -22;
 
-                            // Alternate label position to reduce overlap
-                            const offsetY = (i % 2 === 0) ? -10 : -20;
-
+                            ctx.save();
+                            ctx.translate(x, y + offsetY);
+                            ctx.rotate(slantRad);
                             ctx.fillStyle = labelColors[i];
-                            ctx.fillText(fmtVal(val), x, y + offsetY);
+                            ctx.fillText(fmtVal(val), 2, 0);
+                            ctx.restore();
                         });
                         ctx.restore();
                     }
@@ -4612,7 +4616,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         layout: {
-                            padding: { top: 26, left: 2, right: 2, bottom: 2 }
+                            padding: { top: 36, left: 2, right: 8, bottom: 8 }
                         },
                         plugins: {
                             legend: { display: false },
@@ -4653,10 +4657,10 @@
                             },
                             x: {
                                 ticks: {
-                                    maxRotation: 45,
-                                    minRotation: 45,
-                                    autoSkip: currentChartMode === 'metric' ? false : labels.length > 14,
-                                    maxTicksLimit: currentChartMode === 'metric' ? Math.max(labels.length, 31) : (labels.length > 14 ? 14 : labels.length),
+                                    maxRotation: 60,
+                                    minRotation: 60,
+                                    autoSkip: false,
+                                    maxTicksLimit: Math.max(labels.length, 31),
                                     font: { size: 8 }
                                 }
                             }

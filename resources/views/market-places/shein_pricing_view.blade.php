@@ -1582,22 +1582,6 @@
                         },
                     },
                     {
-                        title: "GPFT",
-                        field: "gpft",
-                        sorter: "number",
-                        hozAlign: "right",
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            const v = parseFloat(cell.getValue());
-                            if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
-                            if (v === 0 && !d.is_parent) return '0%';
-                            if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const r = Math.round(v);
-                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
-                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${r}%</span>`;
-                        }
-                    },
-                    {
                         title: "GROI",
                         field: "groi",
                         sorter: "number",
@@ -1614,6 +1598,22 @@
                             else              color = '#d63384';
                             const r = Math.round(v);
                             return `<span style="color:${color};font-weight:600;">${r}%</span>`;
+                        }
+                    },
+                    {
+                        title: "GPFT",
+                        field: "gpft",
+                        sorter: "number",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            const v = parseFloat(cell.getValue());
+                            if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
+                            if (v === 0 && !d.is_parent) return '0%';
+                            if (v === 0 &&  d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const r = Math.round(v);
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return `<span style="color:${color};font-weight:${d.is_parent?'700':'600'};">${r}%</span>`;
                         }
                     },
                     {

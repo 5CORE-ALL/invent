@@ -1304,6 +1304,21 @@
                         }
                     },
                     {
+                        title: 'GROI%', field: 'groi', sorter: 'number', hozAlign: 'right',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue()) || 0;
+                            // Same bands as /amazon-tabulator-view GROI%
+                            let color;
+                            if (v < 50) color = '#a00211';
+                            else if (v < 75) color = '#ffc107';
+                            else if (v <= 125) color = '#28a745';
+                            else color = '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
                         title: 'GPFT %', field: 'gpft', sorter: 'number', hozAlign: 'right',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
@@ -1327,21 +1342,6 @@
                             if (v === 0 && d.is_parent) return '<span style="color:#6c757d;">–</span>';
                             let color = v < 10 ? '#a00211' : v < 20 ? '#3591dc' : v < 30 ? '#ffc107' : v < 50 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:' + (d.is_parent ? '700' : '600') + ';">' + Math.round(v) + '%</span>';
-                        }
-                    },
-                    {
-                        title: 'GROI%', field: 'groi', sorter: 'number', hozAlign: 'right',
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = parseFloat(cell.getValue()) || 0;
-                            // Same bands as /amazon-tabulator-view GROI%
-                            let color;
-                            if (v < 50) color = '#a00211';
-                            else if (v < 75) color = '#ffc107';
-                            else if (v <= 125) color = '#28a745';
-                            else color = '#e83e8c';
-                            return '<span style="color:' + color + ';font-weight:700;">' + Math.round(v) + '%</span>';
                         }
                     },
                     {

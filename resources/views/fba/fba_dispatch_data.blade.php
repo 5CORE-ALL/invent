@@ -1724,8 +1724,8 @@
                        
 
                         {
-                            title: "GPFT%",
-                            field: "GPFT%",
+                            title: "GROI%",
+                            field: "GROI%",
                             hozAlign: "center",
                             visible: true,
                             formatter: function(cell) {
@@ -1734,8 +1734,8 @@
                         },
 
                         {
-                            title: "GROI%",
-                            field: "GROI%",
+                            title: "GPFT%",
+                            field: "GPFT%",
                             hozAlign: "center",
                             visible: true,
                             formatter: function(cell) {

@@ -2264,18 +2264,6 @@
                     tooltip: "Buy Box price from Walmart API (Green = You have it)"
                 },
                 {
-                    title: "GPRFT %",
-                    field: "gpft", // Show GPFT% (Gross Profit % - BEFORE ads)
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        const colorClass = getPftColor(value);
-                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
-                },
-                {
                     title: "GROI %",
                     field: "groi", // Show GROI% (Gross ROI % - BEFORE ads)
                     hozAlign: "center",
@@ -2283,6 +2271,18 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
+                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "GPRFT %",
+                    field: "gpft", // Show GPFT% (Gross Profit % - BEFORE ads)
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const colorClass = getPftColor(value);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
                     },
                     width: 100
@@ -2366,27 +2366,6 @@
                     }
                 },
                 {
-                    title: "SGPRFT%",
-                    field: "sgprft_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const ship = parseFloat(rowData['ship']) || 0;
-                        const percentage = 0.80; // Walmart percentage
-                        
-                        if (sprice === 0) return '';
-                        
-                        // SGPRFT% = ((SPRICE × 0.80 - LP - Ship) / SPRICE) × 100
-                        const sgprft = sprice > 0 ? ((sprice * percentage - lp - ship) / sprice) * 100 : 0;
-                        
-                        const colorClass = getPftColor(sgprft);
-                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
-                    }
-                },
-                {
                     title: "SROI%",
                     field: "sroi_percent",
                     hozAlign: "center",
@@ -2405,6 +2384,27 @@
                         
                         const colorClass = getRoiColor(sroi);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
+                    }
+                },
+                {
+                    title: "SGPRFT%",
+                    field: "sgprft_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = parseFloat(rowData['sprice']) || 0;
+                        const lp = parseFloat(rowData['lp']) || 0;
+                        const ship = parseFloat(rowData['ship']) || 0;
+                        const percentage = 0.80; // Walmart percentage
+                        
+                        if (sprice === 0) return '';
+                        
+                        // SGPRFT% = ((SPRICE × 0.80 - LP - Ship) / SPRICE) × 100
+                        const sgprft = sprice > 0 ? ((sprice * percentage - lp - ship) / sprice) * 100 : 0;
+                        
+                        const colorClass = getPftColor(sgprft);
+                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
                     }
                 },
                 {

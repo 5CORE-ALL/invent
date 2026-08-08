@@ -2300,28 +2300,6 @@
                     },
 
                     {
-                        title: "GPFT %",
-                        field: "GPFT%",
-                        hozAlign: "center",
-                        visible: false,
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            const percent = parseFloat(value) || 0;
-                            let color = '';
-
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
-                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 50
-                    },
-
-                    {
                         title: "GROI%",
                         field: "ROI_percentage",
                         hozAlign: "center",
@@ -2342,6 +2320,28 @@
                         },
                         sorter: "number",
                         width: 65
+                    },
+
+                    {
+                        title: "GPFT %",
+                        field: "GPFT%",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const percent = parseFloat(value) || 0;
+                            let color = '';
+
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 50
                     },
 
                     {
@@ -2869,6 +2869,28 @@
                         width: 80
                     },
                     {
+                        title: "SROI",
+                        field: "SROI",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            // Same as ROI% color logic
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
                         title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
@@ -2909,28 +2931,6 @@
                             else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
                             else if (percent >= 30 && percent < 50) color = '#28a745'; // green
                             else color = '#e83e8c'; // pink (50% and above)
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "SROI",
-                        field: "SROI",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            // Same as ROI% color logic
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },

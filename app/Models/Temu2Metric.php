@@ -12,6 +12,7 @@ class Temu2Metric extends Model
     protected $table = 'temu2_metrics';
 
     protected $fillable = [
+        'id',
         'sku',
         'sku_id',
         'goods_id',

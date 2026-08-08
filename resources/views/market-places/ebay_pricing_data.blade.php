@@ -716,6 +716,23 @@
                     },
 
                     {
+                        title: "SROI",
+                        field: "SROI",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            const _st = (window.MetricPctColors && MetricPctColors.groiStyle(percent)) || '';
+                            
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        },
+                        width: 80
+                    },
+                    {
                         title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
@@ -745,23 +762,6 @@
                             if (isNaN(percent)) return '';
                             
                             const _st = (window.MetricPctColors && MetricPctColors.npftStyle(percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        },
-                        width: 80
-                    },
-                    {
-                        title: "SROI",
-                        field: "SROI",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            const _st = (window.MetricPctColors && MetricPctColors.groiStyle(percent)) || '';
-                            
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80

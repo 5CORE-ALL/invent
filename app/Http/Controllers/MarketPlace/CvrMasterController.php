@@ -4180,8 +4180,7 @@ class CvrMasterController extends Controller
             // Add Temu — exact sources/formulas as /temu-decrease
             // Price/views/L30: Temu API (temu_metrics + temu_orders); Ads%: ads sheet (temu_campaign_reports)
             $temuMargin = TemuShopifySalesService::temuMarginDecimal();
-            $temu2Marketplace = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-            $temu2Margin = $temu2Marketplace ? ($temu2Marketplace->percentage / 100) : $temuMargin;
+            $temu2Margin = TemuShopifySalesService::temu2MarginDecimal();
             $normalizedSku = self::normalizeTemuSkuForCvr($fullSku);
             $temuPriceMapOne = [];
             if (Schema::hasTable('temu_metrics')) {

@@ -1971,6 +1971,20 @@
                     width: 80
                 },
                 {
+                    title: "SROI",
+                    field: "SROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                    },
+                    width: 50
+                },
+                {
                     title: "SGPFT",
                     field: "SGPFT",
                     hozAlign: "center",
@@ -1995,20 +2009,6 @@
                         const percent = parseFloat(value);
                         const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                    },
-                    width: 50
-                },
-                {
-                    title: "SROI",
-                    field: "SROI",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
                 }

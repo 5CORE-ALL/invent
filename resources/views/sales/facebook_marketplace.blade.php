@@ -306,15 +306,15 @@
                             formatter: c => fmtMoney(c.getValue()) },
                         { title: 'LP',           field: 'lp',           hozAlign: 'right', width: 90,
                             formatter: c => fmtMoney(c.getValue()) },
-                        { title: 'GPFT %',       field: 'gpft',         hozAlign: 'center', width: 90, sorter: 'number',
-                            formatter: c => {
-                                const v = Number(c.getValue()) || 0;
-                                return '<span style="color:' + pctColor(v, 'gpft') + ';font-weight:600;">' + v.toFixed(1) + '%</span>';
-                            } },
                         { title: 'ROI %',        field: 'roi',          hozAlign: 'center', width: 90, sorter: 'number',
                             formatter: c => {
                                 const v = Number(c.getValue()) || 0;
                                 return '<span style="color:' + pctColor(v, 'roi') + ';font-weight:600;">' + v.toFixed(1) + '%</span>';
+                            } },
+                        { title: 'GPFT %',       field: 'gpft',         hozAlign: 'center', width: 90, sorter: 'number',
+                            formatter: c => {
+                                const v = Number(c.getValue()) || 0;
+                                return '<span style="color:' + pctColor(v, 'gpft') + ';font-weight:600;">' + v.toFixed(1) + '%</span>';
                             } },
                         { title: 'Order Date',   field: 'order_date',   width: 120 },
                         { title: 'Uploaded At',  field: 'created_at',   width: 170 },

@@ -2462,20 +2462,6 @@
                     },
                 },
                 {
-                    title: "GPFT%",
-                    field: "GPFT%",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                    },
-                    width: 50
-                },
-                {
                     title: "ROI%",
                     field: "ROI%",
                     hozAlign: "center",
@@ -2487,6 +2473,20 @@
                         if (isNaN(percent)) return '';
                         // Same color bands as /amazon-tabulator-view GROI% / SNROI
                         return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "GPFT%",
+                    field: "GPFT%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
                 },
@@ -2617,20 +2617,6 @@
                     width: 80
                 },
                 {
-                    title: "SGPFT",
-                    field: "SGPFT",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
-                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                    },
-                    width: 50
-                },
-                {
                     title: "Sroi",
                     field: "SROI",
                     hozAlign: "center",
@@ -2645,6 +2631,20 @@
                         const percent = parseFloat(value);
                         if (isNaN(percent)) return '';
                         return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "SGPFT",
+                    field: "SGPFT",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
+                        return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 50
                 },

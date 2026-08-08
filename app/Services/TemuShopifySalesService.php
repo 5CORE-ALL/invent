@@ -41,11 +41,52 @@ class TemuShopifySalesService
         ];
     }
 
+    /**
+     * Take-home decimal from marketplace_percentages (percentage ÷ 100).
+     * Tries marketplace name aliases in order. No hardcoded Temu/Temu2 defaults.
+     */
+    public static function marginDecimalFromMarketplace(string ...$marketplaceNames): float
+    {
+        foreach ($marketplaceNames as $name) {
+            $mp = MarketplacePercentage::where('marketplace', $name)->first();
+            if ($mp !== null && $mp->percentage !== null && (float) $mp->percentage > 0) {
+                return (float) $mp->percentage / 100;
+            }
+        }
+
+        throw new \RuntimeException(
+            'marketplace_percentages missing for: ' . implode(', ', $marketplaceNames)
+        );
+    }
+
     public static function temuMarginDecimal(): float
     {
-        $mp = MarketplacePercentage::where('marketplace', 'Temu')->first();
+        return self::marginDecimalFromMarketplace('Temu');
+    }
 
-        return $mp && $mp->percentage ? ((float) $mp->percentage / 100) : 0.95;
+    /** Take-home decimal from marketplace_percentages for Temu 2. */
+    public static function temu2MarginDecimal(): float
+    {
+        return self::marginDecimalFromMarketplace('Temu 2', 'TemuTwo', 'Temu2');
+    }
+
+    /**
+     * Full Temu Price (listing / Sales / GPFT):
+     *   (base × 1.1765); if that result ≤ $26.99 then +$2.99.
+     * Not the same as Temu R Price (base + $2.99 when base ≤ $26.99).
+     */
+    public static function computeFullTemuPrice(float $basePrice): float
+    {
+        if ($basePrice <= 0) {
+            return 0.0;
+        }
+
+        $full = $basePrice * 1.1765;
+        if ($full <= 26.99) {
+            $full += 2.99;
+        }
+
+        return $full;
     }
 
     /**

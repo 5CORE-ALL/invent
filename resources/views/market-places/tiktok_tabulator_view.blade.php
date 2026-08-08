@@ -3513,6 +3513,25 @@
                         }
                     },
                     {
+                        title: "SROI%",
+                        field: "SROI",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 50,
+                        minWidth: 50,
+                        maxWidth: 50,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || value === '' || value === '-') {
+                                return '<span style="color:#6c757d;">-</span>';
+                            }
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        }
+                    },
+                    {
                         title: "SGPFT%",
                         field: "SGPFT",
                         hozAlign: "center",
@@ -3545,25 +3564,6 @@
                         return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 50
-                    },
-                    {
-                        title: "SROI%",
-                        field: "SROI",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 50,
-                        minWidth: 50,
-                        maxWidth: 50,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined || value === '' || value === '-') {
-                                return '<span style="color:#6c757d;">-</span>';
-                            }
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '<span style="color:#6c757d;">-</span>';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        }
                     },
                     {
                         title: "Variation Req",

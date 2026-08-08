@@ -894,26 +894,8 @@
                 },
                 {
                     // SGPFT% — gross profit % at the seller price (no ship).
+                    //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / LP) × 100,
                     //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / SPRICE) × 100
-                    title: 'SGPFT%', field: 'SGPFT', hozAlign: 'center', width: 55, sorter: 'number',
-                    tooltip: 'Gross Profit % at SPRICE (same formula as GPFT%, no ship)',
-                    formatter: c => {
-                        const v = c.getValue();
-                        if (v === null || v === undefined || v === '') return '<span class="text-muted">-</span>';
-                        const percent = parseFloat(v);
-                        if (isNaN(percent)) return '';
-                        let color = '';
-                        if (percent < 10) color = '#a00211';
-                        else if (percent < 15) color = '#ffc107';
-                        else if (percent < 20) color = '#3591dc';
-                        else if (percent <= 40) color = '#28a745';
-                        else color = '#e83e8c';
-                        return `<span style="color:${color};font-weight:600;">${percent.toFixed(0)}%</span>`;
-                    }
-                },
-                {
-                    // SROI% — return on investment at the seller price (no ship).
-                    //   ((SPRICE × {{ $topdawgPercentage }}% − LP) / LP) × 100
                     title: 'SROI%', field: 'SROI', hozAlign: 'center', width: 55, sorter: 'number',
                     tooltip: 'ROI % at SPRICE (same formula as ROI%, no ship)',
                     formatter: c => {

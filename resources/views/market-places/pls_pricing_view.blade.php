@@ -952,6 +952,27 @@
                     width: 80
                 },
                 {
+                    title: "SROI%",
+                    field: "sroi",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = '';
+                        
+                        if (percent < 40) color = '#a00211';
+                        else if (percent < 75) color = '#ffc107';
+                        else if (percent < 125) color = '#28a745';
+                        else color = '#d63384';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 60
+                },
+                {
                     title: "SGPFT%",
                     field: "sgpft",
                     hozAlign: "center",
@@ -968,27 +989,6 @@
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent < 30) color = '#28a745';
                         else color = '#20c997';
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 60
-                },
-                {
-                    title: "SROI%",
-                    field: "sroi",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: true,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
-                        
-                        if (percent < 40) color = '#a00211';
-                        else if (percent < 75) color = '#ffc107';
-                        else if (percent < 125) color = '#28a745';
-                        else color = '#d63384';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },

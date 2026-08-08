@@ -292,18 +292,18 @@
                     }
                 },
                 {
-                    title: 'GPFT%', field: 'gpft_pct', width: 60, hozAlign: 'center', sorter: 'number',
-                    formatter: function (cell) {
-                        const v = parseFloat(cell.getValue() || 0);
-                        const color = v < 10 ? '#dc3545' : v < 20 ? '#ffc107' : '#28a745';
-                        return `<span style="color:${color};font-weight:600;">${v.toFixed(0)}%</span>`;
-                    }
-                },
-                {
                     title: 'GROI%', field: 'groi_pct', width: 58, hozAlign: 'center', sorter: 'number',
                     formatter: function (cell) {
                         const v = parseFloat(cell.getValue() || 0);
                         const color = v < 40 ? '#dc3545' : v < 100 ? '#ffc107' : '#28a745';
+                        return `<span style="color:${color};font-weight:600;">${v.toFixed(0)}%</span>`;
+                    }
+                },
+                {
+                    title: 'GPFT%', field: 'gpft_pct', width: 60, hozAlign: 'center', sorter: 'number',
+                    formatter: function (cell) {
+                        const v = parseFloat(cell.getValue() || 0);
+                        const color = v < 10 ? '#dc3545' : v < 20 ? '#ffc107' : '#28a745';
                         return `<span style="color:${color};font-weight:600;">${v.toFixed(0)}%</span>`;
                     }
                 },

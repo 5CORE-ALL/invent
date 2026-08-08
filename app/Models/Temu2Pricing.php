@@ -12,6 +12,7 @@ class Temu2Pricing extends Model
     protected $table = 'temu2_pricing';
 
     protected $fillable = [
+        'id',
         'category',
         'category_id',
         'product_name',

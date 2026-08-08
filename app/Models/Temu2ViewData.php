@@ -17,6 +17,7 @@ class Temu2ViewData extends Model
     protected $table = 'temu2_view_data';
 
     protected $fillable = [
+        'id',
         'date',
         'goods_id',
         'goods_name',

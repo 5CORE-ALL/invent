@@ -709,7 +709,7 @@ class UpdateMarketplaceDailyMetrics extends Command
     /**
      * Temu 2: mirrors temu2_tabulator_view badges and getTemu2DailyData filtering.
      * Filters to ProductMaster SKUs, applies fbPrice (+$2.99 if order total < $27),
-     * and reads margin from marketplace_percentages.TemuTwo (fallback 0.96).
+     * and reads margin from marketplace_percentages (Temu 2).
      * Ad spend from temu2_campaign_reports (L30 upload on /temu2/ads).
      */
     private function calculateTemu2Metrics($date)
@@ -763,9 +763,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
         });
 
-        // Read TemuTwo margin from marketplace_percentages (fallback 0.96)
-        $mp = MarketplacePercentage::where('marketplace', 'TemuTwo')->first();
-        $percentage = $mp && $mp->percentage ? ($mp->percentage / 100) : 0.96;
+        // Read Temu 2 margin from marketplace_percentages (no hardcoded fallback)
+        $percentage = \App\Services\TemuShopifySalesService::temu2MarginDecimal();
 
         $totalOrders = 0;
         $totalQuantity = 0;
