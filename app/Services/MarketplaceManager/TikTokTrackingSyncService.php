@@ -22,6 +22,8 @@ class TikTokTrackingSyncService
         'PARTIALLY_SHIPPING',
         // After RTS / pickup booked TikTok may still accept tracking updates.
         'AWAITING_COLLECTION',
+        // Late push / updateShippingInfo fallback when Shopify label arrives after TikTok moved on.
+        'IN_TRANSIT',
     ];
 
     public function __construct(
@@ -47,7 +49,7 @@ class TikTokTrackingSyncService
             return [
                 'success' => true,
                 'skipped' => true,
-                'message' => "Skip tracking push for status {$status} (only AWAITING_SHIPMENT / PARTIALLY_SHIPPING / AWAITING_COLLECTION).",
+                'message' => "Skip tracking push for status {$status} (only AWAITING_SHIPMENT / PARTIALLY_SHIPPING / AWAITING_COLLECTION / IN_TRANSIT).",
             ];
         }
 
@@ -64,6 +66,13 @@ class TikTokTrackingSyncService
         }
 
         $shopifyFulfillment = $this->fetchShopifyTracking($shopifyOrderId);
+        if (! empty($shopifyFulfillment['error'])) {
+            return [
+                'success' => false,
+                'message' => 'Shopify tracking fetch failed: '.$shopifyFulfillment['error'],
+                'shopify_tracking' => null,
+            ];
+        }
         if (empty($shopifyFulfillment['tracking'])) {
             return [
                 'success' => false,
@@ -75,12 +84,13 @@ class TikTokTrackingSyncService
 
         $shopifyTracking = (string) $shopifyFulfillment['tracking'];
         $shopifyCarrier = (string) ($shopifyFulfillment['carrier'] ?? '');
+        $deliveryOptionId = $this->extractDeliveryOptionId($line);
 
-        $shippingProviderId = $this->resolveShippingProviderId($orderId, $shopifyCarrier);
+        $shippingProviderId = $this->resolveShippingProviderId($orderId, $shopifyCarrier, $deliveryOptionId);
         if ($shippingProviderId === '') {
             return [
                 'success' => false,
-                'message' => 'Could not resolve TikTok shipping_provider_id for this order/carrier.',
+                'message' => 'Could not resolve TikTok shipping_provider_id (need delivery_option_id + Logistics providers).',
                 'shopify_tracking' => $shopifyTracking,
             ];
         }
@@ -193,7 +203,7 @@ class TikTokTrackingSyncService
     }
 
     /**
-     * @return array{tracking: ?string, carrier: ?string, fulfillment_status: ?string}
+     * @return array{tracking: ?string, carrier: ?string, fulfillment_status: ?string, error?: string}
      */
     public function fetchShopifyTracking(string $shopifyOrderId): array
     {
@@ -202,7 +212,12 @@ class TikTokTrackingSyncService
         $token = (string) ($config['token'] ?? '');
 
         if ($storeUrl === '' || $token === '' || trim($shopifyOrderId) === '') {
-            return ['tracking' => null, 'carrier' => null, 'fulfillment_status' => null];
+            return [
+                'tracking' => null,
+                'carrier' => null,
+                'fulfillment_status' => null,
+                'error' => 'Shopify store/token not configured for TikTok channel.',
+            ];
         }
 
         try {
@@ -213,7 +228,19 @@ class TikTokTrackingSyncService
             ]);
 
             if (! $response->successful()) {
-                return ['tracking' => null, 'carrier' => null, 'fulfillment_status' => null];
+                Log::warning('TikTokTrackingSyncService: Shopify tracking HTTP failed', [
+                    'shopify_order_id' => $shopifyOrderId,
+                    'store' => $storeUrl,
+                    'status' => $response->status(),
+                    'body' => mb_substr($response->body(), 0, 300),
+                ]);
+
+                return [
+                    'tracking' => null,
+                    'carrier' => null,
+                    'fulfillment_status' => null,
+                    'error' => 'Shopify HTTP '.$response->status(),
+                ];
             }
 
             $fulfillmentStatus = $response->json('order.fulfillment_status');
@@ -260,9 +287,30 @@ class TikTokTrackingSyncService
         return ['tracking' => null, 'carrier' => null, 'fulfillment_status' => null];
     }
 
-    protected function resolveShippingProviderId(string $orderId, string $shopifyCarrier): string
+    protected function extractDeliveryOptionId(TiktokOrder $line): string
     {
-        $providers = $this->tiktokApi->getShippingProviders($orderId);
+        $raw = $line->raw_json;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        $id = trim((string) (
+            $raw['delivery_option_id']
+            ?? ($raw['packages'][0]['delivery_option_id'] ?? '')
+            ?? ($raw['fulfillment_type']['delivery_option_id'] ?? '')
+            ?? ''
+        ));
+
+        return $id;
+    }
+
+    protected function resolveShippingProviderId(string $orderId, string $shopifyCarrier, string $deliveryOptionId = ''): string
+    {
+        $providers = $this->tiktokApi->getShippingProviders($orderId, $deliveryOptionId);
         $list = [];
         if (is_array($providers)) {
             if (array_is_list($providers)) {
@@ -288,7 +336,8 @@ class TikTokTrackingSyncService
                 ?? $provider['provider_id']
                 ?? ''
             ));
-            if ($id === '') {
+            // TikTok expects provider IDs (usually numeric) — ignore "USPS"/"UPS" strings.
+            if ($id === '' || ! preg_match('/^\d/', $id)) {
                 continue;
             }
             if ($firstId === '') {
@@ -310,24 +359,7 @@ class TikTokTrackingSyncService
             }
         }
 
-        if ($firstId !== '') {
-            return $firstId;
-        }
-
-        // Last resort: some shops accept common provider codes.
-        $map = [
-            'usps' => 'USPS',
-            'ups' => 'UPS',
-            'fedex' => 'FEDEX',
-            'dhl' => 'DHL',
-        ];
-        foreach ($map as $needle => $providerId) {
-            if (str_contains($carrier, $needle)) {
-                return $providerId;
-            }
-        }
-
-        return $shopifyCarrier !== '' ? $shopifyCarrier : '';
+        return $firstId;
     }
 
     protected function looksLikeAlreadyShipped(string $message): bool

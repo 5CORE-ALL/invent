@@ -1808,11 +1808,47 @@ class TikTokShopService
     }
 
     /**
-     * Query eligible shipping services / providers for an order (best-effort).
+     * Shipping providers for a delivery option (correct API for shipping_provider_id).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getShippingProvidersForDeliveryOption(string $deliveryOptionId): array
+    {
+        $deliveryOptionId = trim($deliveryOptionId);
+        if ($deliveryOptionId === '' || ! $this->accessToken) {
+            return [];
+        }
+
+        try {
+            $this->client->setAccessToken($this->accessToken);
+            $this->ensureShopCipher();
+
+            $response = $this->client->Logistic->getShippingProvider($deliveryOptionId);
+            $this->lastResponse = $response;
+
+            $list = $response['shipping_providers']
+                ?? $response['data']['shipping_providers']
+                ?? $response['providers']
+                ?? [];
+
+            return is_array($list) ? array_values(array_filter($list, 'is_array')) : [];
+        } catch (\Throwable $e) {
+            Log::warning('TikTok getShippingProvidersForDeliveryOption failed', [
+                'delivery_option_id' => $deliveryOptionId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Query shipping providers for an order.
+     * Prefer delivery_option_id → Logistics API; fall back to eligible shipping services.
      *
      * @return array|null
      */
-    public function getShippingProviders(string $orderId): ?array
+    public function getShippingProviders(string $orderId, string $deliveryOptionId = ''): ?array
     {
         try {
             if (! $this->accessToken) {
@@ -1821,6 +1857,18 @@ class TikTokShopService
 
             $this->client->setAccessToken($this->accessToken);
             $this->ensureShopCipher();
+
+            $deliveryOptionId = trim($deliveryOptionId);
+            if ($deliveryOptionId === '') {
+                $deliveryOptionId = $this->resolveDeliveryOptionIdForOrder($orderId);
+            }
+
+            if ($deliveryOptionId !== '') {
+                $fromLogistics = $this->getShippingProvidersForDeliveryOption($deliveryOptionId);
+                if ($fromLogistics !== []) {
+                    return ['shipping_providers' => $fromLogistics, 'delivery_option_id' => $deliveryOptionId];
+                }
+            }
 
             $response = $this->client->Fulfillment->getEligibleShippingService($orderId, []);
             $this->lastResponse = $response;
@@ -1834,6 +1882,45 @@ class TikTokShopService
             Log::warning('TikTok getShippingProviders failed', ['order_id' => $orderId, 'error' => $e->getMessage()]);
 
             return null;
+        }
+    }
+
+    /**
+     * Pull delivery_option_id from order detail API when missing on the local row.
+     */
+    public function resolveDeliveryOptionIdForOrder(string $orderId): string
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '') {
+            return '';
+        }
+
+        try {
+            $details = $this->getOrderDetails([$orderId]);
+            $orders = $details['orders'] ?? $details['data']['orders'] ?? [];
+            if (! is_array($orders) || $orders === []) {
+                return '';
+            }
+            $order = $orders[0] ?? null;
+            if (! is_array($order)) {
+                return '';
+            }
+
+            $id = trim((string) (
+                $order['delivery_option_id']
+                ?? $order['shipping_provider_id']
+                ?? ($order['packages'][0]['delivery_option_id'] ?? '')
+                ?? ''
+            ));
+
+            return $id;
+        } catch (\Throwable $e) {
+            Log::warning('TikTok resolveDeliveryOptionIdForOrder failed', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return '';
         }
     }
 
