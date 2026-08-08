@@ -73,6 +73,19 @@
             font-style: italic;
             font-size: 0.75rem;
         }
+        .ml-from-sheet {
+            color: #6c757d;
+            font-weight: 600;
+            font-style: italic;
+        }
+        .ml-source-api {
+            color: #198754;
+            font-weight: 700;
+        }
+        .ml-source-sheet {
+            color: #6c757d;
+            font-weight: 700;
+        }
         .tabulator .tabulator-cell.tabulator-editing { padding: 2px 4px; }
 
         /* Metric history modal — same full-width layout as Active Channel */
@@ -107,7 +120,7 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from each channel listing page (REQ + not listed)" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API channels only (Sheet channels excluded)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
                     </span>
                 </div>
@@ -198,8 +211,19 @@
             $('#total-missing-listing').text(Number(totalMissingL).toLocaleString('en-US'));
             return;
         }
-        const total = (rows || []).reduce((sum, r) => sum + Number(r.missing_listing || 0), 0);
+        const total = (rows || []).reduce((sum, r) => {
+            if (String(r.data_source || '').toUpperCase() === 'SHEET') return sum;
+            return sum + Number(r.missing_listing || 0);
+        }, 0);
         $('#total-missing-listing').text(total.toLocaleString('en-US'));
+    }
+
+    function isSheetRow(rowData) {
+        return String((rowData && rowData.data_source) || '').toUpperCase() === 'SHEET';
+    }
+
+    function fromSheetCell() {
+        return '<span class="ml-from-sheet" title="Listing counts come from Sheet — not calculated here">From Sheet</span>';
     }
 
     function mlChartRangeLabel(days) {
@@ -545,6 +569,23 @@
                     },
                 },
                 {
+                    title: "Data Source",
+                    field: "data_source",
+                    width: 120,
+                    hozAlign: "center",
+                    headerTooltip: "API = live listing-page counts; Sheet = From Sheet (no numbers)",
+                    formatter: function(cell) {
+                        const v = String(cell.getValue() || '').trim();
+                        if (v.toUpperCase() === 'API') {
+                            return '<span class="ml-source-api">API</span>';
+                        }
+                        if (v.toUpperCase() === 'SHEET') {
+                            return '<span class="ml-source-sheet">Sheet</span>';
+                        }
+                        return escapeHtml(v || '-');
+                    },
+                },
+                {
                     title: "SKU",
                     field: "sku",
                     width: 90,
@@ -574,12 +615,21 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "REQ count from the channel listing page",
+                    headerTooltip: "REQ count from the channel listing page (API only)",
                     formatter: function(cell) {
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#198754;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
-                    bottomCalc: "sum",
+                    bottomCalc: function(values, data) {
+                        return (data || []).reduce((sum, row) => {
+                            if (isSheetRow(row)) return sum;
+                            return sum + Number(row.req || 0);
+                        }, 0);
+                    },
+                    bottomCalcFormatter: function(cell) {
+                        return Number(cell.getValue() || 0).toLocaleString('en-US');
+                    },
                 },
                 {
                     title: "NRL",
@@ -587,12 +637,21 @@
                     width: 100,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "NRL count from the channel listing page",
+                    headerTooltip: "NRL count from the channel listing page (API only)",
                     formatter: function(cell) {
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
-                    bottomCalc: "sum",
+                    bottomCalc: function(values, data) {
+                        return (data || []).reduce((sum, row) => {
+                            if (isSheetRow(row)) return sum;
+                            return sum + Number(row.nrl || 0);
+                        }, 0);
+                    },
+                    bottomCalcFormatter: function(cell) {
+                        return Number(cell.getValue() || 0).toLocaleString('en-US');
+                    },
                 },
                 {
                     title: "Listed",
@@ -600,12 +659,21 @@
                     width: 110,
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "Listed count from the channel listing page",
+                    headerTooltip: "Listed count from the channel listing page (API only)",
                     formatter: function(cell) {
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#0d6efd;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
-                    bottomCalc: "sum",
+                    bottomCalc: function(values, data) {
+                        return (data || []).reduce((sum, row) => {
+                            if (isSheetRow(row)) return sum;
+                            return sum + Number(row.listed || 0);
+                        }, 0);
+                    },
+                    bottomCalcFormatter: function(cell) {
+                        return Number(cell.getValue() || 0).toLocaleString('en-US');
+                    },
                 },
                 {
                     title: "Missing Listing",
@@ -614,6 +682,7 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        if (isSheetRow(cell.getRow().getData())) return fromSheetCell();
                         const v = Number(cell.getValue() || 0);
                         const channel = (cell.getRow().getData().channel || '').trim();
                         const color = v === 0 ? '#198754' : '#dc3545';
@@ -624,12 +693,21 @@
                     cellClick: function(e, cell) {
                         if (e.target.classList.contains('ml-metric-chart-icon')) {
                             e.stopPropagation();
+                            if (isSheetRow(cell.getRow().getData())) return;
                             const channel = $(e.target).data('channel');
                             const value = Number(cell.getValue() || 0);
                             showMlMetricChart(channel, value);
                         }
                     },
-                    bottomCalc: "sum",
+                    bottomCalc: function(values, data) {
+                        return (data || []).reduce((sum, row) => {
+                            if (isSheetRow(row)) return sum;
+                            return sum + Number(row.missing_listing || 0);
+                        }, 0);
+                    },
+                    bottomCalcFormatter: function(cell) {
+                        return Number(cell.getValue() || 0).toLocaleString('en-US');
+                    },
                 },
                 {
                     title: "Seller Portal",

@@ -1724,6 +1724,9 @@
                             <div class="collapse" id="sidebarTemu2Analytics">
                                 <ul class="side-nav-third-level">
                                     <li>
+                                        <a href="{{ route('listing.temu2') }}">Listing Temu 2</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ url('temu2-decrease') }}">Temu 2 - Analytics</a>
                                     </li>
                                     <li>

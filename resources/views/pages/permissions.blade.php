@@ -385,6 +385,7 @@
                                 ['value' => 'listing_reverb', 'text' => 'Listing Reverb'],
                                 ['value' => 'temu', 'text' => 'Temu'],
                                 ['value' => 'listing_temu', 'text' => 'Listing Temu'],
+                                ['value' => 'listing_temu2', 'text' => 'Listing Temu 2'],
                                 ['value' => 'doba', 'text' => 'Doba'],
                                 ['value' => 'listing_doba', 'text' => 'Listing Doba'],
                                 ['value' => 'ebayTwo', 'text' => 'Ebay 2'],

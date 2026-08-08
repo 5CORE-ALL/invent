@@ -363,6 +363,17 @@
         .listing-stat-badge--nolink { background: #f59e0b; color: #1c1917; }
         .listing-stat-badge--listed { background: #0ea5e9; color: #fff; }
         .listing-stat-badge--pending { background: #dc3545; color: #fff; }
+        .listing-stat-badge--pending {
+            cursor: pointer;
+            user-select: none;
+        }
+        .listing-stat-badge--pending:hover {
+            filter: brightness(0.95);
+        }
+        .listing-stat-badge--pending.is-active {
+            outline: 2px solid #fff;
+            box-shadow: 0 0 0 2px #dc3545;
+        }
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
@@ -509,7 +520,7 @@
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nolink">No Link:<span id="without-link-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--listed">Listed:<span id="listed-total">0</span></span>
-                                <span class="listing-stat-badge listing-stat-badge--pending">Missing L:<span id="pending-total">0</span></span>
+                                <span class="listing-stat-badge listing-stat-badge--pending" id="missing-l-badge" role="button" tabindex="0" title="Click to show Missing L SKUs (REQ + not listed). Click again to clear.">Missing L:<span id="pending-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--rows">Rows:<span id="rows-total">0</span></span>
                             </div>
 
@@ -978,6 +989,51 @@
             });
 
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
+
+            // Missing L badge → filter table to unlisted REQ SKUs (toggle)
+            let missingLFilterActive = false;
+            function applyMissingLBadgeFilter(forceOff) {
+                if (forceOff === true) {
+                    missingLFilterActive = false;
+                } else {
+                    missingLFilterActive = !missingLFilterActive;
+                }
+                const $badge = $('#missing-l-badge');
+                if (missingLFilterActive) {
+                    $('#row-data-type').val('sku');
+                    $('#inv-filter').val('inv-only');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#listed-filter').val('Pending');
+                    $badge.addClass('is-active');
+                } else {
+                    $('#listed-filter').val('all');
+                    $('#nr-req-filter').val('all');
+                    $badge.removeClass('is-active');
+                }
+                applyListingFilters();
+            }
+            $(document).on('click', '#missing-l-badge', function () {
+                applyMissingLBadgeFilter();
+            });
+            $(document).on('keydown', '#missing-l-badge', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    applyMissingLBadgeFilter();
+                }
+            });
+            $('#listed-filter, #nr-req-filter, #inv-filter, #row-data-type').on('change.missingLBadge', function () {
+                if (!missingLFilterActive) return;
+                const stillMissing =
+                    $('#listed-filter').val() === 'Pending' &&
+                    $('#nr-req-filter').val() === 'REQ' &&
+                    $('#inv-filter').val() === 'inv-only' &&
+                    $('#row-data-type').val() === 'sku';
+                if (!stillMissing) {
+                    missingLFilterActive = false;
+                    $('#missing-l-badge').removeClass('is-active');
+                }
+            });
 
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');

@@ -33,12 +33,14 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSpocketController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu2Controller;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWayfairController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
+use App\Models\ApiVsSheetSetting;
 use App\Models\ChannelMaster;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -66,6 +68,8 @@ class ListingChannelCounts
         'ebaythree' => ListingEbayThreeController::class,
         'ebayvariation' => ListingEbayVariationController::class,
         'temu' => ListingTemuController::class,
+        'temu2' => ListingTemu2Controller::class,
+        'temutwo' => ListingTemu2Controller::class,
         'doba' => ListingDobaController::class,
         'macys' => ListingMacysController::class,
         'walmart' => ListingWalmartController::class,
@@ -122,6 +126,8 @@ class ListingChannelCounts
         'ebaythree' => '/listing-ebaythree',
         'ebayvariation' => '/listing-ebayvariation',
         'temu' => '/listing-temu',
+        'temu2' => '/listing-temu2',
+        'temutwo' => '/listing-temu2',
         'doba' => '/listing-doba',
         'macys' => '/listing-macys',
         'walmart' => '/listing-walmart',
@@ -184,6 +190,126 @@ class ListingChannelCounts
         $key = self::normalize($channel);
 
         return $key !== '' && isset(self::$controllers[$key]);
+    }
+
+    /**
+     * Channels whose listing Listed/Missing L is sheet / manual-status based
+     * (not marketplace API product IDs). Used when /api-vs-sheet has no override.
+     *
+     * @var list<string>
+     */
+    /**
+     * Always treat as marketplace API for /missing-listing (overrides /api-vs-sheet).
+     *
+     * @var list<string>
+     */
+    private static array $forceApiListingSources = [
+        'amazon',
+        'shopify',
+        'shopifyb2c',
+        'wayfair',
+        'tiktok2',
+        'tiktokshop2',
+        'temu',
+        'temu2',
+        'temutwo',
+    ];
+
+    private static array $sheetListingSources = [
+        'ebayvariation',
+        'fbmarketplace',
+        'facebookmarketplace',
+        'fbshop',
+        'instagramshop',
+        'shopifywholesale',
+        'shopifywholesaleds',
+        'shopifyb2b',
+        'mercariwship',
+        'mercariwoship',
+        'autods',
+        'poshmark',
+        'spocket',
+        'zendrop',
+        'syncee',
+        'offerup',
+        'appscenic',
+        'yamibuy',
+        'swgearexchange',
+        'business5core',
+    ];
+
+    /**
+     * Listing Missing L data source for /missing-listing: API or Sheet.
+     * Force-API channels win; then /api-vs-sheet download_source; else architecture default.
+     */
+    public static function dataSource(string $channel): string
+    {
+        $key = self::normalize($channel);
+        if ($key === '') {
+            return 'Sheet';
+        }
+
+        if (in_array($key, self::$forceApiListingSources, true)) {
+            return 'API';
+        }
+
+        $fromSettings = self::dataSourceFromApiVsSheet($key);
+        if ($fromSettings !== null) {
+            return $fromSettings;
+        }
+
+        return in_array($key, self::$sheetListingSources, true) ? 'Sheet' : 'API';
+    }
+
+    public static function isSheetSource(string $channel): bool
+    {
+        return self::dataSource($channel) === 'Sheet';
+    }
+
+    /**
+     * @return 'API'|'Sheet'|null
+     */
+    private static function dataSourceFromApiVsSheet(string $normalizedKey): ?string
+    {
+        if (! Schema::hasTable('api_vs_sheet_settings') || ! Schema::hasTable('channel_master')) {
+            return null;
+        }
+
+        static $map = null;
+        if ($map === null) {
+            $map = [];
+            try {
+                $channels = ChannelMaster::query()
+                    ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                    ->whereNotNull('channel')
+                    ->get(['id', 'channel']);
+                $settings = ApiVsSheetSetting::query()
+                    ->whereIn('channel_id', $channels->pluck('id'))
+                    ->get(['channel_id', 'download_source'])
+                    ->keyBy('channel_id');
+
+                foreach ($channels as $c) {
+                    $raw = trim((string) ($settings->get($c->id)?->download_source ?? ''));
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $k = self::normalize((string) $c->channel);
+                    if ($k === '') {
+                        continue;
+                    }
+                    if (stripos($raw, 'API') !== false) {
+                        $map[$k] = 'API';
+                    } elseif (strcasecmp($raw, 'Sheet') === 0) {
+                        $map[$k] = 'Sheet';
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('ListingChannelCounts dataSourceFromApiVsSheet failed: ' . $e->getMessage());
+                $map = [];
+            }
+        }
+
+        return $map[$normalizedKey] ?? null;
     }
 
     /**
@@ -251,6 +377,11 @@ class ListingChannelCounts
                 continue;
             }
             $seen[$key] = true;
+
+            // Sheet channels are not counted (display "From Sheet" on /missing-listing)
+            if (self::isSheetSource((string) $name)) {
+                continue;
+            }
 
             try {
                 $c = self::forChannel((string) $name, false);

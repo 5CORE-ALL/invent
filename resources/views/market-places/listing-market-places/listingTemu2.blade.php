@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Yamibuy', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Temu 2', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -9,13 +9,13 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE SHELL ========== */
-        #yamibuy-listing-wrap {
+        #temu2-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
             width: 100%;
         }
 
-        #yamibuy-listing-wrap .tabulator {
+        #temu2-listing-wrap .tabulator {
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 13px;
@@ -23,33 +23,33 @@
             width: 100% !important;
         }
 
-        .card-body:has(#yamibuy-listing-toolbar) {
+        .card-body:has(#temu2-listing-toolbar) {
             width: 100%;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-tableholder {
+        #temu2-listing-wrap .tabulator .tabulator-tableholder {
             background: #fff;
         }
 
         /* ========== HEADER ========== */
-        #yamibuy-listing-wrap .tabulator .tabulator-header {
+        #temu2-listing-wrap .tabulator .tabulator-header {
             background: #00d5d5;
             border-bottom: 1px solid #ffffff;
         }
 
-        #yamibuy-listing-wrap .tabulator-col .tabulator-col-sorter {
+        #temu2-listing-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -67,13 +67,13 @@
             color: #000 !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             height: auto !important;
             min-height: 34px;
             padding: 0;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col {
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
@@ -83,13 +83,13 @@
             font-weight: bold;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
 
         /* Header filters */
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
             width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -100,26 +100,26 @@
             box-shadow: none;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        #temu2-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
         /* ========== ROWS / CELLS ========== */
-        #yamibuy-listing-wrap .tabulator .tabulator-row {
+        #temu2-listing-wrap .tabulator .tabulator-row {
             min-height: 36px;
             border-bottom: 1px solid #f1f5f9;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+        #temu2-listing-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 5px 6px !important;
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
 
-        #yamibuy-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
-        #yamibuy-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+        #temu2-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #temu2-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
@@ -128,38 +128,38 @@
             vertical-align: middle;
         }
 
-        #yamibuy-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+        #temu2-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
             display: none;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-row:hover {
+        #temu2-listing-wrap .tabulator .tabulator-row:hover {
             background-color: #f8fafc !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+        #temu2-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
             background-color: #fcfcfd;
         }
 
-        #yamibuy-listing-wrap .tabulator-row.parent-row,
-        #yamibuy-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+        #temu2-listing-wrap .tabulator-row.parent-row,
+        #temu2-listing-wrap .tabulator-row.parent-row .tabulator-cell {
             background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
-        #yamibuy-listing-wrap .tabulator-row.parent-row:hover,
-        #yamibuy-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+        #temu2-listing-wrap .tabulator-row.parent-row:hover,
+        #temu2-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: #fefce8 !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */
-        #yamibuy-listing-wrap .tabulator .tabulator-footer {
+        #temu2-listing-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -167,14 +167,14 @@
             flex-wrap: wrap;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
             margin-right: 6px;
             font-size: 12px;
             color: #475569;
             font-weight: 600;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 4px 8px;
@@ -184,7 +184,7 @@
             min-height: 36px;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             font-size: 14px !important;
             font-weight: 500 !important;
             min-width: 36px !important;
@@ -200,13 +200,13 @@
             text-align: center !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
             background: #f1f5f9 !important;
             border-color: #cbd5e1 !important;
             color: #1e293b !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
             background: #4361ee !important;
             border-color: #4361ee !important;
             color: #fff !important;
@@ -214,19 +214,19 @@
             box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
             opacity: 0.4 !important;
             cursor: not-allowed !important;
         }
 
-        #yamibuy-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+        #temu2-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
             margin: 0 0.5rem;
             font-size: 12px;
             color: #334155;
         }
 
         /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
-        #yamibuy-listing-toolbar {
+        #temu2-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
@@ -236,7 +236,7 @@
             box-sizing: border-box;
         }
 
-        #yamibuy-listing-toolbar .yamibuy-listing-toolbar-row {
+        #temu2-listing-toolbar .temu2-listing-toolbar-row {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
@@ -247,7 +247,7 @@
             box-sizing: border-box;
         }
 
-        #yamibuy-listing-toolbar .listing-stat-badges {
+        #temu2-listing-toolbar .listing-stat-badges {
             display: inline-flex;
             flex: 0 0 auto;
             align-items: stretch;
@@ -256,22 +256,22 @@
             padding: 0;
         }
 
-        #yamibuy-listing-toolbar .listing-stat-badge {
+        #temu2-listing-toolbar .listing-stat-badge {
             flex: 0 0 auto;
             justify-content: center;
             margin: 0 !important;
             border-radius: 0;
         }
 
-        #yamibuy-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+        #temu2-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
             border-radius: 8px 0 0 8px;
         }
 
-        #yamibuy-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+        #temu2-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
             border-radius: 0 8px 8px 0;
         }
 
-        #yamibuy-listing-toolbar .filter-select {
+        #temu2-listing-toolbar .filter-select {
             flex: 0 0 auto;
             min-width: 0;
             width: 92px !important;
@@ -287,20 +287,20 @@
             line-height: 1.2;
         }
 
-        #yamibuy-listing-toolbar .filter-select:focus {
+        #temu2-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #yamibuy-listing-toolbar .toolbar-actions {
+        #temu2-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
             align-items: center;
             margin-left: 0;
         }
 
-        #yamibuy-listing-toolbar .listing-io-btn {
+        #temu2-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
             font-size: 14px;
@@ -313,16 +313,16 @@
             line-height: 1;
         }
 
-        #yamibuy-listing-toolbar .listing-io-btn::after {
+        #temu2-listing-toolbar .listing-io-btn::after {
             display: none;
         }
 
-        #yamibuy-listing-toolbar .listing-io-menu {
+        #temu2-listing-toolbar .listing-io-menu {
             min-width: 42px;
             padding: 4px;
         }
 
-        #yamibuy-listing-toolbar .listing-io-menu .dropdown-item {
+        #temu2-listing-toolbar .listing-io-menu .dropdown-item {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -333,7 +333,7 @@
             font-size: 14px;
         }
 
-        #yamibuy-listing-toolbar .listing-io-menu .dropdown-item:hover {
+        #temu2-listing-toolbar .listing-io-menu .dropdown-item:hover {
             background: #f1f5f9;
         }
 
@@ -377,8 +377,8 @@
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
-        #yamibuy-listing-wrap select.nr-req-dropdown,
-        #yamibuy-listing-wrap select.listed-dropdown {
+        #temu2-listing-wrap select.nr-req-dropdown,
+        #temu2-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
             font-weight: 700;
@@ -389,32 +389,32 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #yamibuy-listing-wrap select.nr-req-dropdown:focus,
-        #yamibuy-listing-wrap select.listed-dropdown:focus {
+        #temu2-listing-wrap select.nr-req-dropdown:focus,
+        #temu2-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
         }
 
-        #yamibuy-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #yamibuy-listing-wrap select.nr-req-dropdown option.req-option {
+        #temu2-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #temu2-listing-wrap select.nr-req-dropdown option.req-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #yamibuy-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #yamibuy-listing-wrap select.nr-req-dropdown option.nr-option {
+        #temu2-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #temu2-listing-wrap select.nr-req-dropdown option.nr-option {
             background-color: #dc3545;
             color: #fff;
         }
 
-        #yamibuy-listing-wrap select.listed-dropdown[data-val="Listed"],
-        #yamibuy-listing-wrap select.listed-dropdown option.listed-option {
+        #temu2-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #temu2-listing-wrap select.listed-dropdown option.listed-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #yamibuy-listing-wrap select.listed-dropdown[data-val="Pending"],
-        #yamibuy-listing-wrap select.listed-dropdown option.pending-option {
+        #temu2-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #temu2-listing-wrap select.listed-dropdown option.pending-option {
             background-color: #dc3545;
             color: #fff;
         }
@@ -458,13 +458,13 @@
         }
 
         /* ========== LINK CELL ========== */
-        #yamibuy-listing-wrap a.listing-item-link {
+        #temu2-listing-wrap a.listing-item-link {
             font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        #yamibuy-listing-wrap a.listing-item-link:hover {
+        #temu2-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
         }
@@ -497,7 +497,7 @@
         }
 
         /* ========== PLACEHOLDER ========== */
-        #yamibuy-listing-wrap .tabulator-placeholder {
+        #temu2-listing-wrap .tabulator-placeholder {
             color: #64748b;
             font-weight: 600;
             padding: 24px;
@@ -507,14 +507,14 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Yamibuy', 'sub_title' => 'Yamibuy'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Temu 2', 'sub_title' => 'Temu'])
 
     <div class="row">
         <div class="col-12">
             <div class="card position-relative">
                 <div class="card-body">
-                    <div id="yamibuy-listing-toolbar" class="mb-3">
-                        <div class="yamibuy-listing-toolbar-row">
+                    <div id="temu2-listing-toolbar" class="mb-3">
+                        <div class="temu2-listing-toolbar-row">
                             <div class="listing-stat-badges">
                                 <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
@@ -564,7 +564,7 @@
                                         </button>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item" href="{{ route('listing_yamibuy.export') }}" title="Export">
+                                        <a class="dropdown-item" href="{{ route('listing_temu2.export') }}" title="Export">
                                             <i class="fas fa-file-export text-success"></i>
                                         </a>
                                     </li>
@@ -593,8 +593,8 @@
                         </div>
                     </div>
 
-                    <div id="yamibuy-listing-wrap">
-                        <div id="yamibuyListing-table"></div>
+                    <div id="temu2-listing-wrap">
+                        <div id="temu2Listing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -617,7 +617,7 @@
     <script>
         document.body.style.zoom = "80%";
 
-        let yamibuyListingTable = null;
+        let temu2ListingTable = null;
         let allListingData = [];
 
         function isParentSku(sku) {
@@ -656,10 +656,10 @@
         function normalizeListingRows(rows) {
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
-                const itemId = String(item.eBay_item_id || '').trim();
-                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
+                const goodsId = String(item.goods_id || item.listing_id || item.eBay_item_id || '').trim();
+                // Automated: NRL from Temu2DataView; Listed from temu2_metrics.goods_id (API)
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = goodsId ? 'Listed' : 'Pending';
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -668,7 +668,8 @@
                     L30: parseFloat(item.L30) || 0,
                     nr_req: nrReq,
                     listed: listed,
-                    eBay_item_id: itemId || null,
+                    goods_id: goodsId || null,
+                    eBay_item_id: goodsId || null,
                     buyer_link: item.buyer_link || '',
                     seller_link: item.seller_link || '',
                     is_parent: isParentSku(item.sku)
@@ -686,12 +687,12 @@
 
         function calculateTotals() {
             try {
-                if (!yamibuyListingTable) {
+                if (!temu2ListingTable) {
                     resetMetricsToZero();
                     return;
                 }
 
-                const rows = yamibuyListingTable.getData('active') || [];
+                const rows = temu2ListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -707,8 +708,8 @@
 
                         if (item.nr_req === 'REQ') {
                             metrics.reqTotal++;
-                            // No Link: REQ rows with no ebay item id (dynamic link unavailable)
-                            if (!String(item.eBay_item_id || '').trim()) {
+                            // No Link: REQ rows with no Temu goods_id (dynamic buyer link unavailable)
+                            if (!String(item.goods_id || item.eBay_item_id || '').trim()) {
                                 metrics.withoutLinkTotal++;
                             }
                         }
@@ -748,7 +749,7 @@
         }
 
         function applyListingFilters() {
-            if (!yamibuyListingTable) return;
+            if (!temu2ListingTable) return;
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
@@ -756,7 +757,7 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            yamibuyListingTable.setFilter(function (data) {
+            temu2ListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
@@ -809,47 +810,58 @@
             }
         }
 
-        function formatEbayItemLink(cell, type) {
+        function formatTemuItemLink(cell, type) {
             const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+
             const isBuyer = type === 'buyer';
-            const stored = String(isBuyer ? (data.buyer_link || '') : (data.seller_link || '')).trim();
-            if (stored) {
-                const label = isBuyer ? 'Buyer' : 'Seller';
-                return `<a href="${escapeHtml(stored)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
-                title="${escapeHtml(label + ' link')}" onclick="event.stopPropagation();">
-                <i class="fas fa-external-link-alt"></i> ${label}
-            </a>`;
+            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
+
+            if (!goodsId) {
+                return '<span class="text-muted" title="No Temu goods_id">—</span>';
             }
-            return '<span class="listing-link-empty">—</span>';
+
+            // Stable URLs (session/refer params omitted)
+            const href = isBuyer
+                ? ('https://www.temu.com/goods.html?_bg_fs=1&goods_id=' + encodeURIComponent(goodsId))
+                : ('https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id=' + encodeURIComponent(goodsId));
+            const label = isBuyer ? 'Buyer' : 'Seller';
+            const title = isBuyer
+                ? ('Buyer — Temu goods_id ' + goodsId)
+                : ('Seller — Temu product-info goods_id ' + goodsId);
+
+            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
+                title="${escapeHtml(title)}" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt me-1"></i>${label}
+            </a>`;
         }
 
         function formatBuyerLink(cell) {
-            return formatEbayItemLink(cell, 'buyer');
+            return formatTemuItemLink(cell, 'buyer');
         }
 
         function formatSellerLink(cell) {
-            return formatEbayItemLink(cell, 'seller');
+            return formatTemuItemLink(cell, 'seller');
         }
 
         function formatListed(cell) {
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            // Missing Listing: channel listing id / price signal = Listed
-            const itemId = String(data.eBay_item_id || '').trim();
-            if (itemId) {
-                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
+            const goodsId = String(data.goods_id || data.eBay_item_id || '').trim();
+            if (goodsId) {
+                return `<span class="listing-listed-tick" title="Listed (temu2_metrics.goods_id)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
 
         $(document).ready(function () {
             showLoader();
 
-            yamibuyListingTable = new Tabulator('#yamibuyListing-table', {
-                ajaxURL: '/listing_yamibuy/view-data',
+            temu2ListingTable = new Tabulator('#temu2Listing-table', {
+                ajaxURL: '/listing_temu2/view-data',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     allListingData = normalizeListingRows(rows);
@@ -933,24 +945,24 @@
                     },
                     {
                         title: 'Buyer Link',
-                        field: 'eBay_item_id',
+                        field: 'goods_id',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Buyer link from listing status',
+                        headerTooltip: 'Dynamic buyer link: https://www.temu.com/goods.html?_bg_fs=1&goods_id={goods_id}',
                         formatter: formatBuyerLink
                     },
                     {
                         title: 'Seller Link',
-                        field: 'seller_item_link',
+                        field: 'seller_link',
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic seller link: https://www.ebay.com/sh/lst/active?keyword={item_id}&source=filterbar&action=search',
+                        headerTooltip: 'Dynamic seller link: https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={goods_id}',
                         formatter: formatSellerLink
                     },
                     {
@@ -960,20 +972,20 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 130,
-                        headerTooltip: 'Automatic from channel listing signal (EbayTwo Missing L pattern)',
+                        headerTooltip: 'Automatic from temu2_metrics.goods_id (Missing L when REQ and no goods_id)',
                         formatter: formatListed
                     }
                 ]
             });
 
-            yamibuyListingTable.on('dataProcessed', function () {
+            temu2ListingTable.on('dataProcessed', function () {
                 hideLoader();
                 applyListingFilters();
             });
-            yamibuyListingTable.on('dataFiltered', function () {
+            temu2ListingTable.on('dataFiltered', function () {
                 calculateTotals();
             });
-            yamibuyListingTable.on('dataLoadError', function () {
+            temu2ListingTable.on('dataLoadError', function () {
                 hideLoader();
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
@@ -1041,7 +1053,7 @@
 
                 showLoader();
                 $.ajax({
-                    url: "{{ route('listing_yamibuy.import') }}",
+                    url: "{{ route('listing_temu2.import') }}",
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1061,7 +1073,7 @@
                             }
                         }
                         showNotification('success', message);
-                        yamibuyListingTable.setData('/listing_yamibuy/view-data');
+                        temu2ListingTable.setData('/listing_temu2/view-data');
                     },
                     error: function (xhr) {
                         hideLoader();

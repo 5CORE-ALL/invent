@@ -4,8 +4,10 @@ namespace App\Support\Marketplace;
 
 use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonListingRaw;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Amazon listing status counts — same pattern as /listing-ebaytwo.
@@ -14,7 +16,7 @@ use App\Models\ShopifySku;
  * - skip PARENT SKUs
  * - skip INV <= 0 (Shopify)
  * - nr_req from AmazonDataView.value.NRL (NRL → NR, else REQ)
- * - listed from amazon_datsheets (row exists + price > 0) — same Missing L inverse as Active Channel / amazon-tabulator
+ * - listed from amazon_listings_raw (SP-API listings report) — ASIN present
  * - Missing L (Pending) = REQ and not listed
  */
 class AmazonListingCounts
@@ -35,7 +37,7 @@ class AmazonListingCounts
                 return [strtoupper(trim((string) $row->sku)) => $row->value];
             });
 
-        $datasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
+        $listingsByNorm = self::listingsByNormalizedSku();
 
         $reqCount = 0;
         $nrlCount = 0;
@@ -60,11 +62,8 @@ class AmazonListingCounts
                 $nrlCount++;
             }
 
-            $sheet = AmazonDatasheet::pickBestForProductSku(
-                $sku,
-                $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($sku))
-            );
-            $isListed = self::isListedFromDatasheet($sheet);
+            $listing = self::pickListingForProductSku($sku, $listingsByNorm);
+            $isListed = self::isListedFromApi($listing);
             if ($isListed) {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
@@ -99,6 +98,78 @@ class AmazonListingCounts
         return in_array($nrlRaw, ['NRL', 'NR'], true) ? 'NR' : 'REQ';
     }
 
+    /**
+     * @return array<string, array{asin: string, seller_sku: string}>
+     */
+    public static function listingsByNormalizedSku(): array
+    {
+        if (! Schema::hasTable('amazon_listings_raw')) {
+            return [];
+        }
+
+        $map = [];
+        AmazonListingRaw::query()
+            ->whereNotNull('seller_sku')
+            ->where('seller_sku', '!=', '')
+            ->get(['seller_sku', 'asin1'])
+            ->each(function (AmazonListingRaw $row) use (&$map) {
+                $sellerSku = trim((string) $row->seller_sku);
+                if ($sellerSku === '') {
+                    return;
+                }
+                $asin = trim((string) ($row->asin1 ?? ''));
+                if ($asin === '') {
+                    return;
+                }
+
+                $base = trim((string) preg_replace('/\s+(FBA|FBM)$/i', '', $sellerSku));
+                foreach (array_unique([$sellerSku, $base]) as $cand) {
+                    $norm = AmazonDatasheet::normalizeSkuForLookup($cand);
+                    if ($norm === '' || isset($map[$norm])) {
+                        continue;
+                    }
+                    $map[$norm] = [
+                        'asin' => $asin,
+                        'seller_sku' => $sellerSku,
+                    ];
+                }
+            });
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, array{asin: string, seller_sku: string}>|null  $listingsByNorm
+     * @return array{asin: string, seller_sku: string}|null
+     */
+    public static function pickListingForProductSku(string $sku, ?array $listingsByNorm = null): ?array
+    {
+        $listingsByNorm ??= self::listingsByNormalizedSku();
+        $norm = AmazonDatasheet::normalizeSkuForLookup($sku);
+        if ($norm === '') {
+            return null;
+        }
+
+        return $listingsByNorm[$norm] ?? null;
+    }
+
+    /**
+     * @param  array{asin: string, seller_sku: string}|null  $listing
+     */
+    public static function isListedFromApi(?array $listing): bool
+    {
+        return $listing !== null && trim((string) ($listing['asin'] ?? '')) !== '';
+    }
+
+    /**
+     * @param  array{asin: string, seller_sku: string}|null  $listing
+     */
+    public static function asinFromApi(?array $listing): string
+    {
+        return trim((string) ($listing['asin'] ?? ''));
+    }
+
+    /** @deprecated Prefer isListedFromApi — kept for callers still on datasheet. */
     public static function isListedFromDatasheet(?AmazonDatasheet $sheet): bool
     {
         if ($sheet === null) {
@@ -108,6 +179,7 @@ class AmazonListingCounts
         return (float) ($sheet->price ?? 0) > 0;
     }
 
+    /** @deprecated Prefer asinFromApi — kept for callers still on datasheet. */
     public static function asinFromDatasheet(?AmazonDatasheet $sheet): string
     {
         if ($sheet === null) {

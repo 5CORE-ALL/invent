@@ -12,6 +12,8 @@ use App\Models\NeweggMetric;
 use App\Models\PLSProduct;
 use App\Models\ReverbProduct;
 use App\Models\SheinMetric;
+use App\Models\ShopifySku;
+use App\Models\Temu2Metric;
 use App\Models\TemuMetric;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
@@ -103,6 +105,7 @@ class ChannelListingRegistry
             'tiktokshop2' => [
                 'dataView' => \App\Models\TiktokTwoShopDataView::class,
                 'status' => \App\Models\TiktokTwoShopListingStatus::class,
+                // Listed = TikTok Shop 2 products API → tiktok_products_two.product_id
                 'listed' => ['type' => 'column', 'model' => TikTokProductTwo::class, 'column' => 'product_id', 'reject_sku' => true],
                 'id_field' => 'product_id',
                 'buyer_tpl' => null,
@@ -132,6 +135,15 @@ class ChannelListingRegistry
                 'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
                 'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
             ],
+            'temu2' => [
+                'dataView' => \App\Models\Temu2DataView::class,
+                'status' => \App\Models\Temu2ListingStatus::class,
+                // Listed = Temu 2 products API → temu2_metrics.goods_id
+                'listed' => ['type' => 'column', 'model' => Temu2Metric::class, 'column' => 'goods_id', 'reject_sku' => true],
+                'id_field' => 'goods_id',
+                'buyer_tpl' => 'https://www.temu.com/goods.html?_bg_fs=1&goods_id={id}',
+                'seller_tpl' => 'https://seller.temu.com/product-info.html?add_method=1&click_type=1&goods_id={id}',
+            ],
             'macys' => [
                 'dataView' => \App\Models\MacyDataView::class,
                 'status' => \App\Models\MacysListingStatus::class,
@@ -143,7 +155,8 @@ class ChannelListingRegistry
             'wayfair' => [
                 'dataView' => \App\Models\WayfairDataView::class,
                 'status' => \App\Models\WayfairListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => WayfairPricingPrice::class, 'column' => 'price'],
+                // Listed = SKU present in wayfair_pricing_prices (marketplace catalog), not sheet price>0
+                'listed' => ['type' => 'column', 'model' => WayfairPricingPrice::class, 'column' => 'sku'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -200,7 +213,8 @@ class ChannelListingRegistry
             'shopifyb2c' => [
                 'dataView' => \App\Models\Shopifyb2cDataView::class,
                 'status' => \App\Models\ShopifyB2CListingStatus::class,
-                'listed' => ['type' => 'status', 'model' => \App\Models\ShopifyB2CListingStatus::class],
+                // Listed = present in Shopify Admin API → shopify_skus.variant_id
+                'listed' => ['type' => 'custom', 'method' => 'listedShopify'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -410,6 +424,36 @@ class ChannelListingRegistry
             if ((float) ($row->price ?? 0) > 0) {
                 $map[strtolower($sku)] = $sku;
             }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Shopify B2C listed = Admin API variant present on shopify_skus.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedShopify(array $skus): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+
+        $map = [];
+        $shopifyData = ShopifySku::mapByProductSkus($skus);
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $row = $shopifyData[$sku] ?? null;
+            $variantId = trim((string) ($row->variant_id ?? ''));
+            if ($variantId === '' || $variantId === '0') {
+                continue;
+            }
+            $map[strtolower($sku)] = $variantId;
         }
 
         return $map;

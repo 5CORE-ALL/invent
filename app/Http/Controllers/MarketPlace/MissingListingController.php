@@ -62,6 +62,28 @@ class MissingListingController extends Controller
                 ->filter(fn ($master) => ListingChannelCounts::hasListingSource((string) $master->channel))
                 ->map(function ($master) use ($hasLogo, $hasSellerLink, $cpSkuCount, $cpZeroInv) {
                     $channel = (string) $master->channel;
+                    $dataSource = ListingChannelCounts::dataSource($channel);
+                    $isSheet = $dataSource === 'Sheet';
+
+                    // Sheet: no listing numbers — UI shows "From Sheet"
+                    if ($isSheet) {
+                        return [
+                            'id' => $master->id,
+                            'image' => $hasLogo ? ($master->logo ?? null) : null,
+                            'channel' => $channel,
+                            'listing_url' => ListingChannelCounts::listingUrl($channel),
+                            'data_source' => 'Sheet',
+                            'sku' => $cpSkuCount,
+                            'zero_inv' => $cpZeroInv,
+                            'req' => null,
+                            'nrl' => null,
+                            'listed' => null,
+                            'missing_listing' => null,
+                            'seller_portal' => $hasSellerLink ? ($master->seller_link ?? null) : null,
+                        ];
+                    }
+
+                    // API: live counts from each channel's /listing-* page
                     $listingCounts = ListingChannelCounts::forChannel($channel, false);
 
                     return [
@@ -69,6 +91,7 @@ class MissingListingController extends Controller
                         'image' => $hasLogo ? ($master->logo ?? null) : null,
                         'channel' => $channel,
                         'listing_url' => ListingChannelCounts::listingUrl($channel),
+                        'data_source' => 'API',
                         'sku' => $cpSkuCount,
                         'zero_inv' => $cpZeroInv,
                         'req' => (int) ($listingCounts['REQ'] ?? 0),
@@ -80,10 +103,12 @@ class MissingListingController extends Controller
                 })
                 ->values();
 
-            // Persist today's California listing Missing L for history charts
+            // Persist today's California listing Missing L for history charts (API channels only)
             $this->persistListingMissingHistory($data);
 
-            $totalMissingL = (int) $data->sum('missing_listing');
+            $totalMissingL = (int) $data
+                ->filter(fn ($row) => ($row['data_source'] ?? '') === 'API')
+                ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
             // Keep sidebar badge in sync with this page (listing-page Missing L total)
             ListingChannelCounts::storeTotalMissingL($totalMissingL);
 
@@ -345,6 +370,11 @@ class MissingListingController extends Controller
                     continue;
                 }
 
+                // Do not snapshot Sheet channels (no numeric listing counts)
+                if (($row['data_source'] ?? '') === 'Sheet' || ListingChannelCounts::isSheetSource((string) ($row['channel'] ?? ''))) {
+                    continue;
+                }
+
                 $existing = ChannelMasterSummary::where('channel', $channelKey)
                     ->whereDate('snapshot_date', $today)
                     ->first();
@@ -392,11 +422,18 @@ class MissingListingController extends Controller
                     continue;
                 }
                 $seen[$key] = true;
+                if (ListingChannelCounts::isSheetSource((string) $name)) {
+                    continue;
+                }
                 $c = ListingChannelCounts::forChannel((string) $name, false);
                 $total += (int) ($c['Pending'] ?? 0);
             }
 
             return (float) $total;
+        }
+
+        if (ListingChannelCounts::isSheetSource($channelKey)) {
+            return 0.0;
         }
 
         $c = ListingChannelCounts::forChannel($channelKey, false);
@@ -436,6 +473,8 @@ class MissingListingController extends Controller
             'tiktok' => ['tiktokshop', 'tiktok'],
             'tiktokshop2' => ['tiktokshop2', 'tiktok2'],
             'tiktok2' => ['tiktokshop2', 'tiktok2'],
+            'temu2' => ['temu2', 'temutwo'],
+            'temutwo' => ['temu2', 'temutwo'],
             'bestbuyusa' => ['bestbuyusa', 'bestbuy'],
             'bestbuy' => ['bestbuyusa', 'bestbuy'],
             'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],

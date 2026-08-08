@@ -169,6 +169,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSpocketController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu2Controller;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
@@ -4597,6 +4598,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_temu/save-status', [ListingTemuController::class, 'saveStatus']);
     Route::post('/listing_temu/import', [ListingTemuController::class, 'import'])->name('listing_temu.import');
     Route::get('/listing_temu/export', [ListingTemuController::class, 'export'])->name('listing_temu.export');
+
+    // listing temu 2
+    Route::get('/listing-temu2', [ListingTemu2Controller::class, 'listingTemu2'])->name('listing.temu2');
+    Route::get('/listing_temu2/view-data', [ListingTemu2Controller::class, 'getViewListingTemu2Data']);
+    Route::post('/listing_temu2/save-status', [ListingTemu2Controller::class, 'saveStatus']);
+    Route::post('/listing_temu2/import', [ListingTemu2Controller::class, 'import'])->name('listing_temu2.import');
+    Route::get('/listing_temu2/export', [ListingTemu2Controller::class, 'export'])->name('listing_temu2.export');
+
     Route::get('/temu', [TemuController::class, 'temuView'])->name('temu');
     Route::get('/temu-pricing-cvr', [TemuController::class, 'temuPricingCVR'])->name('temu.pricing');
     Route::get('/temu-pricing-inc', [TemuController::class, 'temuPricingCVRinc'])->name('temu.pricing.inc');

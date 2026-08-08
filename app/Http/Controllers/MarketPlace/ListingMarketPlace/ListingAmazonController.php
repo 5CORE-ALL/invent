@@ -48,9 +48,10 @@ class ListingAmazonController extends Controller
                 return [strtoupper(trim((string) $row->sku)) => $row->value];
             });
 
-        $datasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
+        // Listed / Missing L from amazon_listings_raw (SP-API), not datasheet
+        $listingsByNorm = AmazonListingCounts::listingsByNormalizedSku();
 
-        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $datasheetsByNorm) {
+        $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData, $listingsByNorm) {
             $childSku = (string) $item->sku;
             $skuUpper = strtoupper(trim($childSku));
 
@@ -63,15 +64,11 @@ class ListingAmazonController extends Controller
             $item->nr_req = AmazonListingCounts::nrReqFromDataView($raw);
             $item->NR = $item->nr_req;
 
-            // Listed / Missing L from amazon_datsheets (price > 0) — same as Active Channel Missing L
-            $sheet = AmazonDatasheet::pickBestForProductSku(
-                $childSku,
-                $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($childSku))
-            );
-            $asin = AmazonListingCounts::asinFromDatasheet($sheet);
+            $listing = AmazonListingCounts::pickListingForProductSku($childSku, $listingsByNorm);
+            $asin = AmazonListingCounts::asinFromApi($listing);
             $item->asin = $asin !== '' ? $asin : null;
-            $item->listed = AmazonListingCounts::isListedFromDatasheet($sheet) ? 'Listed' : 'Pending';
-            $item->listing_status = $sheet->listing_status ?? null;
+            $item->listed = AmazonListingCounts::isListedFromApi($listing) ? 'Listed' : 'Pending';
+            $item->listing_status = null;
 
             return $item;
         })->values();
@@ -276,18 +273,15 @@ class ListingAmazonController extends Controller
                 ->get(['sku', 'value'])
                 ->mapWithKeys(fn ($row) => [strtoupper(trim((string) $row->sku)) => $row->value]);
 
-            $datasheetsByNorm = AmazonDatasheet::groupedByNormalizedSku();
+            $listingsByNorm = AmazonListingCounts::listingsByNormalizedSku();
 
             foreach ($productMasters as $product) {
                 $sku = (string) $product->sku;
                 $skuUpper = strtoupper(trim($sku));
                 $raw = $statusData->has($skuUpper) ? $statusData->get($skuUpper) : null;
 
-                $sheet = AmazonDatasheet::pickBestForProductSku(
-                    $sku,
-                    $datasheetsByNorm->get(AmazonDatasheet::normalizeSkuForLookup($sku))
-                );
-                $asin = AmazonListingCounts::asinFromDatasheet($sheet);
+                $listing = AmazonListingCounts::pickListingForProductSku($sku, $listingsByNorm);
+                $asin = AmazonListingCounts::asinFromApi($listing);
                 $buyerLink = $asin !== '' ? ('https://www.amazon.com/dp/' . $asin) : '';
                 $sellerLink = $asin !== ''
                     ? ('https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin=' . $asin)
@@ -296,7 +290,7 @@ class ListingAmazonController extends Controller
                 fputcsv($file, [
                     'sku' => $sku,
                     'nr_req' => AmazonListingCounts::nrReqFromDataView($raw),
-                    'listed' => AmazonListingCounts::isListedFromDatasheet($sheet) ? 'Listed' : 'Pending',
+                    'listed' => AmazonListingCounts::isListedFromApi($listing) ? 'Listed' : 'Pending',
                     'asin' => $asin,
                     'buyer_link' => $buyerLink,
                     'seller_link' => $sellerLink,

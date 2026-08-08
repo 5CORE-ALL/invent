@@ -133,6 +133,7 @@ return [
     ['value' => 'temu_zero_view', 'text' => 'Temu 0 View', 'group' => 'Marketplace'],
     ['value' => 'temu_low_visibility', 'text' => 'Temu Low Visibility', 'group' => 'Marketplace'],
     ['value' => 'listing_temu', 'text' => 'Listing Temu', 'group' => 'Marketplace'],
+    ['value' => 'listing_temu2', 'text' => 'Listing Temu 2', 'group' => 'Marketplace'],
     ['value' => 'temu2_variation_verify', 'text' => 'Temu 2 Ads Variation Verification', 'group' => 'Marketplace'],
     ['value' => 'temu2_listing_variation_verify', 'text' => 'Temu 2 Listing Variation Verify', 'group' => 'Marketplace'],
     ['value' => 'doba', 'text' => 'Doba', 'group' => 'Marketplace'],
