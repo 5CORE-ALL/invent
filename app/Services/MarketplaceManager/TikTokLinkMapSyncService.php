@@ -278,7 +278,7 @@ class TikTokLinkMapSyncService
 
                 return $this->syncPage(1, $pageSize, false, 'full');
             }
-            if ($code === 999999) {
+            if ($code === 999999 && ! str_contains(strtolower($msg), 'shop_cipher')) {
                 $msg .= ' (often IP not allow-listed in TikTok Partner Center)';
             }
 

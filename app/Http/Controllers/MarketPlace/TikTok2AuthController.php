@@ -153,7 +153,12 @@ HTML;
 
         if ($shop) {
             $lines[] = 'Shop API verified: '.($shop['name'] ?? 'N/A').' (ID: '.($shop['id'] ?? 'N/A').')';
-            $lines[] = 'Cipher: '.(isset($shop['cipher']) ? 'present' : 'missing');
+            $cipher = trim((string) ($shop['cipher'] ?? ''));
+            $lines[] = 'Cipher: '.($cipher !== '' ? 'present' : 'missing');
+            if ($cipher !== '') {
+                $wroteCipher = $this->updateEnvValue('TIKTOK2_SHOP_CIPHER', $cipher);
+                $lines[] = 'Shop cipher: saved to cache + file'.($wroteCipher ? ' + .env' : ' (.env not writable)');
+            }
             if (! empty($shop['id'])) {
                 $this->updateEnvValue('TIKTOK2_SHOP_ID', (string) $shop['id']);
             }
