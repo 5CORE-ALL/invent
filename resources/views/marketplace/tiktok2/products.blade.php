@@ -205,15 +205,32 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     }
 
     function applyProgress(p, forcePct) {
-        var status = (p && p.status) || 'running';
+        var status = (p && p.status) ? p.status : 'running';
         var msg = (p && p.message) || 'Syncing…';
         var count = (p && p.count) || 0;
-        var pct = typeof forcePct === 'number' ? forcePct : (status === 'done' ? 100 : Math.min(90, 20 + ticks * 3));
+        var queuedJobs = (p && p.queued_jobs) || 0;
+        var pct;
+        if (typeof forcePct === 'number') {
+            pct = forcePct;
+        } else if (status === 'done') {
+            pct = 100;
+        } else if (status === 'queued') {
+            pct = Math.min(40, 15 + ticks);
+        } else {
+            pct = Math.min(95, 25 + ticks * 2);
+        }
         bar.style.width = pct + '%';
         bar.textContent = pct + '%';
         pctEl.textContent = pct + '%';
         statusEl.textContent = msg;
-        countsEl.textContent = count ? (count + ' SKU link(s) in DB') : '';
+        var extra = count ? (count + ' SKU link(s) in DB') : '';
+        if (queuedJobs > 0) {
+            extra += (extra ? ' · ' : '') + queuedJobs + ' listings-queue job(s)';
+        }
+        if (p && p.queue) {
+            extra += (extra ? ' · ' : '') + 'queue: ' + p.queue;
+        }
+        countsEl.textContent = extra;
     }
 
     function finishOk(p) {
@@ -232,15 +249,26 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
 
     function poll() {
         ticks++;
-        fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
+        if (ticks > 600) {
+            finishFail('Listing sync is still running/queued after a long time. Check mm-tiktok2-listings worker and logs.');
+            return;
+        }
+        fetch(statusUrl, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 var p = data.progress || {};
+                var status = p.status || 'idle';
                 applyProgress(p);
-                if (p.status === 'done') {
+                if (status === 'done' || data.done) {
                     finishOk(p);
-                } else if (p.status === 'failed') {
+                    return;
+                }
+                if (status === 'failed' || data.failed) {
                     finishFail(p.message || 'Sync failed.');
+                    return;
+                }
+                if (status === 'idle' && ticks >= 4 && !(p.queued_jobs > 0)) {
+                    finishFail('Listing sync is not running (progress was cleared or the job never started). Click Sync again. Ensure mm-tiktok2-listings worker is up.');
                 }
             })
             .catch(function () { /* keep polling */ });

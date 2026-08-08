@@ -13,6 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -32,7 +33,15 @@ class SyncTikTokProductsJob implements ShouldQueue, ShouldBeUnique
     ) {
         $channel = strtolower(trim($channel));
         $this->channel = in_array($channel, ['tiktok', 'tiktok2'], true) ? $channel : 'tiktok';
-        $this->onQueue(MarketplaceManagerRegistry::queueFor($this->channel));
+        // Dedicated listings queue so this does not wait behind 200+ order/inventory jobs.
+        $this->onQueue(self::listingsQueueFor($this->channel));
+    }
+
+    public static function listingsQueueFor(string $channel): string
+    {
+        $channel = in_array($channel, ['tiktok', 'tiktok2'], true) ? $channel : 'tiktok';
+
+        return MarketplaceManagerRegistry::queueFor($channel).'-listings';
     }
 
     public function uniqueId(): string
@@ -63,14 +72,43 @@ class SyncTikTokProductsJob implements ShouldQueue, ShouldBeUnique
 
     public static function getProgress(string $channel): array
     {
+        $channel = in_array($channel, ['tiktok', 'tiktok2'], true) ? $channel : 'tiktok';
         $key = self::cacheKey($channel);
         $progress = Cache::get($key);
-
-        return is_array($progress) ? $progress : [
+        $progress = is_array($progress) ? $progress : [
             'status' => 'idle',
             'message' => 'No listing sync in progress.',
             'count' => 0,
         ];
+
+        $status = (string) ($progress['status'] ?? 'idle');
+        $pending = self::pendingListingsJobCount($channel);
+        $progress['queue'] = self::listingsQueueFor($channel);
+        $progress['queued_jobs'] = $pending;
+
+        // Deploy/cache clear can wipe progress while the job is still waiting/running.
+        if (in_array($status, ['idle', 'done', 'failed'], true) && $pending > 0) {
+            $progress['status'] = 'queued';
+            $progress['message'] = 'Listing sync is waiting on queue '.$progress['queue']
+                .' ('.$pending.' job(s) pending).';
+        }
+
+        return $progress;
+    }
+
+    public static function pendingListingsJobCount(string $channel): int
+    {
+        if (! Schema::hasTable('jobs')) {
+            return 0;
+        }
+
+        $queue = self::listingsQueueFor($channel);
+
+        try {
+            return (int) DB::table('jobs')->where('queue', $queue)->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     public function handle(): void

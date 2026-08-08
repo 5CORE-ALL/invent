@@ -38,10 +38,14 @@ class MarketplaceManagerRegistry
      */
     public static function queueNames(): array
     {
-        return array_map(
-            static fn (string $slug) => self::queueFor($slug),
-            self::slugs()
-        );
+        $names = [];
+        foreach (self::slugs() as $slug) {
+            $names[] = self::queueFor($slug);
+            // High-priority listing syncs (TikTok etc.) — avoid waiting behind order/inventory backlog.
+            $names[] = self::queueFor($slug).'-listings';
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**

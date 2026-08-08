@@ -126,7 +126,7 @@ class TikTok2SyncController extends Controller
 
         SyncTikTokProductsJob::putProgress('tiktok2', [
             'status' => 'queued',
-            'message' => 'TikTok 2 listing sync queued…',
+            'message' => 'TikTok 2 listing sync queued on mm-tiktok2-listings…',
             'started_at' => now()->toDateTimeString(),
             'finished_at' => null,
             'count' => Schema::hasTable('tiktok_products_two')
@@ -135,12 +135,13 @@ class TikTok2SyncController extends Controller
         ]);
 
         SyncTikTokProductsJob::dispatch('tiktok2', true);
+        $this->ensureTikTokListingsWorker();
 
         return response()->json([
             'success' => true,
             'queued' => true,
             'done' => false,
-            'message' => 'TikTok 2 listing sync queued. Keep this page open…',
+            'message' => 'TikTok 2 listing sync queued on mm-tiktok2-listings (not behind order backlog). Keep this page open…',
             'progress' => SyncTikTokProductsJob::getProgress('tiktok2'),
         ]);
     }
@@ -199,8 +200,9 @@ class TikTok2SyncController extends Controller
 
         return response()->json([
             'success' => true,
-            'done' => in_array($status, ['done', 'failed', 'idle'], true),
+            'done' => $status === 'done',
             'failed' => $status === 'failed',
+            'idle' => $status === 'idle',
             'progress' => $progress,
         ]);
     }
@@ -452,6 +454,18 @@ class TikTok2SyncController extends Controller
             'success' => false,
             'message' => $pushService->lastFailureReason ?: 'Failed to push order to Shopify.',
         ], 422);
+    }
+
+    protected function ensureTikTokListingsWorker(): void
+    {
+        try {
+            $script = base_path('scripts/cron-marketplace-manager-worker.sh');
+            if (is_file($script) && is_executable($script)) {
+                exec('bash '.escapeshellarg($script).' >/dev/null 2>&1 &');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok 2 listings worker ensure failed', ['error' => $e->getMessage()]);
+        }
     }
 
     protected function mergeSettingsSection(array $current, array $input, array $booleanKeys): array
