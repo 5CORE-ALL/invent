@@ -918,9 +918,25 @@
                                 <label class="sof-filter-label" for="sof-date-to">To</label>
                                 <input type="date" id="sof-date-to" class="form-control form-control-sm" style="min-width:150px;">
                             </div>
+                            <div>
+                                <label class="sof-filter-label" for="sof-carrier-filter">Carrier</label>
+                                <select id="sof-carrier-filter" class="form-select form-select-sm" style="min-width:160px;">
+                                    <option value="">All carriers</option>
+                                    <option value="gofo">GOFO</option>
+                                    <option value="usps">USPS</option>
+                                    <option value="ups">UPS</option>
+                                    <option value="fedex">FedEx</option>
+                                    <option value="dhl">DHL</option>
+                                    <option value="amazon">Amazon</option>
+                                    <option value="ontrac">OnTrac</option>
+                                    <option value="veeqo">Veeqo</option>
+                                    <option value="other">Other</option>
+                                    <option value="none">No carrier</option>
+                                </select>
+                            </div>
                             <div class="d-flex align-items-end gap-2">
                                 <button type="button" class="btn btn-sm btn-primary" id="sof-date-filter-apply">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset to last 30 days">Clear</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset date + carrier filters">Clear</button>
                             </div>
                             <div class="small text-muted ms-auto pb-1" id="sof-date-filter-hint">Order date range (default: last 30 days)</div>
                         </div>
@@ -1469,15 +1485,79 @@
         };
     }
 
+    function sofCarrierFilterValue() {
+        const el = document.getElementById('sof-carrier-filter');
+        return el ? String(el.value || '').trim().toLowerCase() : '';
+    }
+
+    function sofCarrierKeyFromName(name) {
+        const n = String(name || '').trim().toLowerCase();
+        if (!n) return 'none';
+        if (n.includes('gofo')) return 'gofo';
+        if (n.includes('usps') || n.includes('united states postal')) return 'usps';
+        if (n.includes('ups') && !n.includes('usps')) return 'ups';
+        if (n.includes('fedex') || n.includes('federal express')) return 'fedex';
+        if (n.includes('dhl')) return 'dhl';
+        if (n.includes('amazon') || n.includes('amzl')) return 'amazon';
+        if (n.includes('ontrac') || n.includes('on trac')) return 'ontrac';
+        if (n.includes('veeqo')) return 'veeqo';
+        return 'other';
+    }
+
+    function sofRowMatchesCarrier(data) {
+        const selected = sofCarrierFilterValue();
+        if (!selected) return true;
+        return sofCarrierKeyFromName(data && data.tracking_company) === selected;
+    }
+
+    function sofOrderSearchMatches(data, q) {
+        if (!q) return true;
+        return String(data.channel_label || '').toLowerCase().includes(q)
+            || String(data.order_id || '').toLowerCase().includes(q)
+            || String(data.sku || '').toLowerCase().includes(q)
+            || String(data.status_label || data.status || '').toLowerCase().includes(q)
+            || String(data.tracking_number || '').toLowerCase().includes(q)
+            || String(data.tracking_company || '').toLowerCase().includes(q)
+            || String(data.display_title || '').toLowerCase().includes(q);
+    }
+
+    function sofApplyOrderTableFilter(tbl, searchSelector) {
+        if (!tbl) return;
+        const q = ($(searchSelector).val() || '').trim().toLowerCase();
+        const carrier = sofCarrierFilterValue();
+        if (!q && !carrier) {
+            tbl.clearFilter(true);
+            return;
+        }
+        tbl.setFilter(function (data) {
+            return sofOrderSearchMatches(data, q) && sofRowMatchesCarrier(data);
+        });
+    }
+
+    function sofApplyAllCarrierFilters() {
+        applyPendingFilters();
+        applyFulfilledFilters();
+        applyScanDoneFilters();
+        applyInTransitFilters();
+        applyInReceivedFilters();
+        applyInvoicedFilters();
+        applyDeliveredFilters();
+        applyAllOrderFilters();
+    }
+
     function sofUpdateDateFilterHint() {
         const p = sofDateParams();
+        const carrier = sofCarrierFilterValue();
+        const carrierLabel = carrier
+            ? (($('#sof-carrier-filter option:selected').text() || carrier))
+            : 'All carriers';
         const hint = document.getElementById('sof-date-filter-hint');
         if (!hint) return;
-        if (p.date_from && p.date_to) {
-            hint.textContent = 'Showing order dates ' + p.date_from + ' → ' + p.date_to;
-        } else {
-            hint.textContent = 'Order date range (default: last 30 days)';
-        }
+        let text = (p.date_from && p.date_to)
+            ? ('Showing order dates ' + p.date_from + ' → ' + p.date_to)
+            : 'Order date range (default: last 30 days)';
+        text += ' · ' + carrierLabel;
+        hint.textContent = text;
     }
 
     function sofReloadAllTablesForDateRange() {
@@ -1488,6 +1568,9 @@
                     t.replaceData();
                 }
             });
+        // Carrier is client-side; re-apply after reload starts completing via dataLoaded.
+        // Also apply immediately for already-loaded tables.
+        sofApplyAllCarrierFilters();
     }
 
     sofInitDateFilterDefaults();
@@ -1509,7 +1592,13 @@
     $('#sof-date-filter-clear').on('click', function () {
         $('#sof-date-from').val(sofDefaultDateFrom());
         $('#sof-date-to').val(sofDefaultDateTo());
+        $('#sof-carrier-filter').val('');
         sofReloadAllTablesForDateRange();
+    });
+
+    $('#sof-carrier-filter').on('change', function () {
+        sofUpdateDateFilterHint();
+        sofApplyAllCarrierFilters();
     });
 
     function sofIsEmptySortValue(v) {
@@ -2889,19 +2978,7 @@
     }
 
     function applyPendingFilters() {
-        if (!pendingTable) return;
-        const q = ($('#sof-pending-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            pendingTable.clearFilter(true);
-            return;
-        }
-        pendingTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(pendingTable, '#sof-pending-search');
     }
 
     function ensurePendingTable() {
@@ -2957,21 +3034,7 @@
     }
 
     function applyFulfilledFilters() {
-        if (!fulfilledTable) return;
-        const q = ($('#sof-fulfilled-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            fulfilledTable.clearFilter(true);
-            return;
-        }
-        fulfilledTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.tracking_number || '').toLowerCase().includes(q)
-                || String(data.tracking_company || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(fulfilledTable, '#sof-fulfilled-search');
     }
 
     function ensureFulfilledTable() {
@@ -3040,19 +3103,7 @@
     }
 
     function applyScanDoneFilters() {
-        if (!scanDoneTable) return;
-        const q = ($('#sof-scan-done-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            scanDoneTable.clearFilter(true);
-            return;
-        }
-        scanDoneTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(scanDoneTable, '#sof-scan-done-search');
     }
 
     function ensureScanDoneTable() {
@@ -3120,19 +3171,7 @@
     }
 
     function applyInTransitFilters() {
-        if (!inTransitTable) return;
-        const q = ($('#sof-in-transit-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            inTransitTable.clearFilter(true);
-            return;
-        }
-        inTransitTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(inTransitTable, '#sof-in-transit-search');
     }
 
     function ensureInTransitTable() {
@@ -3200,19 +3239,7 @@
     }
 
     function applyInReceivedFilters() {
-        if (!inReceivedTable) return;
-        const q = ($('#sof-in-received-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            inReceivedTable.clearFilter(true);
-            return;
-        }
-        inReceivedTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(inReceivedTable, '#sof-in-received-search');
     }
 
     function ensureInReceivedTable() {
@@ -3280,19 +3307,7 @@
     }
 
     function applyInvoicedFilters() {
-        if (!invoicedTable) return;
-        const q = ($('#sof-invoiced-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            invoicedTable.clearFilter(true);
-            return;
-        }
-        invoicedTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(invoicedTable, '#sof-invoiced-search');
     }
 
     function ensureInvoicedTable() {
@@ -3360,19 +3375,7 @@
     }
 
     function applyDeliveredFilters() {
-        if (!deliveredTable) return;
-        const q = ($('#sof-delivered-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            deliveredTable.clearFilter(true);
-            return;
-        }
-        deliveredTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(deliveredTable, '#sof-delivered-search');
     }
 
     function ensureDeliveredTable() {
@@ -3458,19 +3461,7 @@
     }
 
     function applyAllOrderFilters() {
-        if (!allOrderTable) return;
-        const q = ($('#sof-all-order-search').val() || '').trim().toLowerCase();
-        if (!q) {
-            allOrderTable.clearFilter(true);
-            return;
-        }
-        allOrderTable.setFilter(function (data) {
-            return String(data.channel_label || '').toLowerCase().includes(q)
-                || String(data.order_id || '').toLowerCase().includes(q)
-                || String(data.sku || '').toLowerCase().includes(q)
-                || String(data.status_label || data.status || '').toLowerCase().includes(q)
-                || String(data.display_title || '').toLowerCase().includes(q);
-        });
+        sofApplyOrderTableFilter(allOrderTable, '#sof-all-order-search');
     }
 
     function ensureAllOrderTable() {
