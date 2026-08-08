@@ -352,6 +352,12 @@ class MarketplaceController extends Controller
         if ($marketplace === 'faire') {
             return app(FaireSyncController::class)->pushTrackingToFaire($order);
         }
+        if ($marketplace === 'tiktok') {
+            return app(TikTokSyncController::class)->pushTrackingToTikTok($order);
+        }
+        if ($marketplace === 'tiktok2') {
+            return app(TikTok2SyncController::class)->pushTrackingToTikTok2($order);
+        }
 
         return response()->json(['success' => false, 'message' => 'Tracking push not supported for this marketplace.'], 404);
     }

@@ -91,16 +91,34 @@
     </div>
 </div>
 
+@php
+    $shopifyTracking = $detail['shopify_tracking'] ?? [];
+@endphp
 <div class="card mb-3">
-    <div class="card-header">Shipment information</div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Shipment information</span>
+        @if(!empty($connected) && !empty($shopify['shopify_order_id']) && !empty($line?->id))
+            <button type="button" class="btn btn-sm btn-outline-warning" id="btn-push-tracking-tiktok" data-id="{{ $line->id }}">
+                <i class="ri-truck-line"></i> Push Shopify tracking
+            </button>
+        @endif
+    </div>
     <div class="card-body p-0">
         @include($detailTable, ['showEmpty' => true, 'rows' => [
             'Shipping time' => $fmtDt($shipment['shipped_at'] ?? null),
-            'Shipping method' => $shipment['service'] ?? null,
-            'Tracking number' => !empty($shipment['tracking']) ? '<code>'.e($shipment['tracking']).'</code>' : null,
+            'Shipping method' => $shipment['service'] ?? ($shopifyTracking['carrier'] ?? null),
+            'Tracking number (TikTok / Shopify)' => !empty($shipment['tracking'])
+                ? '<code>'.e($shipment['tracking']).'</code>'
+                : (!empty($shopifyTracking['tracking']) ? '<code>'.e($shopifyTracking['tracking']).'</code>' : null),
+            'Shopify fulfillment status' => $shopifyTracking['fulfillment_status'] ?? null,
             'Status' => $shipment['status'] ?? null,
         ]])
     </div>
+    @if(!empty($shopify['shopify_order_id']) && empty($shipment['tracking']) && empty($shopifyTracking['tracking']))
+        <div class="card-footer small text-muted">
+            No tracking on Shopify yet. After you buy/download a shipping label in Shopify, click <strong>Push Shopify tracking</strong> (or wait for auto sync) so TikTok is marked shipped.
+        </div>
+    @endif
 </div>
 
 <div class="row g-3 mb-3">
@@ -230,7 +248,23 @@
                 <tr><th class="ps-3" style="width:200px;">Shopify order ID</th><td>{{ $shopify['shopify_order_id'] ?? '—' }}</td></tr>
                 <tr><th class="ps-3">Import status</th><td>{{ $shopify['import_status'] ?? 'pending' }}</td></tr>
                 <tr><th class="ps-3">Pushed at</th><td>{{ $fmtDt($shopify['pushed_to_shopify_at'] ?? null) ?: '—' }}</td></tr>
-                <tr><th class="ps-3">Tracking pushed at</th><td>{{ $fmtDt($shopify['tracking_pushed_at'] ?? null) ?: '—' }}</td></tr>
+                <tr><th class="ps-3">Shopify tracking</th><td>
+                    @if(!empty($shopifyTracking['tracking']))
+                        <code>{{ $shopifyTracking['tracking'] }}</code>
+                        @if(!empty($shopifyTracking['carrier']))
+                            <span class="text-muted small">({{ $shopifyTracking['carrier'] }})</span>
+                        @endif
+                    @else
+                        —
+                        <span class="text-muted small">No fulfillment tracking on Shopify yet</span>
+                    @endif
+                </td></tr>
+                <tr><th class="ps-3">Tracking pushed at</th><td>
+                    {{ $fmtDt($shopify['tracking_pushed_at'] ?? null) ?: '—' }}
+                    @if(empty($shopify['tracking_pushed_at']))
+                        <div class="small text-muted">Fills only after Shopify tracking is successfully pushed to TikTok.</div>
+                    @endif
+                </td></tr>
                 <tr><th class="ps-3">Sent to Shopify</th><td class="small text-muted">
                     Shipping address, buyer details, payment, and line items are sent when the order is imported / address sync runs.
                 </td></tr>

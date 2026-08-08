@@ -3,6 +3,7 @@
 @section('content')
 @php
     $summary = $detail['summary'] ?? [];
+    $shopify = $detail['shopify'] ?? [];
 @endphp
 <div class="row">
     <div class="col-12">
@@ -22,15 +23,52 @@
                     @endif
                 </p>
             </div>
+            <div class="d-flex gap-2">
+                @if($connected && !empty($shopify['shopify_order_id']))
+                    <button type="button" class="btn btn-sm btn-warning" id="btn-push-tracking-tiktok-top" data-id="{{ $line->id }}" title="Read Shopify fulfillment tracking and mark shipped on TikTok">
+                        <i class="ri-truck-line"></i> Push tracking to TikTok
+                    </button>
+                @endif
+            </div>
         </div>
 
         @include('marketplace.tiktok._nav', ['active' => 'orders'])
 
         <div class="alert alert-info py-2 small mb-3">
-            Order details below are read from the synced TikTok payload (same data used for Shopify import / address sync).
+            Order details are synced from TikTok into this app and imported to Shopify.
+            After you buy/download a shipping label in Shopify, use <strong>Push tracking to TikTok</strong> so TikTok is marked shipped with that tracking number.
         </div>
 
-        @include('marketplace.tiktok._order-detail', ['detail' => $detail, 'marketplaceSlug' => 'tiktok'])
+        @include('marketplace.tiktok._order-detail', ['detail' => $detail, 'marketplaceSlug' => 'tiktok', 'connected' => $connected ?? false, 'line' => $line])
     </div>
 </div>
+<script>
+function pushTrackingToTikTok(btn) {
+    var id = btn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Read the Shopify tracking number for this order and mark it shipped on TikTok Shop?')) return;
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line"></i> Pushing…';
+    fetch(@json(url('marketplace/tiktok/orders')) + '/' + id + '/push-tracking', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+    .then(function (res) {
+        alert(res.data.message || (res.data.success ? 'Tracking pushed.' : 'Failed'));
+        if (res.data.success || res.data.skipped) location.reload();
+    })
+    .catch(function () { alert('Request failed.'); })
+    .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    });
+}
+document.getElementById('btn-push-tracking-tiktok-top')?.addEventListener('click', function () { pushTrackingToTikTok(this); });
+document.getElementById('btn-push-tracking-tiktok')?.addEventListener('click', function () { pushTrackingToTikTok(this); });
+</script>
 @endsection

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RunMarketplaceInventorySyncJob;
 use App\Jobs\SyncTikTokProductsJob;
 use App\Jobs\SyncTikTokTrackingJob;
+use App\Services\MarketplaceManager\TikTokTrackingSyncService;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\TikTokProduct;
 use App\Models\TiktokOrder;
@@ -259,11 +260,28 @@ class TikTokSyncController extends Controller
             ->orderBy('id')
             ->get();
 
+        $detail = app(TikTokOrderDetailFormatter::class)->format($line, $lines);
+        $shopifyTracking = ['tracking' => null, 'carrier' => null, 'fulfillment_status' => null];
+        if (! empty($line->shopify_order_id)) {
+            try {
+                $shopifyTracking = app(TikTokTrackingSyncService::class)
+                    ->fetchShopifyTracking((string) $line->shopify_order_id);
+            } catch (\Throwable) {
+                // Keep empty Shopify tracking block.
+            }
+        }
+        $detail['shopify_tracking'] = $shopifyTracking;
+        if (empty($detail['shipment']['tracking']) && ! empty($shopifyTracking['tracking'])) {
+            $detail['shipment']['tracking'] = $shopifyTracking['tracking'];
+            $detail['shipment']['service'] = $detail['shipment']['service'] ?: ($shopifyTracking['carrier'] ?? null);
+            $detail['shipment']['status'] = $detail['shipment']['status'] ?: ($shopifyTracking['fulfillment_status'] ?? null);
+        }
+
         return view('marketplace.tiktok.order-show', [
             'title' => 'TikTok Shop — Order '.$line->order_id,
             'line' => $line,
             'lines' => $lines,
-            'detail' => app(TikTokOrderDetailFormatter::class)->format($line, $lines),
+            'detail' => $detail,
             'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
         ]);
     }
@@ -381,6 +399,30 @@ class TikTokSyncController extends Controller
             'success' => true,
             'message' => 'Tracking sync job queued (Shopify → TikTok Shop). Check back shortly.',
         ]);
+    }
+
+    public function pushTrackingToTikTok(int $id): JsonResponse
+    {
+        if (! $this->tiktok->isAuthenticated()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'TikTok Shop is not connected.',
+            ], 401);
+        }
+
+        $line = TiktokOrder::query()->findOrFail($id);
+        $result = app(TikTokTrackingSyncService::class)->pushTrackingForOrder($line);
+        $ok = ! empty($result['success']);
+
+        return response()->json([
+            'success' => $ok,
+            'skipped' => ! empty($result['skipped']),
+            'message' => $result['message'] ?? 'Tracking push finished.',
+            'shopify_tracking' => $result['shopify_tracking'] ?? null,
+            'tracking_pushed_at' => optional(
+                TiktokOrder::query()->where('order_id', $line->order_id)->value('tracking_pushed_at')
+            )?->toDateTimeString(),
+        ], $ok ? 200 : 422);
     }
 
     public function pushOrderToShopify(Request $request, int $id): JsonResponse
