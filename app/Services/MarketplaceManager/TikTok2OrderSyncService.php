@@ -174,7 +174,7 @@ class TikTok2OrderSyncService
                     'shipping_provider' => $shippingProvider,
                     'order_created_at' => $orderCreatedAt,
                     'order_updated_at' => $orderUpdatedAt,
-                    'raw_json' => json_encode($order),
+                    'raw_json' => $order,
                     'fetched_at' => now(),
                     'import_status' => 'ready',
                 ]
@@ -223,7 +223,7 @@ class TikTok2OrderSyncService
                     'buyer_nickname' => $buyerNickname,
                     'order_created_at' => $orderCreatedAt,
                     'order_updated_at' => $orderUpdatedAt,
-                    'raw_json' => json_encode($order),
+                    'raw_json' => $order,
                     'fetched_at' => now(),
                     'import_status' => 'ready',
                 ]

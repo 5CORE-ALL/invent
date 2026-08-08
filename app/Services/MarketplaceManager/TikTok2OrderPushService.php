@@ -6,11 +6,13 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\ShopifySku;
 use App\Models\Tiktok2Order;
 use App\Services\ShopifyStoreSelector;
+use App\Services\TikTok2ShopService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class TikTok2OrderPushService
 {
+    use ResolvesTikTokOrderRawJson;
     use SyncsShopifyOrderAddress;
 
     public ?string $lastFailureReason = null;
@@ -55,15 +57,9 @@ class TikTok2OrderPushService
             return ['success' => false, 'skipped' => true, 'message' => 'Order not linked to Shopify yet.'];
         }
 
-        $rawJson = is_string($order->raw_json) ? json_decode($order->raw_json, true) : [];
-        $address = $rawJson['recipient_address'] ?? $rawJson['shipping_address'] ?? [];
-        if (! is_array($address) || empty($address)) {
-            return ['success' => false, 'skipped' => true, 'message' => 'No shipping address in TikTok order data.'];
-        }
-
-        $shipping = $this->mapTikTokAddressToShopify($address);
+        $shipping = $this->resolveShopifyShippingFromOrder($order, enrich: true);
         if (empty($shipping['address1'])) {
-            return ['success' => false, 'skipped' => true, 'message' => 'TikTok order has no address line.'];
+            return ['success' => false, 'skipped' => true, 'message' => 'No shipping address in TikTok order data.'];
         }
 
         $config = $this->shopifyConfig();
@@ -71,6 +67,7 @@ class TikTok2OrderPushService
             return ['success' => false, 'message' => 'Shopify store credentials not configured.'];
         }
 
+        $shipping = $this->withShopifyCountryName($shipping);
         $update = [
             'id' => (int) $shopifyOrderId,
             'shipping_address' => $shipping,
@@ -82,16 +79,20 @@ class TikTok2OrderPushService
             return ['success' => false, 'message' => $this->lastFailureReason ?: 'Shopify address update failed.'];
         }
 
+        $this->syncShopifyCustomerFromAddress($config, $shopifyOrderId, $shipping, []);
+
         return ['success' => true, 'message' => 'Shopify shipping address updated.'];
     }
 
     public function syncPendingAddressesToShopify(int $limit = 40): array
     {
+        $limit = max(1, min(200, $limit));
+
         $rows = Tiktok2Order::query()
             ->whereNotNull('shopify_order_id')
             ->where('shopify_order_id', '!=', '')
             ->orderByDesc('id')
-            ->limit($limit * 5)
+            ->limit($limit * 10)
             ->get();
 
         $unique = [];
@@ -125,8 +126,18 @@ class TikTok2OrderPushService
                 $updated++;
             } elseif (! empty($result['skipped'])) {
                 $skipped++;
+                Log::warning('TikTok2OrderPushService: address sync skipped', [
+                    'order_id' => $line->order_id,
+                    'shopify_order_id' => $line->shopify_order_id,
+                    'message' => $result['message'] ?? null,
+                ]);
             } else {
                 $failed++;
+                Log::warning('TikTok2OrderPushService: address sync failed', [
+                    'order_id' => $line->order_id,
+                    'shopify_order_id' => $line->shopify_order_id,
+                    'message' => $result['message'] ?? null,
+                ]);
             }
             usleep(350000);
         }
@@ -175,9 +186,10 @@ class TikTok2OrderPushService
             $settings['order']['shopify_order_tags'] ?? []
         )));
 
-        $rawJson = is_string($order->raw_json) ? json_decode($order->raw_json, true) : [];
-        $address = $rawJson['recipient_address'] ?? $rawJson['shipping_address'] ?? [];
-        $shipping = is_array($address) ? $this->mapTikTokAddressToShopify($address) : [];
+        $rawJson = $this->normalizeTikTokRawJson($order->raw_json);
+        $shipping = $this->resolveShopifyShippingFromOrder($order, enrich: true);
+        $order->refresh();
+        $rawJson = $this->normalizeTikTokRawJson($order->raw_json) ?: $rawJson;
 
         $lineItems = [];
         foreach ($lines as $line) {
@@ -229,6 +241,7 @@ class TikTok2OrderPushService
         ];
 
         if (! empty($shipping['address1'])) {
+            $shipping = $this->withShopifyCountryName($shipping);
             $payload['shipping_address'] = $shipping;
             $payload['billing_address'] = $shipping;
         }
@@ -372,21 +385,51 @@ class TikTok2OrderPushService
         return app(ShopifyStoreSelector::class)->getConfigForStore($storeKey);
     }
 
-    protected function mapTikTokAddressToShopify(array $address): array
+    /**
+     * @return array<string, mixed>
+     */
+    protected function resolveShopifyShippingFromOrder(Tiktok2Order $order, bool $enrich = false): array
     {
-        $name = trim((string) ($address['name'] ?? $address['full_name'] ?? ''));
-        $parts = $name !== '' ? explode(' ', $name, 2) : ['', ''];
+        $rawJson = $this->normalizeTikTokRawJson($order->raw_json);
+        $address = $this->tikTokAddressFromRaw($rawJson);
+        $shipping = $address !== [] ? $this->mapTikTokAddressToShopify($address) : [];
 
-        return array_filter([
-            'first_name' => $parts[0] ?? '',
-            'last_name' => $parts[1] ?? $parts[0] ?? '',
-            'address1' => trim((string) ($address['address_line1'] ?? $address['full_address'] ?? $address['address_detail'] ?? '')),
-            'address2' => trim((string) ($address['address_line2'] ?? $address['address_line_2'] ?? '')),
-            'city' => trim((string) ($address['city'] ?? $address['district_info'][1]['address_name'] ?? '')),
-            'province' => trim((string) ($address['state'] ?? $address['region'] ?? '')),
-            'zip' => trim((string) ($address['postal_code'] ?? $address['zipcode'] ?? '')),
-            'country_code' => trim((string) ($address['region_code'] ?? $address['country'] ?? 'US')),
-            'phone' => trim((string) ($address['phone_number'] ?? $address['phone'] ?? '')),
-        ], static fn ($v) => $v !== '');
+        if ($enrich && empty($shipping['address1'])) {
+            $this->enrichOrderRawJsonFromDetail($order);
+            $order->refresh();
+            $rawJson = $this->normalizeTikTokRawJson($order->raw_json);
+            $address = $this->tikTokAddressFromRaw($rawJson);
+            $shipping = $address !== [] ? $this->mapTikTokAddressToShopify($address) : [];
+        }
+
+        return $shipping;
+    }
+
+    protected function enrichOrderRawJsonFromDetail(Tiktok2Order $order): void
+    {
+        $orderId = trim((string) $order->order_id);
+        if ($orderId === '') {
+            return;
+        }
+
+        try {
+            $response = app(TikTok2ShopService::class)->getOrderDetails([$orderId]);
+            $detail = $this->extractTikTokOrderFromDetailResponse($response, $orderId);
+            if (! is_array($detail) || $detail === []) {
+                return;
+            }
+
+            Tiktok2Order::query()
+                ->where('order_id', $orderId)
+                ->update([
+                    'raw_json' => $detail,
+                    'fetched_at' => now(),
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok2OrderPushService: order detail enrich failed', [
+                'order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

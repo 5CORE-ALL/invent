@@ -60,6 +60,7 @@ class Tiktok2Order extends TiktokOrder
         'fetched_at' => 'datetime',
         'pushed_to_shopify_at' => 'datetime',
         'tracking_pushed_at' => 'datetime',
+        'raw_json' => 'array',
     ];
 
     public static function tableReady(): bool
