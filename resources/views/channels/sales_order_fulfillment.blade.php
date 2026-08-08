@@ -908,6 +908,23 @@
                     </div>
                 </div>
                 <div class="card-body pt-0">
+                    <div id="sof-date-filter-bar" class="mb-3" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
+                        <div class="d-flex flex-wrap align-items-end gap-3">
+                            <div>
+                                <label class="sof-filter-label" for="sof-date-from">From</label>
+                                <input type="date" id="sof-date-from" class="form-control form-control-sm" style="min-width:150px;">
+                            </div>
+                            <div>
+                                <label class="sof-filter-label" for="sof-date-to">To</label>
+                                <input type="date" id="sof-date-to" class="form-control form-control-sm" style="min-width:150px;">
+                            </div>
+                            <div class="d-flex align-items-end gap-2">
+                                <button type="button" class="btn btn-sm btn-primary" id="sof-date-filter-apply">Apply</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="sof-date-filter-clear" title="Reset to last 30 days">Clear</button>
+                            </div>
+                            <div class="small text-muted ms-auto pb-1" id="sof-date-filter-hint">Order date range (default: last 30 days)</div>
+                        </div>
+                    </div>
                     <ul class="nav nav-tabs mb-3" id="sof-tabs" role="tablist">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" id="sof-channels-tab" data-bs-toggle="tab"
@@ -969,7 +986,7 @@
                             <button class="nav-link" id="sof-delivered-tab" data-bs-toggle="tab"
                                     data-bs-target="#sof-delivered-pane" type="button" role="tab"
                                     aria-controls="sof-delivered-pane" aria-selected="false">
-                                Delivered <span class="badge ms-1" id="sof-delivered-tab-count" style="background:#cff4fc;color:#055160;border:1px solid #9eeaf9;" title="Last 30 days">0</span>
+                                Delivered <span class="badge ms-1" id="sof-delivered-tab-count" style="background:#cff4fc;color:#055160;border:1px solid #9eeaf9;" title="Selected date range">0</span>
                             </button>
                         </li>
                     </ul>
@@ -1004,7 +1021,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Marketplace orders from the last 30 days, with original status values.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Marketplace orders in the selected date range, with original status values.</p>
                             <div id="sof-all-order-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1021,7 +1038,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Pending / unfulfilled orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Pending / unfulfilled orders in the selected date range.</p>
                             <div id="sof-pending-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1038,7 +1055,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Label Created / No Scan orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Label Created / No Scan orders in the selected date range.</p>
                             <div id="sof-fulfilled-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1055,7 +1072,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Shipped/Received orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Shipped/Received orders in the selected date range.</p>
                             <div id="sof-scan-done-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1072,7 +1089,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">In Transit orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Transit orders in the selected date range.</p>
                             <div id="sof-in-transit-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1089,7 +1106,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">In Received orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">In Received orders in the selected date range.</p>
                             <div id="sof-in-received-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1106,7 +1123,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Invoiced orders from the last 30 days.</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Invoiced orders in the selected date range.</p>
                             <div id="sof-invoiced-table" style="height: calc(100vh - 400px);"></div>
                         </div>
 
@@ -1123,7 +1140,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-2">Delivered / Received from the last 30 days (Faire DELIVERED, Shein &amp; Reverb Received, etc.).</p>
+                            <p class="small text-muted mb-2 sof-date-scope-hint">Delivered / Received in the selected date range (Faire DELIVERED, Shein &amp; Reverb Received, etc.).</p>
                             <div id="sof-delivered-table" style="height: calc(100vh - 400px);"></div>
                         </div>
                     </div>
@@ -1417,6 +1434,83 @@
         movableColumns: false,
         headerSortClickElement: 'header',
     };
+
+    function sofFormatDateInput(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + day;
+    }
+
+    function sofDefaultDateFrom() {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return sofFormatDateInput(d);
+    }
+
+    function sofDefaultDateTo() {
+        return sofFormatDateInput(new Date());
+    }
+
+    function sofInitDateFilterDefaults() {
+        const fromEl = document.getElementById('sof-date-from');
+        const toEl = document.getElementById('sof-date-to');
+        if (fromEl && !fromEl.value) fromEl.value = sofDefaultDateFrom();
+        if (toEl && !toEl.value) toEl.value = sofDefaultDateTo();
+        sofUpdateDateFilterHint();
+    }
+
+    function sofDateParams() {
+        const fromEl = document.getElementById('sof-date-from');
+        const toEl = document.getElementById('sof-date-to');
+        return {
+            date_from: fromEl ? (fromEl.value || '') : '',
+            date_to: toEl ? (toEl.value || '') : '',
+        };
+    }
+
+    function sofUpdateDateFilterHint() {
+        const p = sofDateParams();
+        const hint = document.getElementById('sof-date-filter-hint');
+        if (!hint) return;
+        if (p.date_from && p.date_to) {
+            hint.textContent = 'Showing order dates ' + p.date_from + ' → ' + p.date_to;
+        } else {
+            hint.textContent = 'Order date range (default: last 30 days)';
+        }
+    }
+
+    function sofReloadAllTablesForDateRange() {
+        sofUpdateDateFilterHint();
+        [table, pendingTable, fulfilledTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, allOrderTable]
+            .forEach(function (t) {
+                if (t && typeof t.replaceData === 'function') {
+                    t.replaceData();
+                }
+            });
+    }
+
+    sofInitDateFilterDefaults();
+
+    $('#sof-date-filter-apply').on('click', function () {
+        const from = ($('#sof-date-from').val() || '').trim();
+        const to = ($('#sof-date-to').val() || '').trim();
+        if (from && to && from > to) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date.' });
+            } else {
+                alert('From date must be on or before To date.');
+            }
+            return;
+        }
+        sofReloadAllTablesForDateRange();
+    });
+
+    $('#sof-date-filter-clear').on('click', function () {
+        $('#sof-date-from').val(sofDefaultDateFrom());
+        $('#sof-date-to').val(sofDefaultDateTo());
+        sofReloadAllTablesForDateRange();
+    });
 
     function sofIsEmptySortValue(v) {
         return v === null || v === undefined || String(v).trim() === '';
@@ -2310,12 +2404,13 @@
         ],
         ajaxURL: '{{ route("sales.order.fulfillment.data") }}',
         ajaxConfig: 'GET',
+        ajaxParams: sofDateParams,
         ajaxRequestFunc: function (url, config, params) {
             return new Promise(function (resolve, reject) {
                 $.ajax({
                     url: url,
                     type: 'GET',
-                    data: params,
+                    data: Object.assign({}, params || {}, sofDateParams()),
                     timeout: 0,
                     success: resolve,
                     error: reject,
@@ -2826,12 +2921,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.pending.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -2895,12 +2991,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.fulfilled.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -2975,12 +3072,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.scan.done.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -3054,12 +3152,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.in.transit.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -3133,12 +3232,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.in.received.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -3212,12 +3312,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.invoiced.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -3297,12 +3398,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.delivered.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,
@@ -3388,12 +3490,13 @@
             ],
             ajaxURL: '{{ route("sales.order.fulfillment.all.order.data") }}',
             ajaxConfig: 'GET',
+            ajaxParams: sofDateParams,
             ajaxRequestFunc: function (url, config, params) {
                 return new Promise(function (resolve, reject) {
                     $.ajax({
                         url: url,
                         type: 'GET',
-                        data: params,
+                        data: Object.assign({}, params || {}, sofDateParams()),
                         timeout: 0,
                         success: resolve,
                         error: reject,

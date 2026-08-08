@@ -1931,7 +1931,7 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Apply shared last-30-days order-date filter, or pass through null queries.
+     * Apply shared order-date range filter (request date_from/date_to, default last 30 days).
      */
     protected function scopedToLast30Days(?Builder $query, string $slug): ?Builder
     {
@@ -1939,38 +1939,100 @@ class SalesOrderFulfillmentController extends Controller
             return null;
         }
 
-        return $this->applyLast30DaysFilter($query, now()->subDays(30)->startOfDay(), $slug);
+        [$from, $to] = $this->resolveOrderDateRange();
+
+        return $this->applyOrderDateRangeFilter($query, $from, $to, $slug);
     }
 
     /**
-     * Restrict to last 30 days by channel order-date column.
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    protected function resolveOrderDateRange(): array
+    {
+        $tz = 'America/Los_Angeles';
+        $fromRaw = trim((string) request()->input('date_from', ''));
+        $toRaw = trim((string) request()->input('date_to', ''));
+
+        try {
+            $from = $fromRaw !== ''
+                ? Carbon::parse($fromRaw, $tz)->startOfDay()
+                : now($tz)->subDays(30)->startOfDay();
+        } catch (\Throwable) {
+            $from = now($tz)->subDays(30)->startOfDay();
+        }
+
+        try {
+            $to = $toRaw !== ''
+                ? Carbon::parse($toRaw, $tz)->endOfDay()
+                : now($tz)->endOfDay();
+        } catch (\Throwable) {
+            $to = now($tz)->endOfDay();
+        }
+
+        if ($from->gt($to)) {
+            [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+        }
+
+        return [$from, $to];
+    }
+
+    /**
+     * Restrict by channel order-date column to [from, to] inclusive.
+     */
+    protected function applyOrderDateRangeFilter(Builder $query, Carbon $from, Carbon $to, string $slug): Builder
+    {
+        return match ($slug) {
+            'amazon' => $query->whereHas('order', function (Builder $q) use ($from, $to) {
+                $q->where('order_date', '>=', $from->toDateString())
+                    ->where('order_date', '<=', $to->toDateString());
+            }),
+            'temu' => $query->where(function (Builder $q) use ($from, $to) {
+                $q->where(function (Builder $q2) use ($from, $to) {
+                    $q2->where('parent_order_time', '>=', $from)
+                        ->where('parent_order_time', '<=', $to);
+                })->orWhere(function (Builder $q2) use ($from, $to) {
+                    $q2->whereNull('parent_order_time')
+                        ->where('order_update_time', '>=', $from)
+                        ->where('order_update_time', '<=', $to);
+                });
+            }),
+            'bestbuy', 'macy' => $query->where(function (Builder $q) use ($from, $to) {
+                $q->where(function (Builder $q2) use ($from, $to) {
+                    $q2->where('order_created_at', '>=', $from)
+                        ->where('order_created_at', '<=', $to);
+                })->orWhere(function (Builder $q2) use ($from, $to) {
+                    $q2->whereNull('order_created_at')
+                        ->where('order_updated_at', '>=', $from)
+                        ->where('order_updated_at', '<=', $to);
+                });
+            }),
+            'purchasingpower' => $query->where('date_created', '>=', $from)->where('date_created', '<=', $to),
+            'wayfair' => $query->where('po_date', '>=', $from)->where('po_date', '<=', $to),
+            'doba' => $query->where('order_time', '>=', $from)->where('order_time', '<=', $to),
+            default => $query->where(function (Builder $q) use ($from, $to) {
+                $q->where(function (Builder $q2) use ($from, $to) {
+                    $q2->where('order_date', '>=', $from)
+                        ->where('order_date', '<=', $to);
+                })->orWhere(function (Builder $q2) use ($from, $to) {
+                    $q2->whereNull('order_date')
+                        ->where('updated_at', '>=', $from)
+                        ->where('updated_at', '<=', $to);
+                });
+            }),
+        };
+    }
+
+    /**
+     * Restrict to orders on/after $since by channel order-date column.
      */
     protected function applyLast30DaysFilter(Builder $query, mixed $since, string $slug): Builder
     {
-        return match ($slug) {
-            'amazon' => $query->whereHas('order', fn (Builder $q) => $q->where('order_date', '>=', $since)),
-            'temu' => $query->where(function (Builder $q) use ($since) {
-                $q->where('parent_order_time', '>=', $since)
-                    ->orWhere(function (Builder $q2) use ($since) {
-                        $q2->whereNull('parent_order_time')->where('order_update_time', '>=', $since);
-                    });
-            }),
-            'bestbuy', 'macy' => $query->where(function (Builder $q) use ($since) {
-                $q->where('order_created_at', '>=', $since)
-                    ->orWhere(function (Builder $q2) use ($since) {
-                        $q2->whereNull('order_created_at')->where('order_updated_at', '>=', $since);
-                    });
-            }),
-            'purchasingpower' => $query->where('date_created', '>=', $since),
-            'wayfair' => $query->where('po_date', '>=', $since),
-            'doba' => $query->where('order_time', '>=', $since),
-            default => $query->where(function (Builder $q) use ($since) {
-                $q->where('order_date', '>=', $since)
-                    ->orWhere(function (Builder $q2) use ($since) {
-                        $q2->whereNull('order_date')->where('updated_at', '>=', $since);
-                    });
-            }),
-        };
+        $from = $since instanceof Carbon
+            ? $since->copy()->startOfDay()
+            : Carbon::parse((string) $since)->startOfDay();
+        $to = now('America/Los_Angeles')->endOfDay();
+
+        return $this->applyOrderDateRangeFilter($query, $from, $to, $slug);
     }
 
     /**
