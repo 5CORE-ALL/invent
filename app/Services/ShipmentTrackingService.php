@@ -967,10 +967,18 @@ class ShipmentTrackingService
         }
 
         $out = [];
+        $total = count($shipments);
+        $i = 0;
         foreach ($shipments as $s) {
             $number = trim((string) ($s['number'] ?? ''));
             if ($number === '') {
                 continue;
+            }
+
+            $i++;
+            // GOFO is 1 HTTP call per number — surface progress in artisan so runs don't look hung.
+            if (app()->runningInConsole() && ($i === 1 || $i === $total || $i % 10 === 0)) {
+                fwrite(STDERR, "    GOFO track {$i}/{$total}: {$number}\n");
             }
 
             $res = $gofo->track($number);

@@ -113,12 +113,29 @@ class SyncShipmentTrackingStatus extends Command
         $skipped = 0;
         $errors = 0;
         $quotaStops = 0;
+        $chunks = $rows->chunk($batchSize);
+        $chunkTotal = $chunks->count();
+        $chunkIndex = 0;
 
-        foreach ($rows->chunk($batchSize) as $chunk) {
+        // GOFO Open API is 1 request/tracking# — warn so long silent runs aren't mistaken for hangs.
+        if ($carrierFilter === 'GOFO' || $rows->contains(fn ($r) => str_contains(strtolower((string) $r->carrier), 'gofo'))) {
+            $this->comment('  GOFO uses one API call per tracking number — 95 packages can take several minutes.');
+        }
+
+        foreach ($chunks as $chunk) {
+            $chunkIndex++;
             $shipments = $chunk->map(fn ($r) => [
                 'number' => $r->tracking_number,
                 'carrier' => $r->carrier,
             ])->all();
+
+            $this->line(sprintf(
+                '  Batch %d/%d (%d number%s)…',
+                $chunkIndex,
+                $chunkTotal,
+                count($shipments),
+                count($shipments) === 1 ? '' : 's'
+            ));
 
             try {
                 $results = $tracking->track($shipments, [
@@ -133,6 +150,7 @@ class SyncShipmentTrackingStatus extends Command
 
             $now = now();
             $batchQuota = 0;
+            $batchUpdated = 0;
 
             foreach ($chunk as $r) {
                 $num = $r->tracking_number;
@@ -169,7 +187,15 @@ class SyncShipmentTrackingStatus extends Command
                     ]);
 
                 $updated += $affected;
+                $batchUpdated += $affected;
             }
+
+            $this->line(sprintf(
+                '    → checked %d, rows updated %d, skipped %d',
+                count($shipments),
+                $batchUpdated,
+                max(0, count($shipments) - $batchUpdated)
+            ));
 
             if ($batchQuota > 0 && $batchQuota >= max(1, (int) floor(count($chunk) * 0.5))) {
                 $quotaStops++;
