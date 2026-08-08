@@ -1129,10 +1129,20 @@ class TikTokShopService
     
     public function getAuthorizationUrl(): string
     {
-        $auth = $this->client->auth();
         $state = bin2hex(random_bytes(16));
         Cache::put($this->cachePrefix.'_oauth_state', $state, 600);
-        return $auth->createAuthRequest($state, true);
+
+        // Include redirect_uri explicitly — must match Partner Center + .env exactly.
+        $params = [
+            'app_key' => $this->clientKey,
+            'state' => $state,
+        ];
+        $redirectUri = trim((string) config('services.'.$this->configKey.'.redirect_uri', ''));
+        if ($redirectUri !== '') {
+            $params['redirect_uri'] = $redirectUri;
+        }
+
+        return 'https://auth.tiktok-shops.com/oauth/authorize?'.http_build_query($params);
     }
 
     /**

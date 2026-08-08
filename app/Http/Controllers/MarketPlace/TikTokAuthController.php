@@ -67,6 +67,19 @@ class TikTokAuthController extends Controller
             ]);
         }
 
+        // Auth codes are single-use. Browser prefetch / double-load burns them.
+        $codeKey = 'tiktok_oauth_code_'.hash('sha256', $code);
+        if (Cache::has($codeKey)) {
+            return response(
+                "This auth code was already used (or this page was loaded twice).\n\n"
+                ."Do NOT refresh this page or paste the same URL into /tiktok/exchange.\n"
+                ."Open http://127.0.0.1:8000/tiktok/connect for a NEW code, authorize once, and wait — do not copy/reuse the callback URL.",
+                400,
+                ['Content-Type' => 'text/plain; charset=UTF-8']
+            );
+        }
+        Cache::put($codeKey, 1, 600);
+
         return $this->finishExchange($code);
     }
 
