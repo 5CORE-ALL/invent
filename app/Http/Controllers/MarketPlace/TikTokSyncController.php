@@ -4,19 +4,19 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\RunMarketplaceInventorySyncJob;
+use App\Jobs\SyncTikTokProductsJob;
 use App\Jobs\SyncTikTokTrackingJob;
-use App\Jobs\WarmTikTokLiveListingsCache;
 use App\Models\MarketplaceSyncSettings;
 use App\Models\TikTokProduct;
 use App\Models\TiktokOrder;
 use App\Services\MarketplaceManager\TikTokListingsPageBuilder;
+use App\Services\MarketplaceManager\TikTokOrderDetailFormatter;
 use App\Services\MarketplaceManager\TikTokOrderSyncService;
 use App\Services\Support\MarketplaceApiConfigService;
 use App\Services\TikTokShopService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -111,48 +111,37 @@ class TikTokSyncController extends Controller
             ], 401);
         }
 
-        @set_time_limit(0);
-
-        try {
-            $exit = Artisan::call('sync:tiktok-api-data', [
-                '--channel' => 'tiktok',
-                '--products-only' => true,
-            ]);
-            $output = trim(Artisan::output());
-            $count = Schema::hasTable('tiktok_products')
-                ? (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
-                : 0;
-
-            if ($exit !== 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'TikTok Shop product sync failed.',
-                    'output' => $output,
-                    'count' => $count,
-                ], 500);
-            }
-
-            WarmTikTokLiveListingsCache::dispatch();
-
+        $progress = SyncTikTokProductsJob::getProgress('tiktok');
+        $status = (string) ($progress['status'] ?? 'idle');
+        if (in_array($status, ['queued', 'running'], true)) {
             return response()->json([
                 'success' => true,
-                'done' => true,
-                'message' => "TikTok Shop products synced ({$count} SKUs).",
-                'count' => $count,
-                'total_upserted' => $count,
-                'page' => 1,
-                'total_page' => 1,
-                'output' => $output,
+                'queued' => true,
+                'done' => false,
+                'message' => $progress['message'] ?? 'TikTok Shop listing sync already running.',
+                'progress' => $progress,
             ]);
-        } catch (\Throwable $e) {
-            Log::error('TikTok Shop MM refreshProducts failed', ['error' => $e->getMessage()]);
-
-            return response()->json([
-                'success' => false,
-                'done' => true,
-                'message' => 'Product sync error: '.$e->getMessage(),
-            ], 500);
         }
+
+        SyncTikTokProductsJob::putProgress('tiktok', [
+            'status' => 'queued',
+            'message' => 'TikTok Shop listing sync queued…',
+            'started_at' => now()->toDateTimeString(),
+            'finished_at' => null,
+            'count' => Schema::hasTable('tiktok_products')
+                ? (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
+                : 0,
+        ]);
+
+        SyncTikTokProductsJob::dispatch('tiktok', true);
+
+        return response()->json([
+            'success' => true,
+            'queued' => true,
+            'done' => false,
+            'message' => 'TikTok Shop listing sync queued. Keep this page open…',
+            'progress' => SyncTikTokProductsJob::getProgress('tiktok'),
+        ]);
     }
 
     public function fetchOrders(Request $request): JsonResponse
@@ -198,17 +187,20 @@ class TikTokSyncController extends Controller
 
     public function refreshProductsStatus(): JsonResponse
     {
+        $progress = SyncTikTokProductsJob::getProgress('tiktok');
         $count = Schema::hasTable('tiktok_products')
             ? (int) TikTokProduct::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
             : 0;
+        if (! isset($progress['count'])) {
+            $progress['count'] = $count;
+        }
+        $status = (string) ($progress['status'] ?? 'idle');
 
         return response()->json([
             'success' => true,
-            'progress' => [
-                'status' => 'idle',
-                'message' => "{$count} SKUs in tiktok_products",
-                'count' => $count,
-            ],
+            'done' => in_array($status, ['done', 'failed', 'idle'], true),
+            'failed' => $status === 'failed',
+            'progress' => $progress,
         ]);
     }
 
@@ -271,6 +263,7 @@ class TikTokSyncController extends Controller
             'title' => 'TikTok Shop — Order '.$line->order_id,
             'line' => $line,
             'lines' => $lines,
+            'detail' => app(TikTokOrderDetailFormatter::class)->format($line, $lines),
             'connected' => $this->apiConfig->isConfigured('tiktok') && $this->tiktok->isAuthenticated(),
         ]);
     }
