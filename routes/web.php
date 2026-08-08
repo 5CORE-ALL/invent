@@ -554,6 +554,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/sales-order-fulfillment/badge-link', [SalesOrderFulfillmentController::class, 'saveBadgeLink'])->name('sales.order.fulfillment.badge.link');
     Route::post('/sales-order-fulfillment/refresh-shipment-status', [SalesOrderFulfillmentController::class, 'refreshShipmentStatus'])->name('sales.order.fulfillment.refresh.shipment.status');
     Route::post('/sales-order-fulfillment/pull-tracking-numbers', [SalesOrderFulfillmentController::class, 'pullTrackingNumbers'])->name('sales.order.fulfillment.pull.tracking.numbers');
+    Route::get('/sales-order-fulfillment/gofo/status', [SalesOrderFulfillmentController::class, 'gofoStatus'])->name('sales.order.fulfillment.gofo.status');
+    Route::post('/sales-order-fulfillment/gofo/verify-delivery', [SalesOrderFulfillmentController::class, 'gofoVerifyDelivery'])->name('sales.order.fulfillment.gofo.verify');
+    Route::post('/sales-order-fulfillment/gofo/track', [SalesOrderFulfillmentController::class, 'gofoTrack'])->name('sales.order.fulfillment.gofo.track');
+    Route::post('/sales-order-fulfillment/gofo/refresh-statuses', [SalesOrderFulfillmentController::class, 'gofoRefreshStatuses'])->name('sales.order.fulfillment.gofo.refresh');
     Route::get('/sales-order-fulfillment/history/dot-trends', [SalesOrderFulfillmentController::class, 'historyDotTrends'])->name('sales.order.fulfillment.history.dot.trends');
     Route::get('/sales-order-fulfillment/history/chart-data', [SalesOrderFulfillmentController::class, 'historyChartData'])->name('sales.order.fulfillment.history.chart.data');
     Route::get('/active-channel-npft-nroi', [ChannelMasterController::class, 'getActiveChannelNpftNroi'])->name('active.channel.npft.nroi');

@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Multi-carrier shipment tracking.
  *
- * Prefer native USPS / UPS / FedEx APIs when credentials are configured; fall back to
+ * Prefer native USPS / UPS / FedEx / GOFO APIs when credentials are configured; fall back to
  * 17TRACK aggregator when available.
  */
 class ShipmentTrackingService
@@ -57,7 +57,12 @@ class ShipmentTrackingService
 
     public function isConfigured(): bool
     {
-        return $this->has17Track() || $this->hasUsps() || $this->hasUps() || $this->hasFedex();
+        return $this->has17Track() || $this->hasUsps() || $this->hasUps() || $this->hasFedex() || $this->hasGofo();
+    }
+
+    public function hasGofo(): bool
+    {
+        return app(GofoExpressService::class)->isConfigured();
     }
 
     public function has17Track(): bool
@@ -135,14 +140,33 @@ class ShipmentTrackingService
         $preferAggregator = (bool) config('services.tracking.prefer_aggregator', true);
 
         // Bulk / scheduled path: 17TRACK batches up to 40 and avoids burning USPS hourly quota.
+        // GOFO still uses the native Open API when configured (carrier name contains "gofo").
         if ($this->has17Track() && $preferAggregator && ! $preferNative) {
-            return $this->track17Track($normalized);
+            $gofo = [];
+            $rest = [];
+            foreach ($normalized as $s) {
+                if ($this->resolveProvider($s['number'], (string) ($s['carrier'] ?? '')) === 'gofo' && $this->hasGofo()) {
+                    $gofo[] = $s;
+                } else {
+                    $rest[] = $s;
+                }
+            }
+            $out = [];
+            if ($gofo !== []) {
+                $out += $this->trackGofo($gofo);
+            }
+            if ($rest !== []) {
+                $out += $this->track17Track($rest);
+            }
+
+            return $out;
         }
 
         $byProvider = [
             'usps' => [],
             'ups' => [],
             'fedex' => [],
+            'gofo' => [],
             '17track' => [],
         ];
 
@@ -184,6 +208,19 @@ class ShipmentTrackingService
                 $out += $this->trackFedex($byProvider['fedex']);
             } elseif ($this->has17Track()) {
                 $out += $this->track17Track($byProvider['fedex']);
+            }
+        }
+
+        if (! empty($byProvider['gofo'])) {
+            if ($this->hasGofo()) {
+                $gofoOut = $this->trackGofo($byProvider['gofo']);
+                $out += $gofoOut;
+                $retry = $this->numbersNeedingAggregatorFallback($byProvider['gofo'], $gofoOut);
+                if ($retry !== [] && $this->has17Track()) {
+                    $out = array_replace($out, $this->track17Track($retry));
+                }
+            } elseif ($this->has17Track()) {
+                $out += $this->track17Track($byProvider['gofo']);
             }
         }
 
@@ -304,13 +341,16 @@ class ShipmentTrackingService
             if (str_contains($c, 'fedex') || str_contains($c, 'federal express')) {
                 return 'fedex';
             }
+            if (str_contains($c, 'gofo')) {
+                return 'gofo';
+            }
             if (str_contains($c, 'ups') && ! str_contains($c, 'usps')) {
                 return 'ups';
             }
         }
 
         $guess = $this->guessCarrierFromNumber($number);
-        if ($guess === 'usps' || $guess === 'ups' || $guess === 'fedex') {
+        if ($guess === 'usps' || $guess === 'ups' || $guess === 'fedex' || $guess === 'gofo') {
             return $guess;
         }
 
@@ -910,6 +950,77 @@ class ShipmentTrackingService
         }
 
         return self::STATUS_IN_TRANSIT;
+    }
+
+    // ── GOFO Express ─────────────────────────────────────────────────────────
+
+    /**
+     * @param  list<array{number: string, carrier: ?string}>  $shipments
+     * @return array<string, array{status: string, detail: ?string, provider: string}>
+     */
+    protected function trackGofo(array $shipments): array
+    {
+        /** @var GofoExpressService $gofo */
+        $gofo = app(GofoExpressService::class);
+        if (! $gofo->isConfigured()) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($shipments as $s) {
+            $number = trim((string) ($s['number'] ?? ''));
+            if ($number === '') {
+                continue;
+            }
+
+            $res = $gofo->track($number);
+            $code = (int) ($res['code'] ?? 0);
+
+            if ($code === 305 || ($code === 200 && empty($res['data']))) {
+                $out[$number] = [
+                    'status' => self::STATUS_NOT_FOUND,
+                    'detail' => (string) ($res['msgEn'] ?? $res['msg'] ?? 'No data found'),
+                    'provider' => 'gofo',
+                ];
+                continue;
+            }
+
+            if ($code === 401) {
+                $out[$number] = $this->transientResult('gofo', (string) ($res['msgEn'] ?? 'GOFO auth failed'));
+                continue;
+            }
+
+            if ($code !== 200 || ! is_array($res['data'] ?? null)) {
+                $out[$number] = [
+                    'status' => self::STATUS_NOT_FOUND,
+                    'detail' => (string) ($res['msgEn'] ?? $res['msg'] ?? 'GOFO track failed'),
+                    'provider' => 'gofo',
+                ];
+                continue;
+            }
+
+            $events = $res['data'];
+            // API returns newest-first in samples; take first event as current.
+            $latest = is_list($events) ? ($events[0] ?? []) : $events;
+            if (! is_array($latest)) {
+                $latest = [];
+            }
+
+            $move = (string) ($latest['operationMove'] ?? '');
+            $en = (string) ($latest['enContext'] ?? $latest['pubEsContext'] ?? '');
+            $when = (string) ($latest['operationTime'] ?? '');
+            $loc = (string) ($latest['location'] ?? '');
+            $detail = trim(implode(' · ', array_filter([$en, $loc, $when])));
+
+            $out[$number] = [
+                'status' => $gofo->normalizeTrackStatus($move, $en),
+                'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
+                'provider' => 'gofo',
+                'events' => is_list($events) ? $events : [$latest],
+            ];
+        }
+
+        return $out;
     }
 
     // ── 17TRACK ──────────────────────────────────────────────────────────────

@@ -403,6 +403,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | GOFO Express Open API (Basic Auth)
+    |--------------------------------------------------------------------------
+    |
+    | Username / password from GOFO activation email.
+    | Production base: https://dmsapi.gofoexpress.com
+    |
+    */
+    'gofo' => [
+        'username'      => env('GOFO_USERNAME', ''),
+        'password'      => env('GOFO_PASSWORD', ''),
+        'api_base'      => env('GOFO_API_BASE', 'https://dmsapi.gofoexpress.com'),
+        'product_code'  => env('GOFO_PRODUCT_CODE', 'GOFO Parcel Pickup'),
+        'http_timeout'  => (int) env('GOFO_HTTP_TIMEOUT', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Amazon SP-API
     |--------------------------------------------------------------------------
     */

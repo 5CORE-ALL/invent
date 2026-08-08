@@ -26,6 +26,7 @@ use App\Models\ShopifySku;
 use App\Models\TemuOrder;
 use App\Models\TopDawgOrderMetric;
 use App\Models\WayfairDailyData;
+use App\Services\GofoExpressService;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
 use App\Services\ShipmentTrackingService;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -55,10 +56,12 @@ class SalesOrderFulfillmentController extends Controller
         protected MarketplaceApiConfigService $apiConfig
     ) {}
 
-    public function index(): View
+    public function index(GofoExpressService $gofo): View
     {
         return view('channels.sales_order_fulfillment', [
             'topBadges' => $this->topBadgePayload(),
+            'gofoApiConfigured' => $gofo->isConfigured(),
+            'gofoApiBase' => (string) config('services.gofo.api_base', ''),
         ]);
     }
 
@@ -1365,6 +1368,7 @@ class SalesOrderFulfillmentController extends Controller
                     'usps' => $tracking->hasUsps(),
                     'ups' => $tracking->hasUps(),
                     'fedex' => $tracking->hasFedex(),
+                    'gofo' => $tracking->hasGofo(),
                     '17track' => $tracking->has17Track(),
                 ],
             ], $exit === 0 ? 200 : 500);
@@ -2770,6 +2774,134 @@ class SalesOrderFulfillmentController extends Controller
                 'success' => false,
                 'message' => $e->getMessage(),
                 'data' => [],
+            ], 500);
+        }
+    }
+
+    /**
+     * GOFO Open API connectivity / auth check for Sales Order Fulfillment tools.
+     */
+    public function gofoStatus(GofoExpressService $gofo): JsonResponse
+    {
+        if (! $gofo->isConfigured()) {
+            return response()->json([
+                'success' => false,
+                'configured' => false,
+                'message' => 'GOFO credentials missing. Set GOFO_USERNAME / GOFO_PASSWORD / GOFO_API_BASE in .env.',
+            ], 422);
+        }
+
+        $ping = $gofo->ping();
+
+        return response()->json([
+            'success' => (bool) ($ping['ok'] ?? false),
+            'configured' => true,
+            'api_base' => (string) config('services.gofo.api_base', ''),
+            'code' => $ping['code'] ?? null,
+            'message' => $ping['msg'] ?? '',
+            'data' => $ping['data'] ?? null,
+        ], ($ping['ok'] ?? false) ? 200 : 502);
+    }
+
+    /**
+     * Verify whether a consignee ZIP is in GOFO delivery range.
+     */
+    public function gofoVerifyDelivery(Request $request, GofoExpressService $gofo): JsonResponse
+    {
+        if (! $gofo->isConfigured()) {
+            return response()->json(['success' => false, 'message' => 'GOFO not configured.'], 422);
+        }
+
+        $validated = $request->validate([
+            'consigneeCountry' => 'required|string|max:40',
+            'consigneeCode' => 'required|string|max:20',
+            'consigneeState' => 'nullable|string|max:80',
+            'consigneeCity' => 'nullable|string|max:80',
+            'consigneeArea' => 'nullable|string|max:80',
+            'consigneeStreet' => 'nullable|string|max:200',
+        ]);
+
+        $res = $gofo->verifyDelivery($validated);
+
+        return response()->json([
+            'success' => (bool) ($res['ok'] ?? false),
+            'code' => $res['code'] ?? null,
+            'message' => $res['msgEn'] ?? $res['msg'] ?? '',
+            'data' => $res['data'] ?? null,
+        ], ($res['ok'] ?? false) ? 200 : 200);
+    }
+
+    /**
+     * Track a GOFO waybill / customer order number.
+     */
+    public function gofoTrack(Request $request, GofoExpressService $gofo): JsonResponse
+    {
+        if (! $gofo->isConfigured()) {
+            return response()->json(['success' => false, 'message' => 'GOFO not configured.'], 422);
+        }
+
+        $validated = $request->validate([
+            'orderNo' => 'required|string|max:80',
+        ]);
+
+        $res = $gofo->track($validated['orderNo']);
+        $events = is_array($res['data'] ?? null) ? $res['data'] : [];
+        $latest = is_array($events) && array_is_list($events) ? ($events[0] ?? []) : (is_array($events) ? $events : []);
+        $status = null;
+        if (is_array($latest) && $latest !== []) {
+            $status = $gofo->normalizeTrackStatus(
+                (string) ($latest['operationMove'] ?? ''),
+                (string) ($latest['enContext'] ?? $latest['pubEsContext'] ?? '')
+            );
+        }
+
+        return response()->json([
+            'success' => (bool) ($res['ok'] ?? false),
+            'code' => $res['code'] ?? null,
+            'message' => $res['msgEn'] ?? $res['msg'] ?? '',
+            'status' => $status,
+            'data' => $events,
+        ]);
+    }
+
+    /**
+     * Refresh shipment status for open GOFO-tracked orders via native GOFO API.
+     */
+    public function gofoRefreshStatuses(Request $request, ShipmentTrackingService $tracking): JsonResponse
+    {
+        if (! $tracking->hasGofo()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'GOFO not configured.',
+            ], 422);
+        }
+
+        $limit = max(1, min(80, (int) $request->input('limit', 40)));
+
+        try {
+            $params = [
+                '--only-open' => true,
+                '--stale' => 0,
+                '--limit' => $limit,
+                '--carrier' => 'GOFO',
+            ];
+
+            $exit = Artisan::call('tracking:sync-status', $params);
+            $output = trim(Artisan::output());
+
+            return response()->json([
+                'success' => $exit === 0,
+                'message' => $exit === 0
+                    ? "GOFO shipment statuses refreshed (up to {$limit} open packages)."
+                    : 'GOFO status refresh finished with errors.',
+                'output' => $output,
+            ], $exit === 0 ? 200 : 500);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to refresh GOFO statuses: '.$e->getMessage(),
             ], 500);
         }
     }

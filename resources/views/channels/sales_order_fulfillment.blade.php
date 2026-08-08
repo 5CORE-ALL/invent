@@ -397,9 +397,20 @@
             flex-shrink: 0;
         }
         .sof-top-badge.gofo { background: #0d6efd; }
+        .sof-top-badge.gofo.is-api-ready { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.55); cursor: pointer; }
         .sof-top-badge.veeqo { background: #6610f2; }
         .sof-top-badge.shopify { background: #198754; }
         .sof-top-badge.others { background: #6c757d; }
+        #sofGofoToolsModal .sof-gofo-result {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 0.65rem 0.75rem;
+            font-size: 0.82rem;
+            white-space: pre-wrap;
+            max-height: 260px;
+            overflow: auto;
+        }
 
         #sof-tabs .nav-link {
             font-weight: 600;
@@ -877,14 +888,16 @@
                                         $badgeLabel = $badge['label'] ?? strtoupper($badgeKey);
                                         $badgeLink = $badge['link'] ?? null;
                                         $hasLink = !empty($badgeLink);
+                                        $gofoApiReady = $badgeKey === 'gofo' && !empty($gofoApiConfigured);
                                     @endphp
-                                    <span class="sof-top-badge {{ $badgeKey }} {{ $hasLink ? '' : 'is-disabled' }}"
+                                    <span class="sof-top-badge {{ $badgeKey }} {{ ($hasLink || $gofoApiReady) ? '' : 'is-disabled' }} {{ $gofoApiReady ? 'is-api-ready' : '' }}"
                                           data-badge-key="{{ $badgeKey }}"
                                           data-badge-label="{{ $badgeLabel }}"
                                           data-badge-link="{{ $badgeLink ?? '' }}"
-                                          title="{{ $hasLink ? 'Click to open '.$badgeLabel : 'Add a link via the red dot' }}">
+                                          data-gofo-api="{{ $gofoApiReady ? '1' : '0' }}"
+                                          title="{{ $gofoApiReady ? 'Click to open GOFO API tools' : ($hasLink ? 'Click to open '.$badgeLabel : 'Add a link via the red dot') }}">
                                         <span class="sof-top-badge-label">{{ $badgeLabel }}</span>
-                                        <span class="sof-ch-orders-dot {{ $hasLink ? 'green' : 'red' }} sof-top-badge-dot"
+                                        <span class="sof-ch-orders-dot {{ ($hasLink || $gofoApiReady) ? 'green' : 'red' }} sof-top-badge-dot"
                                               title="{{ $hasLink ? 'Double-click to edit link' : 'Click to add link' }}"
                                               role="button"
                                               tabindex="0"></span>
@@ -1164,6 +1177,63 @@
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-sm btn-primary" id="sof-top-badge-modal-save">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="sofGofoToolsModal" tabindex="-1" aria-labelledby="sofGofoToolsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-semibold mb-0" id="sofGofoToolsModalLabel">GOFO Express API</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                        <span class="badge" id="sof-gofo-conn-badge" style="background:#e9ecef;color:#495057;">Checking…</span>
+                        <span class="small text-muted" id="sof-gofo-api-base">{{ $gofoApiBase ?? '' }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="sof-gofo-ping-btn">Test connection</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="sof-gofo-refresh-btn" title="Refresh open GOFO shipment statuses">Sync GOFO statuses</button>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="border rounded p-2 h-100">
+                                <div class="fw-semibold small mb-2">Verify delivery ZIP</div>
+                                <div class="row g-2">
+                                    <div class="col-4">
+                                        <input type="text" class="form-control form-control-sm" id="sof-gofo-zip-country" value="US" placeholder="Country">
+                                    </div>
+                                    <div class="col-8">
+                                        <input type="text" class="form-control form-control-sm" id="sof-gofo-zip-code" placeholder="ZIP / postal code" value="90210">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="text" class="form-control form-control-sm" id="sof-gofo-zip-state" placeholder="State" value="California">
+                                    </div>
+                                    <div class="col-6">
+                                        <input type="text" class="form-control form-control-sm" id="sof-gofo-zip-city" placeholder="City" value="Los Angeles">
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-primary mt-2" id="sof-gofo-verify-btn">Check ZIP</button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="border rounded p-2 h-100">
+                                <div class="fw-semibold small mb-2">Track waybill / order</div>
+                                <input type="text" class="form-control form-control-sm" id="sof-gofo-track-no" placeholder="GOFO waybill or customer order no.">
+                                <button type="button" class="btn btn-sm btn-primary mt-2" id="sof-gofo-track-btn">Track</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="small text-muted mb-1">Result</div>
+                        <div class="sof-gofo-result" id="sof-gofo-result">Open tools above to query GOFO.</div>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -2675,6 +2745,12 @@
             if (ev.target.closest('.sof-top-badge-dot')) {
                 return;
             }
+            const key = badgeEl.getAttribute('data-badge-key') || '';
+            const gofoApi = badgeEl.getAttribute('data-gofo-api') === '1';
+            if (key === 'gofo' && gofoApi) {
+                openGofoToolsModal();
+                return;
+            }
             const link = (badgeEl.getAttribute('data-badge-link') || '').trim();
             if (!link) {
                 return;
@@ -3733,6 +3809,163 @@
         const rangeLabel = sofHistoryDays > 0 ? (sofHistoryDays + ' Days') : 'All';
         $('#sofHistoryChartTitle').text('SOF — ' + label + ' (Rolling ' + rangeLabel + ', Pacific day)');
         loadSofHistoryChart();
+    });
+
+    // ── GOFO Express tools (top badge) ──────────────────────────────────────
+    const gofoToolsModal = document.getElementById('sofGofoToolsModal');
+    const sofGofoResult = document.getElementById('sof-gofo-result');
+    const sofGofoConnBadge = document.getElementById('sof-gofo-conn-badge');
+    const sofCsrf = function () {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    };
+
+    function setGofoResult(text, isError) {
+        if (!sofGofoResult) return;
+        sofGofoResult.textContent = text || '';
+        sofGofoResult.style.borderColor = isError ? '#f1aeb5' : '#e2e8f0';
+        sofGofoResult.style.background = isError ? '#fff5f5' : '#f8fafc';
+    }
+
+    function setGofoConnBadge(ok, message) {
+        if (!sofGofoConnBadge) return;
+        if (ok) {
+            sofGofoConnBadge.textContent = 'API connected';
+            sofGofoConnBadge.style.background = '#d1e7dd';
+            sofGofoConnBadge.style.color = '#0f5132';
+            sofGofoConnBadge.title = message || '';
+        } else {
+            sofGofoConnBadge.textContent = 'API error';
+            sofGofoConnBadge.style.background = '#f8d7da';
+            sofGofoConnBadge.style.color = '#842029';
+            sofGofoConnBadge.title = message || '';
+        }
+    }
+
+    function openGofoToolsModal() {
+        if (!gofoToolsModal || typeof bootstrap === 'undefined') {
+            return;
+        }
+        bootstrap.Modal.getOrCreateInstance(gofoToolsModal).show();
+        pingGofoStatus();
+    }
+
+    function pingGofoStatus() {
+        if (sofGofoConnBadge) {
+            sofGofoConnBadge.textContent = 'Checking…';
+            sofGofoConnBadge.style.background = '#e9ecef';
+            sofGofoConnBadge.style.color = '#495057';
+        }
+        fetch('{{ route("sales.order.fulfillment.gofo.status") }}', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                const msg = (res.json && res.json.message) ? res.json.message : '';
+                setGofoConnBadge(!!(res.ok && res.json && res.json.success), msg);
+                if (res.json && res.json.data) {
+                    setGofoResult(JSON.stringify(res.json, null, 2), !(res.json.success));
+                }
+            })
+            .catch(function (err) {
+                setGofoConnBadge(false, err.message || 'Network error');
+                setGofoResult(err.message || 'Network error', true);
+            });
+    }
+
+    $('#sof-gofo-ping-btn').on('click', function () { pingGofoStatus(); });
+
+    $('#sof-gofo-verify-btn').on('click', function () {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        $btn.prop('disabled', true).text('Checking…');
+        fetch('{{ route("sales.order.fulfillment.gofo.verify") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': sofCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                consigneeCountry: ($('#sof-gofo-zip-country').val() || 'US').trim(),
+                consigneeCode: ($('#sof-gofo-zip-code').val() || '').trim(),
+                consigneeState: ($('#sof-gofo-zip-state').val() || '').trim(),
+                consigneeCity: ($('#sof-gofo-zip-city').val() || '').trim(),
+            }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                setGofoResult(JSON.stringify(res.json || {}, null, 2), !(res.json && res.json.success));
+            })
+            .catch(function (err) {
+                setGofoResult(err.message || 'Network error', true);
+            })
+            .finally(function () {
+                $btn.prop('disabled', false).text('Check ZIP');
+            });
+    });
+
+    $('#sof-gofo-track-btn').on('click', function () {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        const orderNo = ($('#sof-gofo-track-no').val() || '').trim();
+        if (!orderNo) {
+            setGofoResult('Enter a GOFO waybill / order number.', true);
+            return;
+        }
+        $btn.prop('disabled', true).text('Tracking…');
+        fetch('{{ route("sales.order.fulfillment.gofo.track") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': sofCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ orderNo: orderNo }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                setGofoResult(JSON.stringify(res.json || {}, null, 2), !(res.json && res.json.success));
+            })
+            .catch(function (err) {
+                setGofoResult(err.message || 'Network error', true);
+            })
+            .finally(function () {
+                $btn.prop('disabled', false).text('Track');
+            });
+    });
+
+    $('#sof-gofo-refresh-btn').on('click', function () {
+        const $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        const prev = $btn.text();
+        $btn.prop('disabled', true).text('Syncing…');
+        fetch('{{ route("sales.order.fulfillment.gofo.refresh") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': sofCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ limit: 40 }),
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+            .then(function (res) {
+                const msg = (res.json && res.json.message) ? res.json.message : (res.ok ? 'Done.' : 'Failed.');
+                const detail = (res.json && res.json.output) ? String(res.json.output) : '';
+                setGofoResult(msg + (detail ? '\n\n' + detail : ''), !res.ok);
+                if (res.ok) {
+                    reloadSofTrackingTables();
+                }
+            })
+            .catch(function (err) {
+                setGofoResult(err.message || 'Network error', true);
+            })
+            .finally(function () {
+                $btn.prop('disabled', false).text(prev);
+            });
     });
 
     $('#sof-refresh-shipment-btn').on('click', function () {
