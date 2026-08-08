@@ -217,12 +217,17 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
         } else if (status === 'queued') {
             pct = Math.min(40, 15 + ticks);
         } else {
-            pct = Math.min(95, 25 + ticks * 2);
+            // Indeterminate while API sync runs (can take many minutes). Do not imply near-done.
+            pct = 55;
         }
         bar.style.width = pct + '%';
-        bar.textContent = pct + '%';
-        pctEl.textContent = pct + '%';
-        statusEl.textContent = msg;
+        bar.textContent = status === 'running' ? '…' : (pct + '%');
+        pctEl.textContent = status === 'running' ? ('running ~' + Math.round(ticks * 2.5) + 's') : (pct + '%');
+        if (status === 'running') {
+            statusEl.textContent = msg + ' (still working — TikTok catalog sync often takes 5–15+ min)';
+        } else {
+            statusEl.textContent = msg;
+        }
         var extra = count ? (count + ' SKU link(s) in DB') : '';
         if (queuedJobs > 0) {
             extra += (extra ? ' · ' : '') + queuedJobs + ' listings-queue job(s)';
