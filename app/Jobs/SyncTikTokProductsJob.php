@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Services\MarketplaceManager\MarketplaceManagerRegistry;
+use App\Services\MarketplaceManager\TikTokLinkMapSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -56,30 +57,18 @@ class SyncTikTokProductsJob implements ShouldQueue, ShouldBeUnique
         return 'mm:'.$channel.':products-sync-progress';
     }
 
-    /**
-     * @param  array<string, mixed>  $patch
-     */
-    public static function putProgress(string $channel, array $patch): void
-    {
-        $key = self::cacheKey($channel);
-        $current = Cache::get($key);
-        $current = is_array($current) ? $current : [];
-        Cache::put($key, array_merge($current, $patch, [
-            'channel' => $channel,
-            'updated_at' => now()->toDateTimeString(),
-        ]), now()->addHours(2));
-    }
-
     public static function getProgress(string $channel): array
     {
         $channel = in_array($channel, ['tiktok', 'tiktok2'], true) ? $channel : 'tiktok';
         $key = self::cacheKey($channel);
         $progress = Cache::get($key);
-        $progress = is_array($progress) ? $progress : [
-            'status' => 'idle',
-            'message' => 'No listing sync in progress.',
-            'count' => 0,
-        ];
+        if (! is_array($progress) || $progress === []) {
+            $progress = self::readProgressFile($channel) ?: [
+                'status' => 'idle',
+                'message' => 'No listing sync in progress.',
+                'count' => 0,
+            ];
+        }
 
         $status = (string) ($progress['status'] ?? 'idle');
         $pending = self::pendingListingsJobCount($channel);
@@ -94,6 +83,47 @@ class SyncTikTokProductsJob implements ShouldQueue, ShouldBeUnique
         }
 
         return $progress;
+    }
+
+    /**
+     * @param  array<string, mixed>  $patch
+     */
+    public static function putProgress(string $channel, array $patch): void
+    {
+        $key = self::cacheKey($channel);
+        $current = Cache::get($key);
+        if (! is_array($current) || $current === []) {
+            $current = self::readProgressFile($channel) ?: [];
+        }
+        $merged = array_merge($current, $patch, [
+            'channel' => $channel,
+            'updated_at' => now()->toDateTimeString(),
+        ]);
+        Cache::put($key, $merged, now()->addHours(2));
+        self::writeProgressFile($channel, $merged);
+    }
+
+    /** Clear stuck UI / unique-job progress after a hung listings sync. */
+    public static function clearStuck(string $channel): void
+    {
+        $channel = in_array($channel, ['tiktok', 'tiktok2'], true) ? $channel : 'tiktok';
+        Cache::forget(self::cacheKey($channel));
+        $path = self::progressFilePath($channel);
+        if (is_file($path)) {
+            @unlink($path);
+        }
+        // Laravel unique job lock (database / cache driver).
+        try {
+            Cache::lock('laravel_unique_job:App\Jobs\SyncTikTokProductsJob:mm-'.$channel.'-products-sync')->forceRelease();
+        } catch (\Throwable) {
+            // Best-effort.
+        }
+        self::putProgress($channel, [
+            'status' => 'idle',
+            'message' => 'Listing sync cleared.',
+            'count' => 0,
+            'finished_at' => now()->toDateTimeString(),
+        ]);
     }
 
     public static function pendingListingsJobCount(string $channel): int
@@ -111,6 +141,48 @@ class SyncTikTokProductsJob implements ShouldQueue, ShouldBeUnique
         }
     }
 
+    /**
+     * File backup survives `cache:clear` / deploy so the UI does not false-fail mid-sync.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected static function readProgressFile(string $channel): ?array
+    {
+        $path = self::progressFilePath($channel);
+        if (! is_file($path)) {
+            return null;
+        }
+        try {
+            $decoded = json_decode((string) file_get_contents($path), true);
+
+            return is_array($decoded) ? $decoded : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $progress
+     */
+    protected static function writeProgressFile(string $channel, array $progress): void
+    {
+        try {
+            $path = self::progressFilePath($channel);
+            $dir = dirname($path);
+            if (! is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            @file_put_contents($path, json_encode($progress, JSON_PRETTY_PRINT));
+        } catch (\Throwable) {
+            // Best-effort only.
+        }
+    }
+
+    protected static function progressFilePath(string $channel): string
+    {
+        return storage_path('app/mm-listings-sync-'.$channel.'.json');
+    }
+
     public function handle(): void
     {
         $channel = $this->channel;
@@ -125,12 +197,56 @@ class SyncTikTokProductsJob implements ShouldQueue, ShouldBeUnique
         ]);
 
         try {
-            $params = ['--channel' => $channel];
+            // Products-only / link-map path: auto quick-or-full paged sync (no mega hang).
             if ($this->productsOnly) {
-                $params['--products-only'] = true;
+                self::putProgress($channel, [
+                    'status' => 'running',
+                    'message' => "{$label} auto link-map sync (quick or full)…",
+                ]);
+
+                $result = TikTokLinkMapSyncService::for($channel)->syncAll('auto', 50);
+                $count = $this->skuCount($channel);
+                $mode = (string) ($result['mode'] ?? 'auto');
+
+                if (empty($result['success'])) {
+                    self::putProgress($channel, [
+                        'status' => 'failed',
+                        'message' => $result['message'] ?? "{$label} link-map sync failed.",
+                        'count' => $count,
+                        'mode' => $mode,
+                        'exit_code' => 1,
+                        'finished_at' => now()->toDateTimeString(),
+                    ]);
+                    Log::error('SyncTikTokProductsJob link-map failed', [
+                        'channel' => $channel,
+                        'mode' => $mode,
+                        'message' => $result['message'] ?? '',
+                    ]);
+
+                    return;
+                }
+
+                self::putProgress($channel, [
+                    'status' => 'done',
+                    'message' => $result['message'] ?: "{$label} link-map synced ({$count} SKUs, mode={$mode}).",
+                    'count' => $count,
+                    'mode' => $mode,
+                    'upserted' => (int) ($result['upserted'] ?? 0),
+                    'exit_code' => 0,
+                    'finished_at' => now()->toDateTimeString(),
+                ]);
+
+                Log::info('SyncTikTokProductsJob link-map completed', [
+                    'channel' => $channel,
+                    'mode' => $mode,
+                    'upserted' => $result['upserted'] ?? 0,
+                    'count' => $count,
+                ]);
+
+                return;
             }
 
-            $exit = Artisan::call('sync:tiktok-api-data', $params);
+            $exit = Artisan::call('sync:tiktok-api-data', ['--channel' => $channel]);
             $output = trim(Artisan::output());
             $count = $this->skuCount($channel);
 

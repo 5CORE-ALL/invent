@@ -1936,12 +1936,12 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('sync:tiktok-api-data --channel=tiktok')
+        // Auto link-map: quick (changed) most hours; full catalog when stale / empty.
+        $schedule->job(new \App\Jobs\SyncTikTokProductsJob('tiktok', true))
             ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('tiktok-sync-link-map')
             ->withoutOverlapping(55)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         // TikTok 2 Marketplace Manager
@@ -1980,12 +1980,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(20)
             ->appendOutputTo($log);
 
-        $schedule->command('sync:tiktok-api-data --channel=tiktok2')
+        $schedule->job(new \App\Jobs\SyncTikTokProductsJob('tiktok2', true))
             ->hourly()
             ->timezone('Asia/Kolkata')
             ->name('tiktok2-sync-link-map')
             ->withoutOverlapping(55)
-            ->runInBackground()
             ->appendOutputTo($log);
 
         // $schedule->command('shopify:retry-pending-orders')

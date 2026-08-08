@@ -46,8 +46,12 @@ class TikTokShopService
         $this->accessToken = Cache::get($this->cachePrefix.'_access_token') ?? ($cfg['access_token'] ?? null);
         $this->refreshToken = Cache::get($this->cachePrefix.'_refresh_token') ?? ($cfg['refresh_token'] ?? null);
 
-        // Initialize the TikTok Shop client library (same as ship_hub)
-        $this->client = new Client($this->clientKey, $this->clientSecret);
+        // Initialize the TikTok Shop client library (same as ship_hub).
+        // Explicit timeouts — Guzzle defaults to 0 (wait forever), which freezes listings sync.
+        $this->client = new Client($this->clientKey, $this->clientSecret, [
+            'timeout' => 45,
+            'connect_timeout' => 10,
+        ]);
 
         if ($this->accessToken) {
             $this->client->setAccessToken($this->accessToken);
@@ -186,8 +190,9 @@ class TikTokShopService
      * Pagination uses query page_token (not body cursor). Status filter: ACTIVATE / ALL / etc.
      *
      * @param  int|string  $status  0/"ALL" = no filter; 1/"ACTIVATE" = live listings
+     * @param  array<string, mixed>  $filters  Optional body filters (e.g. update_time_ge, update_time_lt)
      */
-    public function getProducts(int $pageSize = 20, string $pageToken = '', int|string $status = 0, $outputCallback = null): ?array
+    public function getProducts(int $pageSize = 20, string $pageToken = '', int|string $status = 0, $outputCallback = null, array $filters = []): ?array
     {
         $callback = $outputCallback ?? $this->outputCallback;
 
@@ -203,6 +208,19 @@ class TikTokShopService
             $this->client->setAccessToken($this->accessToken);
             $this->ensureShopCipher();
 
+            if (! is_string($this->shopCipher) || $this->shopCipher === '') {
+                $msg = 'Missing shop_cipher — cannot search products. Reconnect TikTok or set shop cipher.';
+                if ($callback && is_callable($callback)) {
+                    call_user_func($callback, 'error', $msg);
+                }
+
+                return [
+                    'code' => 999999,
+                    'message' => $msg,
+                    'products' => [],
+                ];
+            }
+
             $statusFilter = $this->normalizeProductStatusFilter($status);
 
             // page_size + page_token must be query params (SDK extractParams), status goes in JSON body
@@ -216,6 +234,11 @@ class TikTokShopService
             $body = [];
             if ($statusFilter !== null) {
                 $body['status'] = $statusFilter;
+            }
+            foreach (['update_time_ge', 'update_time_lt', 'create_time_ge', 'create_time_lt'] as $timeKey) {
+                if (isset($filters[$timeKey]) && is_numeric($filters[$timeKey])) {
+                    $body[$timeKey] = (int) $filters[$timeKey];
+                }
             }
 
             if ($body === []) {
@@ -250,7 +273,7 @@ class TikTokShopService
                     call_user_func($callback, 'info', 'Token refreshed, retrying products page...');
                 }
 
-                return $this->getProducts($pageSize, $pageToken, $status, $callback);
+                return $this->getProducts($pageSize, $pageToken, $status, $callback, $filters);
             }
             if ($callback && is_callable($callback)) {
                 call_user_func($callback, 'error', 'Failed to refresh token: '.$e->getMessage());

@@ -56,7 +56,7 @@
                             <i class="ri-upload-2-line"></i> Sync Mismatch inventory now
                         </button>
                     @endif
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="btn-refresh-api" title="Auto: quick (changed) most times; full catalog when empty or older than 7 days. Also runs hourly.">
                         <i class="ri-refresh-line"></i> Sync TikTok link map
                     </button>
                 </div>
@@ -195,93 +195,41 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     var pctEl = document.getElementById('link-map-pct');
     var countsEl = document.getElementById('link-map-counts');
     var url = @json(route('marketplace.manager.tiktok.refresh'));
-    var statusUrl = @json(route('marketplace.manager.tiktok.refresh.status'));
-    var pollTimer = null;
-    var ticks = 0;
+    var page = 1;
 
-    function resetBtn() {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="ri-refresh-line"></i> Sync TikTok link map';
-    }
-
-    function applyProgress(p, forcePct) {
-        var status = (p && p.status) ? p.status : 'running';
-        var msg = (p && p.message) || 'Syncing…';
-        var count = (p && p.count) || 0;
-        var queuedJobs = (p && p.queued_jobs) || 0;
-        var pct;
-        if (typeof forcePct === 'number') {
-            pct = forcePct;
-        } else if (status === 'done') {
-            pct = 100;
-        } else if (status === 'queued') {
-            pct = Math.min(40, 15 + ticks);
-        } else {
-            // Indeterminate while API sync runs (can take many minutes). Do not imply near-done.
-            pct = 55;
+    function setProgress(pageNum, totalPage, totalUpserted, message, totalCount) {
+        var pct = 0;
+        if (totalPage && totalPage > 0) {
+            pct = Math.min(100, Math.round((pageNum / totalPage) * 100));
+        } else if (pageNum > 1) {
+            pct = Math.min(95, pageNum * 5);
         }
         bar.style.width = pct + '%';
-        bar.textContent = status === 'running' ? '…' : (pct + '%');
-        pctEl.textContent = status === 'running' ? ('running ~' + Math.round(ticks * 2.5) + 's') : (pct + '%');
-        if (status === 'running') {
-            statusEl.textContent = msg + ' (still working — TikTok catalog sync often takes 5–15+ min)';
-        } else {
-            statusEl.textContent = msg;
-        }
-        var extra = count ? (count + ' SKU link(s) in DB') : '';
-        if (queuedJobs > 0) {
-            extra += (extra ? ' · ' : '') + queuedJobs + ' listings-queue job(s)';
-        }
-        if (p && p.queue) {
-            extra += (extra ? ' · ' : '') + 'queue: ' + p.queue;
-        }
-        countsEl.textContent = extra;
+        bar.textContent = pct + '%';
+        pctEl.textContent = pct + '%';
+        statusEl.textContent = message || ('Syncing page ' + pageNum + (totalPage ? ' of ' + totalPage : '') + '…');
+        var extra = totalCount ? ' (' + totalCount + ' products on TikTok)' : '';
+        countsEl.textContent = totalUpserted + ' SKU link(s) saved so far' + extra;
     }
 
-    function finishOk(p) {
-        if (pollTimer) clearInterval(pollTimer);
-        applyProgress(p || {}, 100);
-        bar.classList.remove('progress-bar-animated');
-        setTimeout(function () { location.reload(); }, 800);
+    function syncNext(reset) {
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 70000) : null;
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ page: page, reset: !!reset, mode: 'auto' }),
+            signal: ctrl ? ctrl.signal : undefined,
+        }).then(function (r) { return r.json(); }).finally(function () {
+            if (timer) clearTimeout(timer);
+        });
     }
 
-    function finishFail(msg) {
-        if (pollTimer) clearInterval(pollTimer);
-        alert(msg || 'Sync failed.');
-        progress.style.display = 'none';
-        resetBtn();
-    }
-
-    function poll() {
-        ticks++;
-        // Hard stop after ~25 minutes of polling.
-        if (ticks > 600) {
-            finishFail('Listing sync is still running/queued after a long time. Check mm-tiktok-listings worker and logs.');
-            return;
-        }
-        fetch(statusUrl, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                var p = data.progress || {};
-                var status = p.status || 'idle';
-                applyProgress(p);
-                if (status === 'done' || data.done) {
-                    finishOk(p);
-                    return;
-                }
-                if (status === 'failed' || data.failed) {
-                    finishFail(p.message || 'Sync failed.');
-                    return;
-                }
-                // Cache cleared by deploy, or job never started — stop the fake 90% spinner.
-                if (status === 'idle' && ticks >= 4 && !(p.queued_jobs > 0)) {
-                    finishFail('Listing sync is not running (progress was cleared or the job never started). Click Sync again. Ensure mm-tiktok-listings worker is up.');
-                }
-            })
-            .catch(function () { /* keep polling */ });
-    }
-
-    if (!confirm('Sync all TikTok Shop listings and refresh SKU ↔ product_id / sku_id mappings? This may take a few minutes.')) {
+    if (!confirm('Sync TikTok Shop link map automatically?\n\n• Quick = only listings changed since last sync\n• Full = whole catalog (when empty / never synced / older than 7 days)\n\nAlso runs hourly in the background.')) {
         return;
     }
 
@@ -289,31 +237,45 @@ document.getElementById('btn-refresh-api')?.addEventListener('click', function (
     btn.innerHTML = '<i class="ri-loader-4-line"></i> Syncing…';
     progress.style.display = '';
     bar.classList.add('progress-bar-animated');
-    applyProgress({ status: 'queued', message: 'Queueing TikTok listing sync…', count: 0 }, 10);
+    setProgress(0, null, 0, 'Starting sync…');
 
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-    }).then(function (r) { return r.json(); }).then(function (data) {
-        if (!data.success) {
-            finishFail(data.message || 'Sync failed.');
-            return;
-        }
-        if (data.done) {
-            finishOk(data.progress || { status: 'done', message: data.message, count: data.count || 0 });
-            return;
-        }
-        applyProgress(data.progress || { status: 'queued', message: data.message }, 20);
-        pollTimer = setInterval(poll, 2500);
-        poll();
-    }).catch(function () {
-        finishFail('Could not start listing sync. Is the mm-tiktok queue worker running?');
-    });
+    function runPage(reset) {
+        syncNext(reset).then(function (data) {
+            if (!data.success && data.done) {
+                alert(data.message || 'Sync failed.');
+                progress.style.display = 'none';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ri-refresh-line"></i> Sync TikTok link map';
+                return;
+            }
+
+            var modeNote = data.mode ? (' [' + data.mode + ']') : '';
+            setProgress(data.page || page, data.total_page || null, data.total_upserted || 0, (data.message || '') + modeNote, data.total_count || null);
+
+            if (data.done) {
+                bar.classList.remove('progress-bar-animated');
+                bar.style.width = '100%';
+                bar.textContent = '100%';
+                pctEl.textContent = '100%';
+                statusEl.textContent = (data.message || 'Done') + modeNote;
+                setTimeout(function () { location.reload(); }, 800);
+                return;
+            }
+
+            page = (data.page || page) + 1;
+            setTimeout(function () { runPage(false); }, 500);
+        }).catch(function (err) {
+            var aborted = err && (err.name === 'AbortError' || /abort/i.test(String(err)));
+            alert(aborted
+                ? 'TikTok API timed out on this page. Deploy latest code, clear stuck sync on server, then retry.'
+                : 'Request failed.');
+            progress.style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="ri-refresh-line"></i> Sync TikTok link map';
+        });
+    }
+
+    runPage(true);
 });
 
 document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', function () {

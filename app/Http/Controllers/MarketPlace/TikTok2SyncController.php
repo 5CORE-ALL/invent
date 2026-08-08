@@ -5,12 +5,11 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Jobs\RunMarketplaceInventorySyncJob;
 use App\Jobs\SyncTikTok2TrackingJob;
-use App\Jobs\SyncTikTokProductsJob;
 use App\Services\MarketplaceManager\TikTok2TrackingSyncService;
 use App\Models\MarketplaceSyncSettings;
-use App\Models\TikTokProductTwo;
 use App\Models\Tiktok2Order;
 use App\Services\MarketplaceManager\TikTok2OrderSyncService;
+use App\Services\MarketplaceManager\TikTokLinkMapSyncService;
 use App\Services\MarketplaceManager\TikTokListingsPageBuilder;
 use App\Services\MarketplaceManager\TikTokOrderDetailFormatter;
 use App\Services\Support\MarketplaceApiConfigService;
@@ -102,48 +101,44 @@ class TikTok2SyncController extends Controller
         ], 422);
     }
 
-    public function refreshProducts(): JsonResponse
+    public function refreshProducts(Request $request): JsonResponse
     {
         if (! $this->tiktok->isAuthenticated()) {
             return response()->json([
                 'success' => false,
                 'message' => 'TikTok 2 is not connected. Authorize via Connect first.',
                 'connect_url' => route('marketplace.manager.tiktok2.connect'),
+                'done' => true,
             ], 401);
         }
 
-        $progress = SyncTikTokProductsJob::getProgress('tiktok2');
-        $status = (string) ($progress['status'] ?? 'idle');
-        if (in_array($status, ['queued', 'running'], true)) {
-            return response()->json([
-                'success' => true,
-                'queued' => true,
-                'done' => false,
-                'message' => $progress['message'] ?? 'TikTok 2 listing sync already running.',
-                'progress' => $progress,
-            ]);
+        @set_time_limit(75);
+
+        $page = max(1, (int) $request->input('page', 1));
+        $reset = $request->boolean('reset', $page === 1);
+        $mode = strtolower((string) $request->input('mode', 'auto'));
+        if (! in_array($mode, ['auto', 'quick', 'full'], true)) {
+            $mode = 'auto';
         }
 
-        SyncTikTokProductsJob::putProgress('tiktok2', [
-            'status' => 'queued',
-            'message' => 'TikTok 2 listing sync queued on mm-tiktok2-listings…',
-            'started_at' => now()->toDateTimeString(),
-            'finished_at' => null,
-            'count' => Schema::hasTable('tiktok_products_two')
-                ? (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
-                : 0,
-        ]);
+        Log::info('TikTok 2 link map sync page', ['page' => $page, 'reset' => $reset, 'mode' => $mode]);
 
-        SyncTikTokProductsJob::dispatch('tiktok2', true);
-        $this->ensureTikTokListingsWorker();
+        try {
+            $result = TikTokLinkMapSyncService::for('tiktok2')->syncPage($page, 50, $reset, $mode);
+        } catch (\Throwable $e) {
+            Log::error('TikTok 2 link map sync exception', ['page' => $page, 'error' => $e->getMessage()]);
 
-        return response()->json([
-            'success' => true,
-            'queued' => true,
-            'done' => false,
-            'message' => 'TikTok 2 listing sync queued on mm-tiktok2-listings (not behind order backlog). Keep this page open…',
-            'progress' => SyncTikTokProductsJob::getProgress('tiktok2'),
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Sync error: '.$e->getMessage(),
+                'page' => $page,
+                'done' => true,
+                'page_upserted' => 0,
+                'total_upserted' => 0,
+            ], 500);
+        }
+
+        return response()->json($result);
     }
 
     public function fetchOrders(Request $request): JsonResponse
@@ -189,20 +184,10 @@ class TikTok2SyncController extends Controller
 
     public function refreshProductsStatus(): JsonResponse
     {
-        $progress = SyncTikTokProductsJob::getProgress('tiktok2');
-        $count = Schema::hasTable('tiktok_products_two')
-            ? (int) TikTokProductTwo::query()->whereNotNull('sku')->where('sku', '!=', '')->count()
-            : 0;
-        if (! isset($progress['count'])) {
-            $progress['count'] = $count;
-        }
-        $status = (string) ($progress['status'] ?? 'idle');
+        $progress = TikTokLinkMapSyncService::for('tiktok2')->getProgress();
 
         return response()->json([
             'success' => true,
-            'done' => $status === 'done',
-            'failed' => $status === 'failed',
-            'idle' => $status === 'idle',
             'progress' => $progress,
         ]);
     }
@@ -454,18 +439,6 @@ class TikTok2SyncController extends Controller
             'success' => false,
             'message' => $pushService->lastFailureReason ?: 'Failed to push order to Shopify.',
         ], 422);
-    }
-
-    protected function ensureTikTokListingsWorker(): void
-    {
-        try {
-            $script = base_path('scripts/cron-marketplace-manager-worker.sh');
-            if (is_file($script) && is_executable($script)) {
-                exec('bash '.escapeshellarg($script).' >/dev/null 2>&1 &');
-            }
-        } catch (\Throwable $e) {
-            Log::warning('TikTok 2 listings worker ensure failed', ['error' => $e->getMessage()]);
-        }
     }
 
     protected function mergeSettingsSection(array $current, array $input, array $booleanKeys): array
