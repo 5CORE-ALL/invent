@@ -1001,7 +1001,7 @@ class ShipmentTrackingService
 
             $events = $res['data'];
             // API returns newest-first in samples; take first event as current.
-            $latest = is_list($events) ? ($events[0] ?? []) : $events;
+            $latest = is_array($events) && array_is_list($events) ? ($events[0] ?? []) : $events;
             if (! is_array($latest)) {
                 $latest = [];
             }
@@ -1016,7 +1016,7 @@ class ShipmentTrackingService
                 'status' => $gofo->normalizeTrackStatus($move, $en),
                 'detail' => $detail !== '' ? mb_substr($detail, 0, 480) : null,
                 'provider' => 'gofo',
-                'events' => is_list($events) ? $events : [$latest],
+                'events' => is_array($events) && array_is_list($events) ? $events : [$latest],
             ];
         }
 
