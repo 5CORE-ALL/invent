@@ -511,6 +511,11 @@
 
     <div class="row">
         <div class="col-12">
+            <div class="alert alert-info border-0 shadow-sm mb-3" role="alert">
+                <strong>Status page only.</strong>
+                This grid shows live eBay 2 listings. To create listings (LitCommerce-style Drafts → fill Category / Business Policies → Save &amp; Publish), open
+                <a href="{{ route('listing.manager', ['tab' => 'drafts']) }}" class="alert-link fw-semibold">Listing Manager → Channel Listings</a>.
+            </div>
             <div class="card position-relative">
                 <div class="card-body">
                     <div id="ebay2-listing-toolbar" class="mb-3">

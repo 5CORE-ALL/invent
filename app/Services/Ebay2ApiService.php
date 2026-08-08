@@ -1975,6 +1975,226 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
     }
 
     /**
+     * Create a new fixed-price listing on Ebay 2 (Trading API AddFixedPriceItem).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{success: bool, message: string, item_id?: string|null, raw?: string}
+     */
+    public function addFixedPriceItem(array $payload): array
+    {
+        $sku = trim((string) ($payload['sku'] ?? ''));
+        $title = trim((string) ($payload['title'] ?? ''));
+        $description = (string) ($payload['description'] ?? '');
+        $price = (float) ($payload['price'] ?? 0);
+        $quantity = (int) ($payload['quantity'] ?? 0);
+        $categoryId = trim((string) ($payload['primary_category_id'] ?? ''));
+        $conditionId = trim((string) ($payload['condition_id'] ?? '1000')) ?: '1000';
+        $images = $payload['images'] ?? [];
+        if (! is_array($images)) {
+            $images = [];
+        }
+        $images = array_values(array_filter(array_map(fn ($u) => trim((string) $u), $images)));
+
+        if ($title === '' || $description === '' || $price <= 0 || $categoryId === '' || $images === []) {
+            return ['success' => false, 'message' => 'Missing required fields for AddFixedPriceItem.'];
+        }
+
+        try {
+            $xml = new SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+            $credentials = $xml->addChild('RequesterCredentials');
+            $credentials->addChild('eBayAuthToken', $this->generateBearerToken() ?? '');
+            $xml->addChild('ErrorLanguage', 'en_US');
+            $xml->addChild('WarningLevel', 'High');
+
+            $item = $xml->addChild('Item');
+            $item->addChild('Title', htmlspecialchars($title, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $item->addChild('Description', htmlspecialchars($description, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $item->addChild('SKU', htmlspecialchars($sku, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            $item->addChild('Currency', 'USD');
+            $item->addChild('Country', trim((string) ($payload['location_country'] ?? 'US')) ?: 'US');
+            $item->addChild('ListingDuration', trim((string) ($payload['duration'] ?? 'GTC')) ?: 'GTC');
+            $item->addChild('ListingType', 'FixedPriceItem');
+            $item->addChild('StartPrice', number_format($price, 2, '.', ''));
+            $item->addChild('Quantity', (string) max(0, $quantity));
+            $item->addChild('ConditionID', $conditionId);
+
+            $city = trim((string) ($payload['location_city'] ?? ''));
+            $postal = trim((string) ($payload['location_postal_code'] ?? ''));
+            $location = trim($city . ($postal !== '' ? ' ' . $postal : ''));
+            if ($location !== '') {
+                $item->addChild('Location', htmlspecialchars($location, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            }
+            if ($postal !== '') {
+                $item->addChild('PostalCode', htmlspecialchars($postal, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            }
+
+            $primary = $item->addChild('PrimaryCategory');
+            $primary->addChild('CategoryID', $categoryId);
+            $secondaryId = trim((string) ($payload['secondary_category_id'] ?? ''));
+            if ($secondaryId !== '') {
+                $secondary = $item->addChild('SecondaryCategory');
+                $secondary->addChild('CategoryID', $secondaryId);
+            }
+
+            $pictureDetails = $item->addChild('PictureDetails');
+            foreach (array_slice($images, 0, 12) as $url) {
+                $pictureDetails->addChild('PictureURL', htmlspecialchars($url, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            }
+            if (! empty($payload['gallery_plus'])) {
+                $pictureDetails->addChild('GalleryType', 'Plus');
+            }
+
+            $shippingId = trim((string) ($payload['shipping_policy_id'] ?? ''));
+            $paymentId = trim((string) ($payload['payment_policy_id'] ?? ''));
+            $returnId = trim((string) ($payload['return_policy_id'] ?? ''));
+            if ($shippingId !== '' || $paymentId !== '' || $returnId !== '') {
+                $profiles = $item->addChild('SellerProfiles');
+                if ($shippingId !== '') {
+                    $profiles->addChild('SellerShippingProfile')->addChild('ShippingProfileID', $shippingId);
+                }
+                if ($paymentId !== '') {
+                    $profiles->addChild('SellerPaymentProfile')->addChild('PaymentProfileID', $paymentId);
+                }
+                if ($returnId !== '') {
+                    $profiles->addChild('SellerReturnProfile')->addChild('ReturnProfileID', $returnId);
+                }
+            }
+
+            // Required identifiers: Brand / MPN (item specifics) + UPC (ProductListingDetails)
+            $brand = trim((string) ($payload['brand'] ?? ''));
+            $mpn = trim((string) ($payload['mpn'] ?? ''));
+            $upc = trim((string) ($payload['upc'] ?? ''));
+            if ($brand === '') {
+                $brand = trim((string) config('listing_manager.default_brand', '5 Core')) ?: '5 Core';
+            }
+            if ($mpn === '') {
+                $mpn = $sku;
+            }
+
+            $specifics = is_array($payload['item_specifics'] ?? null) ? $payload['item_specifics'] : [];
+            if ($brand !== '') {
+                $specifics['Brand'] = $brand;
+            }
+            if ($mpn !== '') {
+                $specifics['MPN'] = $mpn;
+            }
+            if ($upc !== '') {
+                $specifics['UPC'] = $upc;
+            }
+
+            if ($specifics !== []) {
+                $itemSpecifics = $item->addChild('ItemSpecifics');
+                foreach ($specifics as $name => $value) {
+                    $name = trim((string) $name);
+                    $value = trim((string) $value);
+                    if ($name === '' || $value === '') {
+                        continue;
+                    }
+                    $nvl = $itemSpecifics->addChild('NameValueList');
+                    $nvl->addChild('Name', htmlspecialchars($name, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+                    $nvl->addChild('Value', htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+                }
+            }
+
+            if ($upc !== '') {
+                $pld = $item->addChild('ProductListingDetails');
+                $pld->addChild('UPC', htmlspecialchars($upc, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
+            }
+
+            $length = (float) ($payload['package_length'] ?? 0);
+            $width = (float) ($payload['package_width'] ?? 0);
+            $height = (float) ($payload['package_height'] ?? 0);
+            $lb = (float) ($payload['package_weight_lb'] ?? 0);
+            $oz = (float) ($payload['package_weight_oz'] ?? 0);
+            if ($length > 0 || $width > 0 || $height > 0 || $lb > 0 || $oz > 0) {
+                $package = $item->addChild('ShippingPackageDetails');
+                if ($length > 0) {
+                    $package->addChild('PackageLength', (string) $length);
+                }
+                if ($width > 0) {
+                    $package->addChild('PackageWidth', (string) $width);
+                }
+                if ($height > 0) {
+                    $package->addChild('PackageDepth', (string) $height);
+                }
+                $weightMajor = (int) floor($lb);
+                $weightMinor = (int) round($oz + (($lb - $weightMajor) * 16));
+                if ($weightMajor > 0 || $weightMinor > 0) {
+                    $package->addChild('WeightMajor', (string) $weightMajor);
+                    $package->addChild('WeightMinor', (string) $weightMinor);
+                }
+            }
+
+            if (! empty($payload['best_offer'])) {
+                $item->addChild('BestOfferDetails')->addChild('BestOfferEnabled', 'true');
+            }
+            if (! empty($payload['private_listing'])) {
+                $item->addChild('PrivateListing', 'true');
+            }
+
+            $headers = [
+                'X-EBAY-API-COMPATIBILITY-LEVEL' => $this->compatLevel,
+                'X-EBAY-API-DEV-NAME' => $this->devId,
+                'X-EBAY-API-APP-NAME' => $this->appId,
+                'X-EBAY-API-CERT-NAME' => $this->certId,
+                'X-EBAY-API-CALL-NAME' => 'AddFixedPriceItem',
+                'X-EBAY-API-SITEID' => $this->siteId,
+                'Content-Type' => 'text/xml',
+            ];
+
+            $response = Http::timeout(90)
+                ->withHeaders($headers)
+                ->withBody($xml->asXML(), 'text/xml')
+                ->post($this->endpoint);
+
+            $body = $response->body();
+            libxml_use_internal_errors(true);
+            $xmlResp = simplexml_load_string($body);
+            if ($xmlResp === false) {
+                Log::warning('eBay2 AddFixedPriceItem: invalid XML', [
+                    'sku' => $sku,
+                    'status' => $response->status(),
+                    'body' => substr($body, 0, 1500),
+                ]);
+
+                return ['success' => false, 'message' => 'Invalid XML response from eBay.', 'raw' => $body];
+            }
+
+            $data = json_decode(json_encode($xmlResp), true) ?: [];
+            $ack = $data['Ack'] ?? 'Failure';
+            if ($ack === 'Success' || $ack === 'Warning') {
+                $itemId = trim((string) ($data['ItemID'] ?? ''));
+
+                return [
+                    'success' => true,
+                    'message' => $itemId !== '' ? "Published to Ebay 2 (ItemID {$itemId})." : 'Published to Ebay 2.',
+                    'item_id' => $itemId !== '' ? $itemId : null,
+                    'raw' => $body,
+                ];
+            }
+
+            $errors = $data['Errors'] ?? null;
+            $messages = [];
+            if (is_array($errors)) {
+                $list = isset($errors[0]) ? $errors : [$errors];
+                foreach ($list as $err) {
+                    $messages[] = trim((string) ($err['LongMessage'] ?? $err['ShortMessage'] ?? 'eBay error'));
+                }
+            }
+
+            return [
+                'success' => false,
+                'message' => $messages !== [] ? implode(' | ', $messages) : 'eBay rejected AddFixedPriceItem.',
+                'raw' => $body,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('eBay2 AddFixedPriceItem failed: '.$e->getMessage(), ['sku' => $sku]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Fast quantity (and optional price) update without GetItem.
      *
      * @return array{success: bool, message: string, data?: array, raw?: string}
@@ -2118,6 +2338,186 @@ public function downloadAndParseEbayReport(string $taskId, string $token): array
             ];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'Connection test failed: '.$e->getMessage()];
+        }
+    }
+
+    /**
+     * Application (client_credentials) token for public Browse/Taxonomy APIs.
+     * User refresh tokens often lack commerce.taxonomy scope (403 Access denied).
+     */
+    public function generateApplicationToken(): string
+    {
+        $clientId = config('services.ebay2.app_id');
+        $clientSecret = config('services.ebay2.cert_id');
+        if (empty($clientId) || empty($clientSecret)) {
+            throw new \Exception('eBay 2 app_id/cert_id not configured.');
+        }
+
+        $cacheKey = 'ebay2_app_token_' . md5((string) $clientId);
+        if (Cache::has($cacheKey)) {
+            $cached = Cache::get($cacheKey);
+            if (! empty($cached)) {
+                return (string) $cached;
+            }
+        }
+
+        $response = Http::withoutVerifying()->asForm()
+            ->withBasicAuth($clientId, $clientSecret)
+            ->timeout(30)
+            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                'grant_type' => 'client_credentials',
+                'scope' => 'https://api.ebay.com/oauth/api_scope',
+            ]);
+
+        if ($response->failed()) {
+            throw new \Exception('Failed to get eBay 2 application token: '.$response->body());
+        }
+
+        $token = (string) ($response->json('access_token') ?? '');
+        $expiresIn = (int) ($response->json('expires_in') ?? 7200);
+        if ($token === '') {
+            throw new \Exception('No application access_token returned from eBay.');
+        }
+
+        Cache::put($cacheKey, $token, now()->addSeconds(max(60, $expiresIn - 60)));
+
+        return $token;
+    }
+
+    /**
+     * Keyword category search (Taxonomy API) — LitCommerce-style results.
+     *
+     * @return array{success: bool, categories?: list<array{id: string, path: string}>, message?: string}
+     */
+    public function getCategorySuggestions(string $query, int $categoryTreeId = 0): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return ['success' => true, 'categories' => []];
+        }
+
+        try {
+            // Taxonomy requires application token (not user refresh token)
+            $token = $this->generateApplicationToken();
+            $url = "https://api.ebay.com/commerce/taxonomy/v1/category_tree/{$categoryTreeId}/get_category_suggestions";
+            $response = Http::withoutVerifying()
+                ->withToken($token)
+                ->acceptJson()
+                ->timeout(30)
+                ->get($url, ['q' => $query]);
+
+            if ($response->failed()) {
+                Log::warning('eBay2 category suggestions failed', [
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 1000),
+                ]);
+
+                return [
+                    'success' => false,
+                    'categories' => [],
+                    'message' => 'Category search failed: '.($response->json('errors.0.longMessage')
+                        ?? $response->json('errors.0.message')
+                        ?? ('HTTP '.$response->status())),
+                ];
+            }
+
+            $data = $response->json() ?? [];
+            $suggestions = $data['categorySuggestions'] ?? [];
+            $categories = [];
+            foreach ($suggestions as $row) {
+                $node = $row['category'] ?? [];
+                $id = trim((string) ($node['categoryId'] ?? ''));
+                $name = trim((string) ($node['categoryName'] ?? ''));
+                if ($id === '') {
+                    continue;
+                }
+                $ancestors = $row['categoryTreeNodeAncestors'] ?? [];
+                $parts = [];
+                if (is_array($ancestors)) {
+                    // ancestors are usually leaf→root; reverse for breadcrumb
+                    $names = [];
+                    foreach ($ancestors as $a) {
+                        $n = trim((string) ($a['categoryName'] ?? ''));
+                        if ($n !== '') {
+                            $names[] = $n;
+                        }
+                    }
+                    $parts = array_reverse($names);
+                }
+                if ($name !== '') {
+                    $parts[] = $name;
+                }
+                $categories[] = [
+                    'id' => $id,
+                    'path' => $parts !== [] ? implode(' > ', $parts) : ($name !== '' ? $name : $id),
+                ];
+            }
+
+            return ['success' => true, 'categories' => $categories];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'categories' => [], 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Business policies for dropdowns (Sell Account API).
+     *
+     * @return array{
+     *   success: bool,
+     *   shipping: list<array{id: string, name: string}>,
+     *   payment: list<array{id: string, name: string}>,
+     *   return: list<array{id: string, name: string}>,
+     *   message?: string
+     * }
+     */
+    public function getBusinessPolicies(string $marketplaceId = 'EBAY_US'): array
+    {
+        $empty = ['shipping' => [], 'payment' => [], 'return' => []];
+        try {
+            $token = $this->generateBearerToken();
+            $map = [
+                'shipping' => "https://api.ebay.com/sell/account/v1/fulfillment_policy?marketplace_id={$marketplaceId}",
+                'payment' => "https://api.ebay.com/sell/account/v1/payment_policy?marketplace_id={$marketplaceId}",
+                'return' => "https://api.ebay.com/sell/account/v1/return_policy?marketplace_id={$marketplaceId}",
+            ];
+            $out = $empty;
+            foreach ($map as $key => $url) {
+                $response = Http::withoutVerifying()
+                    ->withToken($token)
+                    ->acceptJson()
+                    ->timeout(30)
+                    ->get($url);
+                if ($response->failed()) {
+                    Log::warning("eBay2 {$key} policies failed", [
+                        'status' => $response->status(),
+                        'body' => substr($response->body(), 0, 800),
+                    ]);
+                    continue;
+                }
+                $json = $response->json() ?? [];
+                $listKey = match ($key) {
+                    'shipping' => 'fulfillmentPolicies',
+                    'payment' => 'paymentPolicies',
+                    default => 'returnPolicies',
+                };
+                $idKey = match ($key) {
+                    'shipping' => 'fulfillmentPolicyId',
+                    'payment' => 'paymentPolicyId',
+                    default => 'returnPolicyId',
+                };
+                foreach (($json[$listKey] ?? []) as $policy) {
+                    $id = trim((string) ($policy[$idKey] ?? ''));
+                    $name = trim((string) ($policy['name'] ?? $id));
+                    if ($id === '') {
+                        continue;
+                    }
+                    $out[$key][] = ['id' => $id, 'name' => $name];
+                }
+            }
+
+            return array_merge(['success' => true], $out);
+        } catch (\Throwable $e) {
+            return array_merge(['success' => false, 'message' => $e->getMessage()], $empty);
         }
     }
 }

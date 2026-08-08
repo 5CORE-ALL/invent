@@ -369,6 +369,7 @@
                                 ['value' => 'fba_inv_age', 'text' => 'FBA INV AGE'],
                                 ['value' => 'amazon_pricing', 'text' => 'Amazon Pricing'],
                                 ['value' => 'listing_amazon', 'text' => 'Listing Amazon'],
+                                ['value' => 'listing_manager', 'text' => 'Listing Manager'],
                                 ['value' => 'ebay', 'text' => 'eBay'],
                                 ['value' => 'ebay_zero_view', 'text' => 'eBay 0 View'],
                                 ['value' => 'ebay_low_visibility', 'text' => 'eBay Low Visibility'],

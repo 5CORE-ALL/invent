@@ -3850,6 +3850,29 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/missing-listing/dar/history',         [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'darHistory'])->name('missing.listing.dar.history');
     Route::post('/missing-listing/seller-portal/save', [\App\Http\Controllers\MarketPlace\MissingListingController::class, 'updateSellerPortal'])->name('missing.listing.seller.portal.save');
 
+    // Listing Manager — Amazon catalog + multi-channel drafts
+    Route::get('/listing-manager', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'index'])->name('listing.manager');
+    Route::get('/listing-manager/data', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'data'])->name('listing.manager.data');
+    Route::get('/listing-manager/product', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showProduct'])->name('listing.manager.product');
+    Route::post('/listing-manager/import-amazon', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'importFromAmazon'])->name('listing.manager.import');
+    Route::get('/listing-manager/channels', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'channels'])->name('listing.manager.channels');
+    Route::post('/listing-manager/channels/save', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'saveEnabledChannels'])->name('listing.manager.channels.save');
+    Route::post('/listing-manager/drafts/add', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'addToChannelDrafts'])->name('listing.manager.drafts.add');
+    Route::get('/listing-manager/drafts', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'drafts'])->name('listing.manager.drafts');
+    Route::get('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showDraft'])->name('listing.manager.drafts.show');
+    Route::put('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'updateDraft'])->name('listing.manager.drafts.update');
+    Route::post('/listing-manager/drafts/{id}/publish', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'publishDraft'])->name('listing.manager.drafts.publish');
+    Route::post('/listing-manager/drafts/{id}/reload-store', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'reloadDraftFromStore'])->name('listing.manager.drafts.reload');
+    Route::post('/listing-manager/drafts/{id}/load-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDescriptionFromStore'])->name('listing.manager.drafts.load-description');
+    Route::post('/listing-manager/drafts/{id}/images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'uploadDraftImage'])->name('listing.manager.drafts.images');
+    Route::post('/listing-manager/drafts/{id}/load-images', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'loadDraftImages'])->name('listing.manager.drafts.load-images');
+    Route::post('/listing-manager/drafts/{id}/optimize-description', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'optimizeDescription'])->name('listing.manager.drafts.optimize');
+    Route::get('/listing-manager/ebay/categories', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'searchCategories'])->name('listing.manager.ebay.categories');
+    Route::get('/listing-manager/ebay/policies', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'businessPolicies'])->name('listing.manager.ebay.policies');
+    Route::post('/listing-manager/drafts/refresh-status', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'refreshDraftStatuses'])->name('listing.manager.drafts.refresh');
+    Route::delete('/listing-manager/drafts/{id}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'deleteDraft'])->name('listing.manager.drafts.delete');
+    Route::get('/listing-manager/product-types', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'productTypes'])->name('listing.manager.product.types');
+
     // Variations Verify Masters — active channel_master rows (Channel Image + Channels)
     Route::get('/variations-verify-masters', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'index'])->name('variations.verify.masters');
     Route::get('/variations-verify-masters/data', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'data'])->name('variations.verify.masters.data');

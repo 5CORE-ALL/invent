@@ -132,6 +132,13 @@
             </li>
 
             <li class="side-nav-item">
+                <a href="{{ route('listing.manager') }}" class="side-nav-link">
+                    <i class="ri-store-2-line"></i>
+                    <span>Listing Manager</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
                 <a href="{{ route('map.issues') }}" class="side-nav-link map-issues-nav">
                     <i class="ri-node-tree"></i>
                     <span>Missing Mapping</span>

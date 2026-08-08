@@ -97,6 +97,7 @@ return [
     ['value' => 'fba_inv_age', 'text' => 'FBA INV AGE', 'group' => 'Marketplace'],
     ['value' => 'amazon_pricing', 'text' => 'Amazon Pricing', 'group' => 'Marketplace'],
     ['value' => 'listing_amazon', 'text' => 'Listing Amazon', 'group' => 'Marketplace'],
+    ['value' => 'listing_manager', 'text' => 'Listing Manager', 'group' => 'Marketplace'],
     ['value' => 'ebay', 'text' => 'eBay', 'group' => 'Marketplace'],
     ['value' => 'ebay_zero_view', 'text' => 'eBay 0 View', 'group' => 'Marketplace'],
     ['value' => 'ebay_low_visibility', 'text' => 'eBay Low Visibility', 'group' => 'Marketplace'],
