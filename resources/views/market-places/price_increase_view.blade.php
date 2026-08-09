@@ -2415,7 +2415,7 @@
                 </a>
                 <span class="summary-badge-only">
                     <span class="summary-badge-dot" style="background-color: #6c757d;"></span>
-                    <span>Amz LMP:</span>
+                    <span>Avg LMP:</span>
                     <span class="summary-badge-value" id="amz-lmp-badge">$0.00</span>
                 </span>
                 <span class="summary-badge-only">
@@ -5807,18 +5807,26 @@
                     }
                 },
                 {
-                    title: "Amz LMP",
+                    title: "Avg LMP",
                     field: "amazon_lmp_price",
-                    visible: false,
+                    visible: true,
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "Amazon LMP. Parent row shows average of child Amz LMPs (children with LMP > 0).",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = (rowData.sku || '').replace(/"/g, '&quot;');
                         const skuEnc = encodeURIComponent(rowData.sku || '');
                         if (rowData.is_parent_summary === true) {
                             const v = cell.getValue();
-                            return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
+                            const price = v != null && v !== '' ? parseFloat(v) : null;
+                            if (price == null || !isFinite(price) || price <= 0) {
+                                return '<span class="text-muted">-</span>';
+                            }
+                            const avgPrice = parseFloat(rowData.avg_price || 0);
+                            const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
+                            return '<span style="font-weight:600;' + styleForCellColor(color) + '" title="Avg of child Amz LMPs">$'
+                                + price.toFixed(2) + '</span>';
                         }
                         const value = cell.getValue();
                         const price = value != null && value !== '' ? parseFloat(value) : null;
@@ -13155,7 +13163,7 @@
         const CVR_HIDDEN_FROM_COLUMN_MENU = [
             'amazon_price', 'amz_pft', 'amz_roi',
             'amazon_sprice', 'amazon_sgpft', 'amazon_spft', 'amazon_sroi',
-            'amazon_lmp_price', 'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
+            'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
             'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30'
         ];
         
@@ -13217,6 +13225,9 @@
             // Always show Audit (same as /amz-cvr-issues)
             const auditCol = table.getColumn('audit');
             if (auditCol) auditCol.show();
+            // Always show Avg LMP (parent = average of child Amz LMPs)
+            const avgLmpCol = table.getColumn('amazon_lmp_price');
+            if (avgLmpCol) avgLmpCol.show();
         }
 
         function applyColumnVisibilityFromServer() {
