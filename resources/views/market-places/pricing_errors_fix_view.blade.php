@@ -3569,7 +3569,8 @@
 
     function startPushPoll() {
         if (pefPushPollTimer) clearInterval(pefPushPollTimer);
-        pefPushPollTimer = setInterval(pollPushStatus, 2500);
+        // 5s poll — fewer Auth/DB hits while the CLI worker holds MySQL during API calls
+        pefPushPollTimer = setInterval(pollPushStatus, 5000);
         pollPushStatus();
     }
 

@@ -4,6 +4,7 @@ namespace App\Services\Support;
 
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -17,6 +18,9 @@ class PricingErrorsFixPushRunner
     public const BASE_DELAY_MS = 2000;
 
     public const MAX_DELAY_MS = 60000;
+
+    /** Extra wait when MySQL is saturated (avoids retry death-spiral). */
+    public const DB_SATURATION_DELAY_MS = 20000;
 
     public function __construct(
         private readonly PricingErrorsFixPushJobStore $store,
@@ -152,6 +156,9 @@ class PricingErrorsFixPushRunner
                     $payload['sku_id'] = $task['sku_id'];
                 }
 
+                // Free MySQL slots during long marketplace API calls (XAMPP max_connections is low).
+                $this->releaseDbConnections();
+
                 $req = Request::create('/cvr-master-push-price', 'POST', $payload);
                 $response = app(CvrMasterController::class)->pushPriceToAmazon($req);
                 $body = method_exists($response, 'getData') ? $response->getData(true) : [];
@@ -170,6 +177,8 @@ class PricingErrorsFixPushRunner
                     'marketplace' => $mp,
                     'error' => $message,
                 ]);
+            } finally {
+                $this->releaseDbConnections();
             }
 
             $attempts++;
@@ -184,7 +193,8 @@ class PricingErrorsFixPushRunner
             if ($ok) {
                 $this->advanceIndex($index, true, $message, $result);
                 $this->store->appendMessage("{$sku} → {$mp}: {$message}", true);
-                usleep(400000);
+                $this->releaseDbConnections();
+                usleep(600000);
 
                 continue;
             }
@@ -192,6 +202,9 @@ class PricingErrorsFixPushRunner
             $transient = $this->isTransientFailure($message);
             if ($transient && $attempts < self::MAX_ATTEMPTS) {
                 $delayMs = min(self::MAX_DELAY_MS, self::BASE_DELAY_MS * (2 ** min($attempts - 1, 5)));
+                if ($this->isDbSaturationFailure($message)) {
+                    $delayMs = max($delayMs, self::DB_SATURATION_DELAY_MS);
+                }
                 $retryMsg = "{$sku} → {$mp}: {$message} — retry {$attempts}/".self::MAX_ATTEMPTS." in ".round($delayMs / 1000)."s";
                 $this->store->update(function (array $state) use ($index, $message, $retryMsg) {
                     $state['last_message'] = $retryMsg;
@@ -211,6 +224,7 @@ class PricingErrorsFixPushRunner
                     'delay_ms' => $delayMs,
                     'error' => $message,
                 ]);
+                $this->releaseDbConnections();
                 usleep($delayMs * 1000);
 
                 continue; // same index — do not advance
@@ -221,8 +235,38 @@ class PricingErrorsFixPushRunner
                 : $message;
             $this->advanceIndex($index, false, $failReason, $result);
             $this->store->appendMessage("{$sku} → {$mp}: FAILED — {$failReason}", false);
-            usleep(300000);
+            $this->releaseDbConnections();
+            usleep(500000);
         }
+    }
+
+    /**
+     * Drop idle PDO connections so bulk push does not exhaust MySQL max_connections
+     * while waiting on Amazon/eBay/etc. HTTP.
+     */
+    private function releaseDbConnections(): void
+    {
+        try {
+            foreach (array_keys(config('database.connections', [])) as $name) {
+                try {
+                    DB::connection((string) $name)->disconnect();
+                } catch (\Throwable) {
+                    // ignore per-connection errors
+                }
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    private function isDbSaturationFailure(string $message): bool
+    {
+        $m = strtolower($message);
+
+        return str_contains($m, 'too many connections')
+            || str_contains($m, 'error 1040')
+            || str_contains($m, '[1040]')
+            || (str_contains($m, 'hy000') && str_contains($m, '1040'));
     }
 
     private function advanceIndex(int $index, bool $ok, string $message, ?array $result): void

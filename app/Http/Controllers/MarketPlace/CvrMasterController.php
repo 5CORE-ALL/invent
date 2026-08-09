@@ -592,15 +592,16 @@ class CvrMasterController extends Controller
 
         $this->pefReleaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
 
-        try {
-            RunPricingErrorsFixPushJob::dispatch();
-        } catch (\Throwable $e) {
-            Log::warning('PEF push queue dispatch failed', ['error' => $e->getMessage()]);
-        }
-
+        // Prefer a single CLI worker. Do not also dispatch to the queue — that boots a second
+        // Laravel process and can exhaust MySQL max_connections on XAMPP during bulk push.
         $spawned = $this->spawnPricingErrorsFixPushWorker();
         if (! $spawned) {
-            Log::error('PEF push sync spawn failed — push may stall until a queue worker picks it up');
+            try {
+                RunPricingErrorsFixPushJob::dispatch();
+                Log::warning('PEF push sync spawn failed — fell back to queue dispatch');
+            } catch (\Throwable $e) {
+                Log::error('PEF push queue dispatch also failed', ['error' => $e->getMessage()]);
+            }
         }
 
         $store->update(function (array $state) use ($spawned) {
@@ -623,7 +624,8 @@ class CvrMasterController extends Controller
     {
         $state = $store->load();
 
-        if ($store->isActive($state) && $this->pefPushLooksStuck($state)) {
+        // Only respawn when stuck AND no runner already holds the lock (avoids connection storms).
+        if ($store->isActive($state) && $this->pefPushLooksStuck($state) && ! $this->pefPushRunnerLockHeld()) {
             $this->pefReleaseUniqueJobLock(RunPricingErrorsFixPushJob::class, 'pricing-errors-fix-push');
             $kicked = $this->spawnPricingErrorsFixPushWorker();
             $store->update(function (array $s) use ($kicked) {
@@ -10337,6 +10339,9 @@ class CvrMasterController extends Controller
     private function spawnPricingErrorsFixPushWorker(): bool
     {
         try {
+            if ($this->pefPushRunnerLockHeld()) {
+                return true; // already running
+            }
             $php = PHP_BINARY ?: 'php';
             if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
                 $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
@@ -10362,6 +10367,26 @@ class CvrMasterController extends Controller
 
             return false;
         }
+    }
+
+    /** True when another PEF push runner process already holds runner.lock. */
+    private function pefPushRunnerLockHeld(): bool
+    {
+        $lockPath = storage_path('app/pricing-errors-fix-push/runner.lock');
+        if (! is_file($lockPath)) {
+            return false;
+        }
+        $handle = @fopen($lockPath, 'c+');
+        if (! $handle) {
+            return false;
+        }
+        $held = ! flock($handle, LOCK_EX | LOCK_NB);
+        if (! $held) {
+            flock($handle, LOCK_UN);
+        }
+        fclose($handle);
+
+        return $held;
     }
 
     /**
