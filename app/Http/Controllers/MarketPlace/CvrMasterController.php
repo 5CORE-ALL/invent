@@ -479,6 +479,29 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * PEF: pull live eBay 1/2/3 Price (GetItem) for only the given pushed SKUs.
+     * Also returns SPRICE from each channel data_view for row patch (no full table reload).
+     */
+    public function pricingErrorsFixEbayPullPrices(Request $request): JsonResponse
+    {
+        $items = $request->input('items', []);
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'items required'], 422);
+        }
+        // Cap batch to avoid long GetItem storms
+        $items = array_slice($items, 0, 100);
+        $results = app(\App\Services\PefEbayPricePullService::class)->pullItems($items);
+        $ok = count(array_filter($results, static fn ($r) => ! empty($r['success'])));
+
+        return response()->json([
+            'success' => $ok > 0,
+            'ok_count' => $ok,
+            'fail_count' => count($results) - $ok,
+            'results' => $results,
+        ]);
+    }
+
+    /**
      * Live PEF rows: unpivot getCvrDataJson(?for_pricing_errors_fix=1) via PricingErrorsFixCvrCacheBuilder.
      */
     public function pricingErrorsFixDataJson(Request $request): JsonResponse

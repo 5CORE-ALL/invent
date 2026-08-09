@@ -818,6 +818,10 @@
     let samePriceModeActive = false;
     let pefPushInFlight = false;
     let pefPushPollTimer = null;
+    /** After eBay 1/2/3 SPRICE push: pull live Price (+ SPRICE) for only those rows after 1 min. */
+    const PEF_EBAY_PULL_DELAY_MS = 60000;
+    let pefEbayPullQueue = {}; // row_id → {row_id, sku, marketplace}
+    let pefEbayPullTimer = null;
 
     function toast(msg, type) {
         const bg = type === 'error' ? 'text-bg-danger' : (type === 'success' ? 'text-bg-success' : 'text-bg-dark');
@@ -882,7 +886,7 @@
             cls = 'err';
             if (errorMsg) tip = String(errorMsg);
         }
-        else if (['pushing', 'pending', 'queued', 'retrying'].includes(s)) cls = 'pending';
+        else if (['pushing', 'pending', 'queued', 'retrying', 'pulling'].includes(s)) cls = 'pending';
         else if (['saved'].includes(s)) cls = 'saved';
         return `<span class="pef-success-dot ${cls}" title="${String(tip).replace(/"/g, '&quot;')}"></span>`;
     }
@@ -3120,6 +3124,147 @@
         return { items: items, skip: skip };
     }
 
+    function isPefEbay123Marketplace(mp) {
+        const m = String(mp || '').toLowerCase().replace(/\s+/g, '');
+        return m === 'ebay' || m === 'ebay1' || m === 'ebayone'
+            || m === 'ebay2' || m === 'ebaytwo'
+            || m === 'ebay3' || m === 'ebaythree';
+    }
+
+    /** Queue eBay 1/2/3 rows for a delayed live Price/SPRICE pull (only pushed SKUs). */
+    function queueEbayPostPushPull(targets) {
+        const list = Array.isArray(targets) ? targets : [];
+        let added = 0;
+        list.forEach(function(t) {
+            if (!t || !t.sku || !t.row_id) return;
+            if (!isPefEbay123Marketplace(t.marketplace)) return;
+            const key = String(t.row_id);
+            pefEbayPullQueue[key] = {
+                row_id: key,
+                sku: String(t.sku),
+                marketplace: String(t.marketplace),
+            };
+            added++;
+        });
+        if (!added && !Object.keys(pefEbayPullQueue).length) return;
+        if (pefEbayPullTimer) clearTimeout(pefEbayPullTimer);
+        const n = Object.keys(pefEbayPullQueue).length;
+        pefEbayPullTimer = setTimeout(function() {
+            pefEbayPullTimer = null;
+            runEbayPostPushPull();
+        }, PEF_EBAY_PULL_DELAY_MS);
+        toast('eBay Price/SPRICE pull in 1 min for ' + n + ' pushed row(s)', 'success');
+    }
+
+    function collectEbayPushedFromJob(resp) {
+        const out = [];
+        if (!resp || !resp.job) return out;
+        const results = (resp.job.results && typeof resp.job.results === 'object') ? resp.job.results : {};
+        const tasks = Array.isArray(resp.job.tasks) ? resp.job.tasks : [];
+        const byId = {};
+        tasks.forEach(function(t) {
+            if (t && t.row_id) byId[t.row_id] = t;
+        });
+        Object.keys(results).forEach(function(id) {
+            if (!byId[id]) byId[id] = results[id];
+        });
+        Object.keys(byId).forEach(function(id) {
+            const t = byId[id];
+            if (!t) return;
+            const st = String(t.status || (t.success === true ? 'done' : '')).toLowerCase();
+            if (!(st === 'done' || st === 'pushed' || t.success === true)) return;
+            const mp = t.marketplace || (results[id] && results[id].marketplace) || '';
+            if (!isPefEbay123Marketplace(mp)) return;
+            out.push({
+                row_id: id,
+                sku: t.sku || (results[id] && results[id].sku) || '',
+                marketplace: mp,
+            });
+        });
+        return out;
+    }
+
+    async function runEbayPostPushPull() {
+        const items = Object.keys(pefEbayPullQueue).map(function(k) { return pefEbayPullQueue[k]; });
+        pefEbayPullQueue = {};
+        if (!items.length || !table) return;
+
+        toast('Pulling eBay Price/SPRICE for ' + items.length + ' pushed row(s)…', 'success');
+        items.forEach(function(it) {
+            const row = table.getRows().find(function(r) { return r.getData().id === it.row_id; });
+            if (row) {
+                row.update({ push_message: 'pulling price…', success: 'pulling' });
+            }
+        });
+
+        try {
+            const resp = await $.ajax({
+                url: '/pricing-errors-fix-ebay-pull-prices',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                data: { _token: csrf, items: items },
+                dataType: 'json',
+                timeout: 300000,
+            });
+            const results = (resp && Array.isArray(resp.results)) ? resp.results : [];
+            let ok = 0;
+            let fail = 0;
+            results.forEach(function(r) {
+                const id = r.row_id || (r.marketplace + '|' + r.sku);
+                const row = table.getRows().find(function(rw) {
+                    const d = rw.getData();
+                    return d.id === id || (String(d.sku) === String(r.sku) && isPefEbay123Marketplace(d.marketplace || d.channel_key));
+                });
+                if (!row) {
+                    if (r.success) ok++; else fail++;
+                    return;
+                }
+                const d = row.getData();
+                if (r.success && Number(r.price) > 0) {
+                    const price = +Number(r.price).toFixed(2);
+                    const sprice = (r.sprice != null && Number(r.sprice) > 0)
+                        ? +Number(r.sprice).toFixed(2)
+                        : (Number(d.sprice) > 0 ? +Number(d.sprice).toFixed(2) : null);
+                    const patch = {
+                        price: price,
+                        success: 'pushed',
+                        push_error: null,
+                        push_message: r.message || 'price pulled',
+                    };
+                    if (sprice > 0) patch.sprice = sprice;
+                    const live = recalcLiveForRow(Object.assign({}, d, patch));
+                    Object.assign(patch, live);
+                    if (sprice > 0) {
+                        const sug = recalcSuggestedForRow(Object.assign({}, d, patch, { sprice: sprice }));
+                        Object.assign(patch, sug);
+                    }
+                    row.update(patch);
+                    syncPefRowCache(d.id, patch);
+                    ok++;
+                } else {
+                    row.update({
+                        success: 'pushed',
+                        push_message: r.message || 'pull failed',
+                        push_error: r.message || 'pull failed',
+                    });
+                    fail++;
+                }
+            });
+            try { table.redraw(true); } catch (e) { /* ignore */ }
+            toast(
+                'eBay pull done: ' + ok + ' ok' + (fail ? (', ' + fail + ' failed') : ''),
+                fail && !ok ? 'error' : 'success'
+            );
+        } catch (xhr) {
+            toast(ajaxErrorMessage(xhr, 'eBay price pull failed'), 'error');
+            items.forEach(function(it) {
+                const row = table.getRows().find(function(r) { return r.getData().id === it.row_id; });
+                if (row) row.update({ success: 'pushed', push_message: 'pull failed' });
+            });
+        }
+        updatePushBtn();
+    }
+
     /**
      * After push: update live Price only. Keep SPRICE / SROI / SGPFT formulas as-is.
      */
@@ -3293,6 +3438,11 @@
             if (!active) {
                 stopPushPoll();
                 syncSelectAllCheckbox();
+                // eBay 1/2/3: pull live Price + SPRICE for only successfully pushed SKUs after 1 min
+                const ebayPushed = collectEbayPushedFromJob(resp);
+                if (ebayPushed.length) {
+                    queueEbayPostPushPull(ebayPushed);
+                }
                 if (fail > 0) {
                     const first = (resp.failed_tasks && resp.failed_tasks[0])
                         ? ((resp.failed_tasks[0].sku || '') + ': ' + (resp.failed_tasks[0].error || 'failed'))

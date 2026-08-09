@@ -3707,6 +3707,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/pricing-errors-fix-cvr-cpn', [CvrMasterController::class, 'pricingErrorsFixSaveCvrCpnRules'])->name('pricing.errors.fix.cvr-cpn.save');
     Route::post('/pricing-errors-fix-ebay1-coupon', [CvrMasterController::class, 'pricingErrorsFixEbay1Coupon'])->name('pricing.errors.fix.ebay1-coupon');
     Route::post('/pricing-errors-fix-ebay1-promotion', [CvrMasterController::class, 'pricingErrorsFixEbay1Promotion'])->name('pricing.errors.fix.ebay1-promotion');
+    Route::post('/pricing-errors-fix-ebay-pull-prices', [CvrMasterController::class, 'pricingErrorsFixEbayPullPrices'])->name('pricing.errors.fix.ebay-pull-prices');
     Route::post('/pricing-errors-fix-push', [CvrMasterController::class, 'pricingErrorsFixQueuePush'])->name('pricing.errors.fix.push');
     Route::get('/pricing-errors-fix-push-status', [CvrMasterController::class, 'pricingErrorsFixPushJobStatus'])->name('pricing.errors.fix.push.status');
     Route::post('/pricing-errors-fix-push-cancel', [CvrMasterController::class, 'pricingErrorsFixCancelPush'])->name('pricing.errors.fix.push.cancel');
