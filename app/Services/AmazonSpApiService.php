@@ -214,6 +214,19 @@ class AmazonSpApiService
         return trim(preg_replace('/\s+/u', ' ', $s) ?? $s);
     }
 
+    /**
+     * Amazon minimum_seller_allowed_price floor from listing our_price (5% less).
+     */
+    public function minSellerAllowedPriceFromOurPrice(float $ourPrice): float
+    {
+        $ourPrice = round($ourPrice, 2);
+        if ($ourPrice <= 0) {
+            return 0.0;
+        }
+
+        return max(0.01, round($ourPrice * 0.95, 2));
+    }
+
     public function updateAmazonPriceUS($sku, $price, $maxRetries = 3)
     {
         // Validate inputs
@@ -242,6 +255,7 @@ class AmazonSpApiService
 
         // Round price to 2 decimal places (Amazon requirement)
         $price = round($price, 2);
+        $minPrice = $this->minSellerAllowedPriceFromOurPrice($price);
 
         $sellerId = config('services.amazon_sp.seller_id');
         if (empty($sellerId)) {
@@ -342,12 +356,21 @@ class AmazonSpApiService
                 $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/{$encodedSku}?marketplaceIds=ATVPDKIKX0DER";
 
                 // Listing price + minimum seller allowed price (price floor) in one PATCH.
-                // Every updateAmazonPriceUS call keeps min price in sync with our_price.
+                // Min floor = our_price × 0.95 (5% less).
                 $priceSchedule = [
                     [
                         "schedule" => [
                             [
                                 "value_with_tax" => $price
+                            ]
+                        ]
+                    ]
+                ];
+                $minPriceSchedule = [
+                    [
+                        "schedule" => [
+                            [
+                                "value_with_tax" => $minPrice
                             ]
                         ]
                     ]
@@ -363,7 +386,7 @@ class AmazonSpApiService
                             "currency" => "USD",
                             "audience" => "ALL",
                             "our_price" => $priceSchedule,
-                            "minimum_seller_allowed_price" => $priceSchedule,
+                            "minimum_seller_allowed_price" => $minPriceSchedule,
                         ]]
                     ]]
                 ];
@@ -373,7 +396,7 @@ class AmazonSpApiService
                     "original_sku" => $sku,
                     "amazon_sku" => $amazonSku,
                     "price" => $price,
-                    "min_price" => $price,
+                    "min_price" => $minPrice,
                     "productType" => $productType,
                     "token_fresh" => true
                 ]);

@@ -1746,13 +1746,16 @@ class OverallAmazonController extends Controller
             ]);
 
             if ($updateMinPriceConstraint) {
+                // Keep backup min-price PATCH aligned with updateAmazonPriceUS (our_price × 0.95).
+                $minFloor = $service->minSellerAllowedPriceFromOurPrice($priceFloat);
                 Log::info('Updating Amazon minimum price constraint', [
                     'sku' => $skuForAmazon,
-                    'min_price' => $priceFloat,
+                    'our_price' => $priceFloat,
+                    'min_price' => $minFloor,
                 ]);
 
                 try {
-                    $constraintResult = $service->updateCompetitivePriceConstraints($skuForAmazon, $priceFloat);
+                    $constraintResult = $service->updateCompetitivePriceConstraints($skuForAmazon, $minFloor);
 
                     if (isset($constraintResult['errors']) && !empty($constraintResult['errors'])) {
                         Log::warning('Amazon minimum price constraint update failed (non-blocking)', [
@@ -1766,11 +1769,11 @@ class OverallAmazonController extends Controller
                     } else {
                         Log::info('Amazon minimum price constraint updated successfully', [
                             'sku' => $skuForAmazon,
-                            'min_price' => $priceFloat,
+                            'min_price' => $minFloor,
                         ]);
                         $minPriceResult = [
                             'ok' => true,
-                            'min_price' => $priceFloat,
+                            'min_price' => $minFloor,
                         ];
                     }
                 } catch (\Exception $e) {

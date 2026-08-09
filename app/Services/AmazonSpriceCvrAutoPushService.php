@@ -388,7 +388,7 @@ class AmazonSpriceCvrAutoPushService
         }
 
         $apiSku = $sellerSku !== '' ? $sellerSku : $statusSku;
-        // updateAmazonPriceUS sets our_price + minimum_seller_allowed_price together
+        // updateAmazonPriceUS sets our_price + minimum_seller_allowed_price (min = our_price × 0.95)
         $result = $api->updateAmazonPriceUS($apiSku, $price);
 
         if (isset($result['errors']) && ! empty($result['errors'])) {
@@ -403,14 +403,15 @@ class AmazonSpriceCvrAutoPushService
             return false;
         }
 
-        // Explicit min-price merge as backup (same floor as listing price)
+        // Explicit min-price merge as backup (5% below listing price)
+        $minFloor = $api->minSellerAllowedPriceFromOurPrice($price);
         try {
-            $minResult = $api->updateCompetitivePriceConstraints($apiSku, $price);
+            $minResult = $api->updateCompetitivePriceConstraints($apiSku, $minFloor);
             if (isset($minResult['errors']) && ! empty($minResult['errors'])) {
                 Log::warning('[AmazonSpriceCvrAutoPush] min price update failed (non-blocking)', [
                     'status_sku' => $statusSku,
                     'amazon_api_sku' => $apiSku,
-                    'min_price' => $price,
+                    'min_price' => $minFloor,
                     'errors' => $minResult['errors'],
                 ]);
             }
