@@ -81,27 +81,29 @@ class Ebay1PromotionService
             ];
         }
 
+        $apiSku = trim((string) ($metric->sku ?: $sku));
+
         if ($promoId !== '') {
-            $updated = $this->updatePromotion($token, $promoId, $itemId, $sku, $pctInt, $imageUrl);
+            $updated = $this->updatePromotion($token, $promoId, $itemId, $apiSku, $pctInt, $imageUrl);
             if ($updated['success']) {
                 $this->resumeIfNeeded($token, $promoId);
                 $this->persistDv($dv, $val, $promoId, $pctInt);
 
                 return [
                     'success' => true,
-                    'message' => 'eBay1 promotion updated to '.$pctInt.'%',
+                    'message' => 'eBay1 promotion updated to '.$pctInt.'% (SKU '.$apiSku.')',
                     'promotion_id' => $promoId,
                     'percent' => (float) $pctInt,
                 ];
             }
             Log::warning('eBay1 promotion update failed; creating new', [
-                'sku' => $sku,
+                'sku' => $apiSku,
                 'promotion_id' => $promoId,
                 'error' => $updated['message'] ?? '',
             ]);
         }
 
-        $created = $this->createPromotion($token, $itemId, $sku, $pctInt, $imageUrl);
+        $created = $this->createPromotion($token, $itemId, $apiSku, $pctInt, $imageUrl);
         if (! $created['success']) {
             return $created;
         }
@@ -110,7 +112,7 @@ class Ebay1PromotionService
 
         return [
             'success' => true,
-            'message' => 'eBay1 promotion created at '.$pctInt.'%',
+            'message' => 'eBay1 promotion created at '.$pctInt.'% (SKU '.$apiSku.')',
             'promotion_id' => $newId,
             'percent' => (float) $pctInt,
         ];
@@ -275,9 +277,14 @@ class Ebay1PromotionService
             'promotionStatus' => 'SCHEDULED',
             'promotionType' => 'ORDER_DISCOUNT',
             'promotionImageUrl' => $imageUrl,
+            // Attach by SKU so the promotion lists the SKU (not only listing id)
             'inventoryCriterion' => [
                 'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
-                'listingIds' => [$itemId],
+                'inventoryItems' => [
+                    [
+                        'inventoryReferenceId' => $sku,
+                    ],
+                ],
             ],
             'discountRules' => [
                 [

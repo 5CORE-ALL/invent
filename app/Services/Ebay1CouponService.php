@@ -82,28 +82,31 @@ class Ebay1CouponService
             ];
         }
 
+        // Prefer metric SKU casing — Seller Hub attaches inventory by custom label / SKU
+        $apiSku = trim((string) ($metric->sku ?: $sku));
+
         if ($promoId !== '') {
-            $updated = $this->updateMarkdown($token, $promoId, $itemId, $sku, $pctInt, $imageUrl);
+            $updated = $this->updateMarkdown($token, $promoId, $itemId, $apiSku, $pctInt, $imageUrl);
             if ($updated['success']) {
                 $this->resumeIfNeeded($token, $promoId);
                 $this->persistDv($dv, $val, $promoId, $pctInt);
 
                 return [
                     'success' => true,
-                    'message' => 'eBay1 coupon updated to '.$pctInt.'%',
+                    'message' => 'eBay1 coupon updated to '.$pctInt.'% (SKU '.$apiSku.')',
                     'promotion_id' => $promoId,
                     'percent' => (float) $pctInt,
                 ];
             }
             // Stale id — create a new one
             Log::warning('eBay1 coupon update failed; creating new', [
-                'sku' => $sku,
+                'sku' => $apiSku,
                 'promotion_id' => $promoId,
                 'error' => $updated['message'] ?? '',
             ]);
         }
 
-        $created = $this->createMarkdown($token, $itemId, $sku, $pctInt, $imageUrl);
+        $created = $this->createMarkdown($token, $itemId, $apiSku, $pctInt, $imageUrl);
         if (! $created['success']) {
             return $created;
         }
@@ -112,7 +115,7 @@ class Ebay1CouponService
 
         return [
             'success' => true,
-            'message' => 'eBay1 coupon created at '.$pctInt.'%',
+            'message' => 'eBay1 coupon created at '.$pctInt.'% (SKU '.$apiSku.')',
             'promotion_id' => $newId,
             'percent' => (float) $pctInt,
         ];
@@ -274,6 +277,8 @@ class Ebay1CouponService
             'endDate' => $end,
             'promotionStatus' => 'SCHEDULED',
             'promotionImageUrl' => $imageUrl,
+            // Attach by SKU (inventoryItems) so Seller Hub shows the SKU and discount goes live.
+            // listingIds alone can create a RUNNING promo that does not list the SKU in UI.
             'selectedInventoryDiscounts' => [
                 [
                     'discountBenefit' => [
@@ -281,7 +286,11 @@ class Ebay1CouponService
                     ],
                     'inventoryCriterion' => [
                         'inventoryCriterionType' => 'INVENTORY_BY_VALUE',
-                        'listingIds' => [$itemId],
+                        'inventoryItems' => [
+                            [
+                                'inventoryReferenceId' => $sku,
+                            ],
+                        ],
                     ],
                 ],
             ],
