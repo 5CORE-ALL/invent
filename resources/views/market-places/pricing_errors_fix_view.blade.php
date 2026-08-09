@@ -150,6 +150,56 @@
             background-color: #198754 !important;
             border-color: #198754 !important;
         }
+        /* CPN $ / CPN % / DSC — same UX as /price-increase OV L30 */
+        .pef-promo-cell {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+        }
+        .pef-promo-cell.has-val { color: #0f172a; }
+        .tabulator-row .tabulator-cell[tabulator-field="cpn_dollar"],
+        .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
+        .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
+        .tabulator-row .tabulator-cell[tabulator-field="dsc"] {
+            padding: 2px 4px !important;
+        }
+        #pef-dil-prmt-table .pef-dil-prmt-input,
+        #pef-cvr-cpn-table .pef-cvr-cpn-input,
+        #pef-lmp-disc-table .pef-lmp-disc-input {
+            max-width: 90px;
+            margin-left: auto;
+            text-align: right;
+            font-weight: 600;
+        }
+        /* STD PRC — same teal header as /price-increase OV L30 */
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="standard_price"] {
+            background: #20c997 !important;
+            color: #000 !important;
+        }
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="standard_price"] .tabulator-col-title {
+            color: #000 !important;
+            font-weight: 700;
+        }
+        .pef-std-prc-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-weight: 600;
+        }
+        .pef-std-prc-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        #pef-dil-prmt-table tbody tr td:first-child,
+        #pef-cvr-cpn-table tbody tr td:first-child,
+        #pef-lmp-disc-table tbody tr td:first-child {
+            font-weight: 600;
+            color: #334155;
+        }
         #pef-dil-filter-btn .status-circle,
         #pef-gpft-filter-btn .status-circle,
         #pef-groi-filter-btn .status-circle { margin-right: 6px; }
@@ -477,6 +527,19 @@
                         </div>
                         <input type="hidden" id="pef-dil-filter" value="all">
 
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="pef-dil-vs-prmt-btn"
+                            title="Dil% slabs vs PRMT% rules — edit and apply as PRMT %">
+                            <i class="fas fa-sliders-h"></i> Dil vs PRMT
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="pef-cvr-vs-cpn-btn"
+                            title="CVR% slabs vs CPN% rules — edit and apply as CPN %">
+                            <i class="fas fa-percentage"></i> CVR vs CPN
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="pef-lmp-vs-disc-btn"
+                            title="LMP diff% slabs vs AMT — edit and apply as DISC ($)">
+                            <i class="fas fa-tags"></i> LMP vs DISC
+                        </button>
+
                         <div class="dropdown">
                             <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
                                 id="pef-gpft-filter-btn" data-bs-toggle="dropdown" aria-expanded="false"
@@ -627,6 +690,157 @@
             </div>
         </div>
     </div>
+
+    {{-- LMP vs DISC: LMP-diff% slabs with editable AMT → DISC $ --}}
+    <div class="modal fade" id="pefLmpVsDiscModal" tabindex="-1" aria-labelledby="pefLmpVsDiscModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="pefLmpVsDiscModalLabel">
+                        <i class="fas fa-tags me-1"></i> LMP vs DISC
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map <strong>LMP diff%</strong> <span class="text-muted">((Price − LMP) ÷ LMP × 100)</span>
+                        to <strong>AMT</strong> ($). First-time defaults: <strong>&gt; 100% → 0</strong> up to
+                        <strong>0–10% → 10</strong>. Apply fills the <strong>DISC</strong> column.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-lmp-disc-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">LMP diff%</th>
+                                    <th style="width:45%;" class="text-end">AMT</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pef-lmp-disc-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="pef-lmp-disc-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-lmp-disc-reset-btn"
+                        title="Reset AMT to first-time defaults (0–10)">
+                        Reset defaults
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="pef-lmp-disc-save-btn">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="pef-lmp-disc-apply-selected-btn"
+                        title="Apply AMT as DISC $ on checked rows">
+                        Apply to selected
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="pef-lmp-disc-apply-visible-btn"
+                        title="Apply AMT as DISC $ on all visible rows">
+                        Apply to visible
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- CVR vs CPN: CVR% slabs with editable CPN% --}}
+    <div class="modal fade" id="pefCvrVsCpnModal" tabindex="-1" aria-labelledby="pefCvrVsCpnModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="pefCvrVsCpnModalLabel">
+                        <i class="fas fa-percentage me-1"></i> CVR vs CPN
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map CVR% slabs to CPN%. First-time defaults: <strong>&gt; 7% → 0</strong> up to
+                        <strong>CVR 0% → 10</strong>. Save stores rules; Apply fills <strong>CPN %</strong> from each row’s CVR%.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-cvr-cpn-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">CVR%</th>
+                                    <th style="width:45%;" class="text-end">CPN %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pef-cvr-cpn-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="pef-cvr-cpn-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-cvr-cpn-reset-btn"
+                        title="Reset CPN% to first-time defaults (0–10)">
+                        Reset defaults
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="pef-cvr-cpn-save-btn">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="pef-cvr-cpn-apply-selected-btn"
+                        title="Apply CPN% from CVR slabs on checked rows">
+                        Apply to selected
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="pef-cvr-cpn-apply-visible-btn"
+                        title="Apply CPN% from CVR slabs on all visible rows">
+                        Apply to visible
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Dil vs PRMT: 11 Dil% slabs with editable PRMT% --}}
+    <div class="modal fade" id="pefDilVsPrmtModal" tabindex="-1" aria-labelledby="pefDilVsPrmtModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="pefDilVsPrmtModalLabel">
+                        <i class="fas fa-sliders-h me-1"></i> Dil vs PRMT
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2">
+                        Map Dil% slabs to PRMT%. First-time defaults: <strong>&gt; 100% → 0</strong> up to
+                        <strong>0–10% → 10</strong>. Save stores rules; Apply fills the <strong>PRMT %</strong> column from each row’s Dil%.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-dil-prmt-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:55%;">Dil%</th>
+                                    <th style="width:45%;" class="text-end">PRMT %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pef-dil-prmt-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="pef-dil-prmt-status"></div>
+                </div>
+                <div class="modal-footer py-2 flex-wrap gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-dil-prmt-reset-btn"
+                        title="Reset PRMT% to first-time defaults (0–10)">
+                        Reset defaults
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="pef-dil-prmt-save-btn">
+                        <i class="fas fa-save"></i> Save
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="pef-dil-prmt-apply-selected-btn"
+                        title="Apply Dil→PRMT % on checked rows">
+                        Apply to selected
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary" id="pef-dil-prmt-apply-visible-btn"
+                        title="Apply Dil→PRMT % on all visible rows">
+                        Apply to visible
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -637,6 +851,9 @@
     const selectedIds = new Set();
     /** Pre-embedded from DB on page render — no Ajax needed on first open */
     const PEF_INITIAL_ROWS = @json($initial_rows ?? []);
+    const PEF_DIL_PRMT_DEFAULTS = @json($dil_prmt_rules ?? []);
+    const PEF_CVR_CPN_DEFAULTS = @json($cvr_cpn_rules ?? []);
+    const PEF_LMP_DISC_DEFAULTS = @json($lmp_disc_rules ?? []);
     /** Full dataset — filters work client-side; Reload refreshes via Ajax */
     let pulledRows = Array.isArray(PEF_INITIAL_ROWS) ? PEF_INITIAL_ROWS.slice() : [];
     let dataLoaded = pulledRows.length > 0;
@@ -1345,6 +1562,151 @@
         return parseFloat(String(v).replace(/[$,\s]/g, ''));
     }
 
+    // ==================== CPN $ / CPN % / DSC (same logic as /price-increase) ====================
+    // UI-only discount tools → rewrite SPRICE → save via /cvr-master-save-suggested-data
+    // (same marketplace data_view SPRICE columns as price-increase).
+    function parsePefDollarAmount(raw) {
+        const s = String(raw == null ? '' : raw).trim();
+        if (!s || /%/.test(s)) return null;
+        const num = parseFloat(s.replace(/[$,\s]/g, '').replace(',', '.'));
+        if (!isFinite(num) || num === 0) return null;
+        return { type: 'dollar', value: Math.abs(num) };
+    }
+    function parsePefPercentAmount(raw) {
+        const s = String(raw == null ? '' : raw).trim();
+        if (!s) return null;
+        const num = parseFloat(s.replace(/[%$,\s]/g, '').replace(',', '.'));
+        if (!isFinite(num) || num === 0) return null;
+        return { type: 'percent', value: Math.abs(num) };
+    }
+    function applyPromoToSpriceBase(base, promo) {
+        if (!(base > 0) || !promo) return null;
+        const next = promo.type === 'percent'
+            ? base * (1 - (promo.value / 100))
+            : base - promo.value;
+        return Math.max(0.01, round2(next));
+    }
+    function pefPromoFieldMeta(kind, mode) {
+        if (kind === 'dsc') {
+            return {
+                label: 'DSC',
+                field: 'dsc',
+                appliedKey: '_dsc_applied',
+                parse: parsePefDollarAmount,
+                err: 'Enter DSC $ (e.g. 1)',
+                skipPairSync: false,
+            };
+        }
+        if (kind === 'prmt') {
+            return {
+                label: 'PRMT %',
+                field: 'prmt_pct',
+                appliedKey: '_prmt_pct_applied',
+                parse: parsePefPercentAmount,
+                err: 'Enter PRMT % (e.g. 10)',
+                skipPairSync: true,
+            };
+        }
+        if (mode === 'percent') {
+            return {
+                label: 'CPN %',
+                field: 'cpn_pct',
+                appliedKey: '_cpn_pct_applied',
+                parse: parsePefPercentAmount,
+                err: 'Enter CPN % (e.g. 10)',
+                skipPairSync: true,
+            };
+        }
+        return {
+            label: 'CPN $',
+            field: 'cpn_dollar',
+            appliedKey: '_cpn_dollar_applied',
+            parse: parsePefDollarAmount,
+            err: 'Enter CPN $ (e.g. 1)',
+            skipPairSync: true,
+        };
+    }
+    function getPefDiscountBase(d, appliedKey, mode) {
+        let base = Number(d.sprice) > 0 ? Number(d.sprice) : Number(d.price) || 0;
+        const prev = Number(d[appliedKey] || 0) || 0;
+        if (mode === 'dollar' && prev > 0) base = base + prev;
+        else if (mode === 'percent' && prev > 0 && prev < 100) base = base / (1 - (prev / 100));
+        return round2(base);
+    }
+    function fmtPefPromoCell(value, placeholder) {
+        if (value === null || value === undefined || value === '') {
+            return '<span class="pef-promo-cell">' + placeholder + '</span>';
+        }
+        return '<span class="pef-promo-cell has-val">' + String(value) + '</span>';
+    }
+    /**
+     * Apply CPN/DSC to one row (or all selected if the edited row is checked).
+     * Saves discounted SPRICE to each marketplace data_view — same DB path as /price-increase.
+     */
+    function applyPefPromoFromCell(cell, kind, mode) {
+        const meta = pefPromoFieldMeta(kind, mode);
+        const editedRow = cell.getRow();
+        const raw = cell.getValue();
+        const promo = meta.parse(raw);
+        if (!promo) {
+            if (String(raw == null ? '' : raw).trim() !== '') toast(meta.err, 'error');
+            return;
+        }
+
+        let targets = [{ row: editedRow, d: editedRow.getData() }];
+        // Checked rows: same idea as price-increase "checked channels"
+        const selected = collectSelectedRows();
+        const editedId = editedRow.getData().id;
+        if (selected.length > 1 && selectedIds.has(editedId)) {
+            targets = selected;
+        }
+
+        const displayVal = promo.type === 'percent'
+            ? String(promo.value)
+            : String(round2(promo.value));
+        let ok = 0;
+        let skipped = 0;
+
+        targets.forEach(function(item) {
+            const d = item.row.getData();
+            const base = getPefDiscountBase(d, meta.appliedKey, mode === 'percent' ? 'percent' : 'dollar');
+            const newPrice = applyPromoToSpriceBase(base, promo);
+            if (!(base > 0) || !(newPrice > 0)) {
+                skipped++;
+                return;
+            }
+            const patch = {};
+            patch[meta.field] = displayVal;
+            patch[meta.appliedKey] = promo.value;
+            patch.sprice = newPrice;
+            item.row.update(patch);
+            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+            if (cacheIdx >= 0) {
+                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
+            }
+            saveSprice(item.row, {
+                skipPairSync: meta.skipPairSync,
+                silent: true,
+            });
+            ok++;
+        });
+
+        if (!(ok > 0)) {
+            toast('No SPRICE/Price to discount', 'error');
+            return;
+        }
+        const modeLabel = promo.type === 'percent'
+            ? (promo.value + '% less on SPRICE')
+            : ('$' + round2(promo.value).toFixed(2) + ' less on SPRICE');
+        toast(
+            meta.label + ': ' + modeLabel + ' → ' + ok + ' row(s)'
+                + (skipped ? ('; skipped ' + skipped) : '')
+                + '. Use Push to go live.',
+            'success'
+        );
+        updatePushBtn();
+    }
+
     function normMp(name) {
         return String(name || '').toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
     }
@@ -1438,6 +1800,47 @@
                 }));
                 Object.assign(patch, live2, sug2);
             }
+            // Channel CVR from breakdown views/l30 when present
+            if (match.views != null && isFinite(Number(match.views))) {
+                patch.views = Number(match.views);
+            }
+            const viewsForCvr = Number(patch.views != null ? patch.views : d.views) || 0;
+            const l30ForCvr = Number(patch.l30 != null ? patch.l30 : d.l30) || 0;
+            if (viewsForCvr > 0) {
+                patch.cvr = round2((l30ForCvr / viewsForCvr) * 100);
+            } else if (d.cvr != null) {
+                patch.cvr = d.cvr;
+            }
+            // LMP / LMP diff% for LMP vs DISC (breakdown may send lmp / lmp_price)
+            let lmpKeep = d.lmp;
+            if (match.lmp != null && isFinite(Number(match.lmp)) && Number(match.lmp) > 0) {
+                lmpKeep = round2(Number(match.lmp));
+            } else if (match.lmp_price != null && isFinite(Number(match.lmp_price)) && Number(match.lmp_price) > 0) {
+                lmpKeep = round2(Number(match.lmp_price));
+            }
+            patch.lmp = lmpKeep != null && Number(lmpKeep) > 0 ? Number(lmpKeep) : d.lmp;
+            const priceForLmp = Number(patch.price != null ? patch.price : d.price) || 0;
+            const lmpForDiff = Number(patch.lmp) || 0;
+            if (priceForLmp > 0 && lmpForDiff > 0) {
+                patch.lmp_diff = round2(((priceForLmp - lmpForDiff) / lmpForDiff) * 100);
+            } else if (d.lmp_diff != null) {
+                patch.lmp_diff = d.lmp_diff;
+            }
+            // STD PRC from breakdown (amazon_data_view.STANDARD_PRICE — same as /price-increase)
+            if (match.standard_price != null && isFinite(Number(match.standard_price)) && Number(match.standard_price) > 0) {
+                patch.standard_price = round2(Number(match.standard_price));
+            } else if (d.standard_price != null) {
+                patch.standard_price = d.standard_price;
+            }
+            // Keep session CPN/PRMT/DSC UI fields (not in breakdown / DB)
+            patch.cpn_dollar = d.cpn_dollar;
+            patch.cpn_pct = d.cpn_pct;
+            patch.prmt_pct = d.prmt_pct;
+            patch.dsc = d.dsc;
+            patch._cpn_dollar_applied = d._cpn_dollar_applied;
+            patch._cpn_pct_applied = d._cpn_pct_applied;
+            patch._prmt_pct_applied = d._prmt_pct_applied;
+            patch._dsc_applied = d._dsc_applied;
             row.update(patch);
             // Keep pulledRows cache in sync for this id only
             const idx = pulledRows.findIndex(function(r) { return r.id === d.id; });
@@ -1623,6 +2026,33 @@
                     },
                 },
                 {
+                    title: 'Reviews',
+                    field: 'reviews',
+                    width: 72,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    sorter: 'number',
+                    sorterParams: { alignEmptyValues: 'bottom' },
+                    cssClass: 'pef-sortable',
+                    headerTooltip: 'Review count from /reviews (sku_reviews) for this SKU × channel',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const n = Number(cell.getValue());
+                        const count = isFinite(n) && n > 0 ? Math.round(n) : 0;
+                        const sku = encodeURIComponent(String(d.sku || ''));
+                        const mp = encodeURIComponent(String(d.marketplace || d.channel_key || ''));
+                        if (!(sku && mp)) {
+                            return count > 0 ? String(count) : '<span class="text-muted">0</span>';
+                        }
+                        const href = '/reviews?sku=' + sku + '&marketplace=' + mp;
+                        const label = count > 0 ? String(count) : '0';
+                        const cls = count > 0 ? 'text-primary fw-semibold' : 'text-muted';
+                        return '<a href="' + href + '" target="_blank" rel="noopener" class="' + cls
+                            + '" title="Open /reviews for this SKU × channel">' + label + '</a>';
+                    },
+                },
+                {
                     title: 'INV', field: 'inv', width: 56, hozAlign: 'center', vertAlign: 'middle',
                     headerSort: true, sorter: 'number', sorterParams: { alignEmptyValues: 'bottom' },
                     cssClass: 'pef-sortable',
@@ -1676,6 +2106,47 @@
                     },
                 },
                 {
+                    title: 'STD PRC',
+                    field: 'standard_price',
+                    width: 78,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    sorter: 'number',
+                    sorterParams: { alignEmptyValues: 'bottom' },
+                    cssClass: 'pef-sortable',
+                    headerTooltip: 'Standard Price (STD PRC) — same as /price-increase (amazon_data_view.STANDARD_PRICE). Shared across channels for this SKU. Dot: red=below channel price, green=above, yellow=hold.',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const std = Number(cell.getValue());
+                        if (!isFinite(std) || !(std > 0)) {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        const price = Number(d.price) || 0;
+                        let color = '#ffc107';
+                        let tip = 'Hold';
+                        if (price > 0) {
+                            const s2 = std.toFixed(2);
+                            const p2 = price.toFixed(2);
+                            if (parseFloat(s2) < parseFloat(p2)) {
+                                color = '#dc3545';
+                                tip = 'Reduced vs channel price';
+                            } else if (parseFloat(s2) > parseFloat(p2)) {
+                                color = '#28a745';
+                                tip = 'Increase vs channel price';
+                            } else {
+                                tip = 'Hold (matches channel price)';
+                            }
+                        }
+                        return '<span class="pef-std-prc-cell" title="' + tip.replace(/"/g, '&quot;')
+                            + ' — SP (Standard Price)">'
+                            + '<span class="pef-std-prc-dot" style="background:' + color + ';"></span>'
+                            + std.toFixed(2)
+                            + '</span>';
+                    },
+                    accessorDownload: function(value) { return value; },
+                },
+                {
                     title: 'Price',
                     field: 'price',
                     width: 72,
@@ -1688,6 +2159,75 @@
                     headerTooltip: 'Channel listing price',
                     formatter: fmtMoney,
                     accessorDownload: function(value) { return value; },
+                },
+                {
+                    title: 'CPN $',
+                    field: 'cpn_dollar',
+                    width: 62,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: false,
+                    visible: false,
+                    editable: true,
+                    editor: 'input',
+                    headerTooltip: '$ less on checked channels (same as /price-increase CPN $ → saves SPRICE)',
+                    formatter: function(cell) {
+                        return fmtPefPromoCell(cell.getValue(), '$');
+                    },
+                    cellEdited: function(cell) {
+                        applyPefPromoFromCell(cell, 'cpn', 'dollar');
+                    },
+                },
+                {
+                    title: 'PRMT %',
+                    field: 'prmt_pct',
+                    width: 64,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: false,
+                    editable: true,
+                    editor: 'input',
+                    headerTooltip: 'Promotion % — from Dil vs PRMT rules (or edit manually). Applies % less on SPRICE.',
+                    formatter: function(cell) {
+                        return fmtPefPromoCell(cell.getValue(), '%');
+                    },
+                    cellEdited: function(cell) {
+                        applyPefPromoFromCell(cell, 'prmt', 'percent');
+                    },
+                },
+                {
+                    title: 'CPN %',
+                    field: 'cpn_pct',
+                    width: 62,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: false,
+                    editable: true,
+                    editor: 'input',
+                    headerTooltip: '% less on checked channels (same as /price-increase CPN % → saves SPRICE)',
+                    formatter: function(cell) {
+                        return fmtPefPromoCell(cell.getValue(), '%');
+                    },
+                    cellEdited: function(cell) {
+                        applyPefPromoFromCell(cell, 'cpn', 'percent');
+                    },
+                },
+                {
+                    title: 'DSC',
+                    field: 'dsc',
+                    width: 56,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: false,
+                    editable: true,
+                    editor: 'input',
+                    headerTooltip: 'DSC $ off each channel’s own SPRICE (dollar only, no %) — same as /price-increase',
+                    formatter: function(cell) {
+                        return fmtPefPromoCell(cell.getValue(), '$1');
+                    },
+                    cellEdited: function(cell) {
+                        applyPefPromoFromCell(cell, 'dsc', 'dollar');
+                    },
                 },
                 {
                     title: 'GROI%', field: 'groi', width: 64, hozAlign: 'center', vertAlign: 'middle',
@@ -1924,15 +2464,16 @@
         pullInProgress = false;
     }
 
-    function saveSprice(row) {
+    function saveSprice(row, opts) {
+        opts = opts || {};
         const d = row.getData();
         const sprice = round2(parseSpriceValue(d.sprice));
         if (!d.sku || !d.marketplace) {
-            toast('Save failed: missing SKU/marketplace', 'error');
+            if (!opts.silent) toast('Save failed: missing SKU/marketplace', 'error');
             return;
         }
         if (!(sprice > 0)) {
-            toast('Enter a SPRICE greater than 0', 'error');
+            if (!opts.silent) toast('Enter a SPRICE greater than 0', 'error');
             return;
         }
 
@@ -1953,21 +2494,25 @@
         const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
         if (cacheIdx >= 0) pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], localPatch);
 
+        const payload = {
+            sku: d.sku,
+            marketplace: d.marketplace,
+            sprice: sprice,
+            sgpft: local.sgpft || 0,
+            // Amazon/eBay: SROI = net; SGROI = gross
+            sroi: local.snroi != null ? local.snroi : (local.sroi || 0),
+            sgroi: local.sroi || 0,
+            spft: local.snpft || 0,
+            _token: csrf,
+        };
+        // CPN applies one channel at a time (same as /price-increase skip_pair_sync)
+        if (opts.skipPairSync) payload.skip_pair_sync = 1;
+
         $.ajax({
             url: '/cvr-master-save-suggested-data',
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-            data: {
-                sku: d.sku,
-                marketplace: d.marketplace,
-                sprice: sprice,
-                sgpft: local.sgpft || 0,
-                // Amazon/eBay: SROI = net; SGROI = gross
-                sroi: local.snroi != null ? local.snroi : (local.sroi || 0),
-                sgroi: local.sroi || 0,
-                spft: local.snpft || 0,
-                _token: csrf,
-            },
+            data: payload,
         }).done(async function() {
             // Keep saved SPRICE even if breakdown refresh is slow/fails
             row.update(Object.assign({}, localPatch, { success: 'saved' }));
@@ -1980,15 +2525,29 @@
                 if (!(Number(after.sprice) > 0)) {
                     row.update(Object.assign({}, localPatch, { success: 'saved' }));
                 } else {
-                    row.update({ success: 'saved' });
+                    // Preserve CPN/DSC UI fields — breakdown has no coupon keys
+                    const keep = {
+                        success: 'saved',
+                        cpn_dollar: after.cpn_dollar != null ? after.cpn_dollar : d.cpn_dollar,
+                        cpn_pct: after.cpn_pct != null ? after.cpn_pct : d.cpn_pct,
+                        prmt_pct: after.prmt_pct != null ? after.prmt_pct : d.prmt_pct,
+                        dsc: after.dsc != null ? after.dsc : d.dsc,
+                        _cpn_dollar_applied: after._cpn_dollar_applied != null ? after._cpn_dollar_applied : d._cpn_dollar_applied,
+                        _cpn_pct_applied: after._cpn_pct_applied != null ? after._cpn_pct_applied : d._cpn_pct_applied,
+                        _prmt_pct_applied: after._prmt_pct_applied != null ? after._prmt_pct_applied : d._prmt_pct_applied,
+                        _dsc_applied: after._dsc_applied != null ? after._dsc_applied : d._dsc_applied,
+                    };
+                    row.update(keep);
                 }
             } catch (e) {
                 row.update({ success: 'saved' });
             }
-            toast('SPRICE saved for ' + d.sku + ' / ' + d.channel, 'success');
+            if (!opts.silent) toast('SPRICE saved for ' + d.sku + ' / ' + d.channel, 'success');
             updatePushBtn();
         }).fail(function(xhr) {
-            toast('Save failed: ' + (xhr.responseJSON?.error || xhr.responseJSON?.message || 'error'), 'error');
+            if (!opts.silent) {
+                toast('Save failed: ' + (xhr.responseJSON?.error || xhr.responseJSON?.message || 'error'), 'error');
+            }
             row.update({ success: 'error' });
         });
     }
@@ -2638,6 +3197,638 @@
             applyStatusFilter();
         }, 200);
     }
+
+    // ==================== Dil vs PRMT modal ====================
+    let pefDilPrmtRules = Array.isArray(PEF_DIL_PRMT_DEFAULTS) && PEF_DIL_PRMT_DEFAULTS.length
+        ? PEF_DIL_PRMT_DEFAULTS.map(function(r) { return Object.assign({}, r); })
+        : [
+            { key: '0-10', label: '0–10%', prmt: 10 },
+            { key: '10-20', label: '10–20%', prmt: 9 },
+            { key: '20-30', label: '20–30%', prmt: 8 },
+            { key: '30-40', label: '30–40%', prmt: 7 },
+            { key: '40-50', label: '40–50%', prmt: 6 },
+            { key: '50-60', label: '50–60%', prmt: 5 },
+            { key: '60-70', label: '60–70%', prmt: 4 },
+            { key: '70-80', label: '70–80%', prmt: 3 },
+            { key: '80-90', label: '80–90%', prmt: 2 },
+            { key: '90-100', label: '90–100%', prmt: 1 },
+            { key: 'gt-100', label: '> 100%', prmt: 0 },
+        ];
+
+    function pefDilSlabKey(dil) {
+        const n = Number(dil);
+        if (!isFinite(n) || n < 0) return '0-10';
+        if (n > 100) return 'gt-100';
+        if (n >= 90) return '90-100';
+        if (n >= 80) return '80-90';
+        if (n >= 70) return '70-80';
+        if (n >= 60) return '60-70';
+        if (n >= 50) return '50-60';
+        if (n >= 40) return '40-50';
+        if (n >= 30) return '30-40';
+        if (n >= 20) return '20-30';
+        if (n >= 10) return '10-20';
+        return '0-10';
+    }
+
+    function pefPrmtForDil(dil) {
+        const key = pefDilSlabKey(dil);
+        const rule = pefDilPrmtRules.find(function(r) { return r.key === key; });
+        if (!rule) return 0;
+        const n = Number(rule.prmt);
+        return isFinite(n) && n >= 0 ? n : 0;
+    }
+
+    function renderDilPrmtModalTable() {
+        const $tb = $('#pef-dil-prmt-tbody').empty();
+        pefDilPrmtRules.forEach(function(r, idx) {
+            const prmt = isFinite(Number(r.prmt)) ? Number(r.prmt) : 0;
+            $tb.append(
+                '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                + '<td>' + String(r.label || r.key) + '</td>'
+                + '<td class="text-end">'
+                + '<input type="number" class="form-control form-control-sm pef-dil-prmt-input" '
+                + 'min="0" step="0.1" value="' + prmt + '" data-idx="' + idx + '" '
+                + 'title="PRMT % for Dil ' + String(r.label || r.key) + '">'
+                + '</td></tr>'
+            );
+        });
+    }
+
+    function readDilPrmtRulesFromModal() {
+        $('#pef-dil-prmt-tbody tr').each(function() {
+            const key = String($(this).attr('data-key') || '');
+            const val = parseFloat($(this).find('.pef-dil-prmt-input').val());
+            const rule = pefDilPrmtRules.find(function(r) { return r.key === key; });
+            if (!rule) return;
+            rule.prmt = (isFinite(val) && val >= 0) ? val : 0;
+        });
+        return pefDilPrmtRules.map(function(r) {
+            return { key: r.key, label: r.label, prmt: Number(r.prmt) || 0 };
+        });
+    }
+
+    async function loadDilPrmtRules() {
+        $('#pef-dil-prmt-status').text('Loading…');
+        try {
+            const res = await $.ajax({
+                url: '/pricing-errors-fix-dil-prmt',
+                method: 'GET',
+                dataType: 'json',
+            });
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                pefDilPrmtRules = res.rules.map(function(r) { return Object.assign({}, r); });
+            }
+            renderDilPrmtModalTable();
+            $('#pef-dil-prmt-status').text(res && res.is_default
+                ? 'Using first-time defaults (0–10). Save to keep your edits.'
+                : 'Loaded saved Dil vs PRMT rules.');
+        } catch (e) {
+            renderDilPrmtModalTable();
+            $('#pef-dil-prmt-status').text('Could not load saved rules — showing defaults.');
+        }
+    }
+
+    function saveDilPrmtRules() {
+        const rules = readDilPrmtRulesFromModal();
+        const $btn = $('#pef-dil-prmt-save-btn');
+        const html = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+        $.ajax({
+            url: '/pricing-errors-fix-dil-prmt',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            data: { rules: rules, _token: csrf },
+        }).done(function(res) {
+            if (res && Array.isArray(res.rules)) {
+                pefDilPrmtRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                renderDilPrmtModalTable();
+            }
+            toast('Dil vs PRMT rules saved', 'success');
+            $('#pef-dil-prmt-status').text('Saved.');
+        }).fail(function(xhr) {
+            toast('Save failed: ' + (xhr.responseJSON?.message || 'error'), 'error');
+        }).always(function() {
+            $btn.prop('disabled', false).html(html);
+        });
+    }
+
+    /**
+     * Autopopulate PRMT % from Dil slabs → apply % discount on SPRICE.
+     */
+    function applyDilPrmtToTargets(targets, label) {
+        readDilPrmtRulesFromModal();
+        if (!targets.length) {
+            toast('No rows to apply', 'error');
+            return;
+        }
+        let ok = 0;
+        let skipped = 0;
+        targets.forEach(function(item) {
+            const d = item.row.getData();
+            const dil = Number(d.dil);
+            const prmt = pefPrmtForDil(dil);
+            if (!(prmt > 0)) {
+                // 0% = no discount — still stamp PRMT % for visibility
+                item.row.update({ prmt_pct: String(prmt), _prmt_pct_applied: 0 });
+                skipped++;
+                return;
+            }
+            const promo = { type: 'percent', value: prmt };
+            const base = getPefDiscountBase(d, '_prmt_pct_applied', 'percent');
+            const newPrice = applyPromoToSpriceBase(base, promo);
+            if (!(base > 0) || !(newPrice > 0)) {
+                skipped++;
+                return;
+            }
+            const patch = {
+                prmt_pct: String(prmt),
+                _prmt_pct_applied: prmt,
+                sprice: newPrice,
+            };
+            item.row.update(patch);
+            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+            if (cacheIdx >= 0) {
+                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
+            }
+            saveSprice(item.row, { skipPairSync: true, silent: true });
+            ok++;
+        });
+        toast(
+            'Dil vs PRMT (' + label + '): PRMT % applied to ' + ok + ' row(s)'
+                + (skipped ? ('; skipped ' + skipped) : '')
+                + '. Use Push to go live.',
+            ok ? 'success' : 'error'
+        );
+        updatePushBtn();
+        if (table) table.redraw(true);
+    }
+
+    $('#pef-dil-vs-prmt-btn').on('click', function() {
+        const modalEl = document.getElementById('pefDilVsPrmtModal');
+        if (!modalEl) return;
+        renderDilPrmtModalTable();
+        loadDilPrmtRules();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+    $('#pef-dil-prmt-reset-btn').on('click', function() {
+        pefDilPrmtRules = (Array.isArray(PEF_DIL_PRMT_DEFAULTS) && PEF_DIL_PRMT_DEFAULTS.length
+            ? PEF_DIL_PRMT_DEFAULTS
+            : pefDilPrmtRules
+        ).map(function(r) { return Object.assign({}, r); });
+        // Force first-time figure 0→10 if embedded defaults missing keys
+        const forced = [
+            ['0-10', '0–10%', 10], ['10-20', '10–20%', 9], ['20-30', '20–30%', 8],
+            ['30-40', '30–40%', 7], ['40-50', '40–50%', 6], ['50-60', '50–60%', 5],
+            ['60-70', '60–70%', 4], ['70-80', '70–80%', 3], ['80-90', '80–90%', 2],
+            ['90-100', '90–100%', 1], ['gt-100', '> 100%', 0],
+        ];
+        pefDilPrmtRules = forced.map(function(t) {
+            return { key: t[0], label: t[1], prmt: t[2] };
+        });
+        renderDilPrmtModalTable();
+        $('#pef-dil-prmt-status').text('Reset to first-time defaults (0–10). Save to persist.');
+    });
+    $('#pef-dil-prmt-save-btn').on('click', saveDilPrmtRules);
+    $('#pef-dil-prmt-apply-selected-btn').on('click', function() {
+        applyDilPrmtToTargets(collectSelectedRows(), 'selected');
+    });
+    $('#pef-dil-prmt-apply-visible-btn').on('click', function() {
+        if (!table) {
+            toast('Load data first', 'error');
+            return;
+        }
+        const targets = table.getRows('active').map(function(row) {
+            return { row: row, d: row.getData() };
+        });
+        if (!confirm('Apply Dil→PRMT % to ' + targets.length + ' visible row(s)?')) return;
+        applyDilPrmtToTargets(targets, 'visible');
+    });
+
+    // ==================== CVR vs CPN modal ====================
+    let pefCvrCpnRules = Array.isArray(PEF_CVR_CPN_DEFAULTS) && PEF_CVR_CPN_DEFAULTS.length
+        ? PEF_CVR_CPN_DEFAULTS.map(function(r) { return Object.assign({}, r); })
+        : [
+            { key: 'eq-0', label: '0%', cpn: 10 },
+            { key: '0.01-1', label: '0.01–1%', cpn: 9 },
+            { key: '1-1.5', label: '1–1.5%', cpn: 8 },
+            { key: '1.5-2', label: '1.5–2%', cpn: 7 },
+            { key: '2-3', label: '2–3%', cpn: 6 },
+            { key: '3-4', label: '3–4%', cpn: 5 },
+            { key: '4-5', label: '4–5%', cpn: 4 },
+            { key: '5-6', label: '5–6%', cpn: 3 },
+            { key: '6-6.5', label: '6–6.5%', cpn: 2 },
+            { key: '6.5-7', label: '6.5–7%', cpn: 1 },
+            { key: 'gt-7', label: '> 7%', cpn: 0 },
+        ];
+
+    function pefCvrSlabKey(cvr) {
+        const n = Number(cvr);
+        if (!isFinite(n) || n <= 0) return 'eq-0';
+        if (n > 7) return 'gt-7';
+        if (n >= 6.5) return '6.5-7';
+        if (n >= 6) return '6-6.5';
+        if (n >= 5) return '5-6';
+        if (n >= 4) return '4-5';
+        if (n >= 3) return '3-4';
+        if (n >= 2) return '2-3';
+        if (n >= 1.5) return '1.5-2';
+        if (n >= 1) return '1-1.5';
+        return '0.01-1'; // 0.01 ≤ cvr < 1
+    }
+
+    function pefCpnForCvr(cvr) {
+        const key = pefCvrSlabKey(cvr);
+        const rule = pefCvrCpnRules.find(function(r) { return r.key === key; });
+        if (!rule) return 0;
+        const n = Number(rule.cpn);
+        return isFinite(n) && n >= 0 ? n : 0;
+    }
+
+    function renderCvrCpnModalTable() {
+        const $tb = $('#pef-cvr-cpn-tbody').empty();
+        pefCvrCpnRules.forEach(function(r, idx) {
+            const cpn = isFinite(Number(r.cpn)) ? Number(r.cpn) : 0;
+            $tb.append(
+                '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                + '<td>' + String(r.label || r.key) + '</td>'
+                + '<td class="text-end">'
+                + '<input type="number" class="form-control form-control-sm pef-cvr-cpn-input" '
+                + 'min="0" step="0.1" value="' + cpn + '" data-idx="' + idx + '" '
+                + 'title="CPN % for CVR ' + String(r.label || r.key) + '">'
+                + '</td></tr>'
+            );
+        });
+    }
+
+    function readCvrCpnRulesFromModal() {
+        $('#pef-cvr-cpn-tbody tr').each(function() {
+            const key = String($(this).attr('data-key') || '');
+            const val = parseFloat($(this).find('.pef-cvr-cpn-input').val());
+            const rule = pefCvrCpnRules.find(function(r) { return r.key === key; });
+            if (!rule) return;
+            rule.cpn = (isFinite(val) && val >= 0) ? val : 0;
+        });
+        return pefCvrCpnRules.map(function(r) {
+            return { key: r.key, label: r.label, cpn: Number(r.cpn) || 0 };
+        });
+    }
+
+    async function loadCvrCpnRules() {
+        $('#pef-cvr-cpn-status').text('Loading…');
+        try {
+            const res = await $.ajax({
+                url: '/pricing-errors-fix-cvr-cpn',
+                method: 'GET',
+                dataType: 'json',
+            });
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
+            }
+            renderCvrCpnModalTable();
+            $('#pef-cvr-cpn-status').text(res && res.is_default
+                ? 'Using first-time defaults (0–10). Save to keep your edits.'
+                : 'Loaded saved CVR vs CPN rules.');
+        } catch (e) {
+            renderCvrCpnModalTable();
+            $('#pef-cvr-cpn-status').text('Could not load saved rules — showing defaults.');
+        }
+    }
+
+    function saveCvrCpnRules() {
+        const rules = readCvrCpnRulesFromModal();
+        const $btn = $('#pef-cvr-cpn-save-btn');
+        const html = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+        $.ajax({
+            url: '/pricing-errors-fix-cvr-cpn',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            data: { rules: rules, _token: csrf },
+        }).done(function(res) {
+            if (res && Array.isArray(res.rules)) {
+                pefCvrCpnRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                renderCvrCpnModalTable();
+            }
+            toast('CVR vs CPN rules saved', 'success');
+            $('#pef-cvr-cpn-status').text('Saved.');
+        }).fail(function(xhr) {
+            toast('Save failed: ' + (xhr.responseJSON?.message || 'error'), 'error');
+        }).always(function() {
+            $btn.prop('disabled', false).html(html);
+        });
+    }
+
+    function applyCvrCpnToTargets(targets, label) {
+        readCvrCpnRulesFromModal();
+        if (!targets.length) {
+            toast('No rows to apply', 'error');
+            return;
+        }
+        let ok = 0;
+        let skipped = 0;
+        targets.forEach(function(item) {
+            const d = item.row.getData();
+            let cvr = Number(d.cvr);
+            if (!isFinite(cvr) || cvr < 0) {
+                const views = Number(d.views) || 0;
+                const l30 = Number(d.l30) || 0;
+                cvr = views > 0 ? round2((l30 / views) * 100) : 0;
+            }
+            const cpn = pefCpnForCvr(cvr);
+            if (!(cpn > 0)) {
+                item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0, cvr: cvr });
+                skipped++;
+                return;
+            }
+            const promo = { type: 'percent', value: cpn };
+            const base = getPefDiscountBase(d, '_cpn_pct_applied', 'percent');
+            const newPrice = applyPromoToSpriceBase(base, promo);
+            if (!(base > 0) || !(newPrice > 0)) {
+                skipped++;
+                return;
+            }
+            const patch = {
+                cvr: cvr,
+                cpn_pct: String(cpn),
+                _cpn_pct_applied: cpn,
+                sprice: newPrice,
+            };
+            item.row.update(patch);
+            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+            if (cacheIdx >= 0) {
+                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
+            }
+            saveSprice(item.row, { skipPairSync: true, silent: true });
+            ok++;
+        });
+        toast(
+            'CVR vs CPN (' + label + '): CPN % applied to ' + ok + ' row(s)'
+                + (skipped ? ('; skipped ' + skipped) : '')
+                + '. Use Push to go live.',
+            ok ? 'success' : 'error'
+        );
+        updatePushBtn();
+        if (table) table.redraw(true);
+    }
+
+    $('#pef-cvr-vs-cpn-btn').on('click', function() {
+        const modalEl = document.getElementById('pefCvrVsCpnModal');
+        if (!modalEl) return;
+        renderCvrCpnModalTable();
+        loadCvrCpnRules();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+    $('#pef-cvr-cpn-reset-btn').on('click', function() {
+        pefCvrCpnRules = [
+            ['eq-0', '0%', 10], ['0.01-1', '0.01–1%', 9], ['1-1.5', '1–1.5%', 8],
+            ['1.5-2', '1.5–2%', 7], ['2-3', '2–3%', 6], ['3-4', '3–4%', 5],
+            ['4-5', '4–5%', 4], ['5-6', '5–6%', 3], ['6-6.5', '6–6.5%', 2],
+            ['6.5-7', '6.5–7%', 1], ['gt-7', '> 7%', 0],
+        ].map(function(t) {
+            return { key: t[0], label: t[1], cpn: t[2] };
+        });
+        renderCvrCpnModalTable();
+        $('#pef-cvr-cpn-status').text('Reset to first-time defaults (0–10). Save to persist.');
+    });
+    $('#pef-cvr-cpn-save-btn').on('click', saveCvrCpnRules);
+    $('#pef-cvr-cpn-apply-selected-btn').on('click', function() {
+        applyCvrCpnToTargets(collectSelectedRows(), 'selected');
+    });
+    $('#pef-cvr-cpn-apply-visible-btn').on('click', function() {
+        if (!table) {
+            toast('Load data first', 'error');
+            return;
+        }
+        const targets = table.getRows('active').map(function(row) {
+            return { row: row, d: row.getData() };
+        });
+        if (!confirm('Apply CVR→CPN % to ' + targets.length + ' visible row(s)?')) return;
+        applyCvrCpnToTargets(targets, 'visible');
+    });
+
+    // ==================== LMP vs DISC modal ====================
+    let pefLmpDiscRules = Array.isArray(PEF_LMP_DISC_DEFAULTS) && PEF_LMP_DISC_DEFAULTS.length
+        ? PEF_LMP_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); })
+        : [
+            { key: '0-10', label: '0–10%', amt: 10 },
+            { key: '10-20', label: '10–20%', amt: 9 },
+            { key: '20-30', label: '20–30%', amt: 8 },
+            { key: '30-40', label: '30–40%', amt: 7 },
+            { key: '40-50', label: '40–50%', amt: 6 },
+            { key: '50-60', label: '50–60%', amt: 5 },
+            { key: '60-70', label: '60–70%', amt: 4 },
+            { key: '70-80', label: '70–80%', amt: 3 },
+            { key: '80-90', label: '80–90%', amt: 2 },
+            { key: '90-100', label: '90–100%', amt: 1 },
+            { key: 'gt-100', label: '> 100%', amt: 0 },
+        ];
+
+    function pefLmpDiffSlabKey(diff) {
+        const n = Number(diff);
+        if (!isFinite(n) || n < 0) return '0-10';
+        if (n > 100) return 'gt-100';
+        if (n >= 90) return '90-100';
+        if (n >= 80) return '80-90';
+        if (n >= 70) return '70-80';
+        if (n >= 60) return '60-70';
+        if (n >= 50) return '50-60';
+        if (n >= 40) return '40-50';
+        if (n >= 30) return '30-40';
+        if (n >= 20) return '20-30';
+        if (n >= 10) return '10-20';
+        return '0-10';
+    }
+
+    function pefRowLmpDiff(d) {
+        let diff = Number(d.lmp_diff);
+        if (isFinite(diff)) return diff;
+        const price = Number(d.price) || 0;
+        const lmp = Number(d.lmp) || 0;
+        if (price > 0 && lmp > 0) return round2(((price - lmp) / lmp) * 100);
+        return null;
+    }
+
+    function pefAmtForLmpDiff(diff) {
+        if (diff == null || !isFinite(Number(diff))) return null;
+        const key = pefLmpDiffSlabKey(diff);
+        const rule = pefLmpDiscRules.find(function(r) { return r.key === key; });
+        if (!rule) return 0;
+        const n = Number(rule.amt);
+        return isFinite(n) && n >= 0 ? n : 0;
+    }
+
+    function renderLmpDiscModalTable() {
+        const $tb = $('#pef-lmp-disc-tbody').empty();
+        pefLmpDiscRules.forEach(function(r, idx) {
+            const amt = isFinite(Number(r.amt)) ? Number(r.amt) : 0;
+            $tb.append(
+                '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
+                + '<td>' + String(r.label || r.key) + '</td>'
+                + '<td class="text-end">'
+                + '<input type="number" class="form-control form-control-sm pef-lmp-disc-input" '
+                + 'min="0" step="0.1" value="' + amt + '" data-idx="' + idx + '" '
+                + 'title="AMT $ for LMP diff ' + String(r.label || r.key) + '">'
+                + '</td></tr>'
+            );
+        });
+    }
+
+    function readLmpDiscRulesFromModal() {
+        $('#pef-lmp-disc-tbody tr').each(function() {
+            const key = String($(this).attr('data-key') || '');
+            const val = parseFloat($(this).find('.pef-lmp-disc-input').val());
+            const rule = pefLmpDiscRules.find(function(r) { return r.key === key; });
+            if (!rule) return;
+            rule.amt = (isFinite(val) && val >= 0) ? val : 0;
+        });
+        return pefLmpDiscRules.map(function(r) {
+            return { key: r.key, label: r.label, amt: Number(r.amt) || 0 };
+        });
+    }
+
+    async function loadLmpDiscRules() {
+        $('#pef-lmp-disc-status').text('Loading…');
+        try {
+            const res = await $.ajax({
+                url: '/pricing-errors-fix-lmp-disc',
+                method: 'GET',
+                dataType: 'json',
+            });
+            if (res && Array.isArray(res.rules) && res.rules.length) {
+                pefLmpDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
+            }
+            renderLmpDiscModalTable();
+            $('#pef-lmp-disc-status').text(res && res.is_default
+                ? 'Using first-time defaults (0–10). Save to keep your edits.'
+                : 'Loaded saved LMP vs DISC rules.');
+        } catch (e) {
+            renderLmpDiscModalTable();
+            $('#pef-lmp-disc-status').text('Could not load saved rules — showing defaults.');
+        }
+    }
+
+    function saveLmpDiscRules() {
+        const rules = readLmpDiscRulesFromModal();
+        const $btn = $('#pef-lmp-disc-save-btn');
+        const html = $btn.html();
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+        $.ajax({
+            url: '/pricing-errors-fix-lmp-disc',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            data: { rules: rules, _token: csrf },
+        }).done(function(res) {
+            if (res && Array.isArray(res.rules)) {
+                pefLmpDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
+                renderLmpDiscModalTable();
+            }
+            toast('LMP vs DISC rules saved', 'success');
+            $('#pef-lmp-disc-status').text('Saved.');
+        }).fail(function(xhr) {
+            toast('Save failed: ' + (xhr.responseJSON?.message || 'error'), 'error');
+        }).always(function() {
+            $btn.prop('disabled', false).html(html);
+        });
+    }
+
+    /**
+     * Autopopulate DISC (DSC $) from LMP-diff slabs → same discount logic as DSC column.
+     */
+    function applyLmpDiscToTargets(targets, label) {
+        readLmpDiscRulesFromModal();
+        if (!targets.length) {
+            toast('No rows to apply', 'error');
+            return;
+        }
+        let ok = 0;
+        let skipped = 0;
+        targets.forEach(function(item) {
+            const d = item.row.getData();
+            const lmpDiff = pefRowLmpDiff(d);
+            if (lmpDiff == null) {
+                skipped++;
+                return;
+            }
+            const amt = pefAmtForLmpDiff(lmpDiff);
+            if (amt == null) {
+                skipped++;
+                return;
+            }
+            if (!(amt > 0)) {
+                item.row.update({
+                    lmp_diff: lmpDiff,
+                    dsc: String(amt),
+                    _dsc_applied: 0,
+                });
+                skipped++;
+                return;
+            }
+            const promo = { type: 'dollar', value: amt };
+            const base = getPefDiscountBase(d, '_dsc_applied', 'dollar');
+            const newPrice = applyPromoToSpriceBase(base, promo);
+            if (!(base > 0) || !(newPrice > 0)) {
+                skipped++;
+                return;
+            }
+            const patch = {
+                lmp_diff: lmpDiff,
+                dsc: String(round2(amt)),
+                _dsc_applied: amt,
+                sprice: newPrice,
+            };
+            item.row.update(patch);
+            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
+            if (cacheIdx >= 0) {
+                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
+            }
+            saveSprice(item.row, { skipPairSync: false, silent: true });
+            ok++;
+        });
+        toast(
+            'LMP vs DISC (' + label + '): DISC $ applied to ' + ok + ' row(s)'
+                + (skipped ? ('; skipped ' + skipped) : '')
+                + '. Use Push to go live.',
+            ok ? 'success' : 'error'
+        );
+        updatePushBtn();
+        if (table) table.redraw(true);
+    }
+
+    $('#pef-lmp-vs-disc-btn').on('click', function() {
+        const modalEl = document.getElementById('pefLmpVsDiscModal');
+        if (!modalEl) return;
+        renderLmpDiscModalTable();
+        loadLmpDiscRules();
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+    $('#pef-lmp-disc-reset-btn').on('click', function() {
+        pefLmpDiscRules = [
+            ['0-10', '0–10%', 10], ['10-20', '10–20%', 9], ['20-30', '20–30%', 8],
+            ['30-40', '30–40%', 7], ['40-50', '40–50%', 6], ['50-60', '50–60%', 5],
+            ['60-70', '60–70%', 4], ['70-80', '70–80%', 3], ['80-90', '80–90%', 2],
+            ['90-100', '90–100%', 1], ['gt-100', '> 100%', 0],
+        ].map(function(t) {
+            return { key: t[0], label: t[1], amt: t[2] };
+        });
+        renderLmpDiscModalTable();
+        $('#pef-lmp-disc-status').text('Reset to first-time defaults (0–10). Save to persist.');
+    });
+    $('#pef-lmp-disc-save-btn').on('click', saveLmpDiscRules);
+    $('#pef-lmp-disc-apply-selected-btn').on('click', function() {
+        applyLmpDiscToTargets(collectSelectedRows(), 'selected');
+    });
+    $('#pef-lmp-disc-apply-visible-btn').on('click', function() {
+        if (!table) {
+            toast('Load data first', 'error');
+            return;
+        }
+        const targets = table.getRows('active').map(function(row) {
+            return { row: row, d: row.getData() };
+        });
+        if (!confirm('Apply LMP→DISC $ to ' + targets.length + ' visible row(s)?')) return;
+        applyLmpDiscToTargets(targets, 'visible');
+    });
 
     $('#pef-bulk-push-btn').on('click', pushSelected);
     $('#pef-clear-sprice-btn').on('click', clearSelectedSprice);

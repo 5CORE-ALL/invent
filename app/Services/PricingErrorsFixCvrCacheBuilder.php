@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Build Pricing Errors Fix cache from /price-increase CVR data (NOT channel pricing tabulators).
@@ -140,7 +142,7 @@ class PricingErrorsFixCvrCacheBuilder
             Log::error('PEF CVR bulk build failed: '.$e->getMessage());
         }
 
-        return ['rows' => $rows, 'errors' => $errors];
+        return ['rows' => $this->attachReviewCounts($rows), 'errors' => $errors];
     }
 
     /**
@@ -205,7 +207,103 @@ class PricingErrorsFixCvrCacheBuilder
             }
         }
 
-        return ['rows' => $rows, 'errors' => $errors];
+        return ['rows' => $this->attachReviewCounts($rows), 'errors' => $errors];
+    }
+
+    /**
+     * Channel review counts from sku_reviews (same table/source as /reviews).
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachReviewCounts(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $row['reviews'] = 0;
+        }
+        unset($row);
+
+        try {
+            if (! Schema::hasTable('sku_reviews')) {
+                return $rows;
+            }
+        } catch (\Throwable $e) {
+            return $rows;
+        }
+
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($r) => trim((string) ($r['sku'] ?? '')),
+            $rows
+        ))));
+        if ($skus === []) {
+            return $rows;
+        }
+
+        $lookup = [];
+        try {
+            foreach (array_chunk($skus, 500) as $chunk) {
+                $agg = DB::table('sku_reviews')
+                    ->select('sku', DB::raw('LOWER(TRIM(marketplace)) as mp'), DB::raw('COUNT(*) as cnt'))
+                    ->whereIn('sku', $chunk)
+                    ->groupBy('sku', DB::raw('LOWER(TRIM(marketplace))'))
+                    ->get();
+                foreach ($agg as $r) {
+                    $pefMp = $this->normalizeReviewMarketplaceToPef((string) ($r->mp ?? ''));
+                    if ($pefMp === null) {
+                        continue;
+                    }
+                    $sku = (string) $r->sku;
+                    $lookup[$sku][$pefMp] = ($lookup[$sku][$pefMp] ?? 0) + (int) $r->cnt;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('PEF attachReviewCounts failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $sku = (string) ($row['sku'] ?? '');
+            $mp = (string) ($row['marketplace'] ?? $row['channel_key'] ?? '');
+            $row['reviews'] = (int) ($lookup[$sku][$mp] ?? 0);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Map sku_reviews.marketplace labels → PEF marketplace keys (amazon, ebay1, temu, …).
+     */
+    private function normalizeReviewMarketplaceToPef(string $marketplace): ?string
+    {
+        $c = strtolower(preg_replace('/\s+/', '', $marketplace) ?? '');
+        if ($c === '') {
+            return null;
+        }
+
+        return match (true) {
+            $c === 'amazon' => 'amazon',
+            in_array($c, ['ebay', 'ebay1', 'ebayone'], true) => 'ebay1',
+            in_array($c, ['ebay2', 'ebaytwo'], true) => 'ebay2',
+            in_array($c, ['ebay3', 'ebaythree'], true) => 'ebay3',
+            in_array($c, ['temu', 'temu1'], true) => 'temu',
+            $c === 'temu2' => 'temu2',
+            in_array($c, ['tiktok', 'tiktok1', 'tiktokshop', 'tiktokshop1'], true) => 'tiktok',
+            in_array($c, ['tiktok2', 'tiktokshop2'], true) => 'tiktok2',
+            in_array($c, ['bestbuy', 'bestbuyusa'], true) => 'bestbuy',
+            in_array($c, ['macy', 'macys'], true) => 'macy',
+            in_array($c, ['shopify', 'sb2c', 'shopifyb2c'], true) => 'sb2c',
+            in_array($c, ['sb2b', 'shopifyb2b'], true) => 'sb2b',
+            in_array($c, ['ppower', 'purchasingpower', 'purchase'], true) => 'ppower',
+            in_array($c, ['aliexpress', 'ali'], true) => 'aliexpress',
+            isset(self::MP_MAP[$c]) => self::MP_MAP[$c][0],
+            default => $c,
+        };
     }
 
     /**
@@ -255,6 +353,28 @@ class PricingErrorsFixCvrCacheBuilder
         $tacosCh = (float) ($item['tacos_ch'] ?? $item['ad'] ?? 0);
         $adSku = (float) ($item['ad'] ?? $item['tacos_ch'] ?? 0);
         $l30 = (float) ($item['l30'] ?? 0);
+        $views = (float) ($item['views'] ?? 0);
+        $cvr = isset($item['cvr']) && is_numeric($item['cvr'])
+            ? (float) $item['cvr']
+            : ($views > 0 ? round(($l30 / $views) * 100, 2) : 0.0);
+        $lmp = isset($item['lmp']) && is_numeric($item['lmp']) && (float) $item['lmp'] > 0
+            ? round((float) $item['lmp'], 2)
+            : (isset($item['lmp_price']) && is_numeric($item['lmp_price']) && (float) $item['lmp_price'] > 0
+                ? round((float) $item['lmp_price'], 2)
+                : null);
+        $lmpDiff = isset($item['lmp_diff']) && is_numeric($item['lmp_diff'])
+            ? (float) $item['lmp_diff']
+            : (($lmp !== null && $price > 0)
+                ? round((($price - $lmp) / $lmp) * 100, 2)
+                : null);
+        // STD PRC = amazon_data_view.STANDARD_PRICE (same as /price-increase)
+        $standardPrice = null;
+        foreach (['standard_price', 'amazon_standard_price', 'STANDARD_PRICE'] as $stdKey) {
+            if (isset($item[$stdKey]) && is_numeric($item[$stdKey]) && (float) $item[$stdKey] > 0) {
+                $standardPrice = round((float) $item[$stdKey], 2);
+                break;
+            }
+        }
         $success = $item['push_status'] ?? $item['SPRICE_STATUS'] ?? null;
         if (is_array($success)) {
             $success = null;
@@ -295,6 +415,12 @@ class PricingErrorsFixCvrCacheBuilder
             'inv' => $inv,
             'ov_l30' => $ovL30,
             'l30' => $l30,
+            'views' => $views > 0 ? $views : null,
+            'cvr' => $cvr,
+            'reviews' => 0, // filled by attachReviewCounts from sku_reviews (/reviews)
+            'lmp' => $lmp,
+            'lmp_diff' => $lmpDiff,
+            'standard_price' => $standardPrice,
             'dil' => $dil,
             'price' => $price > 0 ? round($price, 2) : null,
             'groi' => $metrics['groi'],

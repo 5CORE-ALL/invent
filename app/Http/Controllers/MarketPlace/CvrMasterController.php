@@ -192,7 +192,367 @@ class CvrMasterController extends Controller
             'channels' => $channels,
             'cache_calculated_at' => null,
             'initial_rows' => [],
+            'dil_prmt_rules' => $this->pefDefaultDilPrmtRules(),
+            'cvr_cpn_rules' => $this->pefDefaultCvrCpnRules(),
+            'lmp_disc_rules' => $this->pefDefaultLmpDiscRules(),
         ]);
+    }
+
+    /**
+     * Default Dil% slabs → PRMT% (first-time): >100% = 0 … 0–10% = 10.
+     *
+     * @return list<array{key:string,label:string,prmt:float|int}>
+     */
+    private function pefDefaultDilPrmtRules(): array
+    {
+        return [
+            ['key' => '0-10', 'label' => '0–10%', 'prmt' => 10],
+            ['key' => '10-20', 'label' => '10–20%', 'prmt' => 9],
+            ['key' => '20-30', 'label' => '20–30%', 'prmt' => 8],
+            ['key' => '30-40', 'label' => '30–40%', 'prmt' => 7],
+            ['key' => '40-50', 'label' => '40–50%', 'prmt' => 6],
+            ['key' => '50-60', 'label' => '50–60%', 'prmt' => 5],
+            ['key' => '60-70', 'label' => '60–70%', 'prmt' => 4],
+            ['key' => '70-80', 'label' => '70–80%', 'prmt' => 3],
+            ['key' => '80-90', 'label' => '80–90%', 'prmt' => 2],
+            ['key' => '90-100', 'label' => '90–100%', 'prmt' => 1],
+            ['key' => 'gt-100', 'label' => '> 100%', 'prmt' => 0],
+        ];
+    }
+
+    /**
+     * Default CVR% slabs → CPN% (first-time): >7% = 0 … CVR 0% = 10.
+     * Rows: 0, 0.01–1, 1–2, … 6–7, > 7% (11 slots with fine early steps for 0→10).
+     *
+     * @return list<array{key:string,label:string,cpn:float|int}>
+     */
+    private function pefDefaultCvrCpnRules(): array
+    {
+        return [
+            ['key' => 'eq-0', 'label' => '0%', 'cpn' => 10],
+            ['key' => '0.01-1', 'label' => '0.01–1%', 'cpn' => 9],
+            ['key' => '1-1.5', 'label' => '1–1.5%', 'cpn' => 8],
+            ['key' => '1.5-2', 'label' => '1.5–2%', 'cpn' => 7],
+            ['key' => '2-3', 'label' => '2–3%', 'cpn' => 6],
+            ['key' => '3-4', 'label' => '3–4%', 'cpn' => 5],
+            ['key' => '4-5', 'label' => '4–5%', 'cpn' => 4],
+            ['key' => '5-6', 'label' => '5–6%', 'cpn' => 3],
+            ['key' => '6-6.5', 'label' => '6–6.5%', 'cpn' => 2],
+            ['key' => '6.5-7', 'label' => '6.5–7%', 'cpn' => 1],
+            ['key' => 'gt-7', 'label' => '> 7%', 'cpn' => 0],
+        ];
+    }
+
+    /**
+     * Load Dil vs PRMT rules (saved in channel_tabulator_column_settings, or defaults).
+     */
+    public function pricingErrorsFixDilPrmtRules(): JsonResponse
+    {
+        $defaults = $this->pefDefaultDilPrmtRules();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'pef_dil_vs_prmt')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'rules' => $defaults,
+            ]);
+        }
+
+        // Merge saved PRMT values onto default slab keys/labels
+        $byKey = [];
+        foreach ($saved as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $prmt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['prmt'] ?? null)
+                ? (float) $byKey[$k]['prmt']
+                : $def['prmt'];
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'prmt' => $prmt,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'rules' => $rules,
+        ]);
+    }
+
+    /**
+     * Persist Dil vs PRMT editable PRMT% rules.
+     */
+    public function pricingErrorsFixSaveDilPrmtRules(Request $request): JsonResponse
+    {
+        $defaults = $this->pefDefaultDilPrmtRules();
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $byKey = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $prmt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['prmt'] ?? null)
+                ? round((float) $byKey[$k]['prmt'], 2)
+                : (float) $def['prmt'];
+            // Allow 0; clamp negatives
+            if ($prmt < 0) {
+                $prmt = 0;
+            }
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'prmt' => $prmt,
+            ];
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'pef_dil_vs_prmt'],
+            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
+        );
+
+        return response()->json(['success' => true, 'rules' => $rules]);
+    }
+
+    /**
+     * Load CVR vs CPN rules (saved in channel_tabulator_column_settings, or defaults).
+     */
+    public function pricingErrorsFixCvrCpnRules(): JsonResponse
+    {
+        $defaults = $this->pefDefaultCvrCpnRules();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'pef_cvr_vs_cpn')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'rules' => $defaults,
+            ]);
+        }
+
+        $byKey = [];
+        foreach ($saved as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $cpn = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['cpn'] ?? null)
+                ? (float) $byKey[$k]['cpn']
+                : $def['cpn'];
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'cpn' => $cpn,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'rules' => $rules,
+        ]);
+    }
+
+    /**
+     * Persist CVR vs CPN editable CPN% rules.
+     */
+    public function pricingErrorsFixSaveCvrCpnRules(Request $request): JsonResponse
+    {
+        $defaults = $this->pefDefaultCvrCpnRules();
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $byKey = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $cpn = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['cpn'] ?? null)
+                ? round((float) $byKey[$k]['cpn'], 2)
+                : (float) $def['cpn'];
+            if ($cpn < 0) {
+                $cpn = 0;
+            }
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'cpn' => $cpn,
+            ];
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'pef_cvr_vs_cpn'],
+            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
+        );
+
+        return response()->json(['success' => true, 'rules' => $rules]);
+    }
+
+    /**
+     * Default LMP-diff% slabs → AMT/$ DISC (first-time): >100% = 0 … 0–10% = 10.
+     *
+     * @return list<array{key:string,label:string,amt:float|int}>
+     */
+    private function pefDefaultLmpDiscRules(): array
+    {
+        return [
+            ['key' => '0-10', 'label' => '0–10%', 'amt' => 10],
+            ['key' => '10-20', 'label' => '10–20%', 'amt' => 9],
+            ['key' => '20-30', 'label' => '20–30%', 'amt' => 8],
+            ['key' => '30-40', 'label' => '30–40%', 'amt' => 7],
+            ['key' => '40-50', 'label' => '40–50%', 'amt' => 6],
+            ['key' => '50-60', 'label' => '50–60%', 'amt' => 5],
+            ['key' => '60-70', 'label' => '60–70%', 'amt' => 4],
+            ['key' => '70-80', 'label' => '70–80%', 'amt' => 3],
+            ['key' => '80-90', 'label' => '80–90%', 'amt' => 2],
+            ['key' => '90-100', 'label' => '90–100%', 'amt' => 1],
+            ['key' => 'gt-100', 'label' => '> 100%', 'amt' => 0],
+        ];
+    }
+
+    /**
+     * Load LMP vs DISC rules (saved in channel_tabulator_column_settings, or defaults).
+     */
+    public function pricingErrorsFixLmpDiscRules(): JsonResponse
+    {
+        $defaults = $this->pefDefaultLmpDiscRules();
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'pef_lmp_vs_disc')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : null;
+        if (! is_array($saved) || $saved === []) {
+            return response()->json([
+                'success' => true,
+                'is_default' => true,
+                'rules' => $defaults,
+            ]);
+        }
+
+        $byKey = [];
+        foreach ($saved as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $amt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['amt'] ?? null)
+                ? (float) $byKey[$k]['amt']
+                : $def['amt'];
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'amt' => $amt,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_default' => false,
+            'rules' => $rules,
+        ]);
+    }
+
+    /**
+     * Persist LMP vs DISC editable AMT rules.
+     */
+    public function pricingErrorsFixSaveLmpDiscRules(Request $request): JsonResponse
+    {
+        $defaults = $this->pefDefaultLmpDiscRules();
+        $incoming = $request->input('rules');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
+        }
+
+        $byKey = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $k = (string) ($item['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $byKey[$k] = $item;
+        }
+
+        $rules = [];
+        foreach ($defaults as $def) {
+            $k = $def['key'];
+            $amt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['amt'] ?? null)
+                ? round((float) $byKey[$k]['amt'], 2)
+                : (float) $def['amt'];
+            if ($amt < 0) {
+                $amt = 0;
+            }
+            $rules[] = [
+                'key' => $k,
+                'label' => $def['label'],
+                'amt' => $amt,
+            ];
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => 'pef_lmp_vs_disc'],
+            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
+        );
+
+        return response()->json(['success' => true, 'rules' => $rules]);
     }
 
     /**
@@ -2372,28 +2732,68 @@ class CvrMasterController extends Controller
                     $tt2AdsPef = $pefChannelAds('tiktok2');
                     $aeAdsPef = $pefChannelAds('aliexpress');
 
+                    $pefCvr = static function (float $l30Qty, float $viewsQty): float {
+                        return $viewsQty > 0 ? round(($l30Qty / $viewsQty) * 100, 2) : 0.0;
+                    };
+                    $aeViewsPef = 0; // AliExpress views not in this bulk path
                     $pefChannels = [
                         // Amazon: tacos_ch = channel Ads% (NPFT); ad = SKU AD% (SPFT when L30>0) — same as modal
-                        ['marketplace' => 'Amazon', 'price' => $amazonPrice, 'sprice' => $amazonSpPef, 'lp' => $lp, 'ship' => $ship, 'margin' => $amazonPercentage, 'ad' => round($amazonAD, 2), 'tacos_ch' => $amzAdsPef, 'l30' => $amazonL30, 'push_status' => null],
-                        ['marketplace' => 'Ebay1', 'price' => $ebay1Price, 'sprice' => $ebay1Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay1Percentage, 'ad' => $ebay1ChannelAdsPct, 'tacos_ch' => $ebay1ChannelAdsPct, 'l30' => $ebay1L30, 'push_status' => $ebay1St],
-                        ['marketplace' => 'Ebay2', 'price' => $ebay2Price, 'sprice' => $ebay2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay2Percentage, 'ad' => $ebay2ChannelAdsPct, 'tacos_ch' => $ebay2ChannelAdsPct, 'l30' => $ebay2L30, 'push_status' => $ebay2St],
-                        ['marketplace' => 'Ebay3', 'price' => $ebay3Price, 'sprice' => $ebay3Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay3Percentage, 'ad' => $ebay3ChannelAdsPct, 'tacos_ch' => $ebay3ChannelAdsPct, 'l30' => $ebay3L30, 'push_status' => $ebay3St],
-                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
-                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
-                        ['marketplace' => 'Doba', 'price' => $dobaPrice, 'sprice' => $dobaSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $dobaL30, 'push_status' => $dobaSt],
-                        ['marketplace' => 'TikTok', 'price' => $tiktokPrice, 'sprice' => $ttSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktokPercentage, 'ad' => round($tiktokAD, 2), 'tacos_ch' => round($tiktokAD, 2), 'l30' => $tiktokL30, 'push_status' => $ttSt],
-                        ['marketplace' => 'TikTok 2', 'price' => $tiktok2Price, 'sprice' => $tt2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktok2Percentage, 'ad' => $tt2AdsPef, 'tacos_ch' => $tt2AdsPef, 'l30' => $tiktok2L30, 'push_status' => $tt2St],
-                        ['marketplace' => 'BestBuy', 'price' => $bbPrice, 'sprice' => $bbSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $bestbuyPercentage, 'ad' => $bbAdsPef, 'tacos_ch' => $bbAdsPef, 'l30' => $bbL30, 'push_status' => $bbSt],
-                        ['marketplace' => 'MACY', 'price' => $macyPrice, 'sprice' => $macySp, 'lp' => $lp, 'ship' => $ship, 'margin' => $macyPercentage, 'ad' => $macyAdsPef, 'tacos_ch' => $macyAdsPef, 'l30' => $macyL30, 'push_status' => $macySt],
-                        ['marketplace' => 'Reverb', 'price' => $reverbPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $reverbPercentage, 'ad' => $reverbChannelAdsPct, 'tacos_ch' => $reverbChannelAdsPct, 'l30' => $reverbL30, 'push_status' => null],
-                        ['marketplace' => 'Shopify', 'price' => $sb2cPrice, 'sprice' => $sb2cSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $shopifyB2CPercentage, 'ad' => $sb2cAdsPef, 'tacos_ch' => $sb2cAdsPef, 'l30' => 0, 'push_status' => $sb2cSt],
-                        ['marketplace' => 'SB2B', 'price' => $sb2bPricePef, 'sprice' => $sb2bSp, 'lp' => $lp, 'ship' => 0, 'margin' => $sb2bPercentagePef, 'ad' => $sb2bAdsPef, 'tacos_ch' => $sb2bAdsPef, 'l30' => 0, 'push_status' => $sb2bSt],
-                        ['marketplace' => 'Shein', 'price' => $sheinPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $sheinPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $sheinL30, 'push_status' => null],
-                        ['marketplace' => 'Faire', 'price' => $fairePrice, 'sprice' => $faireSp, 'lp' => $lp, 'ship' => 0, 'margin' => $fairePercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $faireL30, 'push_status' => $faireSt],
-                        ['marketplace' => 'AliExpress', 'price' => $aePrice, 'sprice' => $aeSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $aePercentage, 'ad' => $aeAdsPef, 'tacos_ch' => $aeAdsPef, 'l30' => $aeL30, 'push_status' => $aeSt],
-                        ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => 0, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'push_status' => $ppSt],
-                        ['marketplace' => 'TopDawg', 'price' => $tdPrice, 'sprice' => $tdSp, 'lp' => $lp, 'ship' => 0, 'margin' => $tdPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $tdL30, 'push_status' => $tdSt],
+                        ['marketplace' => 'Amazon', 'price' => $amazonPrice, 'sprice' => $amazonSpPef, 'lp' => $lp, 'ship' => $ship, 'margin' => $amazonPercentage, 'ad' => round($amazonAD, 2), 'tacos_ch' => $amzAdsPef, 'l30' => $amazonL30, 'views' => $amazonViews, 'cvr' => $pefCvr((float) $amazonL30, (float) $amazonViews), 'push_status' => null],
+                        ['marketplace' => 'Ebay1', 'price' => $ebay1Price, 'sprice' => $ebay1Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay1Percentage, 'ad' => $ebay1ChannelAdsPct, 'tacos_ch' => $ebay1ChannelAdsPct, 'l30' => $ebay1L30, 'views' => $ebay1Views, 'cvr' => $pefCvr((float) $ebay1L30, (float) $ebay1Views), 'push_status' => $ebay1St],
+                        ['marketplace' => 'Ebay2', 'price' => $ebay2Price, 'sprice' => $ebay2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay2Percentage, 'ad' => $ebay2ChannelAdsPct, 'tacos_ch' => $ebay2ChannelAdsPct, 'l30' => $ebay2L30, 'views' => $ebay2Views, 'cvr' => $pefCvr((float) $ebay2L30, (float) $ebay2Views), 'push_status' => $ebay2St],
+                        ['marketplace' => 'Ebay3', 'price' => $ebay3Price, 'sprice' => $ebay3Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay3Percentage, 'ad' => $ebay3ChannelAdsPct, 'tacos_ch' => $ebay3ChannelAdsPct, 'l30' => $ebay3L30, 'views' => $ebay3Views, 'cvr' => $pefCvr((float) $ebay3L30, (float) $ebay3Views), 'push_status' => $ebay3St],
+                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'views' => $temuViews, 'cvr' => $pefCvr((float) $temuL30, (float) $temuViews), 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
+                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'views' => $temu2Views, 'cvr' => $pefCvr((float) $temu2L30, (float) $temu2Views), 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
+                        ['marketplace' => 'Doba', 'price' => $dobaPrice, 'sprice' => $dobaSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $dobaL30, 'views' => $dobaViews, 'cvr' => $pefCvr((float) $dobaL30, (float) $dobaViews), 'push_status' => $dobaSt],
+                        ['marketplace' => 'TikTok', 'price' => $tiktokPrice, 'sprice' => $ttSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktokPercentage, 'ad' => round($tiktokAD, 2), 'tacos_ch' => round($tiktokAD, 2), 'l30' => $tiktokL30, 'views' => $tiktokViews, 'cvr' => $pefCvr((float) $tiktokL30, (float) $tiktokViews), 'push_status' => $ttSt],
+                        ['marketplace' => 'TikTok 2', 'price' => $tiktok2Price, 'sprice' => $tt2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktok2Percentage, 'ad' => $tt2AdsPef, 'tacos_ch' => $tt2AdsPef, 'l30' => $tiktok2L30, 'views' => $tiktok2Views, 'cvr' => $pefCvr((float) $tiktok2L30, (float) $tiktok2Views), 'push_status' => $tt2St],
+                        ['marketplace' => 'BestBuy', 'price' => $bbPrice, 'sprice' => $bbSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $bestbuyPercentage, 'ad' => $bbAdsPef, 'tacos_ch' => $bbAdsPef, 'l30' => $bbL30, 'views' => $bbViews, 'cvr' => $pefCvr((float) $bbL30, (float) $bbViews), 'push_status' => $bbSt],
+                        ['marketplace' => 'MACY', 'price' => $macyPrice, 'sprice' => $macySp, 'lp' => $lp, 'ship' => $ship, 'margin' => $macyPercentage, 'ad' => $macyAdsPef, 'tacos_ch' => $macyAdsPef, 'l30' => $macyL30, 'views' => $macyViews, 'cvr' => $pefCvr((float) $macyL30, (float) $macyViews), 'push_status' => $macySt],
+                        ['marketplace' => 'Reverb', 'price' => $reverbPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $reverbPercentage, 'ad' => $reverbChannelAdsPct, 'tacos_ch' => $reverbChannelAdsPct, 'l30' => $reverbL30, 'views' => $reverbViews, 'cvr' => $pefCvr((float) $reverbL30, (float) $reverbViews), 'push_status' => null],
+                        ['marketplace' => 'Shopify', 'price' => $sb2cPrice, 'sprice' => $sb2cSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $shopifyB2CPercentage, 'ad' => $sb2cAdsPef, 'tacos_ch' => $sb2cAdsPef, 'l30' => 0, 'views' => $sb2cViews, 'cvr' => $pefCvr(0.0, (float) $sb2cViews), 'push_status' => $sb2cSt],
+                        ['marketplace' => 'SB2B', 'price' => $sb2bPricePef, 'sprice' => $sb2bSp, 'lp' => $lp, 'ship' => 0, 'margin' => $sb2bPercentagePef, 'ad' => $sb2bAdsPef, 'tacos_ch' => $sb2bAdsPef, 'l30' => 0, 'views' => 0, 'cvr' => 0, 'push_status' => $sb2bSt],
+                        ['marketplace' => 'Shein', 'price' => $sheinPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => $ship, 'margin' => $sheinPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $sheinL30, 'views' => $sheinViews, 'cvr' => $pefCvr((float) $sheinL30, (float) $sheinViews), 'push_status' => null],
+                        ['marketplace' => 'Faire', 'price' => $fairePrice, 'sprice' => $faireSp, 'lp' => $lp, 'ship' => 0, 'margin' => $fairePercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $faireL30, 'views' => $faireViews, 'cvr' => $pefCvr((float) $faireL30, (float) $faireViews), 'push_status' => $faireSt],
+                        ['marketplace' => 'AliExpress', 'price' => $aePrice, 'sprice' => $aeSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $aePercentage, 'ad' => $aeAdsPef, 'tacos_ch' => $aeAdsPef, 'l30' => $aeL30, 'views' => $aeViewsPef, 'cvr' => $pefCvr((float) $aeL30, (float) $aeViewsPef), 'push_status' => $aeSt],
+                        ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => 0, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'views' => 0, 'cvr' => 0, 'push_status' => $ppSt],
+                        ['marketplace' => 'TopDawg', 'price' => $tdPrice, 'sprice' => $tdSp, 'lp' => $lp, 'ship' => 0, 'margin' => $tdPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $tdL30, 'views' => $tdViews, 'cvr' => $pefCvr((float) $tdL30, (float) $tdViews), 'push_status' => $tdSt],
                     ];
+                    // LMP + LMP diff% = (Price − LMP) / LMP × 100 — for LMP vs DISC
+                    $pefLmpDiff = static function ($price, $lmp): ?float {
+                        $p = (float) $price;
+                        $l = (float) $lmp;
+                        if (! ($p > 0) || ! ($l > 0)) {
+                            return null;
+                        }
+
+                        return round((($p - $l) / $l) * 100, 2);
+                    };
+                    $pefLmpByMp = [
+                        'Amazon' => $amazonLmpPrice,
+                        'Ebay1' => $ebayLmpPrice,
+                        'Ebay2' => $ebayLmpPrice,
+                        'Ebay3' => $ebayLmpPrice,
+                        'Temu' => $temuLmpPrice,
+                        'Temu2' => $temuLmpPrice,
+                        'BestBuy' => null,
+                        'MACY' => null,
+                        'TikTok' => null,
+                        'TikTok 2' => null,
+                    ];
+                    foreach ($pefChannels as &$pefCh) {
+                        $mpLabel = (string) ($pefCh['marketplace'] ?? '');
+                        $lmpVal = $pefLmpByMp[$mpLabel] ?? null;
+                        $lmpNum = ($lmpVal !== null && is_numeric($lmpVal) && (float) $lmpVal > 0)
+                            ? round((float) $lmpVal, 2)
+                            : null;
+                        $pefCh['lmp'] = $lmpNum;
+                        $pefCh['lmp_diff'] = $pefLmpDiff($pefCh['price'] ?? 0, $lmpNum);
+                        // Same SKU-level STANDARD_PRICE (STD PRC) as /price-increase OV L30
+                        $pefCh['standard_price'] = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
+                            ? round((float) $amazonStandardPrice, 2)
+                            : null;
+                    }
+                    unset($pefCh);
                 }
 
                 $result[] = (object) [

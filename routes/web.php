@@ -3701,6 +3701,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/pricing-errors-fix', [CvrMasterController::class, 'pricingErrorsFixView'])->name('pricing.errors.fix');
     Route::get('/pricing-errors-fix-data-json', [CvrMasterController::class, 'pricingErrorsFixDataJson'])->name('pricing.errors.fix.data');
     Route::get('/pricing-errors-fix-channels', [CvrMasterController::class, 'pricingErrorsFixChannelsJson'])->name('pricing.errors.fix.channels');
+    Route::get('/pricing-errors-fix-dil-prmt', [CvrMasterController::class, 'pricingErrorsFixDilPrmtRules'])->name('pricing.errors.fix.dil-prmt');
+    Route::post('/pricing-errors-fix-dil-prmt', [CvrMasterController::class, 'pricingErrorsFixSaveDilPrmtRules'])->name('pricing.errors.fix.dil-prmt.save');
+    Route::get('/pricing-errors-fix-cvr-cpn', [CvrMasterController::class, 'pricingErrorsFixCvrCpnRules'])->name('pricing.errors.fix.cvr-cpn');
+    Route::post('/pricing-errors-fix-cvr-cpn', [CvrMasterController::class, 'pricingErrorsFixSaveCvrCpnRules'])->name('pricing.errors.fix.cvr-cpn.save');
+    Route::get('/pricing-errors-fix-lmp-disc', [CvrMasterController::class, 'pricingErrorsFixLmpDiscRules'])->name('pricing.errors.fix.lmp-disc');
+    Route::post('/pricing-errors-fix-lmp-disc', [CvrMasterController::class, 'pricingErrorsFixSaveLmpDiscRules'])->name('pricing.errors.fix.lmp-disc.save');
     Route::post('/pricing-errors-fix-push', [CvrMasterController::class, 'pricingErrorsFixQueuePush'])->name('pricing.errors.fix.push');
     Route::get('/pricing-errors-fix-push-status', [CvrMasterController::class, 'pricingErrorsFixPushJobStatus'])->name('pricing.errors.fix.push.status');
     Route::post('/pricing-errors-fix-push-cancel', [CvrMasterController::class, 'pricingErrorsFixCancelPush'])->name('pricing.errors.fix.push.cancel');
