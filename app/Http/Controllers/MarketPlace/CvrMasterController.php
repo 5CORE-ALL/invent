@@ -194,7 +194,6 @@ class CvrMasterController extends Controller
             'initial_rows' => [],
             'dil_prmt_rules' => $this->pefDefaultDilPrmtRules(),
             'cvr_cpn_rules' => $this->pefDefaultCvrCpnRules(),
-            'lmp_disc_rules' => $this->pefDefaultLmpDiscRules(),
         ]);
     }
 
@@ -438,121 +437,45 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Default LMP-diff% slabs → AMT/$ DISC (first-time): >100% = 0 … 0–10% = 10.
-     *
-     * @return list<array{key:string,label:string,amt:float|int}>
+     * PEF CPN % → eBay1 Sell Marketing coupon (item_price_markdown).
+     * percent = 0 pauses any stored coupon for the SKU.
      */
-    private function pefDefaultLmpDiscRules(): array
+    public function pricingErrorsFixEbay1Coupon(Request $request): JsonResponse
     {
-        return [
-            ['key' => '0-10', 'label' => '0–10%', 'amt' => 10],
-            ['key' => '10-20', 'label' => '10–20%', 'amt' => 9],
-            ['key' => '20-30', 'label' => '20–30%', 'amt' => 8],
-            ['key' => '30-40', 'label' => '30–40%', 'amt' => 7],
-            ['key' => '40-50', 'label' => '40–50%', 'amt' => 6],
-            ['key' => '50-60', 'label' => '50–60%', 'amt' => 5],
-            ['key' => '60-70', 'label' => '60–70%', 'amt' => 4],
-            ['key' => '70-80', 'label' => '70–80%', 'amt' => 3],
-            ['key' => '80-90', 'label' => '80–90%', 'amt' => 2],
-            ['key' => '90-100', 'label' => '90–100%', 'amt' => 1],
-            ['key' => 'gt-100', 'label' => '> 100%', 'amt' => 0],
-        ];
+        $sku = trim((string) $request->input('sku', ''));
+        $percent = $request->input('percent', $request->input('cpn_pct', null));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'sku required'], 422);
+        }
+        if (! is_numeric($percent)) {
+            return response()->json(['success' => false, 'message' => 'percent required'], 422);
+        }
+
+        $result = app(\App\Services\Ebay1CouponService::class)
+            ->syncSkuCouponPercent($sku, (float) $percent);
+
+        return response()->json($result, ! empty($result['success']) ? 200 : 422);
     }
 
     /**
-     * Load LMP vs DISC rules (saved in channel_tabulator_column_settings, or defaults).
+     * PEF PRMT % → eBay1 Sell Marketing promotion (item_promotion ORDER_DISCOUNT).
+     * percent = 0 pauses any stored promotion for the SKU.
      */
-    public function pricingErrorsFixLmpDiscRules(): JsonResponse
+    public function pricingErrorsFixEbay1Promotion(Request $request): JsonResponse
     {
-        $defaults = $this->pefDefaultLmpDiscRules();
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'pef_lmp_vs_disc')
-            ->first();
-        $saved = is_array($row?->visibility) ? $row->visibility : null;
-        if (! is_array($saved) || $saved === []) {
-            return response()->json([
-                'success' => true,
-                'is_default' => true,
-                'rules' => $defaults,
-            ]);
+        $sku = trim((string) $request->input('sku', ''));
+        $percent = $request->input('percent', $request->input('prmt_pct', null));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'sku required'], 422);
+        }
+        if (! is_numeric($percent)) {
+            return response()->json(['success' => false, 'message' => 'percent required'], 422);
         }
 
-        $byKey = [];
-        foreach ($saved as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $k = (string) ($item['key'] ?? '');
-            if ($k === '') {
-                continue;
-            }
-            $byKey[$k] = $item;
-        }
-        $rules = [];
-        foreach ($defaults as $def) {
-            $k = $def['key'];
-            $amt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['amt'] ?? null)
-                ? (float) $byKey[$k]['amt']
-                : $def['amt'];
-            $rules[] = [
-                'key' => $k,
-                'label' => $def['label'],
-                'amt' => $amt,
-            ];
-        }
+        $result = app(\App\Services\Ebay1PromotionService::class)
+            ->syncSkuPromotionPercent($sku, (float) $percent);
 
-        return response()->json([
-            'success' => true,
-            'is_default' => false,
-            'rules' => $rules,
-        ]);
-    }
-
-    /**
-     * Persist LMP vs DISC editable AMT rules.
-     */
-    public function pricingErrorsFixSaveLmpDiscRules(Request $request): JsonResponse
-    {
-        $defaults = $this->pefDefaultLmpDiscRules();
-        $incoming = $request->input('rules');
-        if (! is_array($incoming)) {
-            return response()->json(['success' => false, 'message' => 'rules array required'], 422);
-        }
-
-        $byKey = [];
-        foreach ($incoming as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $k = (string) ($item['key'] ?? '');
-            if ($k === '') {
-                continue;
-            }
-            $byKey[$k] = $item;
-        }
-
-        $rules = [];
-        foreach ($defaults as $def) {
-            $k = $def['key'];
-            $amt = array_key_exists($k, $byKey) && is_numeric($byKey[$k]['amt'] ?? null)
-                ? round((float) $byKey[$k]['amt'], 2)
-                : (float) $def['amt'];
-            if ($amt < 0) {
-                $amt = 0;
-            }
-            $rules[] = [
-                'key' => $k,
-                'label' => $def['label'],
-                'amt' => $amt,
-            ];
-        }
-
-        ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => 'pef_lmp_vs_disc'],
-            ['visibility' => $rules, 'column_order' => array_column($rules, 'key')]
-        );
-
-        return response()->json(['success' => true, 'rules' => $rules]);
+        return response()->json($result, ! empty($result['success']) ? 200 : 422);
     }
 
     /**

@@ -160,12 +160,18 @@
         .tabulator-row .tabulator-cell[tabulator-field="cpn_dollar"],
         .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
-        .tabulator-row .tabulator-cell[tabulator-field="dsc"] {
+        .tabulator-row .tabulator-cell[tabulator-field="dsc"],
+        .tabulator-row .tabulator-cell[tabulator-field="appr"] {
             padding: 2px 4px !important;
         }
+        .pef-std-lmp-alert {
+            color: #dc3545;
+            font-size: 11px;
+            line-height: 1;
+            cursor: help;
+        }
         #pef-dil-prmt-table .pef-dil-prmt-input,
-        #pef-cvr-cpn-table .pef-cvr-cpn-input,
-        #pef-lmp-disc-table .pef-lmp-disc-input {
+        #pef-cvr-cpn-table .pef-cvr-cpn-input {
             max-width: 90px;
             margin-left: auto;
             text-align: right;
@@ -195,8 +201,7 @@
             flex-shrink: 0;
         }
         #pef-dil-prmt-table tbody tr td:first-child,
-        #pef-cvr-cpn-table tbody tr td:first-child,
-        #pef-lmp-disc-table tbody tr td:first-child {
+        #pef-cvr-cpn-table tbody tr td:first-child {
             font-weight: 600;
             color: #334155;
         }
@@ -535,10 +540,6 @@
                             title="CVR% slabs vs CPN% rules — edit and apply as CPN %">
                             <i class="fas fa-percentage"></i> CVR vs CPN
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="pef-lmp-vs-disc-btn"
-                            title="LMP diff% slabs vs AMT — edit and apply as DISC ($)">
-                            <i class="fas fa-tags"></i> LMP vs DISC
-                        </button>
 
                         <div class="dropdown">
                             <button class="btn btn-sm btn-light dropdown-toggle border" type="button"
@@ -691,57 +692,6 @@
         </div>
     </div>
 
-    {{-- LMP vs DISC: LMP-diff% slabs with editable AMT → DISC $ --}}
-    <div class="modal fade" id="pefLmpVsDiscModal" tabindex="-1" aria-labelledby="pefLmpVsDiscModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-md">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="pefLmpVsDiscModalLabel">
-                        <i class="fas fa-tags me-1"></i> LMP vs DISC
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-2">
-                    <p class="small text-muted mb-2">
-                        Map <strong>LMP diff%</strong> <span class="text-muted">((Price − LMP) ÷ LMP × 100)</span>
-                        to <strong>AMT</strong> ($). First-time defaults: <strong>&gt; 100% → 0</strong> up to
-                        <strong>0–10% → 10</strong>. Apply fills the <strong>DISC</strong> column.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-0" id="pef-lmp-disc-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:55%;">LMP diff%</th>
-                                    <th style="width:45%;" class="text-end">AMT</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pef-lmp-disc-tbody"></tbody>
-                        </table>
-                    </div>
-                    <div class="small text-muted mt-2" id="pef-lmp-disc-status"></div>
-                </div>
-                <div class="modal-footer py-2 flex-wrap gap-1">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pef-lmp-disc-reset-btn"
-                        title="Reset AMT to first-time defaults (0–10)">
-                        Reset defaults
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="pef-lmp-disc-save-btn">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    <button type="button" class="btn btn-sm btn-success" id="pef-lmp-disc-apply-selected-btn"
-                        title="Apply AMT as DISC $ on checked rows">
-                        Apply to selected
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" id="pef-lmp-disc-apply-visible-btn"
-                        title="Apply AMT as DISC $ on all visible rows">
-                        Apply to visible
-                    </button>
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     {{-- CVR vs CPN: CVR% slabs with editable CPN% --}}
     <div class="modal fade" id="pefCvrVsCpnModal" tabindex="-1" aria-labelledby="pefCvrVsCpnModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-md">
@@ -853,7 +803,6 @@
     const PEF_INITIAL_ROWS = @json($initial_rows ?? []);
     const PEF_DIL_PRMT_DEFAULTS = @json($dil_prmt_rules ?? []);
     const PEF_CVR_CPN_DEFAULTS = @json($cvr_cpn_rules ?? []);
-    const PEF_LMP_DISC_DEFAULTS = @json($lmp_disc_rules ?? []);
     /** Full dataset — filters work client-side; Reload refreshes via Ajax */
     let pulledRows = Array.isArray(PEF_INITIAL_ROWS) ? PEF_INITIAL_ROWS.slice() : [];
     let dataLoaded = pulledRows.length > 0;
@@ -1579,6 +1528,54 @@
         if (!isFinite(num) || num === 0) return null;
         return { type: 'percent', value: Math.abs(num) };
     }
+    /** CPN % including 0 (0 = pause eBay1 coupon). */
+    function parsePefCpnPercentAllowZero(raw) {
+        const s = String(raw == null ? '' : raw).trim();
+        if (s === '') return null;
+        const num = parseFloat(s.replace(/[%$,\s]/g, '').replace(',', '.'));
+        if (!isFinite(num) || num < 0) return null;
+        return { type: 'percent', value: Math.abs(num) };
+    }
+    function isPefEbay1Row(d) {
+        const mp = String(d && (d.marketplace || d.channel_key || d.pull_key) || '')
+            .toLowerCase().replace(/\s+/g, '');
+        return mp === 'ebay1' || mp === 'ebay' || mp === 'ebayone';
+    }
+    /**
+     * Sync CPN % to eBay1 Marketing coupon API (0 = pause).
+     * @returns {Promise<{ok:boolean,message?:string}>}
+     */
+    function syncEbay1CouponApi(sku, percent) {
+        return $.ajax({
+            url: '/pricing-errors-fix-ebay1-coupon',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            data: { sku: sku, percent: percent, _token: csrf },
+            dataType: 'json',
+        }).then(function(res) {
+            return { ok: !!(res && res.success), message: (res && res.message) || '' };
+        }, function(xhr) {
+            const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                || 'eBay1 coupon API error';
+            return { ok: false, message: msg };
+        });
+    }
+    /** Sync PRMT % to eBay1 Marketing promotion API (0 = pause). */
+    function syncEbay1PromotionApi(sku, percent) {
+        return $.ajax({
+            url: '/pricing-errors-fix-ebay1-promotion',
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            data: { sku: sku, percent: percent, _token: csrf },
+            dataType: 'json',
+        }).then(function(res) {
+            return { ok: !!(res && res.success), message: (res && res.message) || '' };
+        }, function(xhr) {
+            const msg = (xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
+                || 'eBay1 promotion API error';
+            return { ok: false, message: msg };
+        });
+    }
     function applyPromoToSpriceBase(base, promo) {
         if (!(base > 0) || !promo) return null;
         const next = promo.type === 'percent'
@@ -1639,15 +1636,106 @@
         }
         return '<span class="pef-promo-cell has-val">' + String(value) + '</span>';
     }
+
+    /** Dollar LMP difference amount = Price − LMP (only when Price > LMP). */
+    function pefLmpDiffAmount(d) {
+        const price = Number(d.price) || 0;
+        const lmp = Number(d.lmp) || 0;
+        if (!(price > 0) || !(lmp > 0)) return null;
+        const amt = round2(price - lmp);
+        return amt > 0 ? amt : null;
+    }
+
+    function pefLmpChanged(lockedLmp, currentLmp) {
+        const a = Number(lockedLmp);
+        const b = Number(currentLmp);
+        if (!isFinite(a) || !(a > 0)) return true;
+        if (!isFinite(b) || !(b > 0)) return true;
+        return a.toFixed(2) !== b.toFixed(2);
+    }
+
+    function syncPefRowCache(id, patch) {
+        const cacheIdx = pulledRows.findIndex(function(r) { return r.id === id; });
+        if (cacheIdx >= 0) {
+            pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
+        }
+    }
+
+    /**
+     * Clear Appr + DSC (and restore SPRICE if a DSC $ was applied).
+     */
+    function clearPefApprDiscount(row, opts) {
+        opts = opts || {};
+        const d = row.getData();
+        const prev = Number(d._dsc_applied) || 0;
+        const patch = {
+            appr: false,
+            _appr_lmp: null,
+            dsc: '',
+            _dsc_applied: 0,
+        };
+        if (prev > 0 && Number(d.sprice) > 0) {
+            patch.sprice = round2(Number(d.sprice) + prev);
+        }
+        row.update(patch);
+        syncPefRowCache(d.id, patch);
+        if (opts.save && patch.sprice != null && Number(patch.sprice) > 0) {
+            saveSprice(row, { silent: true });
+        }
+        if (opts.redraw && table) table.redraw(true);
+        return patch;
+    }
+
+    /**
+     * Approve: put Price−LMP amount into DSC and discount SPRICE.
+     */
+    function applyPefApprDiscount(row) {
+        const d = row.getData();
+        const amt = pefLmpDiffAmount(d);
+        const lmp = Number(d.lmp);
+        if (!(amt > 0) || !(lmp > 0)) {
+            row.update({ appr: false, _appr_lmp: null });
+            syncPefRowCache(d.id, { appr: false, _appr_lmp: null });
+            toast('Appr needs Price > LMP for this channel', 'error');
+            if (table) table.redraw(true);
+            return false;
+        }
+        const promo = { type: 'dollar', value: amt };
+        const base = getPefDiscountBase(d, '_dsc_applied', 'dollar');
+        const newPrice = applyPromoToSpriceBase(base, promo);
+        if (!(base > 0) || !(newPrice > 0)) {
+            row.update({ appr: false, _appr_lmp: null });
+            syncPefRowCache(d.id, { appr: false, _appr_lmp: null });
+            toast('No SPRICE/Price to discount', 'error');
+            if (table) table.redraw(true);
+            return false;
+        }
+        const patch = {
+            appr: true,
+            _appr_lmp: round2(lmp),
+            dsc: String(amt),
+            _dsc_applied: amt,
+            sprice: newPrice,
+        };
+        row.update(patch);
+        syncPefRowCache(d.id, patch);
+        saveSprice(row, { silent: true });
+        updatePushBtn();
+        if (table) table.redraw(true);
+        return true;
+    }
     /**
      * Apply CPN/DSC to one row (or all selected if the edited row is checked).
-     * Saves discounted SPRICE to each marketplace data_view — same DB path as /price-increase.
+     * eBay1 CPN % → Sell Marketing coupon API (0 pauses). Other channels discount SPRICE.
      */
-    function applyPefPromoFromCell(cell, kind, mode) {
+    async function applyPefPromoFromCell(cell, kind, mode) {
         const meta = pefPromoFieldMeta(kind, mode);
         const editedRow = cell.getRow();
         const raw = cell.getValue();
-        const promo = meta.parse(raw);
+        // CPN % / PRMT % allow 0 so eBay1 can pause coupon/promotion
+        const promo = ((kind === 'cpn' || kind === 'prmt') && mode === 'percent')
+            ? parsePefCpnPercentAllowZero(raw)
+            : meta.parse(raw);
         if (!promo) {
             if (String(raw == null ? '' : raw).trim() !== '') toast(meta.err, 'error');
             return;
@@ -1666,45 +1754,151 @@
             : String(round2(promo.value));
         let ok = 0;
         let skipped = 0;
+        let ebayOk = 0;
+        let ebayFail = 0;
+        let ebayPromoOk = 0;
+        let ebayPromoFail = 0;
 
-        targets.forEach(function(item) {
+        for (let i = 0; i < targets.length; i++) {
+            const item = targets[i];
             const d = item.row.getData();
+
+            // eBay1: CPN % drives live coupon API (0 = pause). Do not rewrite SPRICE.
+            if (kind === 'cpn' && mode === 'percent' && isPefEbay1Row(d)) {
+                item.row.update({
+                    cpn_pct: displayVal,
+                    _cpn_pct_applied: promo.value,
+                    coupon_status: 'syncing',
+                });
+                syncPefRowCache(d.id, {
+                    cpn_pct: displayVal,
+                    _cpn_pct_applied: promo.value,
+                    coupon_status: 'syncing',
+                });
+                const api = await syncEbay1CouponApi(d.sku, promo.value);
+                item.row.update({
+                    cpn_pct: displayVal,
+                    _cpn_pct_applied: promo.value,
+                    coupon_status: api.ok ? (promo.value > 0 ? 'live' : 'paused') : 'error',
+                    coupon_message: api.message || '',
+                });
+                syncPefRowCache(d.id, {
+                    cpn_pct: displayVal,
+                    _cpn_pct_applied: promo.value,
+                    coupon_status: api.ok ? (promo.value > 0 ? 'live' : 'paused') : 'error',
+                    coupon_message: api.message || '',
+                });
+                if (api.ok) ebayOk++;
+                else {
+                    ebayFail++;
+                    toast('eBay1 ' + d.sku + ': ' + (api.message || 'coupon failed'), 'error');
+                }
+                continue;
+            }
+
+            // eBay1: PRMT % drives live promotion API (0 = pause). Do not rewrite SPRICE.
+            if (kind === 'prmt' && isPefEbay1Row(d)) {
+                item.row.update({
+                    prmt_pct: displayVal,
+                    _prmt_pct_applied: promo.value,
+                    prmt_status: 'syncing',
+                });
+                syncPefRowCache(d.id, {
+                    prmt_pct: displayVal,
+                    _prmt_pct_applied: promo.value,
+                    prmt_status: 'syncing',
+                });
+                const api = await syncEbay1PromotionApi(d.sku, promo.value);
+                item.row.update({
+                    prmt_pct: displayVal,
+                    _prmt_pct_applied: promo.value,
+                    prmt_status: api.ok ? (promo.value > 0 ? 'live' : 'paused') : 'error',
+                    prmt_message: api.message || '',
+                });
+                syncPefRowCache(d.id, {
+                    prmt_pct: displayVal,
+                    _prmt_pct_applied: promo.value,
+                    prmt_status: api.ok ? (promo.value > 0 ? 'live' : 'paused') : 'error',
+                    prmt_message: api.message || '',
+                });
+                if (api.ok) ebayPromoOk++;
+                else {
+                    ebayPromoFail++;
+                    toast('eBay1 ' + d.sku + ': ' + (api.message || 'promotion failed'), 'error');
+                }
+                continue;
+            }
+
+            if (kind === 'cpn' && mode === 'percent' && !(promo.value > 0)) {
+                // Non-eBay: 0% = clear stamp only
+                item.row.update({ cpn_pct: '0', _cpn_pct_applied: 0 });
+                syncPefRowCache(d.id, { cpn_pct: '0', _cpn_pct_applied: 0 });
+                skipped++;
+                continue;
+            }
+
+            if (kind === 'prmt' && !(promo.value > 0)) {
+                item.row.update({ prmt_pct: '0', _prmt_pct_applied: 0 });
+                syncPefRowCache(d.id, { prmt_pct: '0', _prmt_pct_applied: 0 });
+                skipped++;
+                continue;
+            }
+
             const base = getPefDiscountBase(d, meta.appliedKey, mode === 'percent' ? 'percent' : 'dollar');
             const newPrice = applyPromoToSpriceBase(base, promo);
             if (!(base > 0) || !(newPrice > 0)) {
                 skipped++;
-                return;
+                continue;
             }
             const patch = {};
             patch[meta.field] = displayVal;
             patch[meta.appliedKey] = promo.value;
             patch.sprice = newPrice;
-            item.row.update(patch);
-            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
-            if (cacheIdx >= 0) {
-                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
+            // Manual DSC edit clears Appr (approval is tied to LMP-diff amount)
+            if (kind === 'dsc') {
+                patch.appr = false;
+                patch._appr_lmp = null;
             }
+            item.row.update(patch);
+            syncPefRowCache(d.id, patch);
             saveSprice(item.row, {
                 skipPairSync: meta.skipPairSync,
                 silent: true,
             });
             ok++;
-        });
-
-        if (!(ok > 0)) {
-            toast('No SPRICE/Price to discount', 'error');
-            return;
         }
-        const modeLabel = promo.type === 'percent'
-            ? (promo.value + '% less on SPRICE')
-            : ('$' + round2(promo.value).toFixed(2) + ' less on SPRICE');
-        toast(
-            meta.label + ': ' + modeLabel + ' → ' + ok + ' row(s)'
-                + (skipped ? ('; skipped ' + skipped) : '')
-                + '. Use Push to go live.',
-            'success'
-        );
+
+        if (ebayOk || ebayFail) {
+            toast(
+                'eBay1 coupon: ' + ebayOk + ' ok'
+                    + (ebayFail ? (', ' + ebayFail + ' failed') : '')
+                    + (promo.value > 0 ? (' @ ' + promo.value + '%') : ' (paused)'),
+                ebayFail && !ebayOk ? 'error' : 'success'
+            );
+        }
+        if (ebayPromoOk || ebayPromoFail) {
+            toast(
+                'eBay1 promotion: ' + ebayPromoOk + ' ok'
+                    + (ebayPromoFail ? (', ' + ebayPromoFail + ' failed') : '')
+                    + (promo.value > 0 ? (' @ ' + promo.value + '%') : ' (paused)'),
+                ebayPromoFail && !ebayPromoOk ? 'error' : 'success'
+            );
+        }
+        if (ok > 0) {
+            const modeLabel = promo.type === 'percent'
+                ? (promo.value + '% less on SPRICE')
+                : ('$' + round2(promo.value).toFixed(2) + ' less on SPRICE');
+            toast(
+                meta.label + ': ' + modeLabel + ' → ' + ok + ' row(s)'
+                    + (skipped ? ('; skipped ' + skipped) : '')
+                    + '. Use Push to go live.',
+                'success'
+            );
+        } else if (!ebayOk && !ebayFail && !ebayPromoOk && !ebayPromoFail && skipped) {
+            toast('No SPRICE/Price to discount', 'error');
+        }
         updatePushBtn();
+        if (table) table.redraw(true);
     }
 
     function normMp(name) {
@@ -1832,19 +2026,40 @@
             } else if (d.standard_price != null) {
                 patch.standard_price = d.standard_price;
             }
-            // Keep session CPN/PRMT/DSC UI fields (not in breakdown / DB)
+            // Keep session CPN/PRMT/DSC/Appr UI fields (not in breakdown / DB)
             patch.cpn_dollar = d.cpn_dollar;
             patch.cpn_pct = d.cpn_pct;
             patch.prmt_pct = d.prmt_pct;
             patch.dsc = d.dsc;
+            patch.appr = !!d.appr;
+            patch._appr_lmp = d._appr_lmp;
             patch._cpn_dollar_applied = d._cpn_dollar_applied;
             patch._cpn_pct_applied = d._cpn_pct_applied;
             patch._prmt_pct_applied = d._prmt_pct_applied;
             patch._dsc_applied = d._dsc_applied;
+
+            // If Appr was on and LMP revised ↑/↓ → clear DSC + untick Appr + restore SPRICE
+            let lmpRevisedClear = false;
+            if (d.appr && pefLmpChanged(d._appr_lmp, patch.lmp)) {
+                const prev = Number(d._dsc_applied) || 0;
+                patch.appr = false;
+                patch._appr_lmp = null;
+                patch.dsc = '';
+                patch._dsc_applied = 0;
+                if (prev > 0) {
+                    const curSp = Number(patch.sprice != null ? patch.sprice : d.sprice) || 0;
+                    if (curSp > 0) patch.sprice = round2(curSp + prev);
+                }
+                lmpRevisedClear = true;
+            }
+
             row.update(patch);
             // Keep pulledRows cache in sync for this id only
             const idx = pulledRows.findIndex(function(r) { return r.id === d.id; });
             if (idx >= 0) pulledRows[idx] = Object.assign({}, pulledRows[idx], patch);
+            if (lmpRevisedClear && Number(patch.sprice) > 0) {
+                saveSprice(row, { silent: true });
+            }
         } catch (e) {
             // silent — row already has local save/push status
         }
@@ -2115,7 +2330,7 @@
                     sorter: 'number',
                     sorterParams: { alignEmptyValues: 'bottom' },
                     cssClass: 'pef-sortable',
-                    headerTooltip: 'Standard Price (STD PRC) — same as /price-increase (amazon_data_view.STANDARD_PRICE). Shared across channels for this SKU. Dot: red=below channel price, green=above, yellow=hold.',
+                    headerTooltip: 'Standard Price (STD PRC) — same as /price-increase (amazon_data_view.STANDARD_PRICE). Red triangle when channel LMP is lower than STD PRC.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         const std = Number(cell.getValue());
@@ -2123,6 +2338,7 @@
                             return '<span class="text-muted">—</span>';
                         }
                         const price = Number(d.price) || 0;
+                        const lmp = Number(d.lmp) || 0;
                         let color = '#ffc107';
                         let tip = 'Hold';
                         if (price > 0) {
@@ -2138,11 +2354,43 @@
                                 tip = 'Hold (matches channel price)';
                             }
                         }
+                        // Red triangle when LMP < STD PRC for this channel
+                        const lmpBelowStd = lmp > 0 && lmp < std;
+                        const alertHtml = lmpBelowStd
+                            ? '<i class="fas fa-exclamation-triangle pef-std-lmp-alert" title="Alert: LMP ($'
+                                + lmp.toFixed(2) + ') is lower than Standard Price ($' + std.toFixed(2)
+                                + ') for this channel"></i>'
+                            : '';
                         return '<span class="pef-std-prc-cell" title="' + tip.replace(/"/g, '&quot;')
                             + ' — SP (Standard Price)">'
+                            + alertHtml
                             + '<span class="pef-std-prc-dot" style="background:' + color + ';"></span>'
                             + std.toFixed(2)
                             + '</span>';
+                    },
+                    accessorDownload: function(value) { return value; },
+                },
+                {
+                    title: 'LMP',
+                    field: 'lmp',
+                    width: 72,
+                    hozAlign: 'right',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    sorter: 'number',
+                    sorterParams: { alignEmptyValues: 'bottom' },
+                    cssClass: 'pef-sortable',
+                    headerTooltip: 'Lowest Marketplace Price for this SKU on this channel (same source as /price-increase OV L30 LMP). Amazon / eBay / Temu when available.',
+                    formatter: function(cell) {
+                        const v = cell.getValue();
+                        if (v === null || v === undefined || v === '') {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        const n = Number(v);
+                        if (!isFinite(n) || !(n > 0)) {
+                            return '<span class="text-muted">—</span>';
+                        }
+                        return '$' + n.toFixed(2);
                     },
                     accessorDownload: function(value) { return value; },
                 },
@@ -2187,9 +2435,20 @@
                     headerSort: false,
                     editable: true,
                     editor: 'input',
-                    headerTooltip: 'Promotion % — from Dil vs PRMT rules (or edit manually). Applies % less on SPRICE.',
+                    headerTooltip: 'eBay1: live promotion API (5–80%, or 0 = pause). Other channels: % less on SPRICE. Also filled by Dil vs PRMT.',
                     formatter: function(cell) {
-                        return fmtPefPromoCell(cell.getValue(), '%');
+                        const d = cell.getRow().getData() || {};
+                        const base = fmtPefPromoCell(cell.getValue(), '%');
+                        if (!isPefEbay1Row(d)) return base;
+                        const st = String(d.prmt_status || '');
+                        if (!st) return base;
+                        const tip = String(d.prmt_message || st).replace(/"/g, '&quot;');
+                        let badge = '';
+                        if (st === 'live') badge = '<span class="text-success ms-1" title="' + tip + '">●</span>';
+                        else if (st === 'paused') badge = '<span class="text-muted ms-1" title="' + tip + '">◐</span>';
+                        else if (st === 'syncing') badge = '<span class="text-primary ms-1" title="Syncing…">…</span>';
+                        else if (st === 'error') badge = '<span class="text-danger ms-1" title="' + tip + '">!</span>';
+                        return '<span class="d-inline-flex align-items-center">' + base + badge + '</span>';
                     },
                     cellEdited: function(cell) {
                         applyPefPromoFromCell(cell, 'prmt', 'percent');
@@ -2204,12 +2463,39 @@
                     headerSort: false,
                     editable: true,
                     editor: 'input',
-                    headerTooltip: '% less on checked channels (same as /price-increase CPN % → saves SPRICE)',
+                    headerTooltip: 'eBay1: live coupon API (5–80%, or 0 = pause). Other channels: % less on SPRICE.',
                     formatter: function(cell) {
-                        return fmtPefPromoCell(cell.getValue(), '%');
+                        const d = cell.getRow().getData() || {};
+                        const base = fmtPefPromoCell(cell.getValue(), '%');
+                        if (!isPefEbay1Row(d)) return base;
+                        const st = String(d.coupon_status || '');
+                        if (!st) return base;
+                        const tip = String(d.coupon_message || st).replace(/"/g, '&quot;');
+                        let badge = '';
+                        if (st === 'live') badge = '<span class="text-success ms-1" title="' + tip + '">●</span>';
+                        else if (st === 'paused') badge = '<span class="text-muted ms-1" title="' + tip + '">◐</span>';
+                        else if (st === 'syncing') badge = '<span class="text-primary ms-1" title="Syncing…">…</span>';
+                        else if (st === 'error') badge = '<span class="text-danger ms-1" title="' + tip + '">!</span>';
+                        return '<span class="d-inline-flex align-items-center">' + base + badge + '</span>';
                     },
                     cellEdited: function(cell) {
                         applyPefPromoFromCell(cell, 'cpn', 'percent');
+                    },
+                },
+                {
+                    title: 'Appr',
+                    field: 'appr',
+                    width: 48,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: false,
+                    headerTooltip: 'Approve — ticks to put LMP difference amount (Price − LMP) into DSC. Auto-clears if LMP is revised.',
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        const checked = d.appr ? 'checked' : '';
+                        const id = String(d.id || '').replace(/"/g, '&quot;');
+                        return '<input type="checkbox" class="pef-appr-cb" data-id="' + id + '" ' + checked
+                            + ' title="Approve LMP difference amount → DSC">';
                     },
                 },
                 {
@@ -2221,7 +2507,7 @@
                     headerSort: false,
                     editable: true,
                     editor: 'input',
-                    headerTooltip: 'DSC $ off each channel’s own SPRICE (dollar only, no %) — same as /price-increase',
+                    headerTooltip: 'Discount amount $ off SPRICE. Filled by Appr (Price − LMP) or edit manually.',
                     formatter: function(cell) {
                         return fmtPefPromoCell(cell.getValue(), '$1');
                     },
@@ -2532,12 +2818,28 @@
                         cpn_pct: after.cpn_pct != null ? after.cpn_pct : d.cpn_pct,
                         prmt_pct: after.prmt_pct != null ? after.prmt_pct : d.prmt_pct,
                         dsc: after.dsc != null ? after.dsc : d.dsc,
+                        appr: after.appr != null ? after.appr : d.appr,
+                        _appr_lmp: after._appr_lmp != null ? after._appr_lmp : d._appr_lmp,
                         _cpn_dollar_applied: after._cpn_dollar_applied != null ? after._cpn_dollar_applied : d._cpn_dollar_applied,
                         _cpn_pct_applied: after._cpn_pct_applied != null ? after._cpn_pct_applied : d._cpn_pct_applied,
                         _prmt_pct_applied: after._prmt_pct_applied != null ? after._prmt_pct_applied : d._prmt_pct_applied,
                         _dsc_applied: after._dsc_applied != null ? after._dsc_applied : d._dsc_applied,
                     };
+                    // If refresh brought a revised LMP while Appr was on, clear DSC/Appr
+                    if (keep.appr && pefLmpChanged(keep._appr_lmp, after.lmp != null ? after.lmp : d.lmp)) {
+                        const prev = Number(keep._dsc_applied) || 0;
+                        keep.appr = false;
+                        keep._appr_lmp = null;
+                        keep.dsc = '';
+                        keep._dsc_applied = 0;
+                        if (prev > 0 && Number(after.sprice) > 0) {
+                            keep.sprice = round2(Number(after.sprice) + prev);
+                        }
+                    }
                     row.update(keep);
+                    if (keep.sprice != null && Number(keep.sprice) > 0 && keep.appr === false && d.appr) {
+                        saveSprice(row, { silent: true });
+                    }
                 }
             } catch (e) {
                 row.update({ success: 'saved' });
@@ -3087,6 +3389,19 @@
         syncSelectAllCheckbox();
     });
 
+    $(document).on('change', '.pef-appr-cb', function() {
+        const id = $(this).attr('data-id');
+        if (!table || !id) return;
+        const row = table.getRows().find(function(r) { return r.getData().id === id; });
+        if (!row) return;
+        if ($(this).is(':checked')) {
+            applyPefApprDiscount(row);
+        } else {
+            clearPefApprDiscount(row, { save: true, redraw: true });
+            updatePushBtn();
+        }
+    });
+
     $(document).on('click', '.pef-push-one', async function() {
         const id = $(this).attr('data-id');
         if (!table || !id || pefPushInFlight) return;
@@ -3314,9 +3629,10 @@
     }
 
     /**
-     * Autopopulate PRMT % from Dil slabs → apply % discount on SPRICE.
+     * Autopopulate PRMT % from Dil slabs.
+     * eBay1 → promotion API (0 = pause). Other channels → % less on SPRICE.
      */
-    function applyDilPrmtToTargets(targets, label) {
+    async function applyDilPrmtToTargets(targets, label) {
         readDilPrmtRulesFromModal();
         if (!targets.length) {
             toast('No rows to apply', 'error');
@@ -3324,22 +3640,51 @@
         }
         let ok = 0;
         let skipped = 0;
-        targets.forEach(function(item) {
+        let ebayOk = 0;
+        let ebayFail = 0;
+        for (let i = 0; i < targets.length; i++) {
+            const item = targets[i];
             const d = item.row.getData();
             const dil = Number(d.dil);
             const prmt = pefPrmtForDil(dil);
+
+            // eBay1 → promotion API (0 pauses)
+            if (isPefEbay1Row(d)) {
+                item.row.update({
+                    prmt_pct: String(prmt),
+                    _prmt_pct_applied: prmt,
+                    prmt_status: 'syncing',
+                });
+                const api = await syncEbay1PromotionApi(d.sku, prmt);
+                item.row.update({
+                    prmt_pct: String(prmt),
+                    _prmt_pct_applied: prmt,
+                    prmt_status: api.ok ? (prmt > 0 ? 'live' : 'paused') : 'error',
+                    prmt_message: api.message || '',
+                });
+                syncPefRowCache(d.id, {
+                    prmt_pct: String(prmt),
+                    _prmt_pct_applied: prmt,
+                    prmt_status: api.ok ? (prmt > 0 ? 'live' : 'paused') : 'error',
+                    prmt_message: api.message || '',
+                });
+                if (api.ok) ebayOk++;
+                else ebayFail++;
+                continue;
+            }
+
             if (!(prmt > 0)) {
                 // 0% = no discount — still stamp PRMT % for visibility
                 item.row.update({ prmt_pct: String(prmt), _prmt_pct_applied: 0 });
                 skipped++;
-                return;
+                continue;
             }
             const promo = { type: 'percent', value: prmt };
             const base = getPefDiscountBase(d, '_prmt_pct_applied', 'percent');
             const newPrice = applyPromoToSpriceBase(base, promo);
             if (!(base > 0) || !(newPrice > 0)) {
                 skipped++;
-                return;
+                continue;
             }
             const patch = {
                 prmt_pct: String(prmt),
@@ -3347,18 +3692,16 @@
                 sprice: newPrice,
             };
             item.row.update(patch);
-            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
-            if (cacheIdx >= 0) {
-                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
-            }
+            syncPefRowCache(d.id, patch);
             saveSprice(item.row, { skipPairSync: true, silent: true });
             ok++;
-        });
+        }
         toast(
-            'Dil vs PRMT (' + label + '): PRMT % applied to ' + ok + ' row(s)'
+            'Dil vs PRMT (' + label + '): PRMT % → ' + ok + ' row(s)'
+                + (ebayOk || ebayFail ? ('; eBay1 promo ' + ebayOk + ' ok' + (ebayFail ? (' / ' + ebayFail + ' fail') : '')) : '')
                 + (skipped ? ('; skipped ' + skipped) : '')
-                + '. Use Push to go live.',
-            ok ? 'success' : 'error'
+                + '.',
+            (ok || ebayOk) ? 'success' : 'error'
         );
         updatePushBtn();
         if (table) table.redraw(true);
@@ -3519,7 +3862,7 @@
         });
     }
 
-    function applyCvrCpnToTargets(targets, label) {
+    async function applyCvrCpnToTargets(targets, label) {
         readCvrCpnRulesFromModal();
         if (!targets.length) {
             toast('No rows to apply', 'error');
@@ -3527,7 +3870,10 @@
         }
         let ok = 0;
         let skipped = 0;
-        targets.forEach(function(item) {
+        let ebayOk = 0;
+        let ebayFail = 0;
+        for (let i = 0; i < targets.length; i++) {
+            const item = targets[i];
             const d = item.row.getData();
             let cvr = Number(d.cvr);
             if (!isFinite(cvr) || cvr < 0) {
@@ -3536,17 +3882,46 @@
                 cvr = views > 0 ? round2((l30 / views) * 100) : 0;
             }
             const cpn = pefCpnForCvr(cvr);
+
+            // eBay1 → coupon API (0 pauses)
+            if (isPefEbay1Row(d)) {
+                item.row.update({
+                    cvr: cvr,
+                    cpn_pct: String(cpn),
+                    _cpn_pct_applied: cpn,
+                    coupon_status: 'syncing',
+                });
+                const api = await syncEbay1CouponApi(d.sku, cpn);
+                item.row.update({
+                    cvr: cvr,
+                    cpn_pct: String(cpn),
+                    _cpn_pct_applied: cpn,
+                    coupon_status: api.ok ? (cpn > 0 ? 'live' : 'paused') : 'error',
+                    coupon_message: api.message || '',
+                });
+                syncPefRowCache(d.id, {
+                    cvr: cvr,
+                    cpn_pct: String(cpn),
+                    _cpn_pct_applied: cpn,
+                    coupon_status: api.ok ? (cpn > 0 ? 'live' : 'paused') : 'error',
+                    coupon_message: api.message || '',
+                });
+                if (api.ok) ebayOk++;
+                else ebayFail++;
+                continue;
+            }
+
             if (!(cpn > 0)) {
                 item.row.update({ cpn_pct: String(cpn), _cpn_pct_applied: 0, cvr: cvr });
                 skipped++;
-                return;
+                continue;
             }
             const promo = { type: 'percent', value: cpn };
             const base = getPefDiscountBase(d, '_cpn_pct_applied', 'percent');
             const newPrice = applyPromoToSpriceBase(base, promo);
             if (!(base > 0) || !(newPrice > 0)) {
                 skipped++;
-                return;
+                continue;
             }
             const patch = {
                 cvr: cvr,
@@ -3555,18 +3930,16 @@
                 sprice: newPrice,
             };
             item.row.update(patch);
-            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
-            if (cacheIdx >= 0) {
-                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
-            }
+            syncPefRowCache(d.id, patch);
             saveSprice(item.row, { skipPairSync: true, silent: true });
             ok++;
-        });
+        }
         toast(
-            'CVR vs CPN (' + label + '): CPN % applied to ' + ok + ' row(s)'
+            'CVR vs CPN (' + label + '): CPN % → ' + ok + ' row(s)'
+                + (ebayOk || ebayFail ? ('; eBay1 coupon ' + ebayOk + ' ok' + (ebayFail ? (' / ' + ebayFail + ' fail') : '')) : '')
                 + (skipped ? ('; skipped ' + skipped) : '')
-                + '. Use Push to go live.',
-            ok ? 'success' : 'error'
+                + '.',
+            (ok || ebayOk) ? 'success' : 'error'
         );
         updatePushBtn();
         if (table) table.redraw(true);
@@ -3605,229 +3978,6 @@
         });
         if (!confirm('Apply CVR→CPN % to ' + targets.length + ' visible row(s)?')) return;
         applyCvrCpnToTargets(targets, 'visible');
-    });
-
-    // ==================== LMP vs DISC modal ====================
-    let pefLmpDiscRules = Array.isArray(PEF_LMP_DISC_DEFAULTS) && PEF_LMP_DISC_DEFAULTS.length
-        ? PEF_LMP_DISC_DEFAULTS.map(function(r) { return Object.assign({}, r); })
-        : [
-            { key: '0-10', label: '0–10%', amt: 10 },
-            { key: '10-20', label: '10–20%', amt: 9 },
-            { key: '20-30', label: '20–30%', amt: 8 },
-            { key: '30-40', label: '30–40%', amt: 7 },
-            { key: '40-50', label: '40–50%', amt: 6 },
-            { key: '50-60', label: '50–60%', amt: 5 },
-            { key: '60-70', label: '60–70%', amt: 4 },
-            { key: '70-80', label: '70–80%', amt: 3 },
-            { key: '80-90', label: '80–90%', amt: 2 },
-            { key: '90-100', label: '90–100%', amt: 1 },
-            { key: 'gt-100', label: '> 100%', amt: 0 },
-        ];
-
-    function pefLmpDiffSlabKey(diff) {
-        const n = Number(diff);
-        if (!isFinite(n) || n < 0) return '0-10';
-        if (n > 100) return 'gt-100';
-        if (n >= 90) return '90-100';
-        if (n >= 80) return '80-90';
-        if (n >= 70) return '70-80';
-        if (n >= 60) return '60-70';
-        if (n >= 50) return '50-60';
-        if (n >= 40) return '40-50';
-        if (n >= 30) return '30-40';
-        if (n >= 20) return '20-30';
-        if (n >= 10) return '10-20';
-        return '0-10';
-    }
-
-    function pefRowLmpDiff(d) {
-        let diff = Number(d.lmp_diff);
-        if (isFinite(diff)) return diff;
-        const price = Number(d.price) || 0;
-        const lmp = Number(d.lmp) || 0;
-        if (price > 0 && lmp > 0) return round2(((price - lmp) / lmp) * 100);
-        return null;
-    }
-
-    function pefAmtForLmpDiff(diff) {
-        if (diff == null || !isFinite(Number(diff))) return null;
-        const key = pefLmpDiffSlabKey(diff);
-        const rule = pefLmpDiscRules.find(function(r) { return r.key === key; });
-        if (!rule) return 0;
-        const n = Number(rule.amt);
-        return isFinite(n) && n >= 0 ? n : 0;
-    }
-
-    function renderLmpDiscModalTable() {
-        const $tb = $('#pef-lmp-disc-tbody').empty();
-        pefLmpDiscRules.forEach(function(r, idx) {
-            const amt = isFinite(Number(r.amt)) ? Number(r.amt) : 0;
-            $tb.append(
-                '<tr data-key="' + String(r.key).replace(/"/g, '&quot;') + '">'
-                + '<td>' + String(r.label || r.key) + '</td>'
-                + '<td class="text-end">'
-                + '<input type="number" class="form-control form-control-sm pef-lmp-disc-input" '
-                + 'min="0" step="0.1" value="' + amt + '" data-idx="' + idx + '" '
-                + 'title="AMT $ for LMP diff ' + String(r.label || r.key) + '">'
-                + '</td></tr>'
-            );
-        });
-    }
-
-    function readLmpDiscRulesFromModal() {
-        $('#pef-lmp-disc-tbody tr').each(function() {
-            const key = String($(this).attr('data-key') || '');
-            const val = parseFloat($(this).find('.pef-lmp-disc-input').val());
-            const rule = pefLmpDiscRules.find(function(r) { return r.key === key; });
-            if (!rule) return;
-            rule.amt = (isFinite(val) && val >= 0) ? val : 0;
-        });
-        return pefLmpDiscRules.map(function(r) {
-            return { key: r.key, label: r.label, amt: Number(r.amt) || 0 };
-        });
-    }
-
-    async function loadLmpDiscRules() {
-        $('#pef-lmp-disc-status').text('Loading…');
-        try {
-            const res = await $.ajax({
-                url: '/pricing-errors-fix-lmp-disc',
-                method: 'GET',
-                dataType: 'json',
-            });
-            if (res && Array.isArray(res.rules) && res.rules.length) {
-                pefLmpDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
-            }
-            renderLmpDiscModalTable();
-            $('#pef-lmp-disc-status').text(res && res.is_default
-                ? 'Using first-time defaults (0–10). Save to keep your edits.'
-                : 'Loaded saved LMP vs DISC rules.');
-        } catch (e) {
-            renderLmpDiscModalTable();
-            $('#pef-lmp-disc-status').text('Could not load saved rules — showing defaults.');
-        }
-    }
-
-    function saveLmpDiscRules() {
-        const rules = readLmpDiscRulesFromModal();
-        const $btn = $('#pef-lmp-disc-save-btn');
-        const html = $btn.html();
-        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
-        $.ajax({
-            url: '/pricing-errors-fix-lmp-disc',
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-            data: { rules: rules, _token: csrf },
-        }).done(function(res) {
-            if (res && Array.isArray(res.rules)) {
-                pefLmpDiscRules = res.rules.map(function(r) { return Object.assign({}, r); });
-                renderLmpDiscModalTable();
-            }
-            toast('LMP vs DISC rules saved', 'success');
-            $('#pef-lmp-disc-status').text('Saved.');
-        }).fail(function(xhr) {
-            toast('Save failed: ' + (xhr.responseJSON?.message || 'error'), 'error');
-        }).always(function() {
-            $btn.prop('disabled', false).html(html);
-        });
-    }
-
-    /**
-     * Autopopulate DISC (DSC $) from LMP-diff slabs → same discount logic as DSC column.
-     */
-    function applyLmpDiscToTargets(targets, label) {
-        readLmpDiscRulesFromModal();
-        if (!targets.length) {
-            toast('No rows to apply', 'error');
-            return;
-        }
-        let ok = 0;
-        let skipped = 0;
-        targets.forEach(function(item) {
-            const d = item.row.getData();
-            const lmpDiff = pefRowLmpDiff(d);
-            if (lmpDiff == null) {
-                skipped++;
-                return;
-            }
-            const amt = pefAmtForLmpDiff(lmpDiff);
-            if (amt == null) {
-                skipped++;
-                return;
-            }
-            if (!(amt > 0)) {
-                item.row.update({
-                    lmp_diff: lmpDiff,
-                    dsc: String(amt),
-                    _dsc_applied: 0,
-                });
-                skipped++;
-                return;
-            }
-            const promo = { type: 'dollar', value: amt };
-            const base = getPefDiscountBase(d, '_dsc_applied', 'dollar');
-            const newPrice = applyPromoToSpriceBase(base, promo);
-            if (!(base > 0) || !(newPrice > 0)) {
-                skipped++;
-                return;
-            }
-            const patch = {
-                lmp_diff: lmpDiff,
-                dsc: String(round2(amt)),
-                _dsc_applied: amt,
-                sprice: newPrice,
-            };
-            item.row.update(patch);
-            const cacheIdx = pulledRows.findIndex(function(r) { return r.id === d.id; });
-            if (cacheIdx >= 0) {
-                pulledRows[cacheIdx] = Object.assign({}, pulledRows[cacheIdx], patch);
-            }
-            saveSprice(item.row, { skipPairSync: false, silent: true });
-            ok++;
-        });
-        toast(
-            'LMP vs DISC (' + label + '): DISC $ applied to ' + ok + ' row(s)'
-                + (skipped ? ('; skipped ' + skipped) : '')
-                + '. Use Push to go live.',
-            ok ? 'success' : 'error'
-        );
-        updatePushBtn();
-        if (table) table.redraw(true);
-    }
-
-    $('#pef-lmp-vs-disc-btn').on('click', function() {
-        const modalEl = document.getElementById('pefLmpVsDiscModal');
-        if (!modalEl) return;
-        renderLmpDiscModalTable();
-        loadLmpDiscRules();
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    });
-    $('#pef-lmp-disc-reset-btn').on('click', function() {
-        pefLmpDiscRules = [
-            ['0-10', '0–10%', 10], ['10-20', '10–20%', 9], ['20-30', '20–30%', 8],
-            ['30-40', '30–40%', 7], ['40-50', '40–50%', 6], ['50-60', '50–60%', 5],
-            ['60-70', '60–70%', 4], ['70-80', '70–80%', 3], ['80-90', '80–90%', 2],
-            ['90-100', '90–100%', 1], ['gt-100', '> 100%', 0],
-        ].map(function(t) {
-            return { key: t[0], label: t[1], amt: t[2] };
-        });
-        renderLmpDiscModalTable();
-        $('#pef-lmp-disc-status').text('Reset to first-time defaults (0–10). Save to persist.');
-    });
-    $('#pef-lmp-disc-save-btn').on('click', saveLmpDiscRules);
-    $('#pef-lmp-disc-apply-selected-btn').on('click', function() {
-        applyLmpDiscToTargets(collectSelectedRows(), 'selected');
-    });
-    $('#pef-lmp-disc-apply-visible-btn').on('click', function() {
-        if (!table) {
-            toast('Load data first', 'error');
-            return;
-        }
-        const targets = table.getRows('active').map(function(row) {
-            return { row: row, d: row.getData() };
-        });
-        if (!confirm('Apply LMP→DISC $ to ' + targets.length + ' visible row(s)?')) return;
-        applyLmpDiscToTargets(targets, 'visible');
     });
 
     $('#pef-bulk-push-btn').on('click', pushSelected);
