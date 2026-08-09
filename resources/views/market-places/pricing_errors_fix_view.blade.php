@@ -502,6 +502,13 @@
                             <option value="gt_0">&gt; 0</option>
                         </select>
 
+                        <label class="pef-lbl" for="pef-l30-filter">L30</label>
+                        <select id="pef-l30-filter" class="form-select form-select-sm" style="width:64px;" title="Filter by L30">
+                            <option value="all">All</option>
+                            <option value="eq_0">= 0</option>
+                            <option value="gt_0">&gt; 0</option>
+                        </select>
+
                         <label class="pef-lbl" for="pef-price-filter">Price</label>
                         <select id="pef-price-filter" class="form-select form-select-sm" style="width:72px;"
                             title="Price filter — Exist = price &gt; 0">
@@ -1514,6 +1521,7 @@
         if (!table) return;
         const sortSnapshot = snapshotTableSort();
         const invFilter = $('#pef-inv-filter').val() || 'all';
+        const l30Filter = $('#pef-l30-filter').val() || 'all';
         const dilColor = $('#pef-dil-filter').val() || 'all';
         const gpftRange = $('#pef-gpft-filter').val() || 'all';
         const groiRange = $('#pef-groi-filter').val() || 'all';
@@ -1541,6 +1549,12 @@
             table.addFilter(function(data) { return Number(data.inv || 0) > 0; });
         } else if (invFilter === 'eq_0') {
             table.addFilter(function(data) { return Number(data.inv || 0) === 0; });
+        }
+        // L30 filter: All | = 0 | > 0
+        if (l30Filter === 'gt_0') {
+            table.addFilter(function(data) { return Number(data.l30 || 0) > 0; });
+        } else if (l30Filter === 'eq_0') {
+            table.addFilter(function(data) { return Number(data.l30 || 0) === 0; });
         }
         // Price filter (separate)
         if (priceFilter === 'null') {
@@ -2852,6 +2866,7 @@
 
             $('#pef-price-filter').val('all');
             $('#pef-inv-filter').val('all');
+            $('#pef-l30-filter').val('all');
 
             if (table) {
                 await table.replaceData(pulledRows);
@@ -4322,7 +4337,7 @@
         // Reloads from cache with listed_only flag (still instant)
         loadFromCache();
     });
-    $('#pef-inv-filter, #pef-price-filter').on('change', function() {
+    $('#pef-inv-filter, #pef-l30-filter, #pef-price-filter').on('change', function() {
         if (!dataLoaded) return;
         applyStatusFilter();
     });
