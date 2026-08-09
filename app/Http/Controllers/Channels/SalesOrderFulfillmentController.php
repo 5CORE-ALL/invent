@@ -816,9 +816,15 @@ class SalesOrderFulfillmentController extends Controller
                 }
             }
             if ($match === null) {
-                $row['shipment_status'] = null;
-                $row['shipment_status_detail'] = null;
-
+                // Keep status already attached from shopify_raw_orders tracking join.
+                // Clearing here made synced statuses disappear when secondary match keys differed.
+                $kept = trim((string) ($row['shipment_status'] ?? ''));
+                if ($kept !== '') {
+                    $carrierLabel = $this->carrierShipmentStatusLabel($kept);
+                    if ($carrierLabel !== null) {
+                        $row['status_label'] = $carrierLabel;
+                    }
+                }
                 continue;
             }
 
@@ -876,6 +882,9 @@ class SalesOrderFulfillmentController extends Controller
             ShipmentTrackingService::STATUS_OUT_FOR_DELIV => 'Out for Delivery',
             ShipmentTrackingService::STATUS_PICKUP => 'Available for Pickup',
             ShipmentTrackingService::STATUS_INFO_RECEIVED => 'Label Created / No Scan',
+            ShipmentTrackingService::STATUS_PENDING => 'Pending Scan',
+            ShipmentTrackingService::STATUS_NOT_FOUND => 'Not Found (carrier)',
+            ShipmentTrackingService::STATUS_EXPIRED => 'Expired',
             ShipmentTrackingService::STATUS_EXCEPTION => 'Exception',
             ShipmentTrackingService::STATUS_FAILED => 'Delivery Failure',
             default => null,
@@ -1071,12 +1080,24 @@ class SalesOrderFulfillmentController extends Controller
             return null;
         }
 
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format('Y-m-d H:i:s');
-        }
+        $tz = 'America/Los_Angeles';
 
         try {
-            return \Illuminate\Support\Carbon::parse((string) $value)->format('Y-m-d H:i:s');
+            if ($value instanceof \DateTimeInterface) {
+                return Carbon::parse($value)->timezone($tz)->format('Y-m-d H:i:s');
+            }
+
+            $raw = trim((string) $value);
+            if ($raw === '') {
+                return null;
+            }
+
+            // Date-only values are already Pacific calendar days — keep as midnight LA.
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1) {
+                return Carbon::createFromFormat('Y-m-d', $raw, $tz)->startOfDay()->format('Y-m-d H:i:s');
+            }
+
+            return Carbon::parse($raw, $tz)->timezone($tz)->format('Y-m-d H:i:s');
         } catch (\Throwable) {
             return trim((string) $value) !== '' ? trim((string) $value) : null;
         }
@@ -1880,13 +1901,15 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Count of Label Created / No Scan orders in the last 30 days (all MM channels).
+     * Same membership as fulfilledData() — excludes carrier InTransit/Delivered.
      * JSON key remains fulfilled_24h for frontend compatibility.
      */
     protected function fulfilledLast24HoursCount(): int
     {
-        return $this->countAllOrders(
-            fn (string $slug) => $this->scopedToLast30Days($this->fulfilledOrdersQuery($slug), $slug)
-        );
+        return count(array_filter(
+            $this->labelCreatedOrderRows(),
+            fn (array $r) => ! $this->carrierStatusHasLeftLabelCreated($r['shipment_status'] ?? null)
+        ));
     }
 
     /**
@@ -1902,12 +1925,28 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Count of In Transit orders in the last 30 days.
+     * Same membership as inTransitData() — marketplace + carrier progress from Label Created.
      */
     protected function inTransitOrdersCount(): int
     {
-        return $this->countAllOrders(
-            fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug)
+        $rows = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->inTransitOrdersQuery($slug), $slug),
+            true
         );
+        $fromCarrier = array_values(array_filter(
+            $this->labelCreatedOrderRows(),
+            function (array $r) {
+                $s = (string) ($r['shipment_status'] ?? '');
+
+                return in_array($s, [
+                    ShipmentTrackingService::STATUS_IN_TRANSIT,
+                    ShipmentTrackingService::STATUS_OUT_FOR_DELIV,
+                    ShipmentTrackingService::STATUS_PICKUP,
+                ], true);
+            }
+        ));
+
+        return count($this->mergeOrderRowsById($rows, $fromCarrier));
     }
 
     /**
@@ -1932,12 +1971,20 @@ class SalesOrderFulfillmentController extends Controller
 
     /**
      * Count of Delivered orders in the last 30 days.
+     * Same membership as deliveredData() — marketplace + carrier Delivered from Label Created.
      */
     protected function deliveredOrdersCount(): int
     {
-        return $this->countAllOrders(
-            fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug)
+        $rows = $this->collectOrderRows(
+            fn (string $slug) => $this->scopedToLast30Days($this->deliveredOrdersQuery($slug), $slug),
+            true
         );
+        $fromCarrier = array_values(array_filter(
+            $this->labelCreatedOrderRows(),
+            fn (array $r) => ($r['shipment_status'] ?? null) === ShipmentTrackingService::STATUS_DELIVERED
+        ));
+
+        return count($this->mergeOrderRowsById($rows, $fromCarrier));
     }
 
     /**
@@ -1965,6 +2012,9 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
+     * Resolve the active order date window in California (America/Los_Angeles).
+     * Request date_from / date_to are treated as Pacific calendar dates (YYYY-MM-DD).
+     *
      * @return array{0: Carbon, 1: Carbon}
      */
     protected function resolveOrderDateRange(): array
@@ -1973,21 +2023,8 @@ class SalesOrderFulfillmentController extends Controller
         $fromRaw = trim((string) request()->input('date_from', ''));
         $toRaw = trim((string) request()->input('date_to', ''));
 
-        try {
-            $from = $fromRaw !== ''
-                ? Carbon::parse($fromRaw, $tz)->startOfDay()
-                : now($tz)->subDays(30)->startOfDay();
-        } catch (\Throwable) {
-            $from = now($tz)->subDays(30)->startOfDay();
-        }
-
-        try {
-            $to = $toRaw !== ''
-                ? Carbon::parse($toRaw, $tz)->endOfDay()
-                : now($tz)->endOfDay();
-        } catch (\Throwable) {
-            $to = now($tz)->endOfDay();
-        }
+        $from = $this->parseCaliforniaDateInput($fromRaw, now($tz)->subDays(30)->startOfDay());
+        $to = $this->parseCaliforniaDateInput($toRaw, now($tz)->endOfDay(), true);
 
         if ($from->gt($to)) {
             [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
@@ -1997,46 +2034,98 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Restrict by channel order-date column to [from, to] inclusive.
+     * Parse YYYY-MM-DD (or datetime) as a California calendar bound.
+     */
+    protected function parseCaliforniaDateInput(string $raw, Carbon $fallback, bool $endOfDay = false): Carbon
+    {
+        $tz = 'America/Los_Angeles';
+        $raw = trim($raw);
+        if ($raw === '') {
+            return $fallback->copy()->timezone($tz);
+        }
+
+        try {
+            // Prefer strict calendar date so browser TZ never shifts the Pacific day.
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw) === 1) {
+                $dt = Carbon::createFromFormat('Y-m-d', $raw, $tz);
+            } else {
+                $dt = Carbon::parse($raw, $tz);
+            }
+
+            return $endOfDay ? $dt->endOfDay() : $dt->startOfDay();
+        } catch (\Throwable) {
+            return $fallback->copy()->timezone($tz);
+        }
+    }
+
+    /**
+     * Pacific wall-clock strings for SQL comparisons (app stores naive LA datetimes).
+     *
+     * @return array{from: Carbon, to: Carbon, from_date: string, to_date: string, from_dt: string, to_dt: string}
+     */
+    protected function californiaSqlBounds(Carbon $from, Carbon $to): array
+    {
+        $from = $from->copy()->timezone('America/Los_Angeles')->startOfDay();
+        $to = $to->copy()->timezone('America/Los_Angeles')->endOfDay();
+
+        return [
+            'from' => $from,
+            'to' => $to,
+            'from_date' => $from->toDateString(),
+            'to_date' => $to->toDateString(),
+            'from_dt' => $from->format('Y-m-d H:i:s'),
+            'to_dt' => $to->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    /**
+     * Restrict by channel order-date column to [from, to] inclusive (California days).
      */
     protected function applyOrderDateRangeFilter(Builder $query, Carbon $from, Carbon $to, string $slug): Builder
     {
+        $b = $this->californiaSqlBounds($from, $to);
+        $fromDate = $b['from_date'];
+        $toDate = $b['to_date'];
+        $fromDt = $b['from_dt'];
+        $toDt = $b['to_dt'];
+
         return match ($slug) {
-            'amazon' => $query->whereHas('order', function (Builder $q) use ($from, $to) {
-                $q->where('order_date', '>=', $from->toDateString())
-                    ->where('order_date', '<=', $to->toDateString());
+            'amazon' => $query->whereHas('order', function (Builder $q) use ($fromDate, $toDate) {
+                $q->whereDate('order_date', '>=', $fromDate)
+                    ->whereDate('order_date', '<=', $toDate);
             }),
-            'temu' => $query->where(function (Builder $q) use ($from, $to) {
-                $q->where(function (Builder $q2) use ($from, $to) {
-                    $q2->where('parent_order_time', '>=', $from)
-                        ->where('parent_order_time', '<=', $to);
-                })->orWhere(function (Builder $q2) use ($from, $to) {
+            'temu' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
+                $q->where(function (Builder $q2) use ($fromDt, $toDt) {
+                    $q2->where('parent_order_time', '>=', $fromDt)
+                        ->where('parent_order_time', '<=', $toDt);
+                })->orWhere(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->whereNull('parent_order_time')
-                        ->where('order_update_time', '>=', $from)
-                        ->where('order_update_time', '<=', $to);
+                        ->where('order_update_time', '>=', $fromDt)
+                        ->where('order_update_time', '<=', $toDt);
                 });
             }),
-            'bestbuy', 'macy' => $query->where(function (Builder $q) use ($from, $to) {
-                $q->where(function (Builder $q2) use ($from, $to) {
-                    $q2->where('order_created_at', '>=', $from)
-                        ->where('order_created_at', '<=', $to);
-                })->orWhere(function (Builder $q2) use ($from, $to) {
+            'bestbuy', 'macy' => $query->where(function (Builder $q) use ($fromDt, $toDt) {
+                $q->where(function (Builder $q2) use ($fromDt, $toDt) {
+                    $q2->where('order_created_at', '>=', $fromDt)
+                        ->where('order_created_at', '<=', $toDt);
+                })->orWhere(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->whereNull('order_created_at')
-                        ->where('order_updated_at', '>=', $from)
-                        ->where('order_updated_at', '<=', $to);
+                        ->where('order_updated_at', '>=', $fromDt)
+                        ->where('order_updated_at', '<=', $toDt);
                 });
             }),
-            'purchasingpower' => $query->where('date_created', '>=', $from)->where('date_created', '<=', $to),
-            'wayfair' => $query->where('po_date', '>=', $from)->where('po_date', '<=', $to),
-            'doba' => $query->where('order_time', '>=', $from)->where('order_time', '<=', $to),
-            default => $query->where(function (Builder $q) use ($from, $to) {
-                $q->where(function (Builder $q2) use ($from, $to) {
-                    $q2->where('order_date', '>=', $from)
-                        ->where('order_date', '<=', $to);
-                })->orWhere(function (Builder $q2) use ($from, $to) {
+            'purchasingpower' => $query->where('date_created', '>=', $fromDt)->where('date_created', '<=', $toDt),
+            'wayfair' => $query->whereDate('po_date', '>=', $fromDate)->whereDate('po_date', '<=', $toDate),
+            'doba' => $query->where('order_time', '>=', $fromDt)->where('order_time', '<=', $toDt),
+            default => $query->where(function (Builder $q) use ($fromDate, $toDate, $fromDt, $toDt) {
+                $q->where(function (Builder $q2) use ($fromDate, $toDate) {
+                    $q2->whereNotNull('order_date')
+                        ->whereDate('order_date', '>=', $fromDate)
+                        ->whereDate('order_date', '<=', $toDate);
+                })->orWhere(function (Builder $q2) use ($fromDt, $toDt) {
                     $q2->whereNull('order_date')
-                        ->where('updated_at', '>=', $from)
-                        ->where('updated_at', '<=', $to);
+                        ->where('updated_at', '>=', $fromDt)
+                        ->where('updated_at', '<=', $toDt);
                 });
             }),
         };
@@ -2047,10 +2136,11 @@ class SalesOrderFulfillmentController extends Controller
      */
     protected function applyLast30DaysFilter(Builder $query, mixed $since, string $slug): Builder
     {
+        $tz = 'America/Los_Angeles';
         $from = $since instanceof Carbon
-            ? $since->copy()->startOfDay()
-            : Carbon::parse((string) $since)->startOfDay();
-        $to = now('America/Los_Angeles')->endOfDay();
+            ? $since->copy()->timezone($tz)->startOfDay()
+            : Carbon::parse((string) $since, $tz)->startOfDay();
+        $to = now($tz)->endOfDay();
 
         return $this->applyOrderDateRangeFilter($query, $from, $to, $slug);
     }

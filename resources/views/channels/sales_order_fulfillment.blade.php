@@ -944,7 +944,7 @@
                                     Edit selected (<span id="sof-bulk-edit-count">0</span>)
                                 </button>
                             </div>
-                            <div class="small text-muted ms-auto pb-1" id="sof-date-filter-hint">Order date range (default: last 30 days)</div>
+                            <div class="small text-muted ms-auto pb-1" id="sof-date-filter-hint">California order dates (default: last 30 days PT)</div>
                         </div>
                     </div>
                     <ul class="nav nav-tabs mb-3" id="sof-tabs" role="tablist">
@@ -1526,21 +1526,39 @@
         selectableRows: true,
     });
 
-    function sofFormatDateInput(d) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return y + '-' + m + '-' + day;
+    /** California (America/Los_Angeles) calendar helpers — never use browser local TZ. */
+    const SOF_TZ = 'America/Los_Angeles';
+
+    function sofCaliforniaTodayYmd() {
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: SOF_TZ,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(new Date()); // YYYY-MM-DD
+        } catch (e) {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+    }
+
+    function sofShiftYmd(ymd, deltaDays) {
+        const parts = String(ymd || '').split('-').map(Number);
+        if (parts.length !== 3 || parts.some(function (n) { return !Number.isFinite(n); })) {
+            return sofCaliforniaTodayYmd();
+        }
+        const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+        dt.setUTCDate(dt.getUTCDate() + deltaDays);
+        return dt.toISOString().slice(0, 10);
     }
 
     function sofDefaultDateFrom() {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);
-        return sofFormatDateInput(d);
+        return sofShiftYmd(sofCaliforniaTodayYmd(), -30);
     }
 
     function sofDefaultDateTo() {
-        return sofFormatDateInput(new Date());
+        return sofCaliforniaTodayYmd();
     }
 
     function sofInitDateFilterDefaults() {
@@ -1554,9 +1572,14 @@
     function sofDateParams() {
         const fromEl = document.getElementById('sof-date-from');
         const toEl = document.getElementById('sof-date-to');
+        let from = fromEl ? (fromEl.value || '') : '';
+        let to = toEl ? (toEl.value || '') : '';
+        if (!from) from = sofDefaultDateFrom();
+        if (!to) to = sofDefaultDateTo();
         return {
-            date_from: fromEl ? (fromEl.value || '') : '',
-            date_to: toEl ? (toEl.value || '') : '',
+            date_from: from,
+            date_to: to,
+            tz: SOF_TZ,
         };
     }
 
@@ -1629,40 +1652,56 @@
         const hint = document.getElementById('sof-date-filter-hint');
         if (!hint) return;
         let text = (p.date_from && p.date_to)
-            ? ('Showing order dates ' + p.date_from + ' → ' + p.date_to)
-            : 'Order date range (default: last 30 days)';
+            ? ('California dates ' + p.date_from + ' → ' + p.date_to)
+            : 'Order date range (California, default: last 30 days)';
         text += ' · ' + carrierLabel;
         hint.textContent = text;
+    }
+
+    function sofReloadAjaxTable(t) {
+        if (!t) return;
+        try {
+            // Prefer setData() so Tabulator re-hits ajaxURL with current sofDateParams().
+            if (typeof t.setData === 'function') {
+                t.setData();
+                return;
+            }
+        } catch (e) {}
+        try {
+            if (typeof t.replaceData === 'function') {
+                t.replaceData();
+            }
+        } catch (e2) {}
     }
 
     function sofReloadAllTablesForDateRange() {
         sofUpdateDateFilterHint();
         [table, pendingTable, fulfilledTable, scanDoneTable, inTransitTable, inReceivedTable, invoicedTable, deliveredTable, allOrderTable]
-            .forEach(function (t) {
-                if (t && typeof t.replaceData === 'function') {
-                    t.replaceData();
-                }
-            });
+            .forEach(sofReloadAjaxTable);
         // Carrier is client-side; re-apply after reload starts completing via dataLoaded.
-        // Also apply immediately for already-loaded tables.
         sofApplyAllCarrierFilters();
     }
 
     sofInitDateFilterDefaults();
 
-    $('#sof-date-filter-apply').on('click', function () {
-        const from = ($('#sof-date-from').val() || '').trim();
-        const to = ($('#sof-date-to').val() || '').trim();
-        if (from && to && from > to) {
+    function sofApplyDateFilterFromInputs() {
+        const from = ($('#sof-date-from').val() || '').trim() || sofDefaultDateFrom();
+        const to = ($('#sof-date-to').val() || '').trim() || sofDefaultDateTo();
+        $('#sof-date-from').val(from);
+        $('#sof-date-to').val(to);
+        if (from > to) {
             if (typeof Swal !== 'undefined') {
-                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date.' });
+                Swal.fire({ icon: 'warning', title: 'Invalid dates', text: 'From date must be on or before To date (California).' });
             } else {
-                alert('From date must be on or before To date.');
+                alert('From date must be on or before To date (California).');
             }
             return;
         }
         sofReloadAllTablesForDateRange();
-    });
+    }
+
+    $('#sof-date-filter-apply').on('click', sofApplyDateFilterFromInputs);
+    $('#sof-date-from, #sof-date-to').on('change', sofApplyDateFilterFromInputs);
 
     $('#sof-date-filter-clear').on('click', function () {
         $('#sof-date-from').val(sofDefaultDateFrom());
