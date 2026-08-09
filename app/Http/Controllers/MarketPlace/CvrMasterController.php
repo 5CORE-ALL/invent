@@ -388,6 +388,24 @@ class CvrMasterController extends Controller
             // Fetch shopify data for these SKUs (for inventory and overall L30)
             $shopifyData = ShopifySku::mapByProductSkus($skus);
 
+            // Amazon channel Ads% — same as /all-marketplace-master & OV L30 Amazon tacos_ch
+            // Used for Amz SPFT / SNROI on /price-increase (Sprice modal + table columns)
+            $amazonChannelAdsPct = 0.0;
+            try {
+                $amzChRow = ChannelMasterCalculatedData::query()
+                    ->whereRaw('LOWER(TRIM(channel)) = ?', ['amazon'])
+                    ->first(['ads_percentage', 'tacos_percentage']);
+                if ($amzChRow) {
+                    if ($amzChRow->ads_percentage !== null && $amzChRow->ads_percentage !== '') {
+                        $amazonChannelAdsPct = round((float) $amzChRow->ads_percentage, 2);
+                    } elseif ($amzChRow->tacos_percentage !== null && $amzChRow->tacos_percentage !== '') {
+                        $amazonChannelAdsPct = round((float) $amzChRow->tacos_percentage, 2);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR Master: Amazon channel Ads% load failed: '.$e->getMessage());
+            }
+
             // Fetch Amazon data for GPFT/AD/PFT calculations
             $amazonDatasheets = AmazonDatasheet::whereIn("sku", $skus)
                 ->select(['sku', 'asin', 'price', 'units_ordered_l30', 'sessions_l30'])
@@ -2189,6 +2207,7 @@ class CvrMasterController extends Controller
                 $amazonSgpft = null;
                 $amazonSpft = null;
                 $amazonSroi = null;
+                $amazonSnroi = null;
                 if ($amazonDataViewRow && $amazonDataViewRow->value) {
                     $avVal = is_array($amazonDataViewRow->value) ? $amazonDataViewRow->value : (json_decode($amazonDataViewRow->value ?? '{}', true) ?? []);
                     $spr = $avVal['SPRICE'] ?? null;
@@ -2199,6 +2218,19 @@ class CvrMasterController extends Controller
                     if (isset($avVal['SGPFT'])) $amazonSgpft = round(floatval($avVal['SGPFT']), 2);
                     if (isset($avVal['SPFT'])) $amazonSpft = round(floatval($avVal['SPFT']), 2);
                     if (isset($avVal['SROI'])) $amazonSroi = round(floatval($avVal['SROI']), 2);
+                }
+                // Live SGPFT / SGROI / SPFT / SNROI from SPRICE using Amazon channel Ads%
+                // (same as /amazon-tabulator-view + /price-increase Sprice modal)
+                if ($amazonSprice !== null && $amazonSprice > 0) {
+                    $amzMarginForS = 0.80;
+                    $amazonSgpft = round((($amazonSprice * $amzMarginForS - $ship - $lp) / $amazonSprice) * 100, 2);
+                    $amazonSpft = round($amazonSgpft - $amazonChannelAdsPct, 2);
+                    if ($lp > 0) {
+                        $sGross = ($amazonSprice * $amzMarginForS) - $lp - $ship;
+                        $amazonSroi = round(($sGross / $lp) * 100, 2);
+                        $sAds = $amazonSprice * ($amazonChannelAdsPct / 100);
+                        $amazonSnroi = round((($sGross - $sAds) / $lp) * 100, 2);
+                    }
                 }
                 // Prefer SP from Sku Link LMP siblings when this SKU has none (or sync from group)
                 if ($amazonStandardPrice === null && $amazonSpLinkGroupService) {
@@ -2298,28 +2330,31 @@ class CvrMasterController extends Controller
                     $temuSpPef = ($temuSprice !== null && $temuSprice > 0) ? (float) $temuSprice : 0.0;
 
                     // STD-rule channels (same as /price-increase modal + getBreakdownData):
-                    // TopDawg/Faire/SB2B: SPRICE = (STD × 0.80) − Ship
+                    // TopDawg/Faire/SB2B: SPRICE = (STD × marketplace_percentages) − Ship
                     // PPower: SPRICE = (STD × 1.15) − Ship
                     // Metric formulas still use ship=0 for these channels (GPFT/SGPFT).
                     $stdPef = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
                         ? (float) $amazonStandardPrice
                         : 0.0;
                     $applyShipPef = ($ship > 0) ? (float) $ship : 0.0;
+                    $tdRatePef = $tdPercentage > 0 ? $tdPercentage : 0.80;
+                    $faireRatePef = $fairePercentage > 0 ? $fairePercentage : 0.80;
+                    $sb2bRatePef = $sb2bPercentagePef > 0 ? $sb2bPercentagePef : 0.80;
                     if ($stdPef > 0) {
-                        $tdSp = max(0.01, round(($stdPef * 0.80) - $applyShipPef, 2));
-                        $faireSp = max(0.01, round(($stdPef * 0.80) - $applyShipPef, 2));
-                        $sb2bSp = max(0.01, round(($stdPef * 0.80) - $applyShipPef, 2));
+                        $tdSp = max(0.01, round(($stdPef * $tdRatePef) - $applyShipPef, 2));
+                        $faireSp = max(0.01, round(($stdPef * $faireRatePef) - $applyShipPef, 2));
+                        $sb2bSp = max(0.01, round(($stdPef * $sb2bRatePef) - $applyShipPef, 2));
                         $ppSp = max(0.01, round(($stdPef * 1.15) - $applyShipPef, 2));
                     } else {
-                        // No STD: fallback (STD×0.80)−Ship from channel price when saved sprice empty
+                        // No STD: fallback (price × marketplace%) − Ship when saved sprice empty
                         if (! ($tdSp > 0) && $tdPrice > 0) {
-                            $tdSp = max(0.01, round(($tdPrice * 0.80) - $applyShipPef, 2));
+                            $tdSp = max(0.01, round(($tdPrice * $tdRatePef) - $applyShipPef, 2));
                         }
                         if (! ($faireSp > 0) && $fairePrice > 0) {
-                            $faireSp = max(0.01, round(($fairePrice * 0.80) - $applyShipPef, 2));
+                            $faireSp = max(0.01, round(($fairePrice * $faireRatePef) - $applyShipPef, 2));
                         }
                         if (! ($sb2bSp > 0) && $sb2bPricePef > 0) {
-                            $sb2bSp = max(0.01, round(($sb2bPricePef * 0.80) - $applyShipPef, 2));
+                            $sb2bSp = max(0.01, round(($sb2bPricePef * $sb2bRatePef) - $applyShipPef, 2));
                         }
                         if (! ($ppSp > 0) && $ppPrice > 0) {
                             $ppSp = max(0.01, round(($ppPrice * 1.15) - $applyShipPef, 2));
@@ -2375,9 +2410,12 @@ class CvrMasterController extends Controller
                     "amazon_sgpft" => $amazonSgpft,
                     "amazon_spft" => $amazonSpft,
                     "amazon_sroi" => $amazonSroi,
+                    "amazon_snroi" => $amazonSnroi,
                     "amazon_lp" => $lp,
                     "amazon_ship" => $ship,
                     "amazon_ad" => round($amazonAD, 2),
+                    // Channel Ads% (AMM) — used for Amz SPFT / SNROI in Sprice modal
+                    "amazon_ads" => $amazonChannelAdsPct,
                     "amazon_margin" => 0.80,
                     "amazon_l30" => $amazonL30,
                     "shein_l30" => $sheinL30,
@@ -2509,7 +2547,7 @@ class CvrMasterController extends Controller
                 $amazonPriceVals = $rows->pluck('amazon_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonSpriceVals = $rows->pluck('amazon_sprice')->filter(fn ($v) => $v !== null && $v > 0);
                 $amazonStandardPriceVals = $rows->pluck('amazon_standard_price')->filter(fn ($v) => $v !== null && $v > 0);
-                // Parent SP = lowest child SP (same idea as LMP lowest on outer). Mixed when children differ.
+                // Parent SP = average of child SPs (>0). Mixed when children differ; missing when any child lacks SP.
                 $amazonStandardPriceUnique = $amazonStandardPriceVals
                     ->map(fn ($v) => round((float) $v, 2))
                     ->unique()
@@ -2522,6 +2560,13 @@ class CvrMasterController extends Controller
                 $amazonSgpftVals = $rows->pluck('amazon_sgpft')->filter(fn ($v) => $v !== null);
                 $amazonSpftVals = $rows->pluck('amazon_spft')->filter(fn ($v) => $v !== null);
                 $amazonSroiVals = $rows->pluck('amazon_sroi')->filter(fn ($v) => $v !== null);
+                $amazonSnroiVals = $rows->pluck('amazon_snroi')->filter(fn ($v) => $v !== null);
+                // Parent CVR = (Σ SW L30 / Σ Views) × 100 — same formula as child avg_cvr (not mean of child CVRs)
+                $parentSwL30 = (float) $rows->sum('m_l30');
+                $parentTotalViews = (float) $rows->sum('total_views');
+                $parentAvgCvr = $parentTotalViews > 0
+                    ? round(($parentSwL30 / $parentTotalViews) * 100, 2)
+                    : 0;
                 $parentRow = [
                     'SL No.' => $slNo++,
                     'sku' => 'PARENT ' . $parent,
@@ -2530,17 +2575,19 @@ class CvrMasterController extends Controller
                     'inventory' => $rows->sum('inventory'),
                     'amazon_price' => $amazonPriceVals->isNotEmpty() ? round($amazonPriceVals->avg(), 2) : null,
                     'amazon_sprice' => $amazonSpriceVals->isNotEmpty() ? round($amazonSpriceVals->avg(), 2) : null,
-                    'amazon_standard_price' => $amazonStandardPriceUnique->isNotEmpty()
-                        ? round((float) $amazonStandardPriceUnique->min(), 2)
+                    'amazon_standard_price' => $amazonStandardPriceVals->isNotEmpty()
+                        ? round((float) $amazonStandardPriceVals->avg(), 2)
                         : null,
                     'amazon_standard_price_mixed' => $amazonStandardPriceUnique->count() > 1,
                     'amazon_standard_price_missing' => $amazonStandardPriceMissing,
                     'amazon_sgpft' => $amazonSgpftVals->isNotEmpty() ? round($amazonSgpftVals->avg(), 2) : null,
                     'amazon_spft' => $amazonSpftVals->isNotEmpty() ? round($amazonSpftVals->avg(), 2) : null,
                     'amazon_sroi' => $amazonSroiVals->isNotEmpty() ? round($amazonSroiVals->avg(), 2) : null,
+                    'amazon_snroi' => $amazonSnroiVals->isNotEmpty() ? round($amazonSnroiVals->avg(), 2) : null,
                     'amazon_lp' => null,
                     'amazon_ship' => null,
                     'amazon_ad' => null,
+                    'amazon_ads' => $amazonChannelAdsPct,
                     'amazon_margin' => 0.80,
                     'amazon_l30' => null,
                     'shein_l30' => $rows->sum('shein_l30'),
@@ -2557,10 +2604,10 @@ class CvrMasterController extends Controller
                     'fba_l30' => $rows->sum('fba_l30'),
                     'ov_l30_plus_fba' => $rows->sum('ov_l30_plus_fba'),
                     'm_l30' => $rows->sum('m_l30'),
-                    'dil_percent' => 0, // Calculate after
-                    'total_views' => $rows->sum('total_views'),
+                    'dil_percent' => 0, // Calculate after: (Σ OV L30 / Σ INV) × 100
+                    'total_views' => (int) $parentTotalViews,
                     'temu_views' => (int) $rows->sum('temu_views'),
-                    'avg_cvr' => $rows->count() > 0 ? round($rows->avg('avg_cvr'), 2) : 0,
+                    'avg_cvr' => $parentAvgCvr,
                     'avg_price' => $rows->count() > 0 ? round($rows->avg('avg_price'), 2) : 0,
                     'avg_roi' => $rows->filter(fn ($r) => isset($r->avg_roi) && $r->avg_roi !== null)->isNotEmpty()
                         ? round($rows->filter(fn ($r) => isset($r->avg_roi) && $r->avg_roi !== null)->avg('avg_roi'), 2) : 0,
@@ -3973,16 +4020,17 @@ class CvrMasterController extends Controller
                 ?: MarketplacePercentage::where('marketplace', 'Shopify B2B')->first();
             $sb2bMargin = $sb2bMarketplace ? ($sb2bMarketplace->percentage / 100) : 0.95;
             
-            // GPFT% on listed B2B price — ship excluded (Apply uses STD×0.80 − Ship separately)
+            // GPFT% on listed B2B price — ship excluded (Apply uses STD × marketplace% − Ship separately)
             $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp) / $sb2bPrice) * 100 : 0;
             $sb2bNPFT = $sb2bGPFT;
 
-            // Suggested SPRICE = (STD PRC × 0.80) − Ship (fallback: B2B price × 0.80 − Ship)
+            // Suggested SPRICE = (STD PRC × ShopifyB2B marketplace%) − Ship (fallback: B2B price × %)
+            $sb2bSpriceRate = $sb2bMargin > 0 ? $sb2bMargin : 0.80;
             $sb2bStdBase = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
                 ? (float) $amazonStandardPrice
                 : $sb2bPrice;
             $sb2bCalcSprice = $sb2bStdBase > 0
-                ? max(0.01, round(($sb2bStdBase * 0.80) - $ship, 2))
+                ? max(0.01, round(($sb2bStdBase * $sb2bSpriceRate) - $ship, 2))
                 : 0;
             
             $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
@@ -4032,7 +4080,7 @@ class CvrMasterController extends Controller
                 'sroi' => $sb2bSuggested['sroi'],
                 'spft' => $sb2bSuggested['spft'],
                 'lp' => $lp,
-                // Product-master ship for Apply: (STD × 0.80) − Ship
+                // Product-master ship for Apply: (STD × marketplace%) − Ship
                 'ship' => $ship,
                 'margin' => $sb2bMargin,
                 'pushed_by' => $sb2bPushedBy,
@@ -4624,6 +4672,27 @@ class CvrMasterController extends Controller
                 || $faireL30Bd > 0
                 || ($faireSuggestedBd['sprice'] > 0);
 
+            // Apply rule: SPRICE = (STD PRC × Faire marketplace%) − Ship (fallback channel price)
+            $faireSpriceRate = $faireMarginBd > 0 ? $faireMarginBd : 0.80;
+            $faireStdBase = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
+                ? (float) $amazonStandardPrice
+                : $fairePriceBd;
+            if ($faireStdBase > 0) {
+                $faireCalcFromStd = max(0.01, round(($faireStdBase * $faireSpriceRate) - $ship, 2));
+                if (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0) {
+                    $faireSuggestedBd['sprice'] = $faireCalcFromStd;
+                    if ($faireCalcFromStd > 0 && $faireMarginBd > 0) {
+                        $faireSuggestedBd['sgpft'] = round((($faireCalcFromStd * $faireMarginBd - $lp) / $faireCalcFromStd) * 100, 2);
+                        $faireSuggestedBd['spft'] = $faireSuggestedBd['sgpft'];
+                        $faireSuggestedBd['sroi'] = $lp > 0
+                            ? round((($faireCalcFromStd * $faireMarginBd - $lp) / $lp) * 100, 2)
+                            : 0;
+                    }
+                } elseif (!($faireSuggestedBd['sprice'] > 0)) {
+                    $faireSuggestedBd['sprice'] = $faireCalcFromStd;
+                }
+            }
+
             $breakdownData[] = [
                 'marketplace' => 'Faire',
                 'sku'         => $hasFaireData ? $fullSku : 'Not Listed',
@@ -4640,7 +4709,7 @@ class CvrMasterController extends Controller
                 'sroi'        => $faireSuggestedBd['sroi'],
                 'spft'        => $faireSuggestedBd['spft'],
                 'lp'          => $lp,
-                // Product-master ship for SP Apply: (SP × 0.80) − Ship.
+                // Product-master ship for SP Apply: (SP × marketplace%) − Ship.
                 // GPFT/ROI formulas still exclude ship on the frontend/pricing page.
                 'ship'        => $ship,
                 'margin'      => $faireMarginBd,
@@ -4879,12 +4948,13 @@ class CvrMasterController extends Controller
             );
             $hasTdData = $tdPriceBd > 0 || $tdL30Bd > 0 || $isActiveTdListing || ($tdSuggestedBd['sprice'] > 0);
 
-            // Apply rule: SPRICE = (STD PRC × 0.80) − Ship (fallback channel price)
+            // Apply rule: SPRICE = (STD PRC × TopDawg marketplace%) − Ship (fallback channel price)
+            $tdSpriceRate = $tdMarginBd > 0 ? $tdMarginBd : 0.80;
             $tdStdBase = (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0)
                 ? (float) $amazonStandardPrice
                 : $tdPriceBd;
             if ($tdStdBase > 0) {
-                $tdCalcFromStd = max(0.01, round(($tdStdBase * 0.80) - $ship, 2));
+                $tdCalcFromStd = max(0.01, round(($tdStdBase * $tdSpriceRate) - $ship, 2));
                 // Prefer freshly calculated STD rule over stale saved sprice when STD is present
                 if (is_numeric($amazonStandardPrice) && (float) $amazonStandardPrice > 0) {
                     $tdSuggestedBd['sprice'] = $tdCalcFromStd;
@@ -4917,7 +4987,7 @@ class CvrMasterController extends Controller
                 'sroi'        => $tdSuggestedBd['sroi'],
                 'spft'        => $tdSuggestedBd['spft'],
                 'lp'          => $lp,
-                // Product-master ship for Apply: (STD × 0.80) − Ship
+                // Product-master ship for Apply: (STD × marketplace%) − Ship
                 'ship'        => $ship,
                 'margin'      => $tdMarginBd,
                 'pushed_by'   => null,
@@ -8599,7 +8669,7 @@ class CvrMasterController extends Controller
     /**
      * Bulk change price for selected SKUs across all marketplaces.
      * - Doba: 25% discount (price * 0.75)
-     * - Shopify B2B: always SPRICE/price = (base × 0.80) − Ship
+     * - Shopify B2B: SPRICE/price = (base × ShopifyB2B marketplace%) − Ship
      * - Others (Amazon, Walmart, Shopify B2C): Full price
      */
     public function bulkChangePrice(Request $request)
@@ -8650,10 +8720,15 @@ class CvrMasterController extends Controller
         $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'shopify', 'sb2b', 'reverb'];
         $updated = 0;
         $errors = [];
+        $sb2bMpBulk = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first()
+            ?: MarketplacePercentage::where('marketplace', 'Shopify B2B')->first();
+        $sb2bRateBulk = $sb2bMpBulk && (float) $sb2bMpBulk->percentage > 0
+            ? ((float) $sb2bMpBulk->percentage / 100)
+            : 0.80;
 
         foreach ($skuPrices as $sku => $basePrice) {
             $dobaPrice = round($basePrice * 0.75, 2);
-            // SB2B: always (Price × 0.80) − Ship
+            // SB2B: (Price × ShopifyB2B marketplace%) − Ship
             $sb2bShip = 0.0;
             $pmForShip = ProductMaster::where('sku', $sku)->first();
             if ($pmForShip) {
@@ -8672,7 +8747,7 @@ class CvrMasterController extends Controller
                     $sb2bShip = floatval($pmForShip->ship);
                 }
             }
-            $sb2bPrice = max(0.01, round(($basePrice * 0.80) - $sb2bShip, 2));
+            $sb2bPrice = max(0.01, round(($basePrice * $sb2bRateBulk) - $sb2bShip, 2));
 
             foreach ($pushableMarketplaces as $mp) {
                 $price = match ($mp) {

@@ -1637,16 +1637,24 @@
                                 </td>
                             </tr>
                             <tr>
+                                <th title="Amazon channel Ads% from All Marketplace Master — applied to SPFT &amp; SNROI">Amz Ads%</th>
+                                <td class="text-end" id="spriceModalAmzAds">-</td>
+                            </tr>
+                            <tr>
                                 <th>Amz SGPFT%</th>
                                 <td class="text-end" id="spriceModalSgpft">-</td>
                             </tr>
                             <tr>
-                                <th>Amz SPFT%</th>
+                                <th title="SGROI% = (SPRICE × Margin − LP − Ship) ÷ LP × 100">Amz SGROI%</th>
+                                <td class="text-end" id="spriceModalSgroi">-</td>
+                            </tr>
+                            <tr>
+                                <th title="SPFT% = SGPFT% − Ads% (after applying Ads%)">Amz SPFT%</th>
                                 <td class="text-end" id="spriceModalSpft">-</td>
                             </tr>
                             <tr>
-                                <th>Amz SROI%</th>
-                                <td class="text-end" id="spriceModalSroi">-</td>
+                                <th title="SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100 (after applying Ads%)">Amz SNROI%</th>
+                                <td class="text-end" id="spriceModalSnroi">-</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1768,11 +1776,11 @@
                 {{-- Target ROI% / GPFT% — same back-solve as /doba-tabulator (uses each channel margin) --}}
                 <div id="modal-target-controls" class="ovl30-toolbar">
                     <div class="ovl30-tool-group"
-                        title="Apply from STD/this box. Doba −25%. TopDawg/Faire = (STD × 0.80) − Ship. SB2B = (Shopify Price × 0.75) − Ship. Purchase = (STD × 1.15) − Ship.">
+                        title="Apply from STD/this box. Doba −25%. TopDawg/Faire/SB2B = (STD × marketplace%) − Ship. Purchase = (STD × 1.15) − Ship.">
                         <label for="modal-bulk-sprice-input">SPRICE</label>
                         <input type="number" id="modal-bulk-sprice-input" class="form-control form-control-sm text-end"
                             placeholder="0.00" step="0.01" min="0" style="width: 78px;"
-                            title="Doba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship">
+                            title="Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-bulk-sprice-btn" class="btn btn-sm btn-primary"
                             title="Apply SPRICE" aria-label="Apply SPRICE">
                             <i class="fas fa-check"></i>
@@ -1809,35 +1817,35 @@
                         </label>
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Add this $ amount to current SPRICE on selected channels (uses Price if SPRICE is empty). With Siblings checked, also applies to sibling SKUs including INV 0.">
+                        title="Add this $ to SPRICE. When STD PRC also has a value, both work together: SPRICE = STD PRC + this $ (channel rules). Alone: adds to current SPRICE/Price on selected channels.">
                         <label for="modal-sprice-bump-input">+$ SPRICE</label>
                         <input type="number" id="modal-sprice-bump-input" class="form-control form-control-sm text-end"
                             placeholder="1" step="0.01" style="width: 58px;"
-                            title="Increase SPRICE by this dollar amount on selected channels (+ siblings when checked, including INV 0)">
+                            title="With STD PRC filled: SPRICE = STD + this $. Alone: add $ to current SPRICE on selected channels.">
                         <button type="button" id="modal-apply-sprice-bump-btn" class="btn btn-sm btn-outline-primary"
-                            title="Add $ to SPRICE on checked channels (and siblings if checked)" aria-label="Apply SPRICE increase">
+                            title="Apply +$ (sums with STD PRC when both filled)" aria-label="Apply SPRICE increase">
                             <i class="fas fa-check"></i>
                         </button>
                     </div>
                     <div class="ovl30-tool-group ovl30-tool-group-sp"
-                        title="STD PRC for all marketplaces. Check applies STD → SPRICE (channel rules) and saves.">
+                        title="STD PRC for all marketplaces. When +$ SPRICE also has a value, both work together: SPRICE = STD PRC + +$ (channel rules).">
                         <label for="modal-std-sp-input">STD PRC</label>
                         <input type="number" id="modal-std-sp-input" class="form-control form-control-sm text-end fw-bold"
                             placeholder="0.00" step="0.01" min="0.01" style="width: 72px;"
-                            title="STD PRC for all marketplaces — same value on every channel row.">
+                            title="STD PRC — with +$ SPRICE filled, Apply uses STD + +$ as SPRICE.">
                         <button type="button" id="modal-apply-std-prc-btn" class="btn btn-sm btn-success"
-                            title="Apply STD PRC → SPRICE (Doba −25%; TopDawg/Faire = ×0.80−Ship; SB2B = Shopify×0.75−Ship; Purchase = ×1.15−Ship)"
+                            title="Save STD PRC and apply SPRICE (STD + +$ when both filled)"
                             aria-label="Apply STD PRC">
                             <i class="fas fa-check"></i>
                         </button>
                         
                     </div>
                     <div class="ovl30-tool-group"
-                        title="Apply STD PRC as SPRICE. Doba −25%. TopDawg/Faire = (STD × 0.80) − Ship. SB2B = (Shopify Price × 0.75) − Ship. Purchase = (STD × 1.15) − Ship.">
+                        title="Apply STD PRC as SPRICE. Doba −25%. TopDawg/Faire/SB2B = (STD × marketplace%) − Ship. Purchase = (STD × 1.15) − Ship.">
                         <label for="modal-sprice-same-input">SPRICE $</label>
                         <input type="number" id="modal-sprice-same-input" class="form-control form-control-sm text-end"
                             placeholder="19.99" step="0.01" min="0.01" style="width: 72px;"
-                            title="From STD PRC. Doba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship">
+                            title="From STD PRC. Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship">
                         <button type="button" id="modal-apply-sprice-same-btn" class="btn btn-sm btn-outline-success"
                             title="Apply SPRICE $" aria-label="Apply same SPRICE">
                             <i class="fas fa-check"></i>
@@ -4296,6 +4304,17 @@
             scheduleAutoFitOvl30TableFont();
         });
 
+        /** Channels that show AMM channel Ads% in Ads column — SPFT must subtract that same %. */
+        function ovl30UsesChannelAdsForSpft(mpLower) {
+            mpLower = String(mpLower || '').toLowerCase();
+            return mpLower === 'amazon' || mpLower === 'fba'
+                || mpLower === 'tiktok' || mpLower === 'tiktok2' || mpLower === 'tiktok 2'
+                || mpLower === 'bestbuy' || mpLower === 'macy' || mpLower === 'aliexpress'
+                || mpLower === 'reverb'
+                || mpLower === 'sb2c' || mpLower === 'shopify' || mpLower === 'shopifyb2c'
+                || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower);
+        }
+
         function renderMarketplaceData(data) {
             if (data && data.length > 0) {
                 ovl30ModalData = data.slice();
@@ -4384,8 +4403,12 @@
                 const rawShip = parseFloat(item.ship || 0) || 0;
                 const isSb2bMp = (mpLower === 'sb2b' || mpLower === 'shopifyb2b' || mpLower === 'shopify_b2b');
                 const ship = (isPpMp || isTdMp || isFaireMp || isSb2bMp) ? 0 : rawShip;
-                // TopDawg / Faire: SPRICE = (STD × 0.80) − Ship
-                // SB2B: SPRICE = (Shopify Price × 0.75) − Ship — same as /shopify-b2b-pricing
+                // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg/Faire/SB2B from marketplace_percentages; others 0.80
+                const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
+                const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
+                    ? parseFloat(item.margin)
+                    : (isDobaMp ? 0.95 : ((isReverbMp || isEbay23Mp) ? 0.85 : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80))));
+                // TopDawg / Faire / SB2B: SPRICE = (STD × marketplace%) − Ship (same as getBreakdownData / PEF)
                 let sprice = parseFloat(item.sprice || 0);
                 const stdForApply = parseFloat(item.standard_price) || 0;
                 // Prefer row ship; fall back to any positive ship in this modal payload (Amazon)
@@ -4396,17 +4419,11 @@
                         if (isFinite(sn) && sn > 0) { applyShip = sn; break; }
                     }
                 }
-                if (isSb2bMp) {
-                    // Shopify B2B listed price (b2b_price / Prc on /shopify-b2b-pricing)
-                    if (price > 0) {
-                        sprice = Math.max(0.01, Math.round(((price * 0.75) - applyShip) * 100) / 100);
-                        item.sprice = sprice;
-                        if (!(rawShip > 0) && applyShip > 0) item.ship = applyShip;
-                    }
-                } else if (isTdMp || isFaireMp) {
+                if (isSb2bMp || isTdMp || isFaireMp) {
                     const ruleBase = stdForApply > 0 ? stdForApply : price;
+                    const spriceRate = (isFinite(margin) && margin > 0) ? margin : 0.80;
                     if (ruleBase > 0) {
-                        sprice = Math.max(0.01, Math.round(((ruleBase * 0.80) - applyShip) * 100) / 100);
+                        sprice = Math.max(0.01, Math.round(((ruleBase * spriceRate) - applyShip) * 100) / 100);
                         item.sprice = sprice;
                         if (!(rawShip > 0) && applyShip > 0) item.ship = applyShip;
                     }
@@ -4419,11 +4436,6 @@
                         if (!(rawShip > 0) && applyShip > 0) item.ship = applyShip;
                     }
                 }
-                // Doba 0.95; Reverb/eBay2/eBay3 0.85; PPower 0.65; TopDawg from marketplace_percentages; others 0.80
-                const isEbay23Mp = ['ebay2', 'ebaytwo', 'ebay3', 'ebaythree'].includes(mpLower);
-                const margin = (item.margin !== null && item.margin !== undefined && item.margin !== '')
-                    ? parseFloat(item.margin)
-                    : (isDobaMp ? 0.95 : ((isReverbMp || isEbay23Mp) ? 0.85 : (isPpMp ? 0.65 : (isTdMp ? 0 : 0.80))));
 
                 // GROI% = (Price × Margin − LP − Ship) ÷ LP × 100
                 // Doba NROI = GROI (no ads); Temu uses GROI−Ads%; Reverb/others: dollar-ads/LP
@@ -4450,10 +4462,11 @@
                     sgpft = isTemuMp
                         ? (temuProfit / sprice) * 100
                         : ((calcSp * margin - ship - lp) / calcSp) * 100;
-                    // Doba: SPFT = SGPFT; Reverb/eBay/TikTok/Temu: SPFT = SGPFT − Ads%; else L30==0 skip-ads
+                    // Doba/Temu2: SPFT = SGPFT; Amazon/eBay/TikTok/Temu/etc: SPFT = SGPFT − channel Ads%
+                    // (Ads column shows tacos_ch — must use same value, not SKU AD%)
                     if (isNoAdsMp || isTemu2MpRow) {
                         spft = sgpft;
-                    } else if (mpLower === 'tiktok' || isTemuMpRow || isReverbMp || isEbayMp) {
+                    } else if (ovl30UsesChannelAdsForSpft(mpLower) || isTemuMpRow) {
                         spft = (tacosCh === 100) ? sgpft : (sgpft - tacosCh);
                     } else {
                         spft = (l30 == 0 ? sgpft : (sgpft - ad));
@@ -5489,7 +5502,7 @@
                     title: "SP",
                     field: "amazon_standard_price",
                     hozAlign: "center",
-                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Parent shows lowest child SP; (1) when children differ.",
+                    headerTooltip: "Standard Price — same as /amazon-tabulator-view SP (amazon_data_view.STANDARD_PRICE). Parent shows average of child SPs; (1) when children differ.",
                     editor: "input",
                     minWidth: 70,
                     sorter: "number",
@@ -5501,7 +5514,7 @@
                         const rowData = cell.getRow().getData();
                         const value = cell.getValue();
                         const std = parseFloat(value) || 0;
-                        // Parent: show lowest child SP; append (1) when children have different SPs.
+                        // Parent: show average of child SPs; append (1) when children have different SPs.
                         // Red when any child is missing SP.
                         if (rowData.is_parent_summary) {
                             const missing = !!rowData.amazon_standard_price_missing;
@@ -5511,7 +5524,7 @@
                                 if (!missing) return '';
                                 return '<span style="font-weight:600;color:#dc3545;" title="One or more children missing SP">—</span>';
                             }
-                            let tip = 'Lowest child SP $' + std.toFixed(2);
+                            let tip = 'Avg of child SPs $' + std.toFixed(2);
                             if (missing) tip += ' — one or more children missing SP';
                             else if (mixed) tip += ' — children have different SPs';
                             return '<span style="font-weight:600;color:' + color + ';" title="' + tip.replace(/"/g, '&quot;') + '">$'
@@ -5571,10 +5584,11 @@
                 {
                     title: "Amz SPRICE",
                     field: "amazon_sprice",
-                    visible: false,
+                    visible: true,
                     hozAlign: "right",
                     minWidth: 70,
                     sorter: "number",
+                    headerTooltip: "Amazon suggested price — editable (same as Sprice modal)",
                     editor: "number",
                     editorParams: { step: 0.01, min: 0 },
                     editable: function(cell) {
@@ -5597,10 +5611,11 @@
                 {
                     title: "Amz SGPFT%",
                     field: "amazon_sgpft",
-                    visible: false,
+                    visible: true,
                     hozAlign: "center",
                     minWidth: 70,
                     sorter: "number",
+                    headerTooltip: "Suggested GPFT% from Amz SPRICE (same as Sprice modal)",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
@@ -5610,12 +5625,29 @@
                     }
                 },
                 {
-                    title: "Amz SPFT%",
-                    field: "amazon_spft",
-                    visible: false,
+                    title: "Amz SGROI%",
+                    field: "amazon_sroi",
+                    visible: true,
                     hozAlign: "center",
                     minWidth: 70,
                     sorter: "number",
+                    headerTooltip: "SGROI% = (SPRICE × Margin − LP − Ship) ÷ LP × 100 (gross; same as Sprice modal)",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value == null || value === '') return '-';
+                        const pct = parseFloat(value);
+                        const st = (window.MetricPctColors && MetricPctColors.groiStyle(pct)) || '';
+                        return st ? `<span style="${st}">${Math.round(pct)}%</span>` : `${Math.round(pct)}%`;
+                    }
+                },
+                {
+                    title: "Amz SPFT%",
+                    field: "amazon_spft",
+                    visible: true,
+                    hozAlign: "center",
+                    minWidth: 70,
+                    sorter: "number",
+                    headerTooltip: "Suggested NPFT% from Amz SPRICE (same as Sprice modal)",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
@@ -5625,12 +5657,13 @@
                     }
                 },
                 {
-                    title: "Amz SROI%",
-                    field: "amazon_sroi",
-                    visible: false,
+                    title: "Amz SNROI%",
+                    field: "amazon_snroi",
+                    visible: true,
                     hozAlign: "center",
                     minWidth: 70,
                     sorter: "number",
+                    headerTooltip: "SNROI% = (SPRICE × Margin − LP − Ship − SPRICE × Ads%) ÷ LP × 100 (net; same as Sprice modal)",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value == null || value === '') return '-';
@@ -5998,7 +6031,67 @@
         // Row reference for Sprice modal save (set when modal opens, used on blur)
         let spriceModalCurrentRow = null;
 
-        // Sprice dot click: open modal with editable Amz SPRICE and instant SGPFT/SPFT/SROI
+        /**
+         * Amz SPRICE → SGPFT / SGROI / SPFT / SNROI.
+         * ads = Amazon channel Ads% (AMM) — always applied to SPFT & SNROI (same as /amazon-tabulator-view).
+         */
+        function computeAmzSpriceMetrics(sprice, lp, ship, ads, margin) {
+            sprice = parseFloat(sprice) || 0;
+            lp = parseFloat(lp) || 0;
+            ship = parseFloat(ship) || 0;
+            ads = parseFloat(ads) || 0;
+            margin = parseFloat(margin) || 0.80;
+            if (sprice <= 0) {
+                return { sgpft: null, sgroi: null, spft: null, snroi: null, ads: ads };
+            }
+            const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
+            // After applying Ads%: SPFT = SGPFT − Ads%
+            const spft = sgpft - ads;
+            const sgroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            // After applying Ads%: SNROI = (gross $ − SPRICE × Ads%) / LP × 100
+            const snroi = lp > 0
+                ? ((sprice * margin - lp - ship - sprice * (ads / 100)) / lp) * 100
+                : 0;
+            return { sgpft: sgpft, sgroi: sgroi, spft: spft, snroi: snroi, ads: ads };
+        }
+
+        function readSpriceModalAdsPct() {
+            return parseFloat($('#spriceDetailsModal').attr('data-ads')) || 0;
+        }
+
+        function refreshSpriceModalFromInputs() {
+            const $modal = $('#spriceDetailsModal');
+            const sprice = parseFloat($('#spriceModalAmzSpriceInput').val()) || 0;
+            const lp = parseFloat($modal.attr('data-lp')) || 0;
+            const ship = parseFloat($modal.attr('data-ship')) || 0;
+            const margin = parseFloat($modal.attr('data-margin')) || 0.80;
+            const ads = readSpriceModalAdsPct();
+            paintSpriceModalCalculated(computeAmzSpriceMetrics(sprice, lp, ship, ads, margin));
+        }
+
+        function clearSpriceModalCalculated() {
+            ['#spriceModalSgpft', '#spriceModalSgroi', '#spriceModalSpft', '#spriceModalSnroi'].forEach(function(sel) {
+                applyCellColor($(sel), '#6c757d');
+                $(sel).text('-');
+            });
+        }
+
+        function paintSpriceModalCalculated(metrics) {
+            if (!metrics || metrics.sgpft == null) {
+                clearSpriceModalCalculated();
+                return;
+            }
+            applyCellColor($('#spriceModalSgpft'), getSgpftSpftColor(metrics.sgpft));
+            $('#spriceModalSgpft').text(Math.round(metrics.sgpft) + '%');
+            applyCellColor($('#spriceModalSgroi'), getSgroiColor(metrics.sgroi));
+            $('#spriceModalSgroi').text(Math.round(metrics.sgroi) + '%');
+            applyCellColor($('#spriceModalSpft'), getSgpftSpftColor(metrics.spft));
+            $('#spriceModalSpft').text(Math.round(metrics.spft) + '%');
+            applyCellColor($('#spriceModalSnroi'), getSroiColor(metrics.snroi));
+            $('#spriceModalSnroi').text(Math.round(metrics.snroi) + '%');
+        }
+
+        // Sprice dot click: open modal with editable Amz SPRICE + Ads%, live SGPFT/SGROI/SPFT/SNROI
         table.on('cellClick', function(e, cell) {
             if (cell.getField() !== 'sprice_dot') return;
             const row = cell.getRow();
@@ -6008,51 +6101,27 @@
             const skuName = (d.sku || '-') + (d.parent ? ' (' + d.parent + ')' : '');
             const lp = parseFloat(d.amazon_lp) || 0;
             const ship = parseFloat(d.amazon_ship) || 0;
-            const ad = parseFloat(d.amazon_ad) || 0;
+            // Prefer Amazon channel Ads% (AMM); fall back to SKU AD%
+            const ads = (d.amazon_ads != null && d.amazon_ads !== '')
+                ? (parseFloat(d.amazon_ads) || 0)
+                : (parseFloat(d.amazon_ad) || 0);
             const margin = parseFloat(d.amazon_margin) || 0.80;
-            const l30 = parseInt(d.amazon_l30, 10) || 0;
             const sprice = d.amazon_sprice;
-            const sgpft = d.amazon_sgpft;
-            const spft = d.amazon_spft;
-            const sroi = d.amazon_sroi;
             $('#spriceModalSkuName').text(skuName);
             const $modal = $('#spriceDetailsModal');
             $modal.attr('data-sku', d.sku || '');
             $modal.attr('data-lp', lp);
             $modal.attr('data-ship', ship);
-            $modal.attr('data-ad', ad);
+            $modal.attr('data-ads', ads);
             $modal.attr('data-margin', margin);
-            $modal.attr('data-l30', l30);
             const spriceVal = (sprice != null && sprice !== '' && parseFloat(sprice) > 0) ? parseFloat(sprice) : '';
             $('#spriceModalAmzSpriceInput').val(spriceVal === '' ? '' : spriceVal.toFixed(2));
-            function updateSpriceModalCalculated(spriceNum) {
-                if (spriceNum <= 0) {
-                    applyCellColor($('#spriceModalSgpft'), '#6c757d');
-                    $('#spriceModalSgpft').text('-');
-                    applyCellColor($('#spriceModalSpft'), '#6c757d');
-                    $('#spriceModalSpft').text('-');
-                    applyCellColor($('#spriceModalSroi'), '#6c757d');
-                    $('#spriceModalSroi').text('-');
-                    return;
-                }
-                const sgpftVal = ((spriceNum * margin - ship - lp) / spriceNum) * 100;
-                const spftVal = l30 === 0 ? sgpftVal : (sgpftVal - ad);
-                const sroiVal = lp > 0 ? ((spriceNum * margin - lp - ship) / lp) * 100 : 0;
-                applyCellColor($('#spriceModalSgpft'), getSgpftSpftColor(sgpftVal));
-                $('#spriceModalSgpft').text(Math.round(sgpftVal) + '%');
-                applyCellColor($('#spriceModalSpft'), getSgpftSpftColor(spftVal));
-                $('#spriceModalSpft').text(Math.round(spftVal) + '%');
-                applyCellColor($('#spriceModalSroi'), getSroiColor(sroiVal));
-                $('#spriceModalSroi').text(Math.round(sroiVal) + '%');
-            }
-            if (spriceVal !== '') updateSpriceModalCalculated(parseFloat(spriceVal));
-            else {
-                applyCellColor($('#spriceModalSgpft'), '#6c757d');
-                $('#spriceModalSgpft').text('-');
-                applyCellColor($('#spriceModalSpft'), '#6c757d');
-                $('#spriceModalSpft').text('-');
-                applyCellColor($('#spriceModalSroi'), '#6c757d');
-                $('#spriceModalSroi').text('-');
+            const adsLabel = isFinite(ads) ? (Number(ads).toFixed(1) + '%') : '-';
+            $('#spriceModalAmzAds').text(adsLabel);
+            if (spriceVal !== '') {
+                paintSpriceModalCalculated(computeAmzSpriceMetrics(spriceVal, lp, ship, ads, margin));
+            } else {
+                clearSpriceModalCalculated();
             }
             new bootstrap.Modal(document.getElementById('spriceDetailsModal')).show();
         });
@@ -6568,7 +6637,7 @@
             });
         });
 
-        /** Recompute parent-row SP from children: lowest value; mixed → (1); any missing → red. */
+        /** Recompute parent-row SP from children: average of >0 SPs; mixed → (1); any missing → red. */
         function refreshParentStandardPriceSummary(parentKey) {
             const parentNorm = String(parentKey || '').trim().toUpperCase();
             if (!parentNorm || !Array.isArray(fullDataset)) return;
@@ -6588,17 +6657,19 @@
             });
             if (childCount === 0) missing = false;
             const unique = Array.from(new Set(childVals));
-            const lowest = unique.length ? Math.min.apply(null, unique) : null;
+            const avgSp = childVals.length
+                ? Math.round((childVals.reduce(function(a, b) { return a + b; }, 0) / childVals.length) * 100) / 100
+                : null;
             const mixed = unique.length > 1;
             const patch = {
-                amazon_standard_price: lowest,
+                amazon_standard_price: avgSp,
                 amazon_standard_price_mixed: mixed,
                 amazon_standard_price_missing: missing
             };
             fullDataset.forEach(function(row) {
                 if (!row || !row.is_parent_summary) return;
                 if (String(row.parent || '').trim().toUpperCase() !== parentNorm) return;
-                row.amazon_standard_price = lowest;
+                row.amazon_standard_price = avgSp;
                 row.amazon_standard_price_mixed = mixed;
                 row.amazon_standard_price_missing = missing;
             });
@@ -6776,12 +6847,15 @@
             if (sprice <= 0) return;
             const lp = parseFloat(rowData.amazon_lp) || 0;
             const ship = parseFloat(rowData.amazon_ship) || 0;
-            const ad = parseFloat(rowData.amazon_ad) || 0;
+            const ads = (rowData.amazon_ads != null && rowData.amazon_ads !== '')
+                ? (parseFloat(rowData.amazon_ads) || 0)
+                : (parseFloat(rowData.amazon_ad) || 0);
             const margin = parseFloat(rowData.amazon_margin) || 0.80;
-            const l30 = parseInt(rowData.amazon_l30, 10) || 0;
-            const sgpft = sprice > 0 ? ((sprice * margin - ship - lp) / sprice) * 100 : 0;
-            const spft = l30 === 0 ? sgpft : (sgpft - ad);
-            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            const m = computeAmzSpriceMetrics(sprice, lp, ship, ads, margin);
+            const sgpft = Math.round((m.sgpft || 0) * 100) / 100;
+            const spft = Math.round((m.spft || 0) * 100) / 100;
+            const sroi = Math.round((m.sgroi || 0) * 100) / 100;
+            const snroi = Math.round((m.snroi || 0) * 100) / 100;
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
@@ -6789,17 +6863,18 @@
                     sku: sku,
                     marketplace: 'amazon',
                     sprice: sprice,
-                    sgpft: Math.round(sgpft * 100) / 100,
-                    spft: Math.round(spft * 100) / 100,
-                    sroi: Math.round(sroi * 100) / 100,
+                    sgpft: sgpft,
+                    spft: spft,
+                    sroi: sroi,
                     amazon_margin: margin,
                     _token: '{{ csrf_token() }}'
                 },
                 success: function() {
                     row.update({
-                        amazon_sgpft: Math.round(sgpft * 100) / 100,
-                        amazon_spft: Math.round(spft * 100) / 100,
-                        amazon_sroi: Math.round(sroi * 100) / 100
+                        amazon_sgpft: sgpft,
+                        amazon_spft: spft,
+                        amazon_sroi: sroi,
+                        amazon_snroi: snroi
                     });
                     showToast('Amz SPRICE saved', 'success');
                 },
@@ -6835,8 +6910,13 @@
             if (window.MetricPctColors) return MetricPctColors.gpftColor(pct) || '#dc3545';
             return '#dc3545';
         }
+        function getSgroiColor(pct) {
+            // SGROI → GROI schema
+            if (window.MetricPctColors) return MetricPctColors.groiColor(pct) || '#dc3545';
+            return '#dc3545';
+        }
         function getSroiColor(pct) {
-            // SROI/SNROI → NROI schema
+            // SNROI → NROI schema
             if (window.MetricPctColors) return MetricPctColors.nroiColor(pct) || '#dc3545';
             return '#dc3545';
         }
@@ -6869,36 +6949,12 @@
             else { $el.css({ backgroundColor: '', color: c || '#6c757d' }); }
         }
 
-        // Sprice modal: instant recalc when Amz SPRICE input changes
+        // Sprice modal: instant recalc when SPRICE changes (Ads% is read-only original channel %)
         $(document).on('input', '.sprice-modal-sprice-input', function() {
-            const $modal = $('#spriceDetailsModal');
-            const sprice = parseFloat($(this).val()) || 0;
-            const lp = parseFloat($modal.attr('data-lp')) || 0;
-            const ship = parseFloat($modal.attr('data-ship')) || 0;
-            const ad = parseFloat($modal.attr('data-ad')) || 0;
-            const margin = parseFloat($modal.attr('data-margin')) || 0.80;
-            const l30 = parseInt($modal.attr('data-l30'), 10) || 0;
-            if (sprice <= 0) {
-                applyCellColor($('#spriceModalSgpft'), '#6c757d');
-                $('#spriceModalSgpft').text('-');
-                applyCellColor($('#spriceModalSpft'), '#6c757d');
-                $('#spriceModalSpft').text('-');
-                applyCellColor($('#spriceModalSroi'), '#6c757d');
-                $('#spriceModalSroi').text('-');
-                return;
-            }
-            const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
-            const spft = l30 === 0 ? sgpft : (sgpft - ad);
-            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
-            applyCellColor($('#spriceModalSgpft'), getSgpftSpftColor(sgpft));
-            $('#spriceModalSgpft').text(Math.round(sgpft) + '%');
-            applyCellColor($('#spriceModalSpft'), getSgpftSpftColor(spft));
-            $('#spriceModalSpft').text(Math.round(spft) + '%');
-            applyCellColor($('#spriceModalSroi'), getSroiColor(sroi));
-            $('#spriceModalSroi').text(Math.round(sroi) + '%');
+            refreshSpriceModalFromInputs();
         });
 
-        // Sprice modal: save on blur and update table row
+        // Sprice modal: save on blur and update table row (metrics after applying Ads%)
         $(document).on('blur', '.sprice-modal-sprice-input', function() {
             const input = $(this);
             const sprice = parseFloat(input.val()) || 0;
@@ -6907,12 +6963,13 @@
             if (!sku || sprice <= 0) return;
             const lp = parseFloat($modal.attr('data-lp')) || 0;
             const ship = parseFloat($modal.attr('data-ship')) || 0;
-            const ad = parseFloat($modal.attr('data-ad')) || 0;
             const margin = parseFloat($modal.attr('data-margin')) || 0.80;
-            const l30 = parseInt($modal.attr('data-l30'), 10) || 0;
-            const sgpft = ((sprice * margin - ship - lp) / sprice) * 100;
-            const spft = l30 === 0 ? sgpft : (sgpft - ad);
-            const sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
+            const ads = readSpriceModalAdsPct();
+            const m = computeAmzSpriceMetrics(sprice, lp, ship, ads, margin);
+            const sgpft = Math.round((m.sgpft || 0) * 100) / 100;
+            const spft = Math.round((m.spft || 0) * 100) / 100;
+            const sroi = Math.round((m.sgroi || 0) * 100) / 100;
+            const snroi = Math.round((m.snroi || 0) * 100) / 100;
             $.ajax({
                 url: '/cvr-master-save-suggested-data',
                 method: 'POST',
@@ -6920,9 +6977,9 @@
                     sku: sku,
                     marketplace: 'amazon',
                     sprice: sprice,
-                    sgpft: Math.round(sgpft * 100) / 100,
-                    spft: Math.round(spft * 100) / 100,
-                    sroi: Math.round(sroi * 100) / 100,
+                    sgpft: sgpft,
+                    spft: spft,
+                    sroi: sroi,
                     amazon_margin: margin,
                     _token: '{{ csrf_token() }}'
                 },
@@ -6930,9 +6987,11 @@
                     if (spriceModalCurrentRow) {
                         spriceModalCurrentRow.update({
                             amazon_sprice: Math.round(sprice * 100) / 100,
-                            amazon_sgpft: Math.round(sgpft * 100) / 100,
-                            amazon_spft: Math.round(spft * 100) / 100,
-                            amazon_sroi: Math.round(sroi * 100) / 100
+                            amazon_ads: Math.round(ads * 100) / 100,
+                            amazon_sgpft: sgpft,
+                            amazon_spft: spft,
+                            amazon_sroi: sroi,
+                            amazon_snroi: snroi
                         });
                     }
                     showToast('Sprice saved', 'success');
@@ -7007,9 +7066,8 @@
                 const sgpft = isTemuMp
                     ? (temuProfit / sprice) * 100
                     : ((calcSp * margin - ship - lp) / calcSp) * 100;
-                // Doba/Shein: no ads; Reverb/eBay/TikTok: SGPFT − channel Ads%
-                const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
-                    || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
+                // Doba/Shein: no ads; Amazon/eBay/TikTok/etc: SGPFT − channel Ads% (same as Ads column)
+                const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
                 const spft = isNoAdsMp ? sgpft
                     : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
                 const sroi = isTemuMp
@@ -7110,7 +7168,36 @@
             }
         });
 
+        /** Parse toolbar +$ SPRICE bump (0 when empty). */
+        function readModalSpriceBumpAmount() {
+            const raw = $('#modal-sprice-bump-input').val();
+            if (raw === '' || raw == null) return 0;
+            const bump = parseFloat(String(raw).replace(/[$,\s]/g, '').replace(',', '.'));
+            return isFinite(bump) ? bump : 0;
+        }
+
+        /** Parse toolbar STD PRC (>0) or null. */
+        function readModalStdPrcAmount() {
+            const raw = String($('#modal-std-sp-input').val() || '').trim();
+            if (raw === '') return null;
+            const std = parseFloat(raw.replace(/[$,\s]/g, '').replace(',', '.'));
+            return (isFinite(std) && std > 0) ? std : null;
+        }
+
+        /**
+         * When both STD PRC and +$ SPRICE have values: SPRICE base = STD + bump.
+         * Returns { std, bump, applyBase } or null if STD missing.
+         */
+        function getModalStdPlusBumpCombo() {
+            const std = readModalStdPrcAmount();
+            if (!(std > 0)) return null;
+            const bump = readModalSpriceBumpAmount();
+            const applyBase = Math.max(0.01, +(std + bump).toFixed(2));
+            return { std: std, bump: bump, applyBase: applyBase };
+        }
+
         // Toolbar STD PRC — save STANDARD_PRICE + apply into SPRICE inputs
+        // When +$ SPRICE also filled: save STD as-is, apply SPRICE = STD + bump (both work together)
         function saveAndApplyModalToolbarStdPrc(opts) {
             opts = opts || {};
             const fromButton = !!opts.fromButton;
@@ -7122,23 +7209,17 @@
                 return;
             }
 
-            const raw = String($input.val() || '').trim();
-            if (raw === '') {
+            const combo = getModalStdPlusBumpCombo();
+            if (!combo) {
                 if (fromButton) {
                     showToast('Enter STD PRC greater than 0', 'error');
                     $input.focus();
                 }
                 return;
             }
-            const std = parseFloat(raw);
-            if (!isFinite(std) || std <= 0) {
-                $input.val('');
-                if (fromButton) {
-                    showToast('Enter STD PRC greater than 0', 'error');
-                    $input.focus();
-                }
-                return;
-            }
+            const std = combo.std;
+            const applyBase = combo.applyBase;
+            const bump = combo.bump;
 
             const origBtnHtml = $btn.length ? $btn.html() : '';
             if (fromButton && $btn.length) {
@@ -7166,8 +7247,15 @@
                     }
                     refreshModalStdPrcCells(saved);
                     syncModalToolbarSpInput(saved);
+                    // SPRICE = saved STD + bump when both inputs have values
+                    const spriceBase = Math.max(0.01, +(saved + bump).toFixed(2));
                     if (typeof applyStdPriceToModalSpriceInputs === 'function') {
-                        applyStdPriceToModalSpriceInputs(saved, { silent: true });
+                        applyStdPriceToModalSpriceInputs(spriceBase, {
+                            silent: true,
+                            comboLabel: bump
+                                ? ('STD $' + saved.toFixed(2) + ' + $' + bump.toFixed(2) + ' = $' + spriceBase.toFixed(2))
+                                : null
+                        });
                     } else {
                         showToast('STD PRC saved', 'success');
                     }
@@ -7727,8 +7815,7 @@
                     ? (temuProfit / sprice) * 100
                     : ((calcSp * margin - ship - lp) / calcSp) * 100)
                 : 0;
-            const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
-                || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
+            const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
             const spft = isNoAdsBlur ? sgpft
                 : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = isTemuMp
@@ -7908,8 +7995,7 @@
                     ? (temuProfit / sprice) * 100
                     : ((calcSp * margin - ship - lp) / calcSp) * 100)
                 : 0;
-            const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
-                || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
+            const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
             const spft = isNoAdsMp ? sgpft
                 : ((isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad)));
             const sroi = isTemuMp
@@ -8159,7 +8245,7 @@
                         return;
                     }
                     let newPrice = computeModalModePrice(basePrice, mode, inputValue, discountType);
-                    // Same-price apply: Doba −25%; TopDawg/Faire = ×0.80−Ship; SB2B = Shopify×0.75−Ship; Purchase = ×1.15−Ship
+                    // Same-price apply: Doba −25%; TopDawg/Faire/SB2B = ×0.80−Ship; Purchase = ×1.15−Ship
                     if (mode === 'same') {
                         newPrice = adjustAppliedSpriceForChannel(inputValue, $tr);
                     }
@@ -8214,8 +8300,7 @@
         });
 
         // ==================== BULK SPRICE ====================
-        // From STD PRC: Doba ×0.75; TopDawg/Faire = (STD×0.80)−Ship; Purchase/PPower = (STD×1.15)−Ship
-        // SB2B: (Shopify Price × 0.75) − Ship — same as /shopify-b2b-pricing
+        // From STD PRC: Doba ×0.75; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase/PPower = (STD×1.15)−Ship
         function isDobaChannel(mpLower) {
             return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'doba';
         }
@@ -8237,10 +8322,11 @@
         function isBulkSpriceFaireChannel(mpLower) {
             return String(mpLower || '').toLowerCase().replace(/\s+/g, '') === 'faire';
         }
-        /** TopDawg / Faire: (STD × 0.80) − Ship */
+        /** TopDawg / Faire / SB2B: (STD × marketplace%) − Ship — same as getBreakdownData / PEF */
         function isBulkSprice20OffMinusShipChannel(mpLower) {
             return isBulkSpriceTopDawgChannel(mpLower)
-                || isBulkSpriceFaireChannel(mpLower);
+                || isBulkSpriceFaireChannel(mpLower)
+                || isBulkSpriceSb2bChannel(mpLower);
         }
         /** Shared product-master ship (fallback when row data-ship is 0) */
         function getModalSharedProductShip() {
@@ -8264,15 +8350,11 @@
         function sprice25OffFromBase(basePrice) {
             return Math.max(0.01, +(Number(basePrice) * 0.75).toFixed(2));
         }
-        /** TopDawg / Faire: (STD × 0.80) − Ship */
-        function sprice20OffMinusShipFromBase(basePrice, rowShip) {
+        /** TopDawg / Faire / SB2B: (STD × marketplace%) − Ship */
+        function spriceMarginTimesMinusShipFromBase(basePrice, rowShip, marginRate) {
             const ship = (isFinite(rowShip) && rowShip > 0) ? rowShip : 0;
-            return Math.max(0.01, +((Number(basePrice) * 0.80) - ship).toFixed(2));
-        }
-        /** SB2B: (Shopify Price × 0.75) − Ship — same as /shopify-b2b-pricing */
-        function spriceSb2bFromShopifyPrice(shopifyPrice, rowShip) {
-            const ship = (isFinite(rowShip) && rowShip > 0) ? rowShip : 0;
-            return Math.max(0.01, +((Number(shopifyPrice) * 0.75) - ship).toFixed(2));
+            const rate = (isFinite(marginRate) && marginRate > 0) ? marginRate : 0.80;
+            return Math.max(0.01, +((Number(basePrice) * rate) - ship).toFixed(2));
         }
         /** Purchase / PPower: (STD × 1.15) − Ship */
         function ppowerSpriceFromBase(basePrice, rowShip) {
@@ -8281,18 +8363,12 @@
         }
         /**
          * Convert STD / apply base into the channel SPRICE.
-         * TopDawg/Faire = (STD×0.80)−Ship; Purchase = (STD×1.15)−Ship; Doba ×0.75;
-         * SB2B = (Shopify Price × 0.75) − Ship (ignores STD — uses row listed price).
+         * TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship; Doba ×0.75.
          */
         function adjustAppliedSpriceForChannel(basePrice, $tr) {
             const mpLower = String(($tr && $tr.attr('data-marketplace')) || '').toLowerCase();
             const base = Math.max(0.01, +Number(basePrice).toFixed(2));
             const rowShip = getModalRowShipForApply($tr);
-            if (isBulkSpriceSb2bChannel(mpLower)) {
-                const shopifyPrice = parseFloat($tr && $tr.attr('data-price')) || 0;
-                const sb2bBase = shopifyPrice > 0 ? shopifyPrice : base;
-                return spriceSb2bFromShopifyPrice(sb2bBase, rowShip);
-            }
             if (isBulkSprice25OffChannel(mpLower)) {
                 return sprice25OffFromBase(base);
             }
@@ -8300,7 +8376,8 @@
                 return ppowerSpriceFromBase(base, rowShip);
             }
             if (isBulkSprice20OffMinusShipChannel(mpLower)) {
-                return sprice20OffMinusShipFromBase(base, rowShip);
+                const marginRate = parseFloat($tr.attr('data-margin'));
+                return spriceMarginTimesMinusShipFromBase(base, rowShip, marginRate);
             }
             return base;
         }
@@ -8360,8 +8437,7 @@
             if (!confirm(
                 'Apply from STD/base $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
                 + '?\n\nDoba −25%: $' + reducedPrice.toFixed(2)
-                + '\nTopDawg / Faire = (STD × 0.80) − Ship'
-                + '\nSB2B = (Shopify Price × 0.75) − Ship'
+                + '\nTopDawg / Faire / SB2B = (STD × marketplace%) − Ship'
                 + '\nPurchase = (STD × 1.15) − Ship'
                 + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
                 + siblingsApplyLabel()
@@ -8418,6 +8494,7 @@
         });
 
         // ==================== +$ BUMP SPRICE (add fixed $ to current SPRICE) ====================
+        // When STD PRC also has a value: both work together → SPRICE = STD + bump (then channel rules)
         function applyModalSpriceBump() {
             const rawInput = $('#modal-sprice-bump-input').val();
             const bump = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -8426,6 +8503,65 @@
                 $('#modal-sprice-bump-input').focus();
                 return;
             }
+
+            // Both filled → sum STD + bump and apply as SPRICE (same as STD Apply check)
+            const combo = getModalStdPlusBumpCombo();
+            if (combo && combo.std > 0) {
+                const sku = getModalPrimarySku();
+                if (!sku || String(sku).indexOf('PARENT') !== -1) {
+                    showToast('Open a SKU first', 'error');
+                    return;
+                }
+                const bumpLabel = (bump > 0 ? '+' : '') + '$' + Math.abs(bump).toFixed(2);
+                const comboMsg = 'STD $' + combo.std.toFixed(2) + ' ' + bumpLabel
+                    + ' = $' + combo.applyBase.toFixed(2)
+                    + ' → SPRICE (channel rules)'
+                    + siblingsApplyLabel() + '?';
+                if (!confirm(comboMsg)) return;
+
+                const $btn = $('#modal-apply-sprice-bump-btn');
+                const origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+
+                // Save STD PRC, then apply SPRICE = STD + bump
+                $.ajax({
+                    url: '/save-amazon-sprice',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        sprice: combo.std,
+                        is_standard_price: 1,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        const saved = parseFloat(response.data || response.STANDARD_PRICE || combo.std) || combo.std;
+                        setModalSharedStandardPrice(saved);
+                        if (typeof applyStandardPriceToPriceIncreaseRows === 'function') {
+                            applyStandardPriceToPriceIncreaseRows(sku, saved, response.applied_skus);
+                        }
+                        refreshModalStdPrcCells(saved);
+                        syncModalToolbarSpInput(saved);
+                        const spriceBase = Math.max(0.01, +(saved + bump).toFixed(2));
+                        applyStdPriceToModalSpriceInputs(spriceBase, {
+                            silent: false,
+                            skipConfirm: true,
+                            comboLabel: 'STD $' + saved.toFixed(2) + ' + $' + bump.toFixed(2)
+                                + ' = $' + spriceBase.toFixed(2)
+                        });
+                    },
+                    error: function() {
+                        showToast('Failed to save STD PRC', 'error');
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).html(origHtml);
+                    }
+                });
+                return;
+            }
+
             if (modalSelectedChannels.size === 0) {
                 showToast('Please select at least one channel (checkbox)', 'error');
                 return;
@@ -8546,7 +8682,7 @@
         });
 
         // ==================== SAME $ SPRICE (SP / box → channels + siblings) ====================
-        // From STD: Doba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship
+        // From STD: Doba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship
         function applyModalSameSpriceFromBox() {
             let rawInput = $('#modal-sprice-same-input').val();
             let samePrice = parseFloat(String(rawInput == null ? '' : rawInput).replace(/[$,\s]/g, '').replace(',', '.'));
@@ -8583,8 +8719,7 @@
                 if (!confirm(
                     'Apply from STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel(s)'
                     + '?\n\nDoba −25%: $' + reducedPrice.toFixed(2)
-                    + '\nTopDawg / Faire = (STD × 0.80) − Ship'
-                    + '\nSB2B = (Shopify Price × 0.75) − Ship'
+                    + '\nTopDawg / Faire / SB2B = (STD × marketplace%) − Ship'
                     + '\nPurchase = (STD × 1.15) − Ship'
                     + (shipHint > 0 ? ('\nShip: $' + shipHint.toFixed(2)) : '')
                     + siblingsApplyLabel()
@@ -8733,6 +8868,8 @@
             const basePrice = parseFloat(stdPrice);
             if (!isFinite(basePrice) || !(basePrice > 0)) return;
             const silent = opts.silent !== false; // default: no confirm dialog
+            const skipConfirm = !!opts.skipConfirm;
+            const comboLabel = opts.comboLabel || null;
             const $same = $('#modal-sprice-same-input');
             if ($same.length && !$same.is(':focus')) {
                 $same.val(basePrice.toFixed(2));
@@ -8744,9 +8881,11 @@
             });
             if (!$rows.length) return;
 
-            if (!silent && !confirm(
-                'Apply STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel SPRICE?'
-                + '\nDoba −25%; TopDawg/Faire = (STD×0.80)−Ship; SB2B = (Shopify×0.75)−Ship; Purchase = (STD×1.15)−Ship'
+            if (!silent && !skipConfirm && !confirm(
+                (comboLabel
+                    ? ('Apply ' + comboLabel + ' to ' + $rows.length + ' channel SPRICE?')
+                    : ('Apply STD $' + basePrice.toFixed(2) + ' to ' + $rows.length + ' channel SPRICE?'))
+                + '\nDoba −25%; TopDawg/Faire/SB2B = (STD×marketplace%)−Ship; Purchase = (STD×1.15)−Ship'
             )) return;
 
             let doneCount = 0;
@@ -8778,14 +8917,17 @@
                     if (doneCount === $rows.length && !silent) {
                         showToast(
                             okCount
-                                ? ('STD → SPRICE applied on ' + okCount + ' channel(s)'
+                                ? ((comboLabel ? (comboLabel + ' → SPRICE') : 'STD → SPRICE')
+                                    + ' applied on ' + okCount + ' channel(s)'
                                     + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : ''))
                                 : 'Failed to apply STD to SPRICE',
                             okCount ? 'success' : 'error'
                         );
                     } else if (doneCount === $rows.length && silent && okCount) {
                         showToast(
-                            'STD PRC saved — SPRICE updated on ' + okCount + ' channel(s)'
+                            (comboLabel
+                                ? (comboLabel + ' → SPRICE on ' + okCount + ' channel(s)')
+                                : ('STD PRC saved — SPRICE updated on ' + okCount + ' channel(s)'))
                             + (siblingsOk ? (' (+' + siblingsOk + ' siblings)') : ''),
                             'success'
                         );
@@ -9383,8 +9525,7 @@
                 const sgpft = sprice > 0
                     ? (isTemuMp ? (temuProfit / sprice) * 100 : ((sprice * margin - ship - lp) / sprice) * 100)
                     : 0;
-                const isChannelAdsMp = (mpLower === 'tiktok' || mpLower === 'reverb'
-                    || ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'].includes(mpLower));
+                const isChannelAdsMp = ovl30UsesChannelAdsForSpft(mpLower);
                 const spft = (isChannelAdsMp || isTemuMp) ? (sgpft - tacosCh) : (l30 == 0 ? sgpft : (sgpft - ad));
                 const sroi = isTemuMp
                     ? (lp > 0 ? (temuProfit / lp) * 100 : 0)
@@ -13094,45 +13235,41 @@
         
         function updateSummary() {
             const data = table.getData('active');
-            let totalInv = 0, totalL30 = 0, totalDil = 0, dilCount = 0;
-            let totalViews = 0, totalCvr = 0, cvrCount = 0;
+            const skuParentFilter = $('#sku-parent-filter').val();
+            // Avoid double-counting: Parent Only → parents; SKU Only → children; Both → children only
+            const metricRows = skuParentFilter === 'parent'
+                ? data.filter(r => r.is_parent_summary === true)
+                : data.filter(r => r.is_parent_summary !== true);
+
+            let totalInv = 0, totalL30 = 0, totalSwL30 = 0, totalViews = 0;
             let totalPrice = 0, priceCount = 0;
             let totalAmzLmp = 0, amzLmpCount = 0;
 
-            data.forEach(row => {
+            metricRows.forEach(row => {
                 totalInv += parseFloat(row['inventory']) || 0;
                 totalL30 += parseFloat(row['overall_l30']) || 0;
-                const dil = parseFloat(row['dil_percent']) || 0;
-                if (dil > 0) {
-                    totalDil += dil;
-                    dilCount++;
-                }
-                totalViews += parseInt(row['total_views']) || 0;
-                totalCvr += parseFloat(row['avg_cvr']) || 0;
-                cvrCount++;
+                totalSwL30 += parseFloat(row['m_l30']) || 0;
+                totalViews += parseInt(row['total_views'], 10) || 0;
                 const price = parseFloat(row['avg_price']) || 0;
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
                 }
-                if (!row.is_parent_summary) {
-                    const amzLmp = parseFloat(row['amazon_lmp_price']) || 0;
-                    if (amzLmp > 0) {
-                        totalAmzLmp += amzLmp;
-                        amzLmpCount++;
-                    }
+                const amzLmp = parseFloat(row['amazon_lmp_price']) || 0;
+                if (amzLmp > 0) {
+                    totalAmzLmp += amzLmp;
+                    amzLmpCount++;
                 }
             });
 
-            const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
-            const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
+            // Dil = (Σ OV L30 / Σ INV) × 100 — not mean of row Dil%s
+            const avgDil = totalInv > 0 ? (totalL30 / totalInv) * 100 : 0;
+            // CVR = (Σ SW L30 / Σ Views) × 100 — same formula as row avg_cvr
+            const avgCvr = totalViews > 0 ? (totalSwL30 / totalViews) * 100 : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgAmzLmp = amzLmpCount > 0 ? totalAmzLmp / amzLmpCount : 0;
 
-            const skuParentFilter = $('#sku-parent-filter').val();
-            const lqsRows = skuParentFilter === 'parent'
-                ? data.filter(r => r.is_parent_summary === true)
-                : data.filter(r => r.is_parent_summary !== true);
+            const lqsRows = metricRows;
             let lqsSum = 0, lqsCount = 0;
             lqsRows.forEach(row => {
                 const lqs = row.listing_quality_score;
@@ -13162,7 +13299,6 @@
         // Permanently removed from Columns dropdown and kept hidden in the table
         const CVR_HIDDEN_FROM_COLUMN_MENU = [
             'amazon_price', 'amz_pft', 'amz_roi',
-            'amazon_sprice', 'amazon_sgpft', 'amazon_spft', 'amazon_sroi',
             'ebay_lmp_price', 'google_lmp_price', 'temu_lmp_price',
             'shein_l30', 'faire_l30', 'ae_l30', 'pp_l30'
         ];
@@ -13228,6 +13364,11 @@
             // Always show Avg LMP (parent = average of child Amz LMPs)
             const avgLmpCol = table.getColumn('amazon_lmp_price');
             if (avgLmpCol) avgLmpCol.show();
+            // Always show Amz SPRICE + derived SGPFT / SGROI / SPFT / SNROI (same as Sprice modal)
+            ['amazon_sprice', 'amazon_sgpft', 'amazon_sroi', 'amazon_spft', 'amazon_snroi'].forEach(function(field) {
+                const col = table.getColumn(field);
+                if (col) col.show();
+            });
         }
 
         function applyColumnVisibilityFromServer() {

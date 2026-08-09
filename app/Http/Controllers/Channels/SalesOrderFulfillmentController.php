@@ -1431,15 +1431,35 @@ class SalesOrderFulfillmentController extends Controller
                     continue;
                 }
                 $order = $resp->json('order') ?? [];
-                $fulfillment = is_array($order['fulfillments'][0] ?? null) ? $order['fulfillments'][0] : [];
+                $fulfillments = is_array($order['fulfillments'] ?? null) ? $order['fulfillments'] : [];
+                $fulfillment = [];
+                foreach ($fulfillments as $f) {
+                    if (! is_array($f)) {
+                        continue;
+                    }
+                    $tnProbe = '';
+                    if (! empty($f['tracking_numbers']) && is_array($f['tracking_numbers'])) {
+                        $tnProbe = trim((string) ($f['tracking_numbers'][0] ?? ''));
+                    } elseif (! empty($f['tracking_number'])) {
+                        $tnProbe = trim((string) $f['tracking_number']);
+                    }
+                    if ($tnProbe !== '') {
+                        $fulfillment = $f;
+                        break;
+                    }
+                    if ($fulfillment === []) {
+                        $fulfillment = $f;
+                    }
+                }
                 $trackingNumber = null;
                 if (! empty($fulfillment['tracking_numbers']) && is_array($fulfillment['tracking_numbers'])) {
-                    $trackingNumber = trim((string) ($fulfillment['tracking_numbers'][0] ?? ''));
+                    $parts = array_values(array_filter(array_map(
+                        static fn ($v) => trim((string) $v),
+                        $fulfillment['tracking_numbers']
+                    )));
+                    $trackingNumber = $parts !== [] ? implode(', ', $parts) : null;
                 } elseif (! empty($fulfillment['tracking_number'])) {
-                    $trackingNumber = trim((string) $fulfillment['tracking_number']);
-                }
-                if ($trackingNumber === '') {
-                    $trackingNumber = null;
+                    $trackingNumber = trim((string) $fulfillment['tracking_number']) ?: null;
                 }
                 $trackingCompany = isset($fulfillment['tracking_company'])
                     ? trim((string) $fulfillment['tracking_company'])

@@ -252,7 +252,27 @@ class SyncShopifyOrdersToInventory extends Command
     {
         $customer    = $order['customer']         ?? [];
         $shipping    = $order['shipping_address'] ?? [];
-        $fulfillment = $order['fulfillments'][0]  ?? [];
+        $fulfillments = is_array($order['fulfillments'] ?? null) ? $order['fulfillments'] : [];
+        // Prefer the first fulfillment that actually has a tracking number (not just [0]).
+        $fulfillment = [];
+        foreach ($fulfillments as $f) {
+            if (! is_array($f)) {
+                continue;
+            }
+            $tnProbe = '';
+            if (! empty($f['tracking_numbers']) && is_array($f['tracking_numbers'])) {
+                $tnProbe = trim((string) ($f['tracking_numbers'][0] ?? ''));
+            } elseif (! empty($f['tracking_number'])) {
+                $tnProbe = trim((string) $f['tracking_number']);
+            }
+            if ($tnProbe !== '') {
+                $fulfillment = $f;
+                break;
+            }
+            if ($fulfillment === []) {
+                $fulfillment = $f; // fallback to first fulfillment if none have TN
+            }
+        }
 
         $customerName = trim(
             ($customer['first_name'] ?? '') . ' ' . ($customer['last_name'] ?? '')
@@ -264,14 +284,15 @@ class SyncShopifyOrdersToInventory extends Command
             $shipping['address2'] ?? null,
         ]));
 
-        // Tracking (first fulfillment)
+        // Tracking (best fulfillment with a number)
         $trackingCompany = $fulfillment['tracking_company'] ?? null;
         $trackingNumber  = null;
         $trackingUrl     = null;
         if (!empty($fulfillment['tracking_numbers'])) {
-            $trackingNumber = implode(', ', (array) $fulfillment['tracking_numbers']);
+            $trackingNumber = implode(', ', array_filter(array_map('strval', (array) $fulfillment['tracking_numbers'])));
+            $trackingNumber = $trackingNumber !== '' ? $trackingNumber : null;
         } elseif (!empty($fulfillment['tracking_number'])) {
-            $trackingNumber = $fulfillment['tracking_number'];
+            $trackingNumber = trim((string) $fulfillment['tracking_number']) ?: null;
         }
         if (!empty($fulfillment['tracking_urls'])) {
             $trackingUrl = is_array($fulfillment['tracking_urls'])
@@ -378,8 +399,8 @@ class SyncShopifyOrdersToInventory extends Command
     {
         if (empty($batch)) return;
 
-        // Columns to UPDATE when a duplicate (order_id + line_item_id) is found
-        $updateCols = [
+        // Shared columns always refreshed from Shopify.
+        $baseUpdateCols = [
             'order_number', 'product_id', 'variant_id', 'order_date',
             'financial_status', 'fulfillment_status',
             'sku', 'product_title', 'quantity', 'price', 'total_amount',
@@ -387,15 +408,34 @@ class SyncShopifyOrdersToInventory extends Command
             'order_total', 'order_subtotal',
             'customer_name', 'customer_email',
             'shipping_city', 'shipping_country',
-            'tracking_company', 'tracking_number', 'tracking_url',
             'source_name', 'tags',
             'updated_at',
         ];
 
-        // Insert into inventory_db (default connection) inside a per-chunk transaction
-        DB::transaction(function () use ($batch, $updateCols) {
-            DB::table('shopify_raw_orders')
-                ->upsert($batch, ['order_id', 'line_item_id'], $updateCols);
+        // Never overwrite a stored tracking number with an empty Shopify fulfillment
+        // (common for Amazon “Other” / label-created-before-TN flows).
+        $withTracking = [];
+        $withoutTracking = [];
+        foreach ($batch as $row) {
+            $tn = trim((string) ($row['tracking_number'] ?? ''));
+            if ($tn !== '') {
+                $withTracking[] = $row;
+            } else {
+                $withoutTracking[] = $row;
+            }
+        }
+
+        DB::transaction(function () use ($withTracking, $withoutTracking, $baseUpdateCols) {
+            if ($withoutTracking !== []) {
+                DB::table('shopify_raw_orders')
+                    ->upsert($withoutTracking, ['order_id', 'line_item_id'], $baseUpdateCols);
+            }
+            if ($withTracking !== []) {
+                DB::table('shopify_raw_orders')
+                    ->upsert($withTracking, ['order_id', 'line_item_id'], array_merge($baseUpdateCols, [
+                        'tracking_company', 'tracking_number', 'tracking_url',
+                    ]));
+            }
         });
 
         $this->inserted += count($batch);
